@@ -11,27 +11,8 @@ interface
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
-  SynEditMarkupFoldColoring, SynEditMarkup, SynEditMiscClasses,
+  SynEditHighlighterFoldBase, SynEditHighlighter,
   Led.UI.Dpi, Led.UI.FoldGutter;
-
-type
-  { The block guides.
-
-    TSynEditMarkupFoldColors takes its highlighter in its constructor:
-
-      fHighlighter := TSynCustomFoldHighlighter(SynEdit.Highlighter);
-      fNestList := TLazSynEditNestedFoldsList.Create(Lines, fHighlighter);
-
-    led builds the editor first and assigns a highlighter later, per document
-    and per language, so it was constructed against nil and stayed that way --
-    installed, enabled, coloured, and painting nothing at all.  It does have a
-    refresh path, HighlightChanged, but that is protected, so reaching it is
-    what this descendant is for. }
-  TLedFoldGuides = class(TSynEditMarkupFoldColors)
-  public
-    { Call after the editor's highlighter changes. }
-    procedure NoteHighlighterChanged;
-  end;
 
 { Shortcuts the menus own, which the editor must therefore not consume.
 
@@ -49,23 +30,40 @@ procedure LedReserveShortcut(AShortCut: TShortCut);
 procedure LedStripReservedKeystrokes(AEdit: TSynEdit);
 
 type
+  { One text line and the columns a guide should be drawn at on it. }
+  TLedGuideRun = record
+    TextIdx: Integer;
+    Cols: array of Integer;
+  end;
+  TLedGuideRuns = array of TLedGuideRun;
+
   TLedEdit = class(TSynEdit)
   private
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
-    FFoldGuides: TLedFoldGuides;
+    FGuideColour: TColor;
     function GetWrapEnabled: Boolean;
     procedure SetWrapEnabled(AValue: Boolean);
+    function LineIndentColumn(ATextIdx: Integer): Integer;
+    procedure DrawBlockGuides;
     procedure CompletionSearch(var APosition: Integer);
     procedure CollectWords(const APrefix: string; AInto: TStrings);
+  protected
+    procedure Paint; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     property Document: TObject read FDocument write FDocument;
-    { The vertical block guides, so the theme can colour them. }
-    property FoldGuides: TLedFoldGuides read FFoldGuides;
+    { The colour the vertical block guides are drawn in; the theme sets it. }
+    property GuideColour: TColor read FGuideColour write FGuideColour;
+
+    { The columns a guide belongs at, for every text line in the range.
+      Public because it is what the self-test can check: the drawing itself
+      is pixels, but which columns are guided is the decision, and it is the
+      same routine Paint uses. }
+    function ComputeBlockGuides(AFirstText, ALastText: Integer): TLedGuideRuns;
     { SynEdit implements wrapping as a view plugin rather than a property;
       attaching and detaching it is how the View menu toggles wrap. }
     property WrapEnabled: Boolean read GetWrapEnabled write SetWrapEnabled;
@@ -169,26 +167,7 @@ begin
     because HalfBoxSize and the pen width are derived from it. }
   Gutter.CodeFoldPart.Width := LedScale96(18);
 
-  { Vertical guides down the body of each open block, drawn in the text area
-    rather than the gutter -- medit draws them there too, in
-    _moo_text_view_draw_fold_guides, and a guide in the gutter cannot line up
-    with the code it belongs to.
-
-    This is SynEdit's own TSynEditMarkupFoldColors, which the Lazarus IDE
-    uses for the same purpose: it anchors the line at the block's first
-    non-whitespace column -- the same idea as medit's owner-line scan -- and
-    draws it as a left frame edge on the marked column, so it spans the rows
-    between the opening and closing lines and nothing else.
-
-    ColorCount matters: RealEnabled is false while it is zero, which is the
-    default, so the markup does nothing until asked.  One colour rather than
-    the IDE's per-nesting-level palette, because medit drew one quiet guide
-    and a rainbow in a text editor is a choice nobody asked for.  The colour
-    itself comes from the theme; see LedApplyThemeToEditor. }
-  FFoldGuides := TLedFoldGuides.Create(Self);
-  FFoldGuides.ColorCount := 1;
-  FFoldGuides.LineColor[0].Style := slsSolid;
-  TSynEditMarkupManager(MarkupMgr).AddMarkUp(FFoldGuides);
+  FGuideColour := clNone;
 
   Font.Name := LedDefaultFontName;
   Font.Size := LedDefaultFontSize;
@@ -200,14 +179,6 @@ begin
   BorderStyle := bsNone;
   ScrollBars := ssAutoBoth;
 
-end;
-
-procedure TLedFoldGuides.NoteHighlighterChanged;
-begin
-  { -1, -1 is what the handler treats as "everything changed"; anything else
-    it ignores. }
-  if Lines <> nil then
-    HighlightChanged(Lines, -1, -1);
 end;
 
 var
@@ -240,6 +211,179 @@ begin
         Break;
       end;
   end;
+end;
+
+{ --- vertical block guides ------------------------------------------------- }
+
+{ The column of the first non-blank character, 1-based, tabs expanded.  This
+  is where the guide for a block opened on this line belongs -- medit anchors
+  its guides the same way. }
+function TLedEdit.LineIndentColumn(ATextIdx: Integer): Integer;
+var
+  Txt: string;
+  i, Col: Integer;
+begin
+  Result := 0;
+  if (ATextIdx < 0) or (ATextIdx >= Lines.Count) then Exit;
+  Txt := Lines[ATextIdx];
+  Col := 1;
+  for i := 1 to Length(Txt) do
+  begin
+    if Txt[i] = #9 then
+      Col := Col + TabWidth - ((Col - 1) mod TabWidth)
+    else if Txt[i] = ' ' then
+      Inc(Col)
+    else
+      Exit(Col);
+  end;
+  { All blank: no guide belongs to a line with nothing on it. }
+  Result := 0;
+end;
+
+{ Which columns carry a guide, for each line in the range.
+
+  A stack of open blocks, walked forwards.  On each line the blocks that end
+  there are popped, the remaining stack is what the line is inside, and the
+  blocks that start there are pushed afterwards.  That ordering is what makes
+  the guide span the body only: the opening line draws before its own block is
+  pushed, and the closing line draws after its block is popped -- from the
+  second line of the block to the one before the last, which is what was
+  asked for and what medit does.
+
+  The walk starts a bounded distance above the range so that blocks opened
+  off-screen still produce their guides; without that, scrolling into the
+  middle of a function would show nothing. }
+function TLedEdit.ComputeBlockGuides(AFirstText,
+  ALastText: Integer): TLedGuideRuns;
+const
+  ScanBack = 800;
+var
+  HL: TSynCustomFoldHighlighter;
+  Stack: array of Integer;
+  Depth, Start, L, i, Opens, Closes, EndLvl, MinLvl, PrevEnd, Col, N: Integer;
+begin
+  Result := nil;
+  if not (Highlighter is TSynCustomFoldHighlighter) then Exit;
+  HL := TSynCustomFoldHighlighter(Highlighter);
+  if Lines.Count = 0 then Exit;
+
+  if AFirstText < 0 then AFirstText := 0;
+  if ALastText >= Lines.Count then ALastText := Lines.Count - 1;
+  if AFirstText > ALastText then Exit;
+
+  Start := AFirstText - ScanBack;
+  if Start < 0 then Start := 0;
+
+  SetLength(Stack, 0);
+  Depth := 0;
+  if Start > 0 then
+    PrevEnd := HL.FoldBlockEndLevel(Start - 1)
+  else
+    PrevEnd := 0;
+
+  SetLength(Result, ALastText - AFirstText + 1);
+  N := 0;
+
+  for L := Start to ALastText do
+  begin
+    EndLvl := HL.FoldBlockEndLevel(L);
+    MinLvl := HL.FoldBlockMinLevel(L);
+
+    Closes := PrevEnd - MinLvl;
+    if Closes < 0 then Closes := 0;
+    Opens := EndLvl - MinLvl;
+    if Opens < 0 then Opens := 0;
+
+    { Blocks that end on this line are no longer around it. }
+    for i := 1 to Closes do
+      if Depth > 0 then Dec(Depth);
+
+    if L >= AFirstText then
+    begin
+      Result[N].TextIdx := L;
+      SetLength(Result[N].Cols, 0);
+      for i := 0 to Depth - 1 do
+        { Column 1 means a top-level block, whose guide would run down the
+          very edge of the text.  medit skips those and so does this. }
+        if Stack[i] > 1 then
+        begin
+          SetLength(Result[N].Cols, Length(Result[N].Cols) + 1);
+          Result[N].Cols[High(Result[N].Cols)] := Stack[i];
+        end;
+      Inc(N);
+    end;
+
+    { Blocks that start here enclose the lines below, not this one. }
+    if Opens > 0 then
+    begin
+      Col := LineIndentColumn(L);
+      for i := 1 to Opens do
+      begin
+        if Length(Stack) <= Depth then SetLength(Stack, Depth + 8);
+        Stack[Depth] := Col;
+        Inc(Depth);
+      end;
+    end;
+
+    PrevEnd := EndLvl;
+  end;
+
+  SetLength(Result, N);
+end;
+
+procedure TLedEdit.DrawBlockGuides;
+var
+  Runs: TLedGuideRuns;
+  FV: TSynEditFoldedView;
+  FirstText, LastText, i, j, Row, X, Y, TextLeft: Integer;
+begin
+  if FGuideColour = clNone then Exit;
+  if not (Highlighter is TSynCustomFoldHighlighter) then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+
+  FirstText := FV.ScreenLineToTextIndex(0);
+  LastText := FV.ScreenLineToTextIndex(LinesInWindow);
+  if LastText < FirstText then LastText := FirstText;
+
+  Runs := ComputeBlockGuides(FirstText, LastText);
+  if Length(Runs) = 0 then Exit;
+
+  { Where column 1 starts.  TCustomSynEdit.TextLeftPixelOffset computes
+    exactly this and is private, so the two lines it amounts to are repeated
+    here: the gutter's width plus GutterTextDist, which is the constant 2. }
+  if Gutter.Visible then
+    TextLeft := Gutter.Width + 2
+  else
+    TextLeft := 1;
+
+  Canvas.Pen.Color := FGuideColour;
+  Canvas.Pen.Width := 1;
+  Canvas.Pen.Style := psSolid;
+
+  for i := 0 to High(Runs) do
+  begin
+    { Folded-away lines have no row of their own; TextIndexToScreenLine gives
+      the row the fold collapsed onto, so they would stack guides on one line. }
+    Row := FV.TextIndexToScreenLine(Runs[i].TextIdx);
+    if (Row < 0) or (Row >= LinesInWindow) then Continue;
+    if FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx then Continue;
+
+    Y := Row * LineHeight;
+    for j := 0 to High(Runs[i].Cols) do
+    begin
+      X := TextLeft + (Runs[i].Cols[j] - LeftChar) * CharWidth;
+      if X < TextLeft then Continue;
+      Canvas.MoveTo(X, Y);
+      Canvas.LineTo(X, Y + LineHeight);
+    end;
+  end;
+end;
+
+procedure TLedEdit.Paint;
+begin
+  inherited Paint;
+  DrawBlockGuides;
 end;
 
 { Word completion drawn from the document itself.  medit had none at all, and

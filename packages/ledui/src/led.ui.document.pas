@@ -254,15 +254,8 @@ begin
   { The block guides are a markup rather than an editor property, so the theme
     applier cannot reach them: it lives in ledsyn, and the markup hangs off a
     control in ledui.  It supplies the colour, this applies it. }
-  if (AView.FoldGuides <> nil) and (AView.FoldGuides.ColorCount > 0) then
-  begin
-    AView.FoldGuides.LineColor[0].Color :=
-      LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
-    { The markup captured its highlighter when the editor was built, which was
-      before this document had one.  Tell it to look again, or it draws
-      nothing at all. }
-    AView.FoldGuides.NoteHighlighterChanged;
-  end;
+  AView.GuideColour :=
+    LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
 
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
@@ -317,11 +310,9 @@ begin
   for i := 0 to FViews.Count - 1 do
   begin
     TLedEdit(FViews[i]).Highlighter := HL;
-    { And the block guides, which hold their own reference to it and would
-      otherwise keep drawing for the previous language -- or, on the first
-      assignment, for none. }
-    if TLedEdit(FViews[i]).FoldGuides <> nil then
-      TLedEdit(FViews[i]).FoldGuides.NoteHighlighterChanged;
+    { The guides read the highlighter's fold levels as they paint, so there is
+      nothing to tell them; a repaint is enough. }
+    TLedEdit(FViews[i]).Invalidate;
   end;
 end;
 

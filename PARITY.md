@@ -19,6 +19,7 @@ checked off by the presence of a menu entry.
 | Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | yes | via the converted grammars' fold markers |
 | Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | yes | Pascal, Matlab, Octave, Ruby, Lua and sh |
 | Code folding: indentation<br><sub>Python/YAML</sub> | yes | no | TextMate expresses folding as line regexes, which cannot describe indentation. Needs a TSynTextMateSyn descendant that overrides the fold levels |
+| Vertical guides down an open block<br><sub>a rule from the line after the opener to the line before the closer</sub> | yes | yes | drawn by led. SynEdit's TSynEditMarkupFoldColors was tried twice and paints nothing with every precondition it documents satisfied, so TLedEdit.Paint walks the fold levels itself |
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
@@ -221,7 +222,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
-| Vertical guides down an open block | attempted twice through SynEdit's TSynEditMarkupFoldColors and it paints nothing, with every precondition it documents satisfied; needs drawing in led, as the fold chevrons are |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
 | 5 of medit's 10 terminal colour schemes | not started |
