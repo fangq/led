@@ -24,7 +24,7 @@ checked off by the presence of a menu entry.
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | | phase-5 |
 | Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
-| Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | | phase-1 |
+| Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | partly | detection done; the try-encoding dialog is pending |
 | Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
 | Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | | phase-3 |
@@ -62,9 +62,9 @@ checked off by the presence of a menu entry.
 | `Help` | yes | | |
 | `Indent` | yes | | |
 | `InputMethods` | yes | | |
-| `LanguageMenu` | yes | | |
+| `LanguageMenu` | yes | yes | done |
 | `LineEndMenu` | yes | | |
-| `LineNumbers` | yes | | |
+| `LineNumbers` | yes | yes | done |
 | `MoveToSplitView` | yes | | |
 | `NewDoc` | yes | yes | done |
 | `NewFolder` | yes | | |

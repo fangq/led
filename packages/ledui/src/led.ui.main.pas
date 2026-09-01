@@ -14,7 +14,9 @@ uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, SynEdit, SynEditTypes,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
-  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
+  Led.Core.Config, Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
+  Led.UI.Dock, Led.UI.Document,
+  Led.UI.Tab, Led.UI.Edit;
 
 type
   TLedMainForm = class(TForm)
@@ -44,6 +46,9 @@ type
     miSep2: TMenuItem;
     miCloseTab: TMenuItem;
     miQuit: TMenuItem;
+    mnuDocument: TMenuItem;
+    miLanguage: TMenuItem;
+    miTheme: TMenuItem;
     mnuView: TMenuItem;
     miSplitSideBySide: TMenuItem;
     miSplitStacked: TMenuItem;
@@ -74,6 +79,8 @@ type
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure miOpenRecentClick(Sender: TObject);
+    procedure miLanguageClick(Sender: TObject);
+    procedure miThemeClick(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -82,6 +89,10 @@ type
     FCheckingDisk: Boolean;
     procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
+    procedure PopulateLanguageMenu;
+    procedure LanguageItemClick(Sender: TObject);
+    procedure PopulateThemeMenu;
+    procedure ThemeItemClick(Sender: TObject);
     procedure SaveSession;
     function RestoreSession: Boolean;
     procedure CheckExternalChanges;
@@ -92,6 +103,15 @@ type
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
   public
+    { Every message the window shows goes through these two, so that
+      --self-test and --script can run without a modal dialog stopping them
+      dead.  In Silent mode a report goes to stdout and a question takes its
+      stated default. }
+    Silent: Boolean;
+    procedure ReportError(const AMessage: string);
+    function Confirm(const AMessage: string; ADefault: Boolean): Boolean;
+    function ConfirmSaveDiscardCancel(const AMessage: string): Integer;
+
     procedure OpenFiles(AFiles: TStrings);
 
     { Public so the --self-test harness, and later the scripting API, can
@@ -111,6 +131,35 @@ var
 implementation
 
 {$R *.lfm}
+
+procedure TLedMainForm.ReportError(const AMessage: string);
+begin
+  if Silent then
+    WriteLn(StdErr, 'led: ', AMessage)
+  else
+    MessageDlg('led', AMessage, mtError, [mbOK], 0);
+end;
+
+function TLedMainForm.Confirm(const AMessage: string; ADefault: Boolean): Boolean;
+begin
+  if Silent then
+  begin
+    WriteLn(StdErr, 'led: ', AMessage, ' -> ', BoolToStr(ADefault, 'yes', 'no'));
+    Exit(ADefault);
+  end;
+  Result := MessageDlg('led', AMessage, mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+end;
+
+function TLedMainForm.ConfirmSaveDiscardCancel(const AMessage: string): Integer;
+begin
+  if Silent then
+  begin
+    WriteLn(StdErr, 'led: ', AMessage, ' -> no');
+    Exit(mrNo);
+  end;
+  Result := MessageDlg('led', AMessage, mtConfirmation,
+    [mbYes, mbNo, mbCancel], 0);
+end;
 
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
@@ -180,6 +229,111 @@ begin
   finally
     L.Free;
   end;
+end;
+
+{ --- language and theme menus --------------------------------------------- }
+
+procedure TLedMainForm.miLanguageClick(Sender: TObject);
+begin
+  PopulateLanguageMenu;
+end;
+
+procedure TLedMainForm.PopulateLanguageMenu;
+var
+  L: TStringList;
+  i: Integer;
+  Item, Group: TMenuItem;
+  Lang: TLedLangInfo;
+  Section, Current: string;
+begin
+  miLanguage.Clear;
+  Current := '';
+  if ActiveTab <> nil then
+    Current := ActiveTab.Document.Config.GetStr(LedSetLang);
+
+  Item := TMenuItem.Create(miLanguage);
+  Item.Caption := 'None';
+  Item.Hint := '';
+  Item.RadioItem := True;
+  Item.Checked := Current = '';
+  Item.OnClick := @LanguageItemClick;
+  miLanguage.Add(Item);
+
+  L := TStringList.Create;
+  try
+    LedLanguages.ListForMenu(L);
+    Group := nil;
+    Section := '';
+    for i := 0 to L.Count - 1 do
+    begin
+      Lang := TLedLangInfo(L.Objects[i]);
+      { 128 languages in one flat menu is unusable, so they are grouped by
+        the section the grammar declares -- Source, Script, Markup and so on. }
+      if Lang.Section <> Section then
+      begin
+        Section := Lang.Section;
+        Group := TMenuItem.Create(miLanguage);
+        Group.Caption := Section;
+        miLanguage.Add(Group);
+      end;
+      Item := TMenuItem.Create(Group);
+      Item.Caption := Lang.Name;
+      if not LedHasHighlighter(Lang.Id) then
+        { Honest about what is only recognised rather than coloured. }
+        Item.Caption := Lang.Name + '  (no highlighting yet)';
+      Item.Hint := Lang.Id;
+      Item.RadioItem := True;
+      Item.Checked := SameText(Lang.Id, Current);
+      Item.OnClick := @LanguageItemClick;
+      Group.Add(Item);
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+procedure TLedMainForm.LanguageItemClick(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  ActiveTab.Document.SetLanguage(TMenuItem(Sender).Hint);
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.miThemeClick(Sender: TObject);
+begin
+  PopulateThemeMenu;
+end;
+
+procedure TLedMainForm.PopulateThemeMenu;
+var
+  i: Integer;
+  Item: TMenuItem;
+  Current: string;
+begin
+  miTheme.Clear;
+  Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
+  for i := 0 to LedThemes.Count - 1 do
+  begin
+    Item := TMenuItem.Create(miTheme);
+    Item.Caption := LedThemes[i].Name;
+    Item.Hint := LedThemes[i].Id;
+    Item.RadioItem := True;
+    Item.Checked := SameText(LedThemes[i].Id, Current);
+    Item.OnClick := @ThemeItemClick;
+    miTheme.Add(Item);
+  end;
+end;
+
+procedure TLedMainForm.ThemeItemClick(Sender: TObject);
+var
+  i, j: Integer;
+begin
+  LedSetCurrentTheme(TMenuItem(Sender).Hint);
+  { Every open view has to be repainted with the new chrome colours. }
+  for i := 0 to FBook.PageCount - 1 do
+    for j := 0 to FBook.Pages[i].ControlCount - 1 do
+      if FBook.Pages[i].Controls[j] is TLedTab then
+        TLedTab(FBook.Pages[i].Controls[j]).Document.ApplyConfigToViews;
 end;
 
 { --- session -------------------------------------------------------------- }
@@ -313,10 +467,9 @@ begin
   try
     if Doc.Modified then
     begin
-      if MessageDlg('led', Format(
+      if Confirm(Format(
         '%s changed on disk, and you have unsaved changes.'#10 +
-        'Reload and lose your changes?', [Doc.DisplayName]),
-        mtWarning, [mbYes, mbNo], 0) = mrYes then
+        'Reload and lose your changes?', [Doc.DisplayName]), False) then
         Doc.Reload;
     end
     else
@@ -334,16 +487,14 @@ begin
   Tab := ActiveTab;
   if (Tab = nil) or Tab.Document.IsUntitled then Exit;
   if Tab.Document.Modified then
-    if MessageDlg('led',
-      Format('Discard your changes to %s and reload from disk?',
-        [Tab.Document.DisplayName]),
-      mtConfirmation, [mbYes, mbNo], 0) <> mrYes then
+    if not Confirm(Format('Discard your changes to %s and reload from disk?',
+      [Tab.Document.DisplayName]), False) then
       Exit;
   try
     Tab.Document.Reload;
   except
     on E: ELedFileError do
-      MessageDlg('led', E.Message, mtError, [mbOK], 0);
+      ReportError(E.Message);
   end;
   UpdateStatusBar;
 end;
@@ -438,6 +589,7 @@ begin
     StatusBar1.Panels[1].Text := '';
     StatusBar1.Panels[2].Text := '';
     StatusBar1.Panels[3].Text := '';
+    StatusBar1.Panels[4].Text := '';
     Caption := 'led';
     Exit;
   end;
@@ -447,10 +599,14 @@ begin
     Format('Line %d  Col %d', [V.CaretY, V.CaretX]);
   StatusBar1.Panels[1].Text := D.Info.Encoding;
   StatusBar1.Panels[2].Text := LedLineEndName(D.Info.LineEnd);
-  if V.InsertMode then
-    StatusBar1.Panels[3].Text := 'INS'
+  if D.LangInfo <> nil then
+    StatusBar1.Panels[3].Text := D.LangInfo.Name
   else
-    StatusBar1.Panels[3].Text := 'OVR';
+    StatusBar1.Panels[3].Text := 'Plain text';
+  if V.InsertMode then
+    StatusBar1.Panels[4].Text := 'INS'
+  else
+    StatusBar1.Panels[4].Text := 'OVR';
 
   if D.IsUntitled then
     Caption := Format('led - %s', [D.DisplayName])
@@ -504,13 +660,13 @@ begin
     except
       on E: ELedFileError do
       begin
-        MessageDlg('led', E.Message, mtError, [mbOK], 0);
+        ReportError(E.Message);
         Continue;
       end;
       on E: Exception do
       begin
-        MessageDlg('led', Format('Could not open %s:'#10'%s',
-          [AFiles[i], E.Message]), mtError, [mbOK], 0);
+        ReportError(Format('Could not open %s:'#10'%s',
+          [AFiles[i], E.Message]));
         Continue;
       end;
     end;
@@ -553,9 +709,8 @@ var
   Res: Integer;
 begin
   if not ADoc.Modified then Exit(True);
-  Res := MessageDlg('led',
-    Format('Save changes to %s before closing?', [ADoc.DisplayName]),
-    mtConfirmation, [mbYes, mbNo, mbCancel], 0);
+  Res := ConfirmSaveDiscardCancel(
+    Format('Save changes to %s before closing?', [ADoc.DisplayName]));
   case Res of
     mrYes:
       begin

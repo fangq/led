@@ -78,6 +78,21 @@
         <UnitName Value="Led.Core.Types"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledsyn/src/led.syn.languages.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Syn.Languages"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledsyn/src/led.syn.theme.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Syn.Theme"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledsyn/src/led.syn.factory.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Syn.Factory"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>

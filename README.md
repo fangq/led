@@ -20,9 +20,18 @@ line-ending preservation; layered per-document settings with modeline support;
 INI preferences, JSON session and recent files; reload and external-change
 detection.
 
-Still to come in phase 1: the try-encoding dialog, filename-glob rules, the
-language registry built from medit's 128 grammars, and the eight colour
-themes.
+medit's 128 grammars and 8 colour themes are vendored in `data/` and read
+unchanged. Language is detected from the filename, the mime type or a shebang
+line; the Document menu lists every grammar grouped by section, and the View
+menu switches themes live.
+
+Highlighting currently uses Lazarus's own highlighters, which cover about
+twenty of the 128 languages — the rest are recognised, and carry their comment
+markers, but are not yet coloured. The grammar converter that closes that gap
+is a later phase.
+
+Still to come in phase 1: the try-encoding dialog and filename-glob config
+rules.
 
 ## Building
 
@@ -92,6 +101,14 @@ Support/led` on macOS. Override with `$LED_CONFIG_DIR`.
 | `prefs.ini` | preferences; dotted keys become sections, so `Plugins/Terminal/font` is `[Plugins.Terminal] font=` |
 | `session.json` | windows, tabs, carets and dock layout (when `Editor/save_session` is on) |
 | `recent.json` | the Open Recent list |
+
+`data/langs/*.lang` and `data/themes/*.xml` are read from the install or the
+build tree; a `langs/` or `themes/` directory under the config directory
+shadows them, so a user grammar wins over a shipped one with the same id.
+
+`data/langs/*.lang` and `data/themes/*.xml` are read from the install (or the
+build tree); a `langs/` or `themes/` directory under the config directory
+shadows them, so a user grammar wins over a shipped one of the same id.
 
 Session and recent files are written atomically with one `.bak` generation; a
 corrupt session file is ignored rather than allowed to stop startup.
