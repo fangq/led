@@ -22,7 +22,8 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
-  Led.UI.Commands, Led.UI.Find, Clipbrd, SynEditTypes;
+  Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
+  Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
 var
   Failures: Integer = 0;
@@ -679,6 +680,56 @@ begin
   if Doc = nil then ;
 end;
 
+procedure TestPrefsAndShortcuts(F: TLedMainForm);
+var
+  Dlg: TLedPrefsDialog;
+  Sc: TLedShortcuts;
+  Before, After: Integer;
+begin
+  WriteLn('preferences and shortcuts');
+
+  { The dialog is built from a table; the check that matters is that every
+    row round-trips through prefs.ini rather than being quietly dropped. }
+  Dlg := TLedPrefsDialog.CreateDialog(F);
+  try
+    Dlg.LoadFromPrefs;
+    LedPrefs.SetInt('Editor/tab_width', 3);
+    LedPrefs.SetBool('Editor/make_backups', True);
+    LedPrefs.SetStr('Editor/color_scheme', 'oblivion');
+    Dlg.LoadFromPrefs;
+    { Change nothing, write everything back: values must survive the trip. }
+    Dlg.ApplyToPrefs;
+    CheckEqInt('an int setting round-trips', 3,
+      LedPrefs.GetInt('Editor/tab_width', 8));
+    Check('a bool setting round-trips', LedPrefs.GetBool('Editor/make_backups', False));
+    CheckEq('a choice setting round-trips', 'oblivion',
+      LedPrefs.GetStr('Editor/color_scheme', 'medit'));
+  finally
+    Dlg.Free;
+  end;
+
+  Sc := TLedShortcuts.Create(F.ActionList1);
+  try
+    Sc.CaptureDefaults;
+    Before := F.actSave.ShortCut;
+    Check('a default was captured', Sc.DefaultOf('actSave') = Before);
+
+    Sc.SetShortcut('actSave', TextToShortCutRaw('Ctrl+Alt+S'));
+    After := F.actSave.ShortCut;
+    Check('a shortcut can be changed', After <> Before);
+
+    { Two commands cannot share one keystroke, so the editor reports it. }
+    CheckEq('a conflict is detected', StringReplace(F.actSave.Caption, '&', '',
+      [rfReplaceAll]),
+      StringReplace(Sc.ConflictWith(After, 'actOpen'), '&', '', [rfReplaceAll]));
+
+    Sc.Reset('actSave');
+    CheckEqInt('reset restores the default', Before, F.actSave.ShortCut);
+  finally
+    Sc.Free;
+  end;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -714,6 +765,8 @@ begin
   TestFindReplace(F);
   WriteLn;
   TestColumnSelection(F);
+  WriteLn;
+  TestPrefsAndShortcuts(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

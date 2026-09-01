@@ -40,7 +40,7 @@ checked off by the presence of a menu entry.
 | `Close` | yes | yes | done |
 | `CloseAll` | yes | | |
 | `Comment` | yes | yes | done |
-| `ConfigureShortcuts` | yes | | |
+| `ConfigureShortcuts` | yes | yes | done |
 | `Copy` | yes | yes | done |
 | `Cut` | yes | yes | done |
 | `CycleSplitViews` | yes | yes | done |
@@ -77,7 +77,7 @@ checked off by the presence of a menu entry.
 | `OpenRecent` | yes | yes | done |
 | `PageSetup` | yes | | |
 | `Paste` | yes | yes | done |
-| `Preferences` | yes | | |
+| `Preferences` | yes | yes | done |
 | `PrevPlaceholder` | yes | | |
 | `PreviousBookmark` | yes | yes | done |
 | `PreviousTab` | yes | | |

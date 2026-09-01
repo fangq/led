@@ -18,7 +18,7 @@ uses
   Led.Core.Config, Led.Core.Encodings,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
-  Led.UI.Find;
+  Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts;
 
 type
   TLedMainForm = class(TForm)
@@ -29,6 +29,8 @@ type
     actSaveAs: TAction;
     actReload: TAction;
     actCloseTab: TAction;
+    actPreferences: TAction;
+    actShortcuts: TAction;
     actQuit: TAction;
     actUndo: TAction;
     actRedo: TAction;
@@ -97,40 +99,43 @@ type
     miSep6: TMenuItem;
     mi_Comment: TMenuItem;
     mi_Uncomment: TMenuItem;
+    miSep7: TMenuItem;
+    mi_Shortcuts: TMenuItem;
+    mi_Preferences: TMenuItem;
     mnuSearch: TMenuItem;
     mi_Find: TMenuItem;
     mi_Replace: TMenuItem;
     mi_FindNext: TMenuItem;
     mi_FindPrev: TMenuItem;
     mi_QuickFind: TMenuItem;
-    miSep7: TMenuItem;
-    mi_GotoLine: TMenuItem;
     miSep8: TMenuItem;
+    mi_GotoLine: TMenuItem;
+    miSep9: TMenuItem;
     mi_ToggleBracket: TMenuItem;
     mi_SelectToBracket: TMenuItem;
     mnuDocument: TMenuItem;
     miLanguage: TMenuItem;
     miEncoding: TMenuItem;
     miLineEnd: TMenuItem;
-    miSep9: TMenuItem;
+    miSep10: TMenuItem;
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
     mnuView: TMenuItem;
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
-    miSep10: TMenuItem;
+    miSep11: TMenuItem;
     mi_ToggleFold: TMenuItem;
     mi_FoldAll: TMenuItem;
     mi_UnfoldAll: TMenuItem;
-    miSep11: TMenuItem;
+    miSep12: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep12: TMenuItem;
-    miTheme: TMenuItem;
     miSep13: TMenuItem;
+    miTheme: TMenuItem;
+    miSep14: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
     OpenDialog1: TOpenDialog;
@@ -189,6 +194,8 @@ type
     procedure actFoldAllExecute(Sender: TObject);
     procedure actToggleFoldExecute(Sender: TObject);
     procedure actUnfoldAllExecute(Sender: TObject);
+    procedure actPreferencesExecute(Sender: TObject);
+    procedure actShortcutsExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -199,7 +206,9 @@ type
     FInstanceTimer: TTimer;
     FFindForm: TLedFindForm;
     FFindBar: TLedFindBar;
+    FShortcuts: TLedShortcuts;
     FCheckingDisk: Boolean;
+    procedure PrefsApplied(Sender: TObject);
     procedure InstancePoll(Sender: TObject);
     procedure InstanceOpenRequest(const APayload: string);
     function SearchView: TLedEdit;
@@ -329,6 +338,11 @@ begin
   FRecent := TLedRecentFiles.Create;
   FRecent.Load;
   FSearch := TLedSearchState.Create;
+  { Defaults are captured before keys.ini is read, so a customisation can be
+    told from a default and Reset has something to go back to. }
+  FShortcuts := TLedShortcuts.Create(ActionList1);
+  FShortcuts.CaptureDefaults;
+  FShortcuts.Load;
 
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
@@ -354,7 +368,53 @@ procedure TLedMainForm.FormDestroy(Sender: TObject);
 begin
   FRecent.Free;
   FSearch.Free;
+  FShortcuts.Free;
   FInstance.Free;
+end;
+
+{ --- preferences and shortcuts --------------------------------------------- }
+
+procedure TLedMainForm.PrefsApplied(Sender: TObject);
+var
+  i, j: Integer;
+begin
+  { Preferences feed the user layer of every document's config, and the theme
+    may have changed too, so both are rebuilt and pushed to every view. }
+  LedReloadUserConfig;
+  LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
+  for i := 0 to FBook.PageCount - 1 do
+    for j := 0 to FBook.Pages[i].ControlCount - 1 do
+      if FBook.Pages[i].Controls[j] is TLedTab then
+        TLedTab(FBook.Pages[i].Controls[j]).Document.ApplyConfigToViews;
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actPreferencesExecute(Sender: TObject);
+var
+  Dlg: TLedPrefsDialog;
+begin
+  if Silent then Exit;
+  Dlg := TLedPrefsDialog.CreateDialog(Self);
+  try
+    Dlg.OnApplied := @PrefsApplied;
+    Dlg.LoadFromPrefs;
+    Dlg.ShowModal;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+procedure TLedMainForm.actShortcutsExecute(Sender: TObject);
+var
+  Dlg: TLedShortcutsForm;
+begin
+  if Silent then Exit;
+  Dlg := TLedShortcutsForm.CreateFor(Self, FShortcuts);
+  try
+    Dlg.ShowModal;
+  finally
+    Dlg.Free;
+  end;
 end;
 
 { --- hand-off from a second invocation ------------------------------------- }
@@ -1278,6 +1338,8 @@ begin
   actComment.Enabled := HasDoc and LedCanComment(Tab.Document.LangInfo);
   actUncomment.Enabled := actComment.Enabled;
   actGotoLine.Enabled := HasDoc;
+  actPreferences.Enabled := True;
+  actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actReplace.Enabled := HasDoc;
   actFindNext.Enabled := HasDoc;
