@@ -112,8 +112,14 @@ function LedFileErrorMessage(AError: TLedFileError; const AFileName: string): st
 
 implementation
 
+{ BaseUnix supplies FpStat/FpS_ISREG for LedIsRegularFile, which is the only
+  platform-specific call in this unit and is already guarded at its call site.
+  The clause has to be conditional too, or the Windows build cannot even find
+  the unit. }
+{$IFDEF UNIX}
 uses
-  BaseUnix {$IFDEF WINDOWS}, Windows{$ENDIF};
+  BaseUnix;
+{$ENDIF}
 
 const
   BOMBytes: array[TLedBOM] of string = (
