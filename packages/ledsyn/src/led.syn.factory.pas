@@ -527,10 +527,13 @@ begin
 
   Fg := ColorToRGB(Fg);
   Bg := ColorToRGB(Bg);
+  { Two fifths of the way to the text colour.  A quarter was the first
+    attempt and was invisible on screen -- a guide nobody can see is not a
+    quiet guide, it is a missing one. }
   Result := TColor(
-    ((((Fg and $FF) + 3 * (Bg and $FF)) div 4) and $FF)
-    or (((((Fg shr 8) and $FF) + 3 * ((Bg shr 8) and $FF)) div 4) shl 8)
-    or (((((Fg shr 16) and $FF) + 3 * ((Bg shr 16) and $FF)) div 4) shl 16));
+    ((((2 * (Fg and $FF)) + 3 * (Bg and $FF)) div 5) and $FF)
+    or ((((2 * ((Fg shr 8) and $FF)) + 3 * ((Bg shr 8) and $FF)) div 5) shl 8)
+    or ((((2 * ((Fg shr 16) and $FF)) + 3 * ((Bg shr 16) and $FF)) div 5) shl 16));
 end;
 
 procedure LedRetheme(ATheme: TLedTheme);
