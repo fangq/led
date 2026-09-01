@@ -21,7 +21,7 @@ uses
   Classes, SysUtils, Forms, ComCtrls,
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
-  Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
+  Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
@@ -1752,6 +1752,59 @@ begin
   Pump;
 end;
 
+{ Opening a file named on the command line by its absolute path.
+
+  ApplyCommandLine joined the working directory to every path it was given,
+  including ones already starting at the root, so "led /some/where/file.pas"
+  looked for /cwd//some/where/file.pas and reported that the file did not
+  exist.  Found by taking a screenshot of led under Xvfb, which is a poor
+  substitute for a check and is why there is one now.
+
+  The cwd passed here is deliberately not the file's directory: that is the
+  case the bug needed. }
+procedure TestAbsolutePathOnCommandLine(F: TLedMainForm);
+var
+  Path: string;
+  L, Args: TStringList;
+  Cmd: TLedCommandLine;
+  Before: Integer;
+begin
+  Say('a file named by absolute path');
+
+  Check('the editor area cannot be closed', not F.Dock.CentreCanBeClosed);
+
+  Path := IncludeTrailingPathDelimiter(GetTempDir) +
+    Format('led-selftest-%d-abs.txt', [GetProcessID]);
+  L := TStringList.Create;
+  try
+    L.Add('opened by absolute path');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  Before := F.TabCount;
+  Cmd := TLedCommandLine.Create;
+  Args := TStringList.Create;
+  try
+    Args.Add(Path);
+    Cmd.Parse(Args);
+    CheckEqInt('the command line took one file', 1, Cmd.FileCount);
+    { A working directory that is not where the file lives. }
+    F.ApplyCommandLine(Cmd, ExtractFileDir(ParamStr(0)));
+    Pump;
+  finally
+    Args.Free;
+    Cmd.Free;
+  end;
+
+  CheckEqInt('and it opened', Before + 1, F.TabCount);
+  Check('as the file that was asked for',
+    (F.ActiveTab <> nil) and (F.ActiveTab.Document.FileName = Path));
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1829,6 +1882,8 @@ begin
   TestDropFiles(F);
   WriteLn;
   TestSplitterMinimums(F);
+  WriteLn;
+  TestAbsolutePathOnCommandLine(F);
   WriteLn;
   TestPaneRail(F);
   WriteLn;
