@@ -9,10 +9,25 @@ unit Led.UI.Edit;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
+  Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditMarkupFoldColoring, SynEditMarkup, SynEditMiscClasses,
   Led.UI.Dpi, Led.UI.FoldGutter;
+
+{ Shortcuts the menus own, which the editor must therefore not consume.
+
+  SynEdit ships a keymap of its own and handles a key before the form's
+  accelerators get a look, so any overlap silently goes to the editor.  Two of
+  them were doing visible damage -- syneditkeycmds.pp binds Ctrl+M to
+  ecLineBreak and Ctrl+N to ecInsertLine, so File > New Tab and its Ctrl+N
+  never fired and typing it inserted a newline instead.
+
+  Rather than name the offenders, the main form registers every shortcut its
+  action list uses and each editor drops the matching keystrokes as it is
+  built.  That way a shortcut added to a menu later cannot quietly be eaten
+  by the editor, which is how this one got in. }
+procedure LedReserveShortcut(AShortCut: TShortCut);
+procedure LedStripReservedKeystrokes(AEdit: TSynEdit);
 
 type
   TLedEdit = class(TSynEdit)
@@ -159,9 +174,45 @@ begin
   Font.Name := LedDefaultFontName;
   Font.Size := LedDefaultFontSize;
 
+  { Anything the menus claim is dropped from the editor's own keymap, so the
+    accelerator reaches the action instead of being spent here. }
+  LedStripReservedKeystrokes(Self);
+
   BorderStyle := bsNone;
   ScrollBars := ssAutoBoth;
 
+end;
+
+var
+  GReserved: array of TShortCut;
+
+procedure LedReserveShortcut(AShortCut: TShortCut);
+var
+  i: Integer;
+begin
+  if AShortCut = 0 then Exit;
+  for i := 0 to High(GReserved) do
+    if GReserved[i] = AShortCut then Exit;
+  SetLength(GReserved, Length(GReserved) + 1);
+  GReserved[High(GReserved)] := AShortCut;
+end;
+
+procedure LedStripReservedKeystrokes(AEdit: TSynEdit);
+var
+  i, j: Integer;
+  SC: TShortCut;
+begin
+  if AEdit = nil then Exit;
+  for i := AEdit.Keystrokes.Count - 1 downto 0 do
+  begin
+    SC := AEdit.Keystrokes[i].ShortCut;
+    for j := 0 to High(GReserved) do
+      if GReserved[j] = SC then
+      begin
+        AEdit.Keystrokes.Delete(i);
+        Break;
+      end;
+  end;
 end;
 
 { Word completion drawn from the document itself.  medit had none at all, and

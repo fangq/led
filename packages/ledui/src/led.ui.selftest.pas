@@ -20,6 +20,7 @@ implementation
 uses
   Classes, SysUtils, Forms, ComCtrls,
   FileUtil,
+  LCLType,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -1251,6 +1252,8 @@ procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
   Doc: TLedDocument;
+  i: Integer;
+  Found: Boolean;
 begin
   Say('the document led starts with');
 
@@ -1311,6 +1314,27 @@ begin
 
   { Editor/font was a preference that nothing read.  A view whose font is the
     old hard-coded 10 regardless of the preference is the symptom. }
+  { SynEdit's own keymap binds Ctrl+M to ecLineBreak and Ctrl+N to
+    ecInsertLine, and it handles a key before the form's accelerators see it
+    -- so File > New Tab did nothing and Ctrl+N inserted a newline instead.
+    Any shortcut the menus claim must be gone from the editor's keystrokes. }
+  Found := False;
+  for i := 0 to Tab.ActiveView.Keystrokes.Count - 1 do
+    if Tab.ActiveView.Keystrokes[i].ShortCut =
+       ShortCut(VK_N, [ssCtrl]) then Found := True;
+  Check('the editor does not keep Ctrl+N for itself', not Found);
+  { Ctrl+M is deliberately still the editor's.  No menu claims it, and it has
+    been a line break since it was ASCII CR, so stripping it would take away
+    working behaviour to no end.  Only what the menus actually claim is taken
+    from the editor -- this asserts the rule does not overreach. }
+  Found := False;
+  for i := 0 to Tab.ActiveView.Keystrokes.Count - 1 do
+    if Tab.ActiveView.Keystrokes[i].ShortCut =
+       ShortCut(VK_M, [ssCtrl]) then Found := True;
+  Check('but Ctrl+M, which no menu claims, is left alone', Found);
+  Check('and New Tab still has its shortcut',
+    F.NewDocShortCut = ShortCut(VK_N, [ssCtrl]));
+
   Check('the editor font has a family', Tab.ActiveView.Font.Name <> '');
   Check('and a positive size', Tab.ActiveView.Font.Size > 0);
 end;
