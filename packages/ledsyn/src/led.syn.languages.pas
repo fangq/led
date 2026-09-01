@@ -46,6 +46,12 @@ type
     property FileName: string read FFileName;
     property Globs: TStringList read FGlobs;
     property MimeTypes: TStringList read FMimeTypes;
+    { The same two lists as one semicolon-separated string, which is how the
+      preferences page shows them and how an override is stored. }
+    function GlobsText: string;
+    function MimeTypesText: string;
+    procedure SetGlobsText(const AValue: string);
+    procedure SetMimeTypesText(const AValue: string);
     property LineComment: string read FLineComment;
     property BlockCommentStart: string read FBlockCommentStart;
     property BlockCommentEnd: string read FBlockCommentEnd;
@@ -75,6 +81,11 @@ type
     { Ids grouped for a menu: sorted by section, then by display name. }
     procedure ListForMenu(AResult: TStrings);
 
+    { Re-reads the per-language globs and mime types the user has overridden
+      in prefs.ini, so a change on the Languages preferences page takes
+      effect without a restart. }
+    procedure ApplyOverrides;
+
     property Count: Integer read GetCount;
     property Items[AIndex: Integer]: TLedLangInfo read GetItem; default;
   end;
@@ -85,7 +96,7 @@ function LedLanguages: TLedLangRegistry;
 implementation
 
 uses
-  Led.Core.Paths;
+  Led.Core.Paths, Led.Core.Prefs;
 
 { Pulls the value of attribute AName out of a start tag. }
 function TagAttr(const ATag, AName: string): string;
@@ -401,6 +412,46 @@ end;
 
 var
   FRegistry: TLedLangRegistry = nil;
+
+function TLedLangInfo.GlobsText: string;
+begin
+  Result := StringReplace(Trim(FGlobs.Text), LineEnding, ';', [rfReplaceAll]);
+end;
+
+function TLedLangInfo.MimeTypesText: string;
+begin
+  Result := StringReplace(Trim(FMimeTypes.Text), LineEnding, ';', [rfReplaceAll]);
+end;
+
+procedure TLedLangInfo.SetGlobsText(const AValue: string);
+begin
+  FGlobs.Delimiter := ';';
+  FGlobs.StrictDelimiter := True;
+  FGlobs.DelimitedText := AValue;
+end;
+
+procedure TLedLangInfo.SetMimeTypesText(const AValue: string);
+begin
+  FMimeTypes.Delimiter := ';';
+  FMimeTypes.StrictDelimiter := True;
+  FMimeTypes.DelimitedText := AValue;
+end;
+
+procedure TLedLangRegistry.ApplyOverrides;
+var
+  i: Integer;
+  Info: TLedLangInfo;
+  S: string;
+begin
+  for i := 0 to Count - 1 do
+  begin
+    Info := Items[i];
+    S := LedPrefs.GetStr('Languages/' + Info.Id + '/globs', '');
+    if S <> '' then Info.SetGlobsText(S);
+    S := LedPrefs.GetStr('Languages/' + Info.Id + '/mimetypes', '');
+    if S <> '' then Info.SetMimeTypesText(S);
+  end;
+end;
 
 function LedLanguages: TLedLangRegistry;
 begin
