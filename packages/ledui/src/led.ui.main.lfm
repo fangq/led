@@ -668,6 +668,10 @@ object LedMainForm: TLedMainForm
       object mi_ResetLayout: TMenuItem
         Action = actResetLayout
       end
+      object miHeaderStyle: TMenuItem
+        Caption = 'Pane &Header Style'
+        OnClick = miHeaderStyleClick
+      end
       object miSep17: TMenuItem
         Caption = '-'
       end

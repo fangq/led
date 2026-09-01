@@ -81,6 +81,7 @@ const
     their back, this keeps a private journal and never touches it. }
   LedPrefShowPaneButtons  = 'Editor/show_pane_buttons';
   LedPrefLockPanes        = 'Editor/lock_pane_layout';
+  LedPrefHeaderStyle      = 'Editor/pane_header_style';
   LedPrefRecoveryEnabled  = 'Editor/recovery_enabled';
   LedPrefRecoveryInterval = 'Editor/recovery_interval';
 
