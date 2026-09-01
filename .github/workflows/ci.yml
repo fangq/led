@@ -19,6 +19,7 @@ jobs:
   build-test:
     name: build & test (${{ matrix.os }} / ${{ matrix.widgetset }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     # qt5 needs libqt5pas, which is not in every distro's default set.  A
     # missing binding library should read as "not available here", not as
     # "led is broken", so that one entry is allowed to fail.
@@ -39,6 +40,7 @@ jobs:
 
       - name: Install Lazarus + FPC
         uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
 
@@ -62,9 +64,11 @@ jobs:
     # ledcore must stay free of any visual dependency; building the runner
     # with the nogui widgetset is what enforces that.
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
       - name: Build headless tests
@@ -78,9 +82,11 @@ jobs:
     # converter that emits plausible JSON the engine then rejects is worse
     # than one that fails loudly.
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
       - name: Regenerate grammars from the .lang sources
@@ -93,9 +99,11 @@ jobs:
   gui-self-test:
     name: scripted GUI self-test (xvfb)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
       - name: Build editor
@@ -105,12 +113,61 @@ jobs:
       - name: Run scripted GUI self-test
         run: xvfb-run -a ./bin/led --self-test
 
+  compat-lazarus2:
+    name: compat (ubuntu 22.04 / lazarus 2.2, apt)
+    # Two jobs in one.  It proves led still builds on the older Lazarus that
+    # distributions actually ship -- jammy's 2.2, which is what apt offers and
+    # therefore what a user without a hand-built Lazarus has -- and it is the
+    # only job that exercises packages/ledsyn/vendor, whose whole reason for
+    # existing is that the TextMate engine ships with Lazarus 3 and later.
+    # Without this the version shims in there would rot silently.
+    #
+    # It also does not depend on setup-lazarus, so a flake in that action
+    # cannot take out the entire workflow: run 33520581532 sat in it for over
+    # an hour on a push that was otherwise fine.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lazarus 2.2 + FPC (jammy apt)
+        run: |
+          sudo apt-get update
+          # Full install, not --no-install-recommends: the recommends pull the
+          # FCL unit packages LCL needs.  apt ships LCL as source, so lazbuild
+          # has to compile it and needs to be able to write there.
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y lazarus
+          sudo chown -R "$(id -u):$(id -g)" /usr/lib/lazarus
+          fpc -iV
+          lazbuild --version | tail -1
+
+      # Default build mode, not Release: this job asks whether the sources
+      # still compile on Lazarus 2.x, which the Release matrix covers already.
+      - name: Build editor
+        run: lazbuild --widgetset=gtk2 app/led.lpi
+
+      - name: Headless core tests
+        run: |
+          lazbuild --widgetset=nogui test/ledcoretest.lpi
+          ./bin/ledcoretest --all --format=plain
+
+      # The grammar gate is the check that actually runs the vendored engine.
+      - name: Every grammar loads through the vendored engine
+        run: |
+          python3 tools/lang2tm.py data/langs data/grammars
+          lazbuild --widgetset=nogui tools/langcheck/langcheck.lpi
+          ./bin/langcheck data/grammars
+
+      - name: Scripted GUI self-test
+        run: xvfb-run -a ./bin/led --self-test
+
   icons:
     name: icons are in step with their generator
     # The icon files are committed so a fresh clone builds without Pillow.
     # This proves they still match tools/make-icon.py, which is the only place
     # the design is written down.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Install Pillow
