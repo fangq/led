@@ -1024,6 +1024,72 @@ begin
   DeleteFile(Path);
 end;
 
+{ Menus and language detection, both reported as broken from real use. }
+procedure TestMenusAndDetection(F: TLedMainForm);
+var
+  Doc: TLedDocument;
+  Path: string;
+  L: TStringList;
+
+  function CountLeaves(AItem: TMenuItem): Integer;
+  var
+    i: Integer;
+  begin
+    Result := 0;
+    for i := 0 to AItem.Count - 1 do
+      if AItem[i].Count > 0 then
+        Inc(Result, CountLeaves(AItem[i]))
+      else if AItem[i].Caption <> '-' then
+        Inc(Result);
+  end;
+
+begin
+  Say('menus and detection');
+
+  { These are filled at startup.  Filling them from the parent's OnClick did
+    not work: a TMenuItem with no children never opens a submenu, so the
+    handler never ran and the menus stayed empty. }
+  Check('the theme menu has entries', F.miTheme.Count > 0);
+  Check('one per installed theme', F.miTheme.Count = LedThemes.Count);
+  Check('the language menu has entries', CountLeaves(F.miLanguage) > 100);
+  Check('the encoding menu has entries', F.miEncoding.Count > 5);
+  Check('the line-ending menu has three', F.miLineEnd.Count = 3);
+
+  { Save As has to re-decide the language: "new file, type C, save as main.c"
+    was staying plain text. }
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Doc.Master.Lines.Text := 'int main(void) { return 0; }';
+  Check('an untitled document has no language', Doc.LangInfo = nil);
+
+  Path := TempName('detect.c');
+  Doc.SaveToFile(Path);
+  Pump;
+  Check('saving as .c detects the language', Doc.LangInfo <> nil);
+  if Doc.LangInfo <> nil then
+    CheckEq('and it is C', 'c', Doc.LangInfo.Id);
+  Check('and the highlighter follows', Doc.Master.Highlighter <> nil);
+
+  { A Makefile picks up its filename rule the same way. }
+  L := TStringList.Create;
+  try
+    L.Add('all:');
+    L.SaveToFile(TempName('Makefile'));
+  finally
+    L.Free;
+  end;
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  F.ActiveTab.Document.LoadFromFile(TempName('Makefile'));
+  Pump;
+  Check('a Makefile uses tabs, from the glob rule',
+    F.ActiveTab.Document.Config.GetBool(LedSetIndentUseTabs));
+
+  DeleteFile(Path);
+  DeleteFile(TempName('Makefile'));
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1071,6 +1137,8 @@ begin
   TestCompletionAndSymbols(F);
   WriteLn;
   TestFolding(F);
+  WriteLn;
+  TestMenusAndDetection(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

@@ -506,12 +506,31 @@ begin
 end;
 
 procedure TLedDocument.SaveToFile(const AFileName: string);
+var
+  Renamed: Boolean;
 begin
+  Renamed := not SameText(AFileName, FFileName);
   LedSaveTextFile(AFileName, PreparedText, FInfo,
     LedPrefs.GetBool(LedPrefMakeBackups, False));
   FFileName := AFileName;
   FMaster.Modified := False;
   NoteDiskState;
+
+  { Saving under a new name can change everything the name decides: the
+    language, and the filename-glob rules layered on top of it.  Without
+    this, "new file, type some C, save as main.c" stays plain text. }
+  if Renamed then
+  begin
+    FConfig.UnsetBySource(lcsFilename);
+    FConfig.UnsetBySource(lcsAuto);
+    FConfig.SetStr(LedSetEncoding, FInfo.Encoding, lcsAuto);
+    FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
+    DetectLanguage;
+    LedFilterSettings.ApplyTo(FConfig, FFileName, FConfig.GetStr(LedSetLang));
+    ApplyLanguage;
+    ApplyConfigToViews;
+  end;
+
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
