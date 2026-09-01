@@ -1242,6 +1242,102 @@ begin
   RemoveDir(MakeDir);
 end;
 
+{ The state led opens in, before anything has touched it.  medit puts the
+  caret at line 1 column 1 of an empty "Untitled 1" and shows that line's
+  number in the gutter; this asserts led does the same, because "it opened
+  looking wrong" is otherwise a report nobody can act on. }
+procedure TestStartupDocument(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  Doc: TLedDocument;
+begin
+  Say('the document led starts with');
+
+  CheckEqInt('exactly one tab is open at startup', 1, F.Notebook.PageCount);
+  Tab := F.ActiveTab;
+  Check('and it is the active one', Tab <> nil);
+  if Tab = nil then Exit;
+
+  Doc := Tab.Document;
+  Check('the document is untitled', Doc.IsUntitled);
+  CheckEq('and is called Untitled 1', 'Untitled 1', Doc.DisplayName);
+  Check('with nothing in it', Doc.Master.Modified = False);
+
+  { An empty buffer still holds one line -- line 1 -- which is what the
+    gutter has to number.  A buffer reporting zero lines would leave the
+    gutter blank, which is what "no line number" would look like. }
+  CheckEqInt('the empty buffer is one line, not none',
+    1, Doc.Master.Lines.Count);
+
+  CheckEqInt('the caret is on line 1', 1, Tab.ActiveView.CaretY);
+  CheckEqInt('and column 1', 1, Tab.ActiveView.CaretX);
+
+  Check('the gutter is shown', Tab.ActiveView.Gutter.Visible);
+  Check('and numbers the line',
+    Tab.ActiveView.Gutter.LineNumberPart.Visible);
+
+  { The fold column has to be sized explicitly or SynEdit leaves its pen at
+    one pixel whatever the DPI, which is what made the fold markers and the
+    rule joining a block to its end look absent.  See Led.UI.Edit. }
+  Check('the fold column is sized, not left on AutoSize',
+    not Tab.ActiveView.Gutter.CodeFoldPart.AutoSize);
+  Check('and is wide enough to draw a marker',
+    Tab.ActiveView.Gutter.CodeFoldPart.Width >= 10);
+
+  { Editor/font was a preference that nothing read.  A view whose font is the
+    old hard-coded 10 regardless of the preference is the symptom. }
+  Check('the editor font has a family', Tab.ActiveView.Font.Name <> '');
+  Check('and a positive size', Tab.ActiveView.Font.Size > 0);
+end;
+
+{ The edge rails.  A pane closed from its own header used to be reachable
+  only through the View menu, because AnchorDocking removes it rather than
+  collapsing it to something clickable. }
+procedure TestPaneRail(F: TLedMainForm);
+begin
+  Say('pane buttons on the edges');
+
+  F.Dock.ShowRails := True;
+  Pump;
+
+  { Every registered pane must be reachable from a button, or the rail is
+    decoration.  These are the panes registered at startup. }
+  Check('the files pane is registered', F.Dock.FindPane('files') <> nil);
+  Check('the symbols pane is registered', F.Dock.FindPane('symbols') <> nil);
+  Check('the output pane is registered', F.Dock.FindPane('output') <> nil);
+
+  { Toggling through the rail's own path must move the pane and leave the
+    button agreeing with it -- a button that lies about the state is worse
+    than no button. }
+  F.Dock.ShowPane('files');
+  Pump;
+  Check('a pane can be opened', F.Dock.PaneVisible('files'));
+
+  F.Dock.TogglePane('files');
+  Pump;
+  Check('and toggled shut again', not F.Dock.PaneVisible('files'));
+
+  F.Dock.TogglePane('files');
+  Pump;
+  Check('and back open', F.Dock.PaneVisible('files'));
+
+  { RefreshRails is called on idle for panes closed by their header button;
+    it must survive being called when nothing has changed. }
+  F.Dock.RefreshRails;
+  F.Dock.RefreshRails;
+  Check('refreshing the rail twice is harmless',
+    F.Dock.PaneVisible('files'));
+
+  F.Dock.HidePane('files');
+  Pump;
+
+  F.Dock.ShowRails := False;
+  Pump;
+  Check('the rail can be turned off', True);
+  F.Dock.ShowRails := True;
+  Pump;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1270,6 +1366,11 @@ begin
   F.Show;
   Pump;
 
+  { First, before anything else has had a chance to open a tab or move a
+    caret: this section is about the state led actually starts in. }
+  TestStartupDocument(F);
+  WriteLn;
+
   TestLineEndDetection;
   WriteLn;
   TestSharedBufferSplitView(F);
@@ -1296,6 +1397,8 @@ begin
   TestPrefsAndShortcuts(F);
   WriteLn;
   TestTools(F);
+  WriteLn;
+  TestPaneRail(F);
   WriteLn;
   TestFileBrowser(F);
   WriteLn;

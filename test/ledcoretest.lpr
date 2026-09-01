@@ -13,7 +13,7 @@ uses
   Led.Core.Tests.FileIO, Led.Core.Tests.Encodings, Led.Core.Tests.Config,
   Led.Core.Tests.Settings, Led.Core.Tests.Filters, Led.Syn.Tests.Languages,
   Led.Syn.Tests.Theme,
-  Led.Core.Tests.CLI, Led.Core.Tests.Tools, Led.Core.Tests.Grep, Led.Term.Tests.Screen, Led.Core.Tests.Ctags, Led.Core.Tests.Markdown;
+  Led.Core.Tests.CLI, Led.Core.Tests.Tools, Led.Core.Tests.Grep, Led.Term.Tests.Screen, Led.Core.Tests.Ctags, Led.Core.Tests.Markdown, Led.Core.Tests.Recovery;
 
 type
   TLedTestRunner = class(TTestRunner)

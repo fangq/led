@@ -15,7 +15,7 @@ uses
   {$ENDIF}
   Interfaces, Forms, Classes, SysUtils,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
-  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench;
+  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi;
 
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every
@@ -78,9 +78,19 @@ begin
 
     Application.Title := 'led';
     RequireDerivedFormResource := True;
+    {$IFDEF LINUX}
+    { gtk2 caps Application.Scaled at the Xft DPI and reverts a manual bump on
+      Show, so it cannot honour the desktop's integer window-scaling factor.
+      Leave LCL auto-scaling off and scale the forms ourselves below.  See
+      Led.UI.Dpi, ported from the sibling GotBox project. }
+    Application.Scaled := False;
+    {$ELSE}
+    { Windows and macOS report a true per-monitor DPI; LCL is right there. }
     Application.Scaled := True;
+    {$ENDIF}
     Application.Initialize;
     Application.CreateForm(TLedMainForm, LedMainForm);
+    LedApplyAdaptiveScale;
     LedMainForm.AdoptInstance(Inst);
 
     if Cmd.SelfTest then

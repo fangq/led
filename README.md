@@ -29,6 +29,10 @@ or a shebang line.
 
 **Panes.** File browser with a breadcrumb bar, ctags symbol browser, command
 output with clickable `file:line`, Markdown preview, and a real terminal.
+Each window edge carries a strip of buttons, one per pane registered there and
+pressed while that pane is open, so a pane closed from its own header can be
+brought back with one click instead of only through the View menu. Turn the
+strips off with `Editor/show_pane_buttons`.
 
 **Tools.** User-defined commands with medit's option, input, output and
 environment-variable contract, and named regex output filters including
@@ -109,6 +113,21 @@ free of any visual dependency), regenerates and loads all 128 grammars, runs
 the scripted GUI self-test under `xvfb`, and checks the committed icons still
 match `tools/make-icon.py`.
 
+The Linux jobs pin `ubuntu-22.04` and install Lazarus from apt, through the
+composite action in `.github/actions/lazarus-apt`. Two reasons. It fixes the
+Lazarus version at 2.2, which is the only configuration that compiles
+`packages/ledsyn/vendor` — on Lazarus 3 and later the TextMate engine comes
+from the IDE's own packages and the vendored copy is never built. And it does
+not download anything: `gcarreno/setup-lazarus` fetches the Lazarus `.deb`
+from SourceForge, which stalls often enough to have failed a required job on a
+push whose code was fine, and once held a runner for an hour and a half.
+
+Windows and macOS have no distribution package, so those jobs still use the
+action, with a step timeout so a stall fails fast and names itself. One
+optional `newest Lazarus` job covers the current release — it is allowed to
+fail, because it is the remaining job that depends on that download and a slow
+mirror says nothing about led.
+
 `.github/workflows/package.yml` builds the three installers on every push to
 `main`, and attaches them to a GitHub Release on a `v*` tag.
 
@@ -152,9 +171,25 @@ Support/led` on macOS. Override with `$LED_CONFIG_DIR`.
 | `session.json` | windows, tabs, carets and dock layout |
 | `recent.json` | the Open Recent list |
 | `tools/*.ini` | one file per user tool |
+| `recovery/` | unsaved buffers, journalled while led runs; emptied on a clean exit |
 
 Session and recent files are written atomically with one `.bak` generation; a
 corrupt session file is ignored rather than allowed to stop startup.
+
+**Crash recovery.** Every few seconds each modified document is written to
+`recovery/`, and the entry is dropped as soon as it is saved or closed. A
+clean exit empties the directory, so anything still there at the next startup
+means the previous run was killed — led says so and offers the work back.
+Untitled buffers are covered too, which `session.json` does not do: it stores
+paths and caret positions, no text. Turn it off with
+`Editor/recovery_enabled`, or change the cadence with
+`Editor/recovery_interval`.
+
+Each entry is a `.txt` holding the buffer and a `.json` holding the metadata
+and the text's byte length. The text is written first, so the metadata acts as
+the commit record: an entry is only offered when the two agree. Being killed
+midway through a snapshot therefore loses that snapshot rather than offering a
+truncated buffer to save over your file.
 
 Data — grammars, themes, default tools — is found next to the binary, under
 `<prefix>/share/led`, or at `$LED_DATA_DIR`. A `langs/` or `themes/` directory
