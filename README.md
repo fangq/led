@@ -152,9 +152,25 @@ Support/led` on macOS. Override with `$LED_CONFIG_DIR`.
 | `session.json` | windows, tabs, carets and dock layout |
 | `recent.json` | the Open Recent list |
 | `tools/*.ini` | one file per user tool |
+| `recovery/` | unsaved buffers, journalled while led runs; emptied on a clean exit |
 
 Session and recent files are written atomically with one `.bak` generation; a
 corrupt session file is ignored rather than allowed to stop startup.
+
+**Crash recovery.** Every few seconds each modified document is written to
+`recovery/`, and the entry is dropped as soon as it is saved or closed. A
+clean exit empties the directory, so anything still there at the next startup
+means the previous run was killed — led says so and offers the work back.
+Untitled buffers are covered too, which `session.json` does not do: it stores
+paths and caret positions, no text. Turn it off with
+`Editor/recovery_enabled`, or change the cadence with
+`Editor/recovery_interval`.
+
+Each entry is a `.txt` holding the buffer and a `.json` holding the metadata
+and the text's byte length. The text is written first, so the metadata acts as
+the commit record: an entry is only offered when the two agree. Being killed
+midway through a snapshot therefore loses that snapshot rather than offering a
+truncated buffer to save over your file.
 
 Data — grammars, themes, default tools — is found next to the binary, under
 `<prefix>/share/led`, or at `$LED_DATA_DIR`. A `langs/` or `themes/` directory

@@ -122,8 +122,8 @@ checked off by the presence of a menu entry.
 | `Editor` | yes | | |
 | `add_newline` | yes | | |
 | `auto_indent` | yes | | |
-| `auto_save` | yes | | |
-| `auto_save_interval` | yes | | |
+| `auto_save` | yes | replaced | crash recovery journals unsaved work to `<config>/recovery` instead of writing the user's file behind their back; see `Editor/recovery_enabled` |
+| `auto_save_interval` | yes | replaced | `Editor/recovery_interval` |
 | `auto_sync` | yes | | |
 | `backspace_indents` | yes | | |
 | `color_scheme` | yes | | |
