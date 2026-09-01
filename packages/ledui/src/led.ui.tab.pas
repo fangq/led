@@ -11,7 +11,8 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
-  Led.UI.Document, Led.UI.Edit, Led.UI.Focus;
+  Led.UI.Document, Led.UI.Edit, Led.UI.Focus,
+  Led.UI.Splitter;
 
 const
   LedMaxViewsPerTab = 4;
@@ -157,7 +158,7 @@ begin
 
   Host := Old.Parent;
 
-  Splitter := TPairSplitter.Create(Self);
+  Splitter := TLedPairSplitter.Create(Self);
   Splitter.Parent := Host;
   Splitter.Align := alClient;
   { pstHorizontal moves the divider horizontally, i.e. the views sit side by

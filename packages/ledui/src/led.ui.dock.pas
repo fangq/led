@@ -51,6 +51,15 @@ type
     property IconName: string read FIconName write FIconName;
   end;
 
+  { The dock's splitters.  TCustomSplitter already refuses to shrink either
+    side below Max(MinSize, that side's own Constraints), so this only has to
+    raise MinSize: the default 30 still lets a pane be squeezed down to a
+    strip too narrow to read or to aim at. }
+  TLedDockSplitter = class(TAnchorDockSplitter)
+  public
+    constructor Create(TheOwner: TComponent); override;
+  end;
+
   { The pane header.  Subclassed only to shrink the caption: AnchorDocking
     draws it with the header control's own Canvas.Font, and HeaderClass is the
     hook that reaches every header without chasing sites as they are created
@@ -191,7 +200,7 @@ function LedHeaderStyleCaption(const AName: string): string;
 implementation
 
 uses
-  Led.UI.Icons, Led.Core.Prefs;
+  Led.UI.Icons, Led.Core.Prefs, Led.UI.Dpi;
 
 function LedHeaderStyleCaption(const AName: string): string;
 begin
@@ -245,6 +254,14 @@ begin
     AControl.Parent := Self;
     AControl.Align := alClient;
   end;
+end;
+
+{ TLedDockSplitter }
+
+constructor TLedDockSplitter.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  MinSize := LedScale96(64);
 end;
 
 { TLedDockHeader }
@@ -410,6 +427,7 @@ begin
     GLedHeaderStyleRegistered := True;
   end;
   DockMaster.HeaderClass := TLedDockHeader;
+  DockMaster.SplitterClass := TLedDockSplitter;
 
   FDraggingWanted := True;
   FHeaderStyleWanted := 'Points';

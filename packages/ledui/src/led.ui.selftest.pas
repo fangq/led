@@ -25,6 +25,7 @@ uses
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
+  Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
@@ -1701,6 +1702,56 @@ begin
   DeleteFile(Path);
 end;
 
+{ A divider must not be pushable until one side is gone.
+
+  Driven by setting Position to the extremes, which is what a drag amounts to
+  from the control's point of view.  Asserting the minimum is configured
+  would prove nothing -- TPairSplitter has no minimum to configure, which was
+  the bug -- so this asserts where the divider actually ends up. }
+procedure TestSplitterMinimums(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  Sp: TLedPairSplitter;
+  i: Integer;
+begin
+  Say('splitter minimums');
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  if Tab = nil then Exit;
+
+  Tab.SplitView(False);
+  Pump;
+  Check('the tab split into two views', Tab.ViewCount > 1);
+
+  { The pair splitter the split created. }
+  Sp := nil;
+  for i := 0 to Tab.ControlCount - 1 do
+    if Tab.Controls[i] is TLedPairSplitter then
+      Sp := TLedPairSplitter(Tab.Controls[i]);
+  Check('and did it with a clamped splitter', Sp <> nil);
+
+  if (Sp <> nil) and (LedSplitterExtent(Sp) >= Sp.MinSide * 2) then
+  begin
+    Sp.Position := 0;
+    Pump;
+    CheckGt('pushed hard left, the divider stops short of the edge',
+      0, Sp.Position);
+    Check('by at least the minimum', Sp.Position >= Sp.MinSide);
+
+    Sp.Position := LedSplitterExtent(Sp) + 500;
+    Pump;
+    Check('and pushed hard right it leaves the other side room',
+      Sp.Position <= LedSplitterExtent(Sp) - Sp.MinSide);
+  end
+  else
+    Say('    note: the window is too small to exercise the clamp');
+
+  Tab.Unsplit;
+  Pump;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1776,6 +1827,8 @@ begin
   TestSplitNotebook(F);
   WriteLn;
   TestDropFiles(F);
+  WriteLn;
+  TestSplitterMinimums(F);
   WriteLn;
   TestPaneRail(F);
   WriteLn;

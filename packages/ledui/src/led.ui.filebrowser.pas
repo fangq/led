@@ -176,7 +176,9 @@ begin
   FSplit.Parent := Self;
   FSplit.Align := alBottom;
   FSplit.ResizeStyle := rsUpdate;
-  FSplit.MinSize := 60;
+  { Enough that neither the tree above nor the file list below can be pushed
+    away entirely.  TCustomSplitter applies this to both sides. }
+  FSplit.MinSize := 80;
 
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;
