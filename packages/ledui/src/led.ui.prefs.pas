@@ -154,7 +154,7 @@ const
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/lock_pane_layout';
      Caption: 'Lock the pane layout (no dragging panes by their header)';
-     DefStr: ''; DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+     DefStr: ''; DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/show_pane_buttons';
      Caption: 'Show pane buttons on the window edges'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
