@@ -292,6 +292,24 @@ begin
   AAttr.Style := St;
 end;
 
+{ SynEdit reports a highlighter's language name differently depending on the
+  Lazarus version: 2.x reads a class function, which cannot see a TextMate
+  highlighter's grammar and raises for it, while 3.x and later read a
+  per-instance virtual that TSynTextMateSyn overrides.  Asking the grammar
+  itself gives the same answer on both, so the theme scope key does not
+  depend on which Lazarus built the tree. }
+function LedHighlighterLanguageName(AHighlighter: TSynCustomHighlighter): string;
+begin
+  if AHighlighter is TSynTextMateSyn then
+  begin
+    Result := '';
+    if TSynTextMateSyn(AHighlighter).TextMateGrammar <> nil then
+      Result := TSynTextMateSyn(AHighlighter).TextMateGrammar.LanguageName;
+  end
+  else
+    Result := AHighlighter.LanguageName;
+end;
+
 procedure LedApplyThemeToHighlighter(ATheme: TLedTheme;
   AHighlighter: TSynCustomHighlighter);
 var
@@ -311,7 +329,7 @@ begin
 
     { A scheme may say something specific about this language -- "c:comment"
       -- which outranks the shared def: entry. }
-    LangScope := LowerCase(AHighlighter.LanguageName) + ':' +
+    LangScope := LowerCase(LedHighlighterLanguageName(AHighlighter)) + ':' +
       Copy(Scope, Pos(':', Scope) + 1, MaxInt);
     if ATheme.Find(LangScope, Style) then
       ApplyStyle(Style, Attr)

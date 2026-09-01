@@ -40,7 +40,11 @@ single-instance file hand-off, and the medit command line including
 
 ## Building
 
-Needs FPC 3.2.2+ and Lazarus 3.0+.  `lazbuild` must be on `PATH`.
+Needs FPC 3.2.2+ and Lazarus 2.2+.  `lazbuild` must be on `PATH`.
+
+Lazarus 2.2 is enough because the TextMate grammar engine — which only ships
+with Lazarus 3 and later — is vendored under `packages/ledsyn/vendor`, with its
+provenance and the two version shims recorded in the README there.
 
 ```sh
 make                  # the editor, optimized and stripped -> bin/led
