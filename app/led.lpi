@@ -23,6 +23,9 @@
     </RunParams>
     <RequiredPackages>
       <Item>
+        <PackageName Value="anchordocking"/>
+      </Item>
+      <Item>
         <PackageName Value="TurboPowerIPro"/>
       </Item>
       <Item>

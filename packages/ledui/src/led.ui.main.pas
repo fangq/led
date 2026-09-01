@@ -591,6 +591,10 @@ begin
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
+  { Restore where the user last put the panes.  A layout from an older build
+    is discarded rather than fought with, leaving the defaults. }
+  FDock.LoadLayout(LedConfigFile('layout.xml'));
+
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
 
@@ -2127,6 +2131,9 @@ begin
   { Written before the windows come down, while the state still exists. }
   if LedPrefs.GetBool(LedPrefSaveSession, False) then
     SaveSession;
+  { The pane layout is saved whatever the session setting says: where the
+    panes sit is part of the window, not part of the documents in it. }
+  FDock.SaveLayout(LedConfigFile('layout.xml'));
   FRecent.Save;
   if LedPrefs.Dirty then
     LedPrefs.Save;

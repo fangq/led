@@ -160,21 +160,48 @@ end;
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
+  LayoutFile: string;
 begin
-  Say('four-edge dock');
+  Say('docking');
+  { An edge is as visible as the panes registered for it, so an edge with no
+    panes cannot be shown.  The old dock built an empty tab control per edge
+    and happily "showed" nothing, which is what this used to assert. }
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
   begin
     F.Dock.EdgeVisible[E] := True;
     Pump;
-    Check('edge ' + LedDockEdgeName[E] + ' shows', F.Dock.EdgeVisible[E]);
+    if F.Dock.EdgeHasPanes(E) then
+      Check('edge ' + LedDockEdgeName[E] + ' shows', F.Dock.EdgeVisible[E])
+    else
+      Check('edge ' + LedDockEdgeName[E] + ' has nothing to show',
+        not F.Dock.EdgeVisible[E]);
     F.Dock.EdgeVisible[E] := False;
     Pump;
     Check('edge ' + LedDockEdgeName[E] + ' hides', not F.Dock.EdgeVisible[E]);
   end;
+
   Check('a registered pane is findable', F.Dock.FindPane('files') <> nil);
   F.Dock.ShowPane('files');
   Pump;
   Check('showing a pane reveals its edge', F.Dock.EdgeVisible[ledLeft]);
+  Check('and the pane itself reports visible', F.Dock.PaneVisible('files'));
+
+  { Every pane can be torn off into its own window and put back, which is the
+    behaviour medit's 7,200-line pane system existed to provide. }
+  Check('a pane can be floated', F.Dock.FloatPane('files'));
+  Pump;
+  Check('and it is floating', F.Dock.PaneFloating('files'));
+  Check('and it can be docked again', F.Dock.RedockPane('files'));
+  Pump;
+  Check('and it is docked', not F.Dock.PaneFloating('files'));
+
+  { The layout round-trips, including where each pane sits. }
+  LayoutFile := TempName('layout.xml');
+  F.Dock.SaveLayout(LayoutFile);
+  Check('the layout was written', FileExists(LayoutFile));
+  Check('and it loads back', F.Dock.LoadLayout(LayoutFile));
+  DeleteFile(LayoutFile);
+
   F.Dock.EdgeVisible[ledLeft] := False;
 end;
 
