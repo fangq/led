@@ -78,6 +78,11 @@
         <UnitName Value="Led.Core.Types"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.encodings.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Encodings"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.fileio.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.FileIO"/>

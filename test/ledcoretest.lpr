@@ -5,7 +5,7 @@ program ledcoretest;
 
 uses
   Classes, consoletestrunner,
-  Led.Core.Tests.FileIO;
+  Led.Core.Tests.FileIO, Led.Core.Tests.Encodings;
 
 type
   TLedTestRunner = class(TTestRunner)
