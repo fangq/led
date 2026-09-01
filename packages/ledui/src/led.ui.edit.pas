@@ -11,7 +11,8 @@ interface
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
-  Led.UI.Dpi;
+  SynEditMarkupFoldColoring, SynEditMarkup, SynEditMiscClasses,
+  Led.UI.Dpi, Led.UI.FoldGutter;
 
 type
   TLedEdit = class(TSynEdit)
@@ -20,6 +21,7 @@ type
                           // a circular unit reference
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
+    FFoldGuides: TSynEditMarkupFoldColors;
     function GetWrapEnabled: Boolean;
     procedure SetWrapEnabled(AValue: Boolean);
     procedure CompletionSearch(var APosition: Integer);
@@ -28,6 +30,8 @@ type
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     property Document: TObject read FDocument write FDocument;
+    { The vertical block guides, so the theme can colour them. }
+    property FoldGuides: TSynEditMarkupFoldColors read FFoldGuides;
     { SynEdit implements wrapping as a view plugin rather than a property;
       attaching and detaching it is how the View menu toggles wrap. }
     property WrapEnabled: Boolean read GetWrapEnabled write SetWrapEnabled;
@@ -111,8 +115,46 @@ begin
     therefore stay small *and* keep a one-pixel pen at any DPI, which is why
     the fold boxes and the vertical rule joining a block to its end looked
     faint.  Sizing the column to the line height gives both room to grow. }
+  { Replace the stock fold column with one that draws medit's chevrons
+    instead of boxed [-] and [+].  TSynGutter.CodeFoldPart resolves through
+    "is", so the descendant is what every later reference finds -- the two
+    lines below, and the theme applier's contrast handling.
+
+    ResetMouseActions on the new part is not optional, and getting it wrong
+    is why the first attempt at this drew correctly and ignored every click:
+    a gutter part's mouse-action list starts EMPTY and is filled with the
+    defaults by ResetMouseActions.  The loop above does that for the parts
+    that exist at the time, and this one is created after it, so it has to
+    ask for its own. }
+  Gutter.CodeFoldPart.Free;
+  TLedGutterCodeFolding.Create(Gutter.Parts).Name := 'LedGutterCodeFolding1';
+  Gutter.CodeFoldPart.ResetMouseActions;
+
   Gutter.CodeFoldPart.AutoSize := False;
-  Gutter.CodeFoldPart.Width := LedScale96(14);
+  { Wider than the stock column, both because the chevron wants the room and
+    because HalfBoxSize and the pen width are derived from it. }
+  Gutter.CodeFoldPart.Width := LedScale96(18);
+
+  { Vertical guides down the body of each open block, drawn in the text area
+    rather than the gutter -- medit draws them there too, in
+    _moo_text_view_draw_fold_guides, and a guide in the gutter cannot line up
+    with the code it belongs to.
+
+    This is SynEdit's own TSynEditMarkupFoldColors, which the Lazarus IDE
+    uses for the same purpose: it anchors the line at the block's first
+    non-whitespace column -- the same idea as medit's owner-line scan -- and
+    draws it as a left frame edge on the marked column, so it spans the rows
+    between the opening and closing lines and nothing else.
+
+    ColorCount matters: RealEnabled is false while it is zero, which is the
+    default, so the markup does nothing until asked.  One colour rather than
+    the IDE's per-nesting-level palette, because medit drew one quiet guide
+    and a rainbow in a text editor is a choice nobody asked for.  The colour
+    itself comes from the theme; see LedApplyThemeToEditor. }
+  FFoldGuides := TSynEditMarkupFoldColors.Create(Self);
+  FFoldGuides.ColorCount := 1;
+  FFoldGuides.LineColor[0].Style := slsSolid;
+  TSynEditMarkupManager(MarkupMgr).AddMarkUp(FFoldGuides);
 
   Font.Name := LedDefaultFontName;
   Font.Size := LedDefaultFontSize;

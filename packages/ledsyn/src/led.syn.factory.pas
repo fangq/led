@@ -60,6 +60,11 @@ procedure LedRetheme(ATheme: TLedTheme);
 
 function LedColourToTColor(AColour: TLedColour): TColor;
 
+{ The colour for the vertical guides down an open block; see the
+  implementation for why this is a function and not an apply-to-control. }
+function LedThemeGuideColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+
 implementation
 
 uses
@@ -490,6 +495,42 @@ begin
 
   if ATheme.Find(LedStyleRightMargin, S) and (lsfForeground in S.Flags) then
     AEdit.RightEdgeColor := LedColourToTColor(S.Foreground);
+end;
+
+{ The colour for the vertical guides down an open block.  medit draws these
+  in a dedicated fold_guide_color, quieter than the text: they are structure,
+  and at full strength they compete with the code they are meant to organise.
+  No such entry exists in the eight schemes, so it is derived -- a quarter of
+  the way from the background toward the text colour, which lands somewhere
+  legible on both the light and the dark schemes without a table of special
+  cases.
+
+  A function rather than something that applies itself, because the control it
+  would apply to lives in ledui and ledui depends on ledsyn, not the other way
+  round. }
+function LedThemeGuideColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+var
+  S: TLedStyle;
+  Fg, Bg: TColor;
+begin
+  Fg := clNone;
+  Bg := clNone;
+  if (ATheme <> nil) and ATheme.Find(LedStyleText, S) then
+  begin
+    if lsfForeground in S.Flags then Fg := LedColourToTColor(S.Foreground);
+    if lsfBackground in S.Flags then Bg := LedColourToTColor(S.Background);
+  end;
+  if Fg = clNone then Fg := ADefaultFg;
+  if Bg = clNone then Bg := ADefaultBg;
+  if (Fg = clNone) or (Bg = clNone) then Exit(clNone);
+
+  Fg := ColorToRGB(Fg);
+  Bg := ColorToRGB(Bg);
+  Result := TColor(
+    ((((Fg and $FF) + 3 * (Bg and $FF)) div 4) and $FF)
+    or (((((Fg shr 8) and $FF) + 3 * ((Bg shr 8) and $FF)) div 4) shl 8)
+    or (((((Fg shr 16) and $FF) + 3 * ((Bg shr 16) and $FF)) div 4) shl 16));
 end;
 
 procedure LedRetheme(ATheme: TLedTheme);
