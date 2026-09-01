@@ -56,6 +56,15 @@ make help             # every target
 `make` produces `bin/led`; `make tests` and `make grammars` produce
 `bin/ledcoretest` and `bin/langcheck`.  `make check` runs all three suites.
 
+A distribution Lazarus ships LCL and the bundled packages as *source*, so
+`lazbuild` has to compile them and needs to be able to write into its own
+directory.  If you see `unable to create package output directory
+"/usr/lib/lazarus/..."`, grant it once:
+
+```sh
+sudo chown -R "$(id -u):$(id -g)" /usr/lib/lazarus
+```
+
 If `lazbuild`'s saved configuration points at the wrong Lazarus — a shared
 home written by another machine, say — override it:
 

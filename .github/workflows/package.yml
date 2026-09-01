@@ -31,11 +31,13 @@ jobs:
   linux-deb:
     name: linux (.deb + tar.gz)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Lazarus + FPC
         uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
 
@@ -84,11 +86,13 @@ jobs:
   windows-inno:
     name: windows (Inno Setup .exe)
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Lazarus + FPC
         uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
 
@@ -171,11 +175,13 @@ jobs:
     # Pinned to macOS 14 for the same reason as CI: setup-lazarus' .pkg does
     # not install on macos-latest.
     runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Lazarus + FPC
         uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
         with:
           lazarus-version: stable
 
