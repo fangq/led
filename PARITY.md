@@ -196,3 +196,25 @@ checked off by the presence of a menu entry.
 | Runtime ui.xml customization | superseded by the shortcut editor |
 | Embedded CPython | external python3 for tools instead |
 
+
+## Not done
+
+An honest list, so nothing here is mistaken for an oversight.
+
+| Feature | Status |
+|---|---|
+| Split notebook (two independent tab groups) | not started; split *view* within a tab works |
+| Multiple windows | not started; one window per instance |
+| "Save these documents?" multi-document dialog | not started; each document is asked about separately |
+| Dragging files from the desktop onto the window | not started |
+| Tab reordering and tab context menu | not started |
+| Project file list pane (medit's File List) | not started |
+| PascalScript engine and the scripting API | not started; user tools run shell commands only |
+| Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
+| Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
+| Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
+| Terminal splitting, and 5 of medit's 10 colour schemes | not started |
+| Wiki markup preview | dropped deliberately |
+| Detachable floating panes | dropped deliberately |
+| Translations | not started |
+| macOS bundle and Windows installer | not started; install.sh covers Unix prefixes |
