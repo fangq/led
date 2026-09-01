@@ -28,7 +28,7 @@ uses
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
-  Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
+  Clipbrd, SynEditTypes, ActnList, Menus, PairSplitter, LCLProc;
 
 var
   Failures: Integer = 0;
@@ -94,6 +94,7 @@ procedure TestSharedBufferSplitView(F: TLedMainForm);
 var
   Tab: TLedTab;
   V0, V1: TLedEdit;
+  Splitter: TPairSplitter;
 begin
   Say('shared-buffer split view');
   Tab := F.ActiveTab;
@@ -150,6 +151,18 @@ begin
   Tab.SplitView(True);
   Pump;
   CheckEqInt('two views after stacked split', 2, Tab.ViewCount);
+
+  { A fresh split has to land in the middle.  TPairSplitter puts its divider
+    wherever its default position falls, which is not the middle, and a
+    lopsided split was reported from real use. }
+  Splitter := nil;
+  if Tab.Views[1].Parent is TPairSplitterSide then
+    Splitter := TPairSplitter(Tab.Views[1].Parent.Parent);
+  Check('the stacked split has a splitter', Splitter <> nil);
+  if (Splitter <> nil) and (Splitter.Height > 40) then
+    Check('and it opens within a few pixels of the middle',
+      Abs(Splitter.Position - Splitter.Height div 2) <= 4);
+
   Tab.CycleViews;
   Pump;
   Tab.Unsplit;
