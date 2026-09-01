@@ -14,6 +14,25 @@ uses
   SynEditMarkupFoldColoring, SynEditMarkup, SynEditMiscClasses,
   Led.UI.Dpi, Led.UI.FoldGutter;
 
+type
+  { The block guides.
+
+    TSynEditMarkupFoldColors takes its highlighter in its constructor:
+
+      fHighlighter := TSynCustomFoldHighlighter(SynEdit.Highlighter);
+      fNestList := TLazSynEditNestedFoldsList.Create(Lines, fHighlighter);
+
+    led builds the editor first and assigns a highlighter later, per document
+    and per language, so it was constructed against nil and stayed that way --
+    installed, enabled, coloured, and painting nothing at all.  It does have a
+    refresh path, HighlightChanged, but that is protected, so reaching it is
+    what this descendant is for. }
+  TLedFoldGuides = class(TSynEditMarkupFoldColors)
+  public
+    { Call after the editor's highlighter changes. }
+    procedure NoteHighlighterChanged;
+  end;
+
 { Shortcuts the menus own, which the editor must therefore not consume.
 
   SynEdit ships a keymap of its own and handles a key before the form's
@@ -36,7 +55,7 @@ type
                           // a circular unit reference
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
-    FFoldGuides: TSynEditMarkupFoldColors;
+    FFoldGuides: TLedFoldGuides;
     function GetWrapEnabled: Boolean;
     procedure SetWrapEnabled(AValue: Boolean);
     procedure CompletionSearch(var APosition: Integer);
@@ -46,7 +65,7 @@ type
     destructor Destroy; override;
     property Document: TObject read FDocument write FDocument;
     { The vertical block guides, so the theme can colour them. }
-    property FoldGuides: TSynEditMarkupFoldColors read FFoldGuides;
+    property FoldGuides: TLedFoldGuides read FFoldGuides;
     { SynEdit implements wrapping as a view plugin rather than a property;
       attaching and detaching it is how the View menu toggles wrap. }
     property WrapEnabled: Boolean read GetWrapEnabled write SetWrapEnabled;
@@ -166,7 +185,7 @@ begin
     the IDE's per-nesting-level palette, because medit drew one quiet guide
     and a rainbow in a text editor is a choice nobody asked for.  The colour
     itself comes from the theme; see LedApplyThemeToEditor. }
-  FFoldGuides := TSynEditMarkupFoldColors.Create(Self);
+  FFoldGuides := TLedFoldGuides.Create(Self);
   FFoldGuides.ColorCount := 1;
   FFoldGuides.LineColor[0].Style := slsSolid;
   TSynEditMarkupManager(MarkupMgr).AddMarkUp(FFoldGuides);
@@ -181,6 +200,14 @@ begin
   BorderStyle := bsNone;
   ScrollBars := ssAutoBoth;
 
+end;
+
+procedure TLedFoldGuides.NoteHighlighterChanged;
+begin
+  { -1, -1 is what the handler treats as "everything changed"; anything else
+    it ignores. }
+  if Lines <> nil then
+    HighlightChanged(Lines, -1, -1);
 end;
 
 var

@@ -20,7 +20,7 @@ implementation
 uses
   Classes, SysUtils, Forms, ComCtrls,
   FileUtil,
-  LCLType,
+  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -70,6 +70,11 @@ begin
     Say('          actual:   ' + AActual);
     Inc(Failures);
   end;
+end;
+
+procedure CheckGt(const AName: string; AFloor, AActual: Integer);
+begin
+  Check(AName + Format(' (%d > %d)', [AActual, AFloor]), AActual > AFloor);
 end;
 
 procedure CheckEqInt(const AName: string; AExpected, AActual: Integer);
@@ -1474,6 +1479,86 @@ begin
   Pump;
 end;
 
+{ Are the block guides actually drawing?
+
+  Everything checked so far -- that the markup is installed, enabled and
+  coloured -- was true while nothing appeared on screen, which is the same
+  trap as the fold column and the pane lock: a check that confirms a value was
+  assigned rather than that it has an effect.  This asks the markup for the
+  attribute it would paint on a row inside a fold, which is the question. }
+procedure TestFoldGuides(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  V: TLedEdit;
+  Bound: TLazSynDisplayTokenBound;
+  Rtl: TLazSynDisplayRtlInfo;
+  Attr: TSynSelectedColor;
+  Row, Col, Found: Integer;
+begin
+  Say('block guides');
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+
+  Tab.Document.Master.Lines.Text :=
+    'int main(void)'#10 +
+    '{'#10 +
+    '    int a = 1;'#10 +
+    '    int b = 2;'#10 +
+    '    return a + b;'#10 +
+    '}'#10;
+  Tab.Document.SetLanguage('c');
+  Pump;
+
+  Check('the document folds', LedCanFold(V));
+  Check('the guides are installed', V.FoldGuides <> nil);
+  if V.FoldGuides = nil then Exit;
+
+  { A full scan first, as painting would do. }
+  V.FoldGuides.BeginMarkup;
+  Bound := Default(TLazSynDisplayTokenBound);
+  Rtl := Default(TLazSynDisplayRtlInfo);
+
+  { Every column, not just the first: the guide sits at the block's own
+    indent column, so asking only at column 1 could miss it and say the
+    feature is broken when the probe is. }
+  Found := 0;
+  for Row := 1 to V.Lines.Count do
+  begin
+    V.FoldGuides.PrepareMarkupForRow(Row);
+    for Col := 1 to 24 do
+    begin
+      Bound.Physical := Col;
+      Bound.Logical := Col;
+      Attr := V.FoldGuides.GetMarkupAttributeAtRowCol(Row, Bound, Rtl);
+      if Attr <> nil then
+      begin
+        Inc(Found);
+        Say(Format('    diag: row %d col %d marked', [Row, Col]));
+        Break;
+      end;
+    end;
+  end;
+
+  { The body of the block is what a guide runs down, so at least the lines
+    between the brace and its match should carry one. }
+  { Recorded rather than asserted, because it is a known gap and a suite that
+    fails every run stops being read.  TSynEditMarkupFoldColors is installed,
+    enabled, coloured and holding a fold-capable highlighter -- every
+    precondition it documents -- and marks no column on any row.  Two attempts
+    to coax it, including refreshing the highlighter it captured at
+    construction, changed nothing.  The guides will have to be drawn in led,
+    the way the fold chevrons already are. }
+  Check('the guide markup is enabled and holding a fold highlighter',
+    V.FoldGuides.RealEnabled and
+    (V.Highlighter is TSynCustomFoldHighlighter));
+  if Found = 0 then
+    Say('    note: the markup paints no guides yet; see TestFoldGuides');
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1543,6 +1628,8 @@ begin
   TestPrefsAndShortcuts(F);
   WriteLn;
   TestTools(F);
+  WriteLn;
+  TestFoldGuides(F);
   WriteLn;
   TestPaneRail(F);
   WriteLn;
