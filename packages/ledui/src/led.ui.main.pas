@@ -260,6 +260,11 @@ type
     procedure InstanceOpenRequest(const APayload: string);
     function SearchView: TLedEdit;
     function FindTabFor(ADoc: TLedDocument): TLedTab;
+    { Every dynamic submenu is filled in advance rather than on the parent's
+      OnClick.  A TMenuItem with no children is a leaf: on GTK it never opens
+      a submenu, so the handler that was supposed to fill it never ran and
+      the menu was permanently empty. }
+    procedure PopulateAllMenus;
     procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
     procedure PopulateLanguageMenu;
@@ -428,6 +433,18 @@ begin
 
   if not RestoreSession then
     actNewExecute(nil);
+
+  PopulateAllMenus;
+end;
+
+procedure TLedMainForm.PopulateAllMenus;
+begin
+  PopulateRecentMenu;
+  PopulateLanguageMenu;
+  PopulateEncodingMenu;
+  PopulateLineEndMenu;
+  PopulateThemeMenu;
+  PopulateToolMenu;
 end;
 
 procedure TLedMainForm.FormDestroy(Sender: TObject);
@@ -1223,6 +1240,7 @@ begin
     Reload for that. }
   ActiveTab.Document.SetEncoding(TMenuItem(Sender).Hint);
   UpdateStatusBar;
+  PopulateEncodingMenu;
 end;
 
 procedure TLedMainForm.miLineEndClick(Sender: TObject);
@@ -1258,6 +1276,7 @@ begin
   if ActiveTab = nil then Exit;
   ActiveTab.Document.SetLineEnd(TLedLineEnd(TMenuItem(Sender).Tag));
   UpdateStatusBar;
+  PopulateLineEndMenu;
 end;
 
 { --- language and theme menus --------------------------------------------- }
@@ -1326,6 +1345,8 @@ begin
   if ActiveTab = nil then Exit;
   ActiveTab.Document.SetLanguage(TMenuItem(Sender).Hint);
   UpdateStatusBar;
+  PopulateLanguageMenu;      { move the tick }
+  PopulateToolMenu;          { language-specific tools may have changed }
 end;
 
 procedure TLedMainForm.miThemeClick(Sender: TObject);
@@ -1358,6 +1379,7 @@ var
   i, j: Integer;
 begin
   LedSetCurrentTheme(TMenuItem(Sender).Hint);
+  PopulateThemeMenu;         { move the tick }
   { Every open view has to be repainted with the new chrome colours. }
   for i := 0 to FBook.PageCount - 1 do
     for j := 0 to FBook.Pages[i].ControlCount - 1 do
@@ -1598,6 +1620,12 @@ end;
 procedure TLedMainForm.BookChange(Sender: TObject);
 begin
   UpdateStatusBar;
+  { The document-dependent menus -- which language is ticked, which encoding,
+    which tools apply -- follow the active document. }
+  PopulateLanguageMenu;
+  PopulateEncodingMenu;
+  PopulateLineEndMenu;
+  PopulateToolMenu;
   { Only refreshed when the pane is actually on screen: running ctags for a
     pane nobody is looking at is pure cost. }
   if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
@@ -1777,6 +1805,9 @@ begin
       AddTab(Doc);
     FRecent.Add(Doc.FileName);
   end;
+  PopulateRecentMenu;
+  PopulateLanguageMenu;
+  PopulateToolMenu;
 end;
 
 procedure TLedMainForm.actSaveExecute(Sender: TObject);
@@ -1804,6 +1835,9 @@ begin
     Tab.Document.SaveToFile(SaveDialog1.FileName);
     RefreshTabCaption(Tab);
     UpdateStatusBar;
+    { A new name can mean a new language and new filename rules. }
+    PopulateLanguageMenu;
+    PopulateToolMenu;
   end;
 end;
 
