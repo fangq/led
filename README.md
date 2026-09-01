@@ -52,7 +52,8 @@ environment-variable contract, and named regex output filters including
 
 **Shell.** Preferences, a keyboard-shortcut editor, sessions, recent files,
 single-instance file hand-off, and the medit command line including
-`FILE:LINE`.
+`FILE:LINE`. Files dropped on the window open; a dropped folder points the
+file browser at itself.
 
 ## Building
 

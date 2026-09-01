@@ -1630,6 +1630,47 @@ begin
     'the text that must survive the move', DocA.Master.Lines[0]);
 end;
 
+{ Files dropped on the window.
+
+  The drop itself comes from the window manager and cannot be simulated here,
+  so this drives the handler the widgetset would call.  That still covers the
+  part led owns -- that a dropped path opens, through the same route as the
+  Open dialog -- and asserts the window is registered to receive drops at all,
+  which is the half that silently does nothing when it is missing. }
+procedure TestDropFiles(F: TLedMainForm);
+var
+  Path: string;
+  L: TStringList;
+  Before: Integer;
+begin
+  Say('dropped files');
+
+  Check('the window accepts dropped files', F.AllowDropFiles);
+
+  Path := IncludeTrailingPathDelimiter(GetTempDir) +
+    Format('led-selftest-%d-dropped.txt', [GetProcessID]);
+  L := TStringList.Create;
+  try
+    L.Add('dropped in');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  Before := F.TabCount;
+  F.FormDropFiles(F, [Path]);
+  Pump;
+
+  CheckEqInt('a dropped file opens a tab', Before + 1, F.TabCount);
+  Check('and the tab holds it',
+    (F.ActiveTab <> nil) and (F.ActiveTab.Document.FileName = Path));
+  if F.ActiveTab <> nil then
+    CheckEq('with its contents', 'dropped in',
+      F.ActiveTab.Document.Master.Lines[0]);
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1703,6 +1744,8 @@ begin
   TestFoldGuides(F);
   WriteLn;
   TestSplitNotebook(F);
+  WriteLn;
+  TestDropFiles(F);
   WriteLn;
   TestPaneRail(F);
   WriteLn;
