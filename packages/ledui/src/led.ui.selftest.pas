@@ -1566,6 +1566,25 @@ end;
   for this feature is that moving a tab between groups is a reparent because
   TLedDocument owns the buffer -- so the document, its text and its modified
   state have to come through untouched, and that is what is asserted. }
+{ Does this menu carry an item bound to that action, at any depth? }
+function LedMenuHasAction(AMenu: TPopupMenu; AAction: TBasicAction): Boolean;
+
+  function Scan(AItem: TMenuItem): Boolean;
+  var
+    i: Integer;
+  begin
+    Result := False;
+    for i := 0 to AItem.Count - 1 do
+    begin
+      if AItem.Items[i].Action = AAction then Exit(True);
+      if Scan(AItem.Items[i]) then Exit(True);
+    end;
+  end;
+
+begin
+  Result := (AMenu <> nil) and (AAction <> nil) and Scan(AMenu.Items);
+end;
+
 procedure TestSplitNotebook(F: TLedMainForm);
 var
   DocA, DocB: TLedDocument;
@@ -1580,6 +1599,17 @@ begin
   DocB := F.Documents.NewDocument;
   F.AddTab(DocB);
   Pump;
+
+  { Reachable, not merely implemented.  The first version of this feature put
+    its actions in the View menu only, and the tab's own context menu -- where
+    medit has them and where anyone would look first -- offered nothing, so
+    the feature was invisible to the person it was built for. }
+  Check('the tab menu offers Move to Split Notebook',
+    LedMenuHasAction(F.PopupTab, F.actMoveToNotebook));
+  Check('and Split Notebook',
+    LedMenuHasAction(F.PopupTab, F.actSplitNotebook));
+  Check('and Focus Other Split Notebook',
+    LedMenuHasAction(F.PopupTab, F.actFocusOtherNotebook));
 
   Check('not split to begin with', not F.NotebookSplit);
   Check('and there is no second group', F.Notebook2 = nil);

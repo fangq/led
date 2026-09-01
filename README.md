@@ -14,7 +14,10 @@ file-format handling, the layered per-document settings, the tools system, the
 
 ## What works
 
-**Editing.** Tabs and split views over one shared buffer; encoding detection
+**Editing.** Tabs and split views over one shared buffer; two independent tab
+groups per window — *Split Notebook*, *Move to Split Notebook* and *Focus
+Other Split Notebook*, on the View menu and on a tab's right-click menu,
+enabled once more than one tab is open; encoding detection
 with BOM handling and mixed line endings; backups; reload and external-change
 detection; find and replace with regex plus an incremental find bar; find in
 files; go to line; matching-bracket navigation; comment/uncomment from the

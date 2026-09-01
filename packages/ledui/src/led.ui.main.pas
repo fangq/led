@@ -274,6 +274,10 @@ type
     miTabCloseOthers: TMenuItem;
     miTabCopyPath: TMenuItem;
     miTabOpenFolder: TMenuItem;
+    mtSepNotebook: TMenuItem;
+    mtMoveToNotebook: TMenuItem;
+    mtSplitNotebook: TMenuItem;
+    mtFocusOtherNotebook: TMenuItem;
     mtSep3: TMenuItem;
     mtSplitSideBySide: TMenuItem;
     mtSplitStacked: TMenuItem;
