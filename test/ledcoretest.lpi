@@ -41,6 +41,11 @@
         <UnitName Value="Led.Syn.Tests.Languages"/>
       </Unit>
       <Unit>
+        <Filename Value="src/led.core.tests.filters.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Tests.Filters"/>
+      </Unit>
+      <Unit>
         <Filename Value="src/led.core.tests.settings.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Tests.Settings"/>

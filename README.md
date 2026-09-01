@@ -30,8 +30,12 @@ twenty of the 128 languages — the rest are recognised, and carry their comment
 markers, but are not yet coloured. The grammar converter that closes that gap
 is a later phase.
 
-Still to come in phase 1: the try-encoding dialog and filename-glob config
-rules.
+Filename-glob rules and an encoding prompt round out phase 1. A rule pairs a
+filter (`globs:Makefile*`, `langs:python`, `regex:^/etc/`) with a config
+string, and applies above a modeline but below the language default -- so a
+Makefile gets real tabs whatever the file itself claims. Built-in rules cover
+makefiles, patches and Python; they live in `prefs.ini` under
+`[FilterSettings]` and can be replaced wholesale.
 
 ## Building
 
@@ -101,6 +105,15 @@ Support/led` on macOS. Override with `$LED_CONFIG_DIR`.
 | `prefs.ini` | preferences; dotted keys become sections, so `Plugins/Terminal/font` is `[Plugins.Terminal] font=` |
 | `session.json` | windows, tabs, carets and dock layout (when `Editor/save_session` is on) |
 | `recent.json` | the Open Recent list |
+
+Filename-glob rules are stored in `prefs.ini`:
+
+```ini
+[FilterSettings]
+count=1
+1.filter=globs:Makefile*;*.mk
+1.config=indent-use-tabs: true; tab-width: 8
+```
 
 `data/langs/*.lang` and `data/themes/*.xml` are read from the install or the
 build tree; a `langs/` or `themes/` directory under the config directory

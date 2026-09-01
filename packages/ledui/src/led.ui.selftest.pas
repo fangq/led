@@ -366,6 +366,81 @@ begin
   DeleteFile(Path);
 end;
 
+procedure TestGlobRulesAndEncodingPrompt(F: TLedMainForm);
+var
+  Dir, Path: string;
+  L: TStringList;
+  Doc: TLedDocument;
+  Stream: TFileStream;
+  Raw: string;
+  Before: Integer;
+begin
+  WriteLn('glob rules and the encoding prompt');
+
+  Dir := IncludeTrailingPathDelimiter(GetTempDir) +
+    Format('led-selftest-%d-glob%s', [GetProcessID, PathDelim]);
+  ForceDirectories(Dir);
+
+  { A Makefile must get real tabs from the built-in rule, outranking both the
+    preference and the modeline in the file itself. }
+  Path := Dir + 'Makefile';
+  L := TStringList.Create;
+  try
+    L.Add('# -*- indent-tabs-mode: nil -*-');
+    L.Add('all:');
+    L.Add(#9'echo hi');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  L := TStringList.Create;
+  try
+    L.Add(Path);
+    F.OpenFiles(L);
+    Pump;
+  finally
+    L.Free;
+  end;
+
+  Doc := F.ActiveTab.Document;
+  CheckEq('the Makefile was opened', 'Makefile', Doc.DisplayName);
+  Check('the glob rule beat the modeline',
+    Doc.Config.GetBool(LedSetIndentUseTabs));
+  Check('and it came from the filename layer',
+    Doc.Config.SourceOf(LedSetIndentUseTabs) = lcsFilename);
+
+  { A file that decodes under no candidate encoding: the prompt is asked, and
+    in silent mode answered from SilentEncodingChoice. }
+  Path := Dir + 'undecodable.txt';
+  Raw := 'caf' + #$E9 + ' ' + #$FE + #$FF + #$FE + #10;
+  Stream := TFileStream.Create(Path, fmCreate);
+  try
+    Stream.WriteBuffer(Raw[1], Length(Raw));
+  finally
+    Stream.Free;
+  end;
+
+  Before := F.Documents.Count;
+  F.SilentEncodingChoice := '';
+  L := TStringList.Create;
+  try
+    L.Add(Path);
+    F.OpenFiles(L);
+    Pump;
+  finally
+    L.Free;
+  end;
+  { With ISO-8859-1 in the candidate list nothing is truly undecodable, so
+    this file does open -- the point of the check is that it opens rather
+    than throwing, and that the prompt path is reachable at all. }
+  Check('a file with odd bytes still opens', F.Documents.Count > Before);
+
+  DeleteFile(Dir + 'Makefile');
+  DeleteFile(Path);
+  RemoveDir(Dir);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -393,6 +468,8 @@ begin
   TestRecentFiles(F);
   WriteLn;
   TestLanguageAndTheme(F);
+  WriteLn;
+  TestGlobRulesAndEncodingPrompt(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

@@ -108,6 +108,11 @@
         <UnitName Value="Led.Core.Session"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.filters.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Filters"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.config.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Config"/>

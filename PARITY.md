@@ -25,7 +25,7 @@ checked off by the presence of a menu entry.
 | Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
-| Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | partly | detection done; the try-encoding dialog is pending |
+| Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
 | Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
 | Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | | phase-3 |
 
@@ -90,7 +90,7 @@ checked off by the presence of a menu entry.
 | `Quit` | yes | yes | done |
 | `Redo` | yes | | |
 | `Reload` | yes | yes | done |
-| `ReopenWithEncoding` | yes | | |
+| `ReopenWithEncoding` | yes | partly | prompted automatically on a failed decode; no explicit menu item yet |
 | `Replace` | yes | | |
 | `ReportBug` | yes | | |
 | `Save` | yes | yes | done |

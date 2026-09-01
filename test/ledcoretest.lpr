@@ -6,7 +6,7 @@ program ledcoretest;
 uses
   Classes, consoletestrunner,
   Led.Core.Tests.FileIO, Led.Core.Tests.Encodings, Led.Core.Tests.Config,
-  Led.Core.Tests.Settings, Led.Syn.Tests.Languages,
+  Led.Core.Tests.Settings, Led.Core.Tests.Filters, Led.Syn.Tests.Languages,
   Led.Syn.Tests.Theme;
 
 type

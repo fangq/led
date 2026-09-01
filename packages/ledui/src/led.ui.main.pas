@@ -13,10 +13,11 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, SynEdit, SynEditTypes,
+  LConvEncoding,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
-  Led.Core.Config, Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
-  Led.UI.Dock, Led.UI.Document,
-  Led.UI.Tab, Led.UI.Edit;
+  Led.Core.Config, Led.Core.Encodings,
+  Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
+  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
 
 type
   TLedMainForm = class(TForm)
@@ -108,7 +109,12 @@ type
       dead.  In Silent mode a report goes to stdout and a question takes its
       stated default. }
     Silent: Boolean;
+    { Answered instead of asking, when Silent; '' means "give up". }
+    SilentEncodingChoice: string;
     procedure ReportError(const AMessage: string);
+    { Offers the user a list of encodings after a decode has failed.  Returns
+      '' when they decline, which means the file is simply not opened. }
+    function AskEncoding(const AFileName: string): string;
     function Confirm(const AMessage: string; ADefault: Boolean): Boolean;
     function ConfirmSaveDiscardCancel(const AMessage: string): Integer;
 
@@ -159,6 +165,32 @@ begin
   end;
   Result := MessageDlg('led', AMessage, mtConfirmation,
     [mbYes, mbNo, mbCancel], 0);
+end;
+
+function TLedMainForm.AskEncoding(const AFileName: string): string;
+var
+  Names, Ids: TStringList;
+  i, Chosen: Integer;
+begin
+  Result := '';
+  if Silent then Exit(SilentEncodingChoice);
+
+  Ids := TStringList.Create;
+  Names := TStringList.Create;
+  try
+    GetSupportedEncodings(Ids);
+    for i := 0 to Ids.Count - 1 do
+      Names.Add(Ids[i]);
+    Chosen := InputCombo('led',
+      Format('%s could not be decoded.'#10 +
+             'Which character encoding does it use?',
+             [ExtractFileName(AFileName)]), Names);
+    if Chosen >= 0 then
+      Result := LedNormaliseEncoding(Ids[Chosen]);
+  finally
+    Names.Free;
+    Ids.Free;
+  end;
 end;
 
 procedure TLedMainForm.FormCreate(Sender: TObject);
@@ -652,24 +684,43 @@ procedure TLedMainForm.OpenFiles(AFiles: TStrings);
 var
   i: Integer;
   Doc: TLedDocument;
+  Encoding: string;
+  Retried: Boolean;
 begin
   for i := 0 to AFiles.Count - 1 do
   begin
-    try
-      Doc := FDocs.OpenFile(AFiles[i]);
-    except
-      on E: ELedFileError do
-      begin
-        ReportError(E.Message);
-        Continue;
+    Doc := nil;
+    Retried := False;
+    repeat
+      try
+        Doc := FDocs.OpenFile(AFiles[i], Encoding);
+      except
+        on E: ELedFileError do
+        begin
+          { Only an encoding failure is worth a second chance; a missing file
+            will not become present because the user picks CP1251. }
+          if (E.Error = lfeEncodingFailed) and not Retried then
+          begin
+            Encoding := AskEncoding(AFiles[i]);
+            Retried := True;
+            if Encoding <> '' then Continue;
+          end
+          else
+            ReportError(E.Message);
+          Break;
+        end;
+        on E: Exception do
+        begin
+          ReportError(Format('Could not open %s:'#10'%s',
+            [AFiles[i], E.Message]));
+          Break;
+        end;
       end;
-      on E: Exception do
-      begin
-        ReportError(Format('Could not open %s:'#10'%s',
-          [AFiles[i], E.Message]));
-        Continue;
-      end;
-    end;
+      Break;
+    until False;
+
+    Encoding := '';
+    if Doc = nil then Continue;
     if Doc.ViewCount = 0 then
       AddTab(Doc);
     FRecent.Add(Doc.FileName);
