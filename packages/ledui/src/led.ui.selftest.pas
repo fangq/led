@@ -19,6 +19,7 @@ implementation
 
 uses
   Classes, SysUtils, Forms, ComCtrls,
+  FileUtil,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -1383,6 +1384,19 @@ begin
   F.Dock.DraggingAllowed := True;
   Check('and can be unlocked again', F.Dock.DraggingAllowed);
 
+  { The check that matters, and the one whose absence let a broken lock ship:
+    layout.xml carries AllowDragging and the header settings itself, and
+    LoadLayout feeds them onto the master -- so a policy set once in the
+    constructor was reverted the moment a saved layout was read.  Saving and
+    reloading here is the only way to catch that. }
+  F.Dock.DraggingAllowed := False;
+  F.Dock.SaveLayout(LedConfigFile('selftest-layout.xml'));
+  F.Dock.LoadLayout(LedConfigFile('selftest-layout.xml'));
+  Pump;
+  Check('the lock survives a layout reload', not F.Dock.DraggingAllowed);
+  DeleteFile(LedConfigFile('selftest-layout.xml'));
+  F.Dock.DraggingAllowed := True;
+
   F.Dock.ShowRails := False;
   Pump;
   Check('the rail can be turned off', True);
@@ -1404,6 +1418,16 @@ begin
   begin
     Sandbox := IncludeTrailingPathDelimiter(GetTempDir) +
       Format('led-selftest-%d-config', [GetProcessID]);
+    { Emptied first, not merely created.  The directory is named after the
+      process id and was never cleaned up, so a run whose pid had come round
+      again inherited an earlier run's prefs.ini, session.json, layout.xml
+      and recovery journal -- and a restored session makes the startup
+      document modified with its caret somewhere else, which fails checks
+      that have nothing to do with sessions.  Isolating from the developer's
+      configuration is not enough; a test has to be isolated from its own
+      previous selves. }
+    if DirectoryExists(Sandbox) then
+      DeleteDirectory(Sandbox, False);
     ForceDirectories(Sandbox);
     LedForceConfigDir(Sandbox);
   end;
