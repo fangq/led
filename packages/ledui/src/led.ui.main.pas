@@ -94,6 +94,7 @@ type
     actFocusDoc: TAction;
     actMoveToSplit: TAction;
     actShowToolbar: TAction;
+    actResetLayout: TAction;
     actStripTrailing: TAction;
     actToggleBrowser: TAction;
     actSplitTermH: TAction;
@@ -291,6 +292,7 @@ type
     procedure actReopenEncodingExecute(Sender: TObject);
     procedure actReportBugExecute(Sender: TObject);
     procedure actShowToolbarExecute(Sender: TObject);
+    procedure actResetLayoutExecute(Sender: TObject);
     procedure actSplitTermHExecute(Sender: TObject);
     procedure actSplitTermVExecute(Sender: TObject);
     procedure actStripTrailingExecute(Sender: TObject);
@@ -2710,6 +2712,19 @@ begin
   if Tab.ViewCount < 2 then
     Tab.SplitView(False);
   Tab.CycleViews;
+end;
+
+{ The way back from a layout that dragging has made unusable.  AnchorDocking
+  will happily leave a pane somewhere unreachable and offers no route back,
+  so this closes every pane, redocks the editor and throws the saved layout
+  away -- the state of a first run. }
+procedure TLedMainForm.actResetLayoutExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  if not Confirm('Close every pane and return to the default layout?', False)
+    then Exit;
+  FDock.ResetLayout(LedConfigFile('layout.xml'));
+  UpdateStatusBar;
 end;
 
 procedure TLedMainForm.actShowToolbarExecute(Sender: TObject);

@@ -1355,6 +1355,20 @@ begin
   F.Dock.HidePane('files');
   Pump;
 
+  { Reset is the way back from a layout dragging has made unusable, so it has
+    to actually close things rather than merely not raise. }
+  F.Dock.ShowPane('files');
+  F.Dock.ShowPane('symbols');
+  Pump;
+  Check('panes can be opened before a reset',
+    F.Dock.PaneVisible('files') and F.Dock.PaneVisible('symbols'));
+
+  F.Dock.ResetLayout;
+  Pump;
+  Check('reset closes the left pane', not F.Dock.PaneVisible('files'));
+  Check('and the right one', not F.Dock.PaneVisible('symbols'));
+  Check('and leaves the editor docked', not F.Dock.PaneFloating('editor'));
+
   F.Dock.ShowRails := False;
   Pump;
   Check('the rail can be turned off', True);

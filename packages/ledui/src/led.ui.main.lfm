@@ -385,6 +385,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Show &Toolbar'
       OnExecute = actShowToolbarExecute
     end
+    object actResetLayout: TAction
+      Caption = '&Reset Pane Layout'
+      OnExecute = actResetLayoutExecute
+    end
     object actStripTrailing: TAction
       Caption = 'Strip &Trailing Space'
       OnExecute = actStripTrailingExecute
@@ -660,6 +664,9 @@ object LedMainForm: TLedMainForm
       Caption = '&View'
       object mi_ShowToolbar: TMenuItem
         Action = actShowToolbar
+      end
+      object mi_ResetLayout: TMenuItem
+        Action = actResetLayout
       end
       object miSep17: TMenuItem
         Caption = '-'
