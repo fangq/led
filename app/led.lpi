@@ -174,6 +174,11 @@
         <UnitName Value="Led.Term.Screen"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledterm/src/led.term.pane.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Term.Pane"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledterm/src/led.term.view.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Term.View"/>
@@ -260,10 +265,20 @@
         <IncludeAssertionCode Value="True"/>
       </SyntaxOptions>
     </Parsing>
+    <CodeGeneration>
+      <SmartLinkUnit Value="True"/>
+      <Optimizations>
+        <OptimizationLevel Value="2"/>
+      </Optimizations>
+    </CodeGeneration>
     <Linking>
       <Debugging>
-        <DebugInfoType Value="dsDwarf3"/>
+        <GenerateDebugInfo Value="False"/>
+        <DebugInfoType Value="dsAuto"/>
+        <UseLineInfoUnit Value="False"/>
+        <StripSymbols Value="True"/>
       </Debugging>
+      <LinkSmart Value="True"/>
       <Options>
         <Win32>
           <GraphicApplication Value="True"/>

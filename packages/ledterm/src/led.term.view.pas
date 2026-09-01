@@ -48,6 +48,7 @@ type
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
       MousePos: TPoint): Boolean; override;
     procedure DoEnter; override;
+    procedure FontChanged(Sender: TObject); override;
     class function GetControlClassDefaultSize: TSize; override;
   public
     constructor Create(AOwner: TComponent); override;
@@ -415,6 +416,15 @@ procedure TLedTermView.DoEnter;
 begin
   inherited DoEnter;
   Invalidate;
+end;
+
+procedure TLedTermView.FontChanged(Sender: TObject);
+begin
+  inherited FontChanged(Sender);
+  { A different font means a different number of rows and columns, and the
+    child has to be told or it will keep drawing at the old size. }
+  MeasureFont;
+  Resize;
 end;
 
 procedure TLedTermView.Paste(const AText: string);
