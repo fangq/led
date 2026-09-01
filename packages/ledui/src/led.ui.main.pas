@@ -14,7 +14,7 @@ uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
-  Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
+  Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
@@ -195,10 +195,15 @@ type
     FBook: TPageControl;
     FRecent: TLedRecentFiles;
     FSearch: TLedSearchState;
+    FInstance: TLedInstance;
+    FInstanceTimer: TTimer;
     FFindForm: TLedFindForm;
     FFindBar: TLedFindBar;
     FCheckingDisk: Boolean;
+    procedure InstancePoll(Sender: TObject);
+    procedure InstanceOpenRequest(const APayload: string);
     function SearchView: TLedEdit;
+    function FindTabFor(ADoc: TLedDocument): TLedTab;
     procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
     procedure PopulateLanguageMenu;
@@ -249,6 +254,11 @@ type
     property Dock: TLedDockHost read FDock;
     property Notebook: TPageControl read FBook;
     property Recent: TLedRecentFiles read FRecent;
+
+    { Takes ownership of the single-instance server and starts listening for
+      hand-offs from later invocations. }
+    procedure AdoptInstance(AInstance: TLedInstance);
+    procedure ApplyCommandLine(ACmd: TLedCommandLine; const ACwd: string);
   end;
 
 var
@@ -344,6 +354,101 @@ procedure TLedMainForm.FormDestroy(Sender: TObject);
 begin
   FRecent.Free;
   FSearch.Free;
+  FInstance.Free;
+end;
+
+{ --- hand-off from a second invocation ------------------------------------- }
+
+procedure TLedMainForm.AdoptInstance(AInstance: TLedInstance);
+begin
+  FInstance := AInstance;
+  if FInstance = nil then Exit;
+  FInstance.OnOpenRequest := @InstanceOpenRequest;
+  if FInstance.Role = lirClient then Exit;
+
+  { Polled rather than threaded: the payload has to be acted on from the main
+    thread anyway, and a quarter-second delay opening a file is not felt. }
+  FInstanceTimer := TTimer.Create(Self);
+  FInstanceTimer.Interval := 250;
+  FInstanceTimer.OnTimer := @InstancePoll;
+  FInstanceTimer.Enabled := True;
+end;
+
+procedure TLedMainForm.InstancePoll(Sender: TObject);
+begin
+  if FInstance <> nil then FInstance.Poll;
+end;
+
+procedure TLedMainForm.InstanceOpenRequest(const APayload: string);
+var
+  Cmd: TLedCommandLine;
+  Cwd: string;
+begin
+  Cmd := TLedCommandLine.Create;
+  try
+    Cmd.FromJSON(APayload, Cwd);
+    ApplyCommandLine(Cmd, Cwd);
+  finally
+    Cmd.Free;
+  end;
+
+  { Bring the window forward.  Reliable on Windows and X11; on Wayland a
+    client cannot raise itself, so the taskbar entry is all the user gets. }
+  if WindowState = wsMinimized then WindowState := wsNormal;
+  Show;
+  BringToFront;
+end;
+
+procedure TLedMainForm.ApplyCommandLine(ACmd: TLedCommandLine;
+  const ACwd: string);
+var
+  i: Integer;
+  Arg: TLedFileArg;
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+begin
+  for i := 0 to ACmd.FileCount - 1 do
+  begin
+    Arg := ACmd.Files[i];
+    if Arg.Path = '' then Continue;
+    { Relative paths belong to the directory the user typed them in, which
+      for a hand-off is not this process's directory. }
+    if ACwd <> '' then
+      Path := ExpandFileName(IncludeTrailingPathDelimiter(ACwd) + Arg.Path)
+    else
+      Path := ExpandFileName(Arg.Path);
+
+    Doc := FDocs.FindByFileName(Path);
+    if (Doc <> nil) and ACmd.Reload then
+      Doc.Reload;
+
+    if Doc = nil then
+    begin
+      try
+        Doc := FDocs.OpenFile(Path, Arg.Encoding);
+      except
+        on E: ELedFileError do
+        begin
+          ReportError(E.Message);
+          Continue;
+        end;
+      end;
+    end;
+
+    if Doc.ViewCount = 0 then
+      Tab := AddTab(Doc)
+    else
+      Tab := FindTabFor(Doc);
+    FRecent.Add(Doc.FileName);
+
+    if (Tab <> nil) and (Arg.Line > 0) then
+    begin
+      FBook.ActivePage := Tab.Sheet;
+      LedGotoLine(Tab.ActiveView, Arg.Line);
+    end;
+  end;
+  UpdateStatusBar;
 end;
 
 { --- find and replace ------------------------------------------------------ }
@@ -351,6 +456,18 @@ end;
 function TLedMainForm.SearchView: TLedEdit;
 begin
   Result := ActiveView;
+end;
+
+function TLedMainForm.FindTabFor(ADoc: TLedDocument): TLedTab;
+var
+  i, j: Integer;
+begin
+  for i := 0 to FBook.PageCount - 1 do
+    for j := 0 to FBook.Pages[i].ControlCount - 1 do
+      if (FBook.Pages[i].Controls[j] is TLedTab) and
+         (TLedTab(FBook.Pages[i].Controls[j]).Document = ADoc) then
+        Exit(TLedTab(FBook.Pages[i].Controls[j]));
+  Result := nil;
 end;
 
 procedure TLedMainForm.ShowFindForm(AReplace: Boolean);

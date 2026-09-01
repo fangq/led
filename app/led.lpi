@@ -103,6 +103,16 @@
         <UnitName Value="Led.Syn.Factory"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.cli.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.CLI"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.instance.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Instance"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>
@@ -162,7 +172,6 @@
     <Linking>
       <Debugging>
         <DebugInfoType Value="dsDwarf3"/>
-        <UseHeaptrc Value="True"/>
       </Debugging>
       <Options>
         <Win32>
