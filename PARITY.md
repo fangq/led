@@ -22,7 +22,7 @@ checked off by the presence of a menu entry.
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
-| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | partly | one terminal works on Unix; splitting and Windows ConPTY are not done |
+| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | partly | splitting works, and a split divider is centred on creation; Windows ConPTY is not done |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | partly | five of the ten carried over |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
@@ -120,49 +120,49 @@ checked off by the presence of a menu entry.
 |---|---|---|---|
 | `/open` | yes | | |
 | `Editor` | yes | | |
-| `add_newline` | yes | | |
-| `auto_indent` | yes | | |
+| `add_newline` | yes | yes | done |
+| `auto_indent` | yes | yes | done |
 | `auto_save` | yes | replaced | crash recovery journals unsaved work to `<config>/recovery` instead of writing the user's file behind their back; see `Editor/recovery_enabled` |
 | `auto_save_interval` | yes | replaced | `Editor/recovery_interval` |
-| `auto_sync` | yes | | |
-| `backspace_indents` | yes | | |
-| `color_scheme` | yes | | |
+| `auto_sync` | yes | yes | done |
+| `backspace_indents` | yes | yes | done |
+| `color_scheme` | yes | yes | done |
 | `dialogs` | yes | | |
-| `draw_right_margin` | yes | | |
-| `enable_highlighting` | yes | | |
-| `encoding_save` | yes | | |
-| `encodings` | yes | | |
-| `font` | yes | | |
-| `highlight_current_line` | yes | | |
-| `highlight_matching_brackets` | yes | | |
-| `highlight_mismatching_brackets` | yes | | |
-| `indent_width` | yes | | |
+| `draw_right_margin` | yes | yes | done |
+| `enable_highlighting` | yes | yes | done |
+| `encoding_save` | yes | yes | done |
+| `encodings` | yes | yes | done |
+| `font` | yes | yes | done |
+| `highlight_current_line` | yes | yes | done |
+| `highlight_matching_brackets` | yes | yes | done |
+| `highlight_mismatching_brackets` | yes | yes | done |
+| `indent_width` | yes | yes | done |
 | `last_dir` | yes | | |
 | `line_numbers_font` | yes | | |
-| `make_backups` | yes | | |
-| `open_dialog_follows_doc` | yes | | |
+| `make_backups` | yes | yes | done |
+| `open_dialog_follows_doc` | yes | yes | done |
 | `open_new_window` | yes | | |
 | `pdf_last_dir` | yes | | |
 | `quick_search_flags` | yes | | |
-| `right_margin_offset` | yes | | |
-| `save_session` | yes | | |
+| `right_margin_offset` | yes | yes | done |
+| `save_session` | yes | yes | done |
 | `search_flags` | yes | | |
-| `show_line_numbers` | yes | | |
-| `show_spaces` | yes | | |
-| `show_tabs` | yes | | |
-| `show_trailing_spaces` | yes | | |
-| `smart_home_end` | yes | | |
-| `spaces_instead_of_tabs` | yes | | |
+| `show_line_numbers` | yes | yes | done |
+| `show_spaces` | yes | yes | done |
+| `show_tabs` | yes | yes | done |
+| `show_trailing_spaces` | yes | yes | done |
+| `smart_home_end` | yes | yes | done |
+| `spaces_instead_of_tabs` | yes | yes | done |
 | `spell_enabled` | yes | | |
 | `spell_scope` | yes | | |
-| `strip` | yes | | |
-| `tab_indents` | yes | | |
-| `tab_width` | yes | | |
+| `strip` | yes | yes | done |
+| `tab_indents` | yes | yes | done |
+| `tab_width` | yes | yes | done |
 | `use_tabs` | yes | | |
 | `window_title` | yes | | |
 | `window_title_no_doc` | yes | | |
-| `wrapping_dont_split_words` | yes | | |
-| `wrapping_enable` | yes | | |
+| `wrapping_dont_split_words` | yes | yes | done |
+| `wrapping_enable` | yes | yes | done |
 
 ## Shipped user tools (14)
 
@@ -219,8 +219,10 @@ An honest list, so nothing here is mistaken for an oversight.
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
+| Vertical guides down an open block | attempted twice through SynEdit's TSynEditMarkupFoldColors and it paints nothing, with every precondition it documents satisfied; needs drawing in led, as the fold chevrons are |
+| System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
-| 5 of medit's 10 terminal colour schemes | not started; terminal splitting is done |
+| 5 of medit's 10 terminal colour schemes | not started |
 | Wiki markup preview | dropped deliberately |
 | Text selection with the mouse inside the terminal | not started; the context menu copies the whole screen |
 | Translations | not started |
