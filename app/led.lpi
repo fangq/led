@@ -173,6 +173,16 @@
         <UnitName Value="Led.Term.View"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.ctags.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Ctags"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.symbols.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Symbols"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>
