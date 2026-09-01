@@ -11,7 +11,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Dialogs,
-  Led.Core.Grep, Led.UI.Output;
+  Led.Core.Grep, Led.UI.Output, Led.UI.Focus;
 
 type
   TLedGrepStarted = procedure of object;
@@ -171,7 +171,7 @@ begin
   if (FCboDir.Text = '') and (ADirectory <> '') then
     FCboDir.Text := ADirectory;
   Show;
-  FCboPattern.SetFocus;
+  LedTryFocus(FCboPattern);
 end;
 
 procedure TLedGrepDialog.DoFind(Sender: TObject);

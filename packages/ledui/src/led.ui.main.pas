@@ -22,7 +22,7 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
-  Led.UI.Print, Led.UI.Icons;
+  Led.UI.Print, Led.UI.Icons, Led.UI.Focus;
 
 type
   TLedMainForm = class(TForm)
@@ -367,6 +367,7 @@ type
     procedure actPrintExecute(Sender: TObject);
     procedure actTogglePreviewExecute(Sender: TObject);
   private
+    FFocusedOnce: Boolean;
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
@@ -819,7 +820,7 @@ begin
       Dir := ExtractFileDir(ActiveTab.Document.FileName);
     FTerminal.Start(Dir);
   end;
-  FTerminal.FocusActive;
+  LedTryFocus(FTerminal.Active);
 end;
 
 procedure TLedMainForm.OutputJump(const AFileName: string;
@@ -845,7 +846,7 @@ begin
     LedGotoLine(Tab.ActiveView, ALine);
   if (AColumn > 0) and (Tab.ActiveView <> nil) then
     Tab.ActiveView.CaretX := AColumn;
-  if Tab.ActiveView.CanFocus then Tab.ActiveView.SetFocus;
+  LedTryFocus(Tab.ActiveView);
 end;
 
 { --- preferences and shortcuts --------------------------------------------- }
@@ -1177,7 +1178,7 @@ procedure TLedMainForm.SymbolJump(ALine: Integer);
 begin
   if ActiveView <> nil then
     LedGotoLine(ActiveView, ALine);
-  if (ActiveView <> nil) and ActiveView.CanFocus then ActiveView.SetFocus;
+  LedTryFocus(ActiveView);
 end;
 
 procedure TLedMainForm.BrowserOpenFile(const AFileName: string);
@@ -1667,6 +1668,13 @@ end;
 
 procedure TLedMainForm.FormActivate(Sender: TObject);
 begin
+  { The editor could not be focused while the window was still being built,
+    so the first activation is where it actually happens. }
+  if not FFocusedOnce then
+  begin
+    FFocusedOnce := True;
+    LedTryFocus(ActiveView);
+  end;
   CheckExternalChanges;
 end;
 
@@ -1755,8 +1763,10 @@ begin
   Result.ViewPopupMenu := PopupEditor;
   RefreshTabCaption(Result);
   FBook.ActivePage := Sheet;
-  if Result.ActiveView.CanFocus then
-    Result.ActiveView.SetFocus;
+  { During FormCreate the window is not visible yet, so this cannot succeed
+    and must not be allowed to raise; FormShow focuses the editor once the
+    window is up. }
+  LedTryFocus(Result.ActiveView);
   UpdateStatusBar;
 end;
 
@@ -2404,7 +2414,7 @@ end;
 
 procedure TLedMainForm.actFocusDocExecute(Sender: TObject);
 begin
-  if (ActiveView <> nil) and ActiveView.CanFocus then ActiveView.SetFocus;
+  LedTryFocus(ActiveView);
 end;
 
 procedure TLedMainForm.actMoveToSplitExecute(Sender: TObject);
@@ -2439,13 +2449,17 @@ end;
 procedure TLedMainForm.actSplitTermHExecute(Sender: TObject);
 begin
   actToggleTerminalExecute(nil);
-  if FTerminal <> nil then FTerminal.Split(False);
+  if FTerminal = nil then Exit;
+  FTerminal.Split(False);
+  LedTryFocus(FTerminal.Active);
 end;
 
 procedure TLedMainForm.actSplitTermVExecute(Sender: TObject);
 begin
   actToggleTerminalExecute(nil);
-  if FTerminal <> nil then FTerminal.Split(True);
+  if FTerminal = nil then Exit;
+  FTerminal.Split(True);
+  LedTryFocus(FTerminal.Active);
 end;
 
 { ---- Help ------------------------------------------------------------- }

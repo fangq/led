@@ -42,6 +42,10 @@ procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
 implementation
 
 const
+  { The background the icons are drawn on and then masked out.  Magenta
+    because nothing in an icon is ever legitimately this colour. }
+  MaskColour = TColor($00FF00FF);
+
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
   IconNames: array[0..39] of string = (
@@ -442,18 +446,25 @@ begin
   begin
     Bmp := TBitmap.Create;
     try
-      Bmp.PixelFormat := pf32bit;
+      { 24-bit, not 32.  AddMasked compares whole pixels, and a 32-bit
+        bitmap carries an alpha byte that the canvas leaves at zero while
+        the mask colour is spelled with alpha 255, so nothing ever matches
+        and every icon keeps a solid magenta square behind it. }
+      Bmp.PixelFormat := pf24bit;
       Bmp.SetSize(AImages.Width, AImages.Height);
-      { The background has to be transparent or the icons sit in coloured
-        squares on a themed toolbar. }
-      Bmp.Canvas.Brush.Color := clFuchsia;
+      Bmp.Canvas.Brush.Color := MaskColour;
       Bmp.Canvas.Brush.Style := bsSolid;
       Bmp.Canvas.FillRect(0, 0, Bmp.Width, Bmp.Height);
-      Bmp.TransparentColor := clFuchsia;
-      Bmp.Transparent := True;
-      Bmp.Canvas.AntialiasingMode := amOn;
+
+      { Antialiasing has to stay off for the same reason.  A masked bitmap
+        is transparent only where the pixel matches exactly, so smoothed
+        edges would blend the icon into the mask colour and leave a magenta
+        fringe around every glyph.  At 16 pixels crisp is the better
+        trade anyway. }
+      Bmp.Canvas.AntialiasingMode := amOff;
+
       LedDrawIcon(Bmp, ANames[i], AColour);
-      AImages.AddMasked(Bmp, clFuchsia);
+      AImages.AddMasked(Bmp, MaskColour);
     finally
       Bmp.Free;
     end;
