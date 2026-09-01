@@ -21,7 +21,8 @@ uses
   Classes, SysUtils, Contnrs, SynEdit, SynEditTypes, SynEditMiscClasses,
   SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
-  Led.Core.Modeline, Led.Core.Prefs, Led.Syn.Languages, Led.Syn.Theme,
+  Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
+  Led.Syn.Languages, Led.Syn.Theme,
   Led.Syn.Factory, Led.UI.Edit;
 
 type
@@ -105,7 +106,8 @@ type
     destructor Destroy; override;
 
     function NewDocument: TLedDocument;
-    function OpenFile(const AFileName: string): TLedDocument;
+    function OpenFile(const AFileName: string;
+      const AForcedEncoding: string = ''): TLedDocument;
     function FindByFileName(const AFileName: string): TLedDocument;
     procedure CloseDocument(ADoc: TLedDocument);
 
@@ -122,12 +124,26 @@ procedure LedReloadUserConfig;
 function LedCurrentTheme: TLedTheme;
 procedure LedSetCurrentTheme(const AId: string);
 
+{ The filename-glob rules, loaded from preferences on first use. }
+function LedFilterSettings: TLedFilterSettings;
+
 implementation
 
 var
   FUserConfig: TLedDocConfig = nil;
   FTheme: TLedTheme = nil;
   FThemeResolved: Boolean = False;
+  FFilters: TLedFilterSettings = nil;
+
+function LedFilterSettings: TLedFilterSettings;
+begin
+  if FFilters = nil then
+  begin
+    FFilters := TLedFilterSettings.Create;
+    FFilters.LoadFromPrefs;
+  end;
+  Result := FFilters;
+end;
 
 function LedCurrentTheme: TLedTheme;
 begin
@@ -402,12 +418,18 @@ begin
   FFileName := AFileName;
   NoteDiskState;
 
+  { Every derived layer is rebuilt from scratch, in precedence order, so that
+    reloading or saving under a new name cannot leave a stale rule behind. }
   FConfig.UnsetBySource(lcsFile);
+  FConfig.UnsetBySource(lcsFilename);
   FConfig.UnsetBySource(lcsAuto);
   FConfig.SetStr(LedSetEncoding, FInfo.Encoding, lcsAuto);
   FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
   ReadModelines;
   DetectLanguage;
+  { Glob rules are applied after detection because a rule may select on the
+    language, and they outrank the modeline read just above. }
+  LedFilterSettings.ApplyTo(FConfig, FFileName, FConfig.GetStr(LedSetLang));
   ApplyLanguage;
   ApplyConfigToViews;
 
@@ -563,14 +585,15 @@ begin
   FItems.Add(Result);
 end;
 
-function TLedDocuments.OpenFile(const AFileName: string): TLedDocument;
+function TLedDocuments.OpenFile(const AFileName: string;
+  const AForcedEncoding: string): TLedDocument;
 begin
   Result := FindByFileName(AFileName);
   if Result <> nil then
     Exit;
   Result := TLedDocument.Create(nil);
   try
-    Result.LoadFromFile(AFileName);
+    Result.LoadFromFile(AFileName, AForcedEncoding);
   except
     Result.Free;
     raise;
@@ -597,6 +620,7 @@ begin
 end;
 
 finalization
+  FFilters.Free;
   FUserConfig.Free;
 
 end.
