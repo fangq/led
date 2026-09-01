@@ -175,6 +175,8 @@
    "name": "def.number"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "v"
  ]

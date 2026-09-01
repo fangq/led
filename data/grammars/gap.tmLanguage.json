@@ -81,6 +81,8 @@
    "name": "def.decimal"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "g",
   "gd",

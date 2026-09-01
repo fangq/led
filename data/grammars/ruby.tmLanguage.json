@@ -15619,6 +15619,8 @@
    ]
   }
  ],
+ "foldingStartMarker": "^\\s*(?:def|class|module|if|unless|case|while|until|begin|do)\\b",
+ "foldingStopMarker": "^\\s*end\\b",
  "fileTypes": [
   "rb",
   "rake",

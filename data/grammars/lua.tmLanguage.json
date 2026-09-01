@@ -153,6 +153,8 @@
    "name": "def.boolean"
   }
  ],
+ "foldingStartMarker": "\\b(?:function|then|do)\\s*$",
+ "foldingStopMarker": "^\\s*end\\b",
  "fileTypes": [
   "lua"
  ]

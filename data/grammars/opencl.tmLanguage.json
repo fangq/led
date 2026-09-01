@@ -422,6 +422,8 @@
    "name": "def.special-constant"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "cl"
  ]

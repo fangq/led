@@ -578,6 +578,8 @@
    "name": "def.identifier"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "kt"
  ]
