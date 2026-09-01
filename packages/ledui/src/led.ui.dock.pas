@@ -24,8 +24,9 @@ unit Led.UI.Dock;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, ComCtrls, Buttons, Forms, Graphics,
-  ImgList, AnchorDocking, AnchorDockPanel, AnchorDockStorage, XMLPropStorage;
+  Classes, SysUtils, Math, Controls, ExtCtrls, ComCtrls, Buttons, Forms,
+  Graphics, ImgList,
+  AnchorDocking, AnchorDockPanel, AnchorDockStorage, XMLPropStorage;
 
 type
   TLedDockEdge = (ledLeft, ledRight, ledTop, ledBottom);
@@ -48,6 +49,15 @@ type
     { Which icon the edge rail draws for this pane.  Defaults to the pane id,
       which is right for the panes whose id happens to name an icon. }
     property IconName: string read FIconName write FIconName;
+  end;
+
+  { The pane header.  Subclassed only to shrink the caption: AnchorDocking
+    draws it with the header control's own Canvas.Font, and HeaderClass is the
+    hook that reaches every header without chasing sites as they are created
+    and destroyed. }
+  TLedDockHeader = class(TAnchorDockHeader)
+  public
+    constructor Create(TheOwner: TComponent); override;
   end;
 
   TLedDockHost = class(TPanel)
@@ -151,6 +161,12 @@ uses
   Led.UI.Icons;
 
 const
+  LedHeaderStyleName = 'LedPlain';
+
+var
+  GLedHeaderStyleRegistered: Boolean = False;
+
+const
   { Where each edge's panes are dropped the first time.  After that the saved
     layout decides, and after that the user does. }
   EdgeAlign: array[TLedDockEdge] of TAlign =
@@ -174,7 +190,10 @@ begin
     the LCL only accepts an identifier, so the id is sanitised rather than
     used raw. }
   Name := 'Pane_' + StringReplace(AId, '-', '_', [rfReplaceAll]);
-  Caption := ACaption;
+  { All caps, small: a pane title should name the thing and then get out of
+    the way.  AnchorDocking draws the caption verbatim, so the case is set
+    here rather than at paint time. }
+  Caption := UpperCase(ACaption);
   BorderStyle := bsSizeable;
   Width := EdgeDefault[AEdge];
   Height := EdgeDefault[AEdge];
@@ -184,6 +203,68 @@ begin
     AControl.Parent := Self;
     AControl.Align := alClient;
   end;
+end;
+
+{ TLedDockHeader }
+
+constructor TLedDockHeader.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  { A pane title is a label, not a heading.  Two points down from the UI font
+    and never bold; AnchorDocking sets Bold itself when the pane has focus,
+    which is left alone because it is the only focus cue a flat header has. }
+  Font.Size := Max(6, Screen.SystemFont.Size - 2);
+end;
+
+{ A header that is a name on a slightly lighter band, and nothing else.
+
+  Registered with NeedDrawHeaderAfterText = False, which matters: with False
+  the style owns the whole header rectangle and is drawn *before* the caption,
+  so it can lay down a background.  With True, AnchorDocking fills with
+  clForm itself and calls the style afterwards -- over the text -- which is
+  why the built-in grip styles can only add marks, never a colour.
+
+  The previous 'Line' style put a hairline down the middle of the header,
+  which at a glance was hard to tell from the fold guides in the editor
+  beside it. }
+procedure DrawLedPlainHeader(Canvas: TCanvas; Style: TADHeaderStyleDesc;
+  r: TRect; Horizontal: boolean; Focused: boolean);
+var
+  Base: TColor;
+
+  { Toward white on a dark form, toward black on a light one, so "slightly
+    brighter than its surroundings" holds for either. }
+  function Lift(AColour: TColor; APercent: Integer): TColor;
+  var
+    R, G, B, Luma: Integer;
+  begin
+    AColour := ColorToRGB(AColour);
+    R := AColour and $FF;
+    G := (AColour shr 8) and $FF;
+    B := (AColour shr 16) and $FF;
+    Luma := (R * 299 + G * 587 + B * 114) div 1000;
+    if Luma < 128 then
+    begin
+      R := R + ((255 - R) * APercent) div 100;
+      G := G + ((255 - G) * APercent) div 100;
+      B := B + ((255 - B) * APercent) div 100;
+    end
+    else
+    begin
+      R := R - (R * APercent) div 100;
+      G := G - (G * APercent) div 100;
+      B := B - (B * APercent) div 100;
+    end;
+    Result := TColor(R or (G shl 8) or (B shl 16));
+  end;
+
+begin
+  Base := Lift(clForm, 12);
+  if Focused then
+    Base := Lift(Base, 8);
+  Canvas.Brush.Color := Base;
+  Canvas.Brush.Style := bsSolid;
+  Canvas.FillRect(r);
 end;
 
 { TLedDockHost }
@@ -236,6 +317,16 @@ begin
 
   DockMaster.MakeDockPanel(FSite, admrpChild);
   DockMaster.OnCreateControl := @MasterCreateControl;
+
+  { Registered once, before the policy asks for it by name.  Re-registering
+    the same name is harmless, but there is only one DockMaster. }
+  if not GLedHeaderStyleRegistered then
+  begin
+    DockMaster.RegisterHeaderStyle(LedHeaderStyleName, @DrawLedPlainHeader,
+      False, False);
+    GLedHeaderStyleRegistered := True;
+  end;
+  DockMaster.HeaderClass := TLedDockHeader;
 
   FDraggingWanted := True;
   ApplyDockPolicy;
@@ -708,7 +799,7 @@ begin
     stroke instead of six edges. }
   DockMaster.HeaderFlatten := True;
   DockMaster.HeaderFilled := False;
-  DockMaster.HeaderStyle := 'Line';
+  DockMaster.HeaderStyle := LedHeaderStyleName;
 
   { With flat headers nothing else says which pane has focus, a cue the
     bevels used to carry by accident. }
