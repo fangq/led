@@ -31,6 +31,11 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="src/led.core.tests.grep.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Tests.Grep"/>
+      </Unit>
+      <Unit>
         <Filename Value="src/led.core.tests.tools.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Tests.Tools"/>

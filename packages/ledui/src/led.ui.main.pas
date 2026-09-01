@@ -19,7 +19,7 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
-  Led.UI.ToolRunner, Led.Core.Tools;
+  Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep;
 
 type
   TLedMainForm = class(TForm)
@@ -52,6 +52,7 @@ type
     actFindNext: TAction;
     actFindPrev: TAction;
     actQuickFind: TAction;
+    actFindInFiles: TAction;
     actGotoLine: TAction;
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
@@ -111,6 +112,7 @@ type
     mi_FindNext: TMenuItem;
     mi_FindPrev: TMenuItem;
     mi_QuickFind: TMenuItem;
+    mi_FindInFiles: TMenuItem;
     miSep8: TMenuItem;
     mi_GotoLine: TMenuItem;
     miSep9: TMenuItem;
@@ -207,6 +209,7 @@ type
     procedure actStopToolExecute(Sender: TObject);
     procedure actToggleOutputExecute(Sender: TObject);
     procedure miToolListClick(Sender: TObject);
+    procedure actFindInFilesExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -221,7 +224,9 @@ type
     FTools: TLedTools;
     FRunner: TLedToolRunner;
     FOutput: TLedOutputPane;
+    FGrepDialog: TLedGrepDialog;
     FCheckingDisk: Boolean;
+    procedure GrepStarted;
     procedure PopulateToolMenu;
     procedure ToolItemClick(Sender: TObject);
     procedure OutputJump(const AFileName: string; ALine, AColumn: Integer);
@@ -857,6 +862,36 @@ procedure TLedMainForm.actUncommentExecute(Sender: TObject);
 begin
   if ActiveTab <> nil then
     LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
+end;
+
+procedure TLedMainForm.GrepStarted;
+begin
+  FDock.ShowPane('output');
+  FDock.EdgeVisible[ledBottom] := True;
+end;
+
+procedure TLedMainForm.actFindInFilesExecute(Sender: TObject);
+var
+  Dir, Seed: string;
+begin
+  if Silent then Exit;
+  if FGrepDialog = nil then
+  begin
+    FGrepDialog := TLedGrepDialog.CreateFor(Self, FOutput);
+    FGrepDialog.OnStarted := @GrepStarted;
+  end;
+  { Default to the folder of the document in front of you, and to whatever is
+    selected -- both are almost always what was meant. }
+  Dir := GetCurrentDir;
+  Seed := '';
+  if ActiveTab <> nil then
+  begin
+    if not ActiveTab.Document.IsUntitled then
+      Dir := ExtractFileDir(ActiveTab.Document.FileName);
+    if ActiveView.SelAvail and (Pos(#10, ActiveView.SelText) = 0) then
+      Seed := ActiveView.SelText;
+  end;
+  FGrepDialog.ShowFor(Dir, Seed);
 end;
 
 procedure TLedMainForm.actGotoLineExecute(Sender: TObject);
@@ -1505,6 +1540,7 @@ begin
   actToggleOutput.Checked := FDock.EdgeVisible[ledBottom];
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
+  actFindInFiles.Enabled := True;
   actReplace.Enabled := HasDoc;
   actFindNext.Enabled := HasDoc;
   actFindPrev.Enabled := HasDoc;

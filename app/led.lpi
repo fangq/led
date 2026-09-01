@@ -143,6 +143,16 @@
         <UnitName Value="Led.UI.ToolRunner"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.grep.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Grep"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.grep.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Grep"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>
