@@ -389,6 +389,18 @@ object LedMainForm: TLedMainForm
       Caption = '&Reset Pane Layout'
       OnExecute = actResetLayoutExecute
     end
+    object actSplitNotebook: TAction
+      Caption = 'Split &Notebook'
+      OnExecute = actSplitNotebookExecute
+    end
+    object actFocusOtherNotebook: TAction
+      Caption = 'Focus &Other Split Notebook'
+      OnExecute = actFocusOtherNotebookExecute
+    end
+    object actMoveToNotebook: TAction
+      Caption = '&Move to Split Notebook'
+      OnExecute = actMoveToNotebookExecute
+    end
     object actStripTrailing: TAction
       Caption = 'Strip &Trailing Space'
       OnExecute = actStripTrailingExecute
@@ -671,6 +683,18 @@ object LedMainForm: TLedMainForm
       object miHeaderStyle: TMenuItem
         Caption = 'Pane &Header Style'
         OnClick = miHeaderStyleClick
+      end
+      object miSepNotebook: TMenuItem
+        Caption = '-'
+      end
+      object mi_SplitNotebook: TMenuItem
+        Action = actSplitNotebook
+      end
+      object mi_FocusOtherNotebook: TMenuItem
+        Action = actFocusOtherNotebook
+      end
+      object mi_MoveToNotebook: TMenuItem
+        Action = actMoveToNotebook
       end
       object miSep17: TMenuItem
         Caption = '-'
