@@ -216,6 +216,24 @@ begin
   DockMaster.HideHeaderCaptionFloatingControl := False;
   DockMaster.ShowHeaderCaption := True;
 
+  { The pane headers, left to themselves, are three bevels deep: the header
+    paint draws Frame3d(r,1,bvRaised) around everything unless HeaderFlatten
+    is set, and the default 'Frame3D' style then adds Frame3d(r,2,bvLowered)
+    and Frame3d(r,4,bvRaised) on top of that.  It is a Windows-95 grabber.
+
+    Flattened, with the 'Line' style, the affordance is a single hairline
+    down the middle of the header -- the same idea, one stroke instead of
+    six edges.  AnchorDocking draws it rotated on the left and right edges
+    without being asked. }
+  DockMaster.HeaderFlatten := True;
+  DockMaster.HeaderFilled := False;
+  DockMaster.HeaderStyle := 'Line';
+
+  { With flat headers there is otherwise nothing at all to say which pane has
+    focus, so the caption of the focused one is highlighted.  This is the cue
+    the bevels used to carry by accident. }
+  DockMaster.HeaderHighlightFocused := True;
+
   DockMaster.MakeDockable(FCenterForm, True, True, True);
   DockMaster.ManualDock(DockMaster.GetAnchorSite(FCenterForm), FSite, alClient);
   FReady := True;
