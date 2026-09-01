@@ -234,7 +234,18 @@ begin
     the bevels used to carry by accident. }
   DockMaster.HeaderHighlightFocused := True;
 
-  DockMaster.MakeDockable(FCenterForm, True, True, True);
+  { No header on the editor, and that is the fix for a state the user could
+    not get out of: dragging the editor's header tore the editor out into a
+    window of its own, and once out it could not be dropped back -- the site
+    it came from is a TAnchorDockPanel, and with its only child gone there is
+    nothing left on screen to aim at.  The editor area is not a pane the user
+    can usefully float anyway; medit's was not detachable either.
+
+    The fourth argument is AddDockHeader.  Without a header there is nothing
+    to grab and nothing to close, which is what the comment above FCenterForm
+    already claimed and this now actually implements.  Panes still dock
+    around it, because they dock to the site rather than to the header. }
+  DockMaster.MakeDockable(FCenterForm, True, True, False);
   DockMaster.ManualDock(DockMaster.GetAnchorSite(FCenterForm), FSite, alClient);
   FReady := True;
 end;
@@ -288,6 +299,11 @@ begin
   for i := 0 to FPanes.Count - 1 do
     if SameText(TLedPaneForm(FPanes[i]).PaneId, AId) then
       Exit(TLedPaneForm(FPanes[i]));
+  { The centre is a pane too, and deliberately not in FPanes -- it must not
+    appear on a rail or in the pane menu.  It still has to be findable, or
+    RedockPane cannot rescue an editor that an older layout left floating. }
+  if (FCenterForm <> nil) and SameText(FCenterForm.PaneId, AId) then
+    Exit(FCenterForm);
   Result := nil;
 end;
 
@@ -655,6 +671,15 @@ begin
       start over: fall back to the defaults. }
     Result := False;
   end;
+
+  { A layout saved before the editor lost its header can have the editor
+    floating, and there is now no header to drag it back by.  Put it back
+    rather than leaving the user with an empty window and their text in a
+    stray one. }
+  if PaneFloating('editor') then
+    RedockPane('editor');
+
+  RebuildRails;
 end;
 
 end.

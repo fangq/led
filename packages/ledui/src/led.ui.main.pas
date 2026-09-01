@@ -614,6 +614,30 @@ begin
   FDock.AddPane(ledRight, 'symbols', 'Symbols', FSymbols, 'symbols');
   FDock.EdgeVisible[ledRight] := False;
   FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'run');
+
+  { The preview and the terminal used to be registered the first time their
+    action ran, which meant a saved layout naming them was restored before
+    they existed:
+
+      TAnchorDockMaster.DoCreateControl WARNING: control not found: "Pane_terminal"
+      CreateControlsForNode Pane_terminal failed to create
+
+    and the pane the user had left open came back missing.  Registering a
+    pane is cheap -- it creates the control, not the work behind it: the
+    terminal starts no pseudo-terminal until it is first shown, and the
+    preview renders nothing until asked -- so they are registered here with
+    the rest, and LoadLayout finds everything it names. }
+  FPreview := TLedPreviewPane.Create(Self);
+  FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
+
+  { Except where there is no pseudo-terminal to be had.  Registering it there
+    would put a button on the rail for a pane that can only apologise. }
+  if LedPtyAvailable then
+  begin
+    FTerminal := TLedTerminalPane.Create(Self);
+    FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal, 'terminal');
+  end;
+
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
@@ -777,11 +801,8 @@ end;
 
 procedure TLedMainForm.actTogglePreviewExecute(Sender: TObject);
 begin
-  if FPreview = nil then
-  begin
-    FPreview := TLedPreviewPane.Create(Self);
-    FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
-  end;
+  { Registered in FormCreate, before the layout was restored. }
+  if FPreview = nil then Exit;
   FDock.ShowPane('preview');
   FDock.EdgeVisible[ledRight] := True;
   RefreshPreview;
@@ -829,11 +850,9 @@ begin
     Exit;
   end;
 
-  if FTerminal = nil then
-  begin
-    FTerminal := TLedTerminalPane.Create(Self);
-    FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal, 'terminal');
-  end;
+  { Registered in FormCreate when a pseudo-terminal is available, which the
+    check above has already established. }
+  if FTerminal = nil then Exit;
   FDock.ShowPane('terminal');
   FDock.EdgeVisible[ledBottom] := True;
 
