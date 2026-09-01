@@ -13,11 +13,11 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, SynEdit, SynEditTypes,
-  LConvEncoding,
+  SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
-  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
+  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands;
 
 type
   TLedMainForm = class(TForm)
@@ -26,38 +26,90 @@ type
     actOpen: TAction;
     actSave: TAction;
     actSaveAs: TAction;
+    actReload: TAction;
     actCloseTab: TAction;
     actQuit: TAction;
+    actUndo: TAction;
+    actRedo: TAction;
+    actCut: TAction;
+    actCopy: TAction;
+    actPaste: TAction;
+    actSelectAll: TAction;
+    actIndent: TAction;
+    actUnindent: TAction;
+    actIndentSpace: TAction;
+    actUnindentSpace: TAction;
+    actComment: TAction;
+    actUncomment: TAction;
+    actGotoLine: TAction;
+    actToggleBracket: TAction;
+    actSelectToBracket: TAction;
+    actToggleBookmark: TAction;
+    actNextBookmark: TAction;
+    actPrevBookmark: TAction;
     actSplitSideBySide: TAction;
     actSplitStacked: TAction;
     actUnsplit: TAction;
     actCycleViews: TAction;
+    actWrapText: TAction;
+    actLineNumbers: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
-    actReload: TAction;
     MainMenu1: TMainMenu;
     mnuFile: TMenuItem;
-    miNew: TMenuItem;
-    miOpen: TMenuItem;
-    miSep1: TMenuItem;
-    miSave: TMenuItem;
-    miSaveAs: TMenuItem;
+    mi_New: TMenuItem;
+    mi_Open: TMenuItem;
     miOpenRecent: TMenuItem;
-    miReload: TMenuItem;
+    mi_Reload: TMenuItem;
+    miSep1: TMenuItem;
+    mi_Save: TMenuItem;
+    mi_SaveAs: TMenuItem;
     miSep2: TMenuItem;
-    miCloseTab: TMenuItem;
-    miQuit: TMenuItem;
+    mi_CloseTab: TMenuItem;
+    mi_Quit: TMenuItem;
+    mnuEdit: TMenuItem;
+    mi_Undo: TMenuItem;
+    mi_Redo: TMenuItem;
+    miSep3: TMenuItem;
+    mi_Cut: TMenuItem;
+    mi_Copy: TMenuItem;
+    mi_Paste: TMenuItem;
+    miSep4: TMenuItem;
+    mi_SelectAll: TMenuItem;
+    miSep5: TMenuItem;
+    mi_Indent: TMenuItem;
+    mi_Unindent: TMenuItem;
+    mi_IndentSpace: TMenuItem;
+    mi_UnindentSpace: TMenuItem;
+    miSep6: TMenuItem;
+    mi_Comment: TMenuItem;
+    mi_Uncomment: TMenuItem;
+    mnuSearch: TMenuItem;
+    mi_GotoLine: TMenuItem;
+    miSep7: TMenuItem;
+    mi_ToggleBracket: TMenuItem;
+    mi_SelectToBracket: TMenuItem;
     mnuDocument: TMenuItem;
     miLanguage: TMenuItem;
-    miTheme: TMenuItem;
+    miEncoding: TMenuItem;
+    miLineEnd: TMenuItem;
+    miSep8: TMenuItem;
+    mi_ToggleBookmark: TMenuItem;
+    mi_NextBookmark: TMenuItem;
+    mi_PrevBookmark: TMenuItem;
     mnuView: TMenuItem;
-    miSplitSideBySide: TMenuItem;
-    miSplitStacked: TMenuItem;
-    miUnsplit: TMenuItem;
-    miCycleViews: TMenuItem;
-    miSep3: TMenuItem;
-    miToggleLeftPane: TMenuItem;
-    miToggleBottomPane: TMenuItem;
+    mi_WrapText: TMenuItem;
+    mi_LineNumbers: TMenuItem;
+    miSep9: TMenuItem;
+    mi_SplitSideBySide: TMenuItem;
+    mi_SplitStacked: TMenuItem;
+    mi_Unsplit: TMenuItem;
+    mi_CycleViews: TMenuItem;
+    miSep10: TMenuItem;
+    miTheme: TMenuItem;
+    miSep11: TMenuItem;
+    mi_ToggleLeftPane: TMenuItem;
+    mi_ToggleBottomPane: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
@@ -82,6 +134,28 @@ type
     procedure miOpenRecentClick(Sender: TObject);
     procedure miLanguageClick(Sender: TObject);
     procedure miThemeClick(Sender: TObject);
+    procedure actCommentExecute(Sender: TObject);
+    procedure actCopyExecute(Sender: TObject);
+    procedure actCutExecute(Sender: TObject);
+    procedure actGotoLineExecute(Sender: TObject);
+    procedure actIndentExecute(Sender: TObject);
+    procedure actIndentSpaceExecute(Sender: TObject);
+    procedure actLineNumbersExecute(Sender: TObject);
+    procedure actNextBookmarkExecute(Sender: TObject);
+    procedure actPasteExecute(Sender: TObject);
+    procedure actPrevBookmarkExecute(Sender: TObject);
+    procedure actRedoExecute(Sender: TObject);
+    procedure actSelectAllExecute(Sender: TObject);
+    procedure actSelectToBracketExecute(Sender: TObject);
+    procedure actToggleBookmarkExecute(Sender: TObject);
+    procedure actToggleBracketExecute(Sender: TObject);
+    procedure actUncommentExecute(Sender: TObject);
+    procedure actUndoExecute(Sender: TObject);
+    procedure actUnindentExecute(Sender: TObject);
+    procedure actUnindentSpaceExecute(Sender: TObject);
+    procedure actWrapTextExecute(Sender: TObject);
+    procedure miEncodingClick(Sender: TObject);
+    procedure miLineEndClick(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -94,9 +168,17 @@ type
     procedure LanguageItemClick(Sender: TObject);
     procedure PopulateThemeMenu;
     procedure ThemeItemClick(Sender: TObject);
+    procedure PopulateEncodingMenu;
+    procedure EncodingItemClick(Sender: TObject);
+    procedure PopulateLineEndMenu;
+    procedure LineEndItemClick(Sender: TObject);
+    procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
+      WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure SaveSession;
     function RestoreSession: Boolean;
     procedure CheckExternalChanges;
+    function CurrentView: TLedEdit;
+    procedure GotoAdjacentBookmark(AForward: Boolean);
     procedure BookChange(Sender: TObject);
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
@@ -261,6 +343,285 @@ begin
   finally
     L.Free;
   end;
+end;
+
+
+{ --- editing commands ------------------------------------------------------ }
+
+{ Every command is a no-op without a view, so one guard serves them all. }
+function TLedMainForm.CurrentView: TLedEdit;
+begin
+  Result := ActiveView;
+end;
+
+procedure TLedMainForm.actUndoExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.Undo;
+end;
+
+procedure TLedMainForm.actRedoExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.Redo;
+end;
+
+procedure TLedMainForm.actCutExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.CutToClipboard;
+end;
+
+procedure TLedMainForm.actCopyExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.CopyToClipboard;
+end;
+
+procedure TLedMainForm.actPasteExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.PasteFromClipboard;
+end;
+
+procedure TLedMainForm.actSelectAllExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.SelectAll;
+end;
+
+procedure TLedMainForm.actIndentExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.CommandProcessor(ecBlockIndent, #0, nil);
+end;
+
+procedure TLedMainForm.actUnindentExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then CurrentView.CommandProcessor(ecBlockUnindent, #0, nil);
+end;
+
+procedure TLedMainForm.actIndentSpaceExecute(Sender: TObject);
+begin
+  LedShiftLinesBySpace(CurrentView, True);
+end;
+
+procedure TLedMainForm.actUnindentSpaceExecute(Sender: TObject);
+begin
+  LedShiftLinesBySpace(CurrentView, False);
+end;
+
+procedure TLedMainForm.actCommentExecute(Sender: TObject);
+begin
+  if ActiveTab <> nil then
+    LedCommentLines(CurrentView, ActiveTab.Document.LangInfo);
+end;
+
+procedure TLedMainForm.actUncommentExecute(Sender: TObject);
+begin
+  if ActiveTab <> nil then
+    LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
+end;
+
+procedure TLedMainForm.actGotoLineExecute(Sender: TObject);
+var
+  S: string;
+  N: Integer;
+begin
+  if CurrentView = nil then Exit;
+  S := IntToStr(CurrentView.CaretY);
+  if Silent then Exit;
+  if not InputQuery('Go to Line',
+    Format('Line number (1 - %d):', [CurrentView.Lines.Count]), S) then Exit;
+  if TryStrToInt(Trim(S), N) then
+    LedGotoLine(CurrentView, N)
+  else
+    ReportError(Format('"%s" is not a line number.', [S]));
+end;
+
+procedure TLedMainForm.actToggleBracketExecute(Sender: TObject);
+begin
+  LedToggleMatchingBracket(CurrentView);
+end;
+
+procedure TLedMainForm.actSelectToBracketExecute(Sender: TObject);
+begin
+  LedSelectToMatchingBracket(CurrentView);
+end;
+
+{ --- bookmarks ------------------------------------------------------------- }
+
+procedure TLedMainForm.actToggleBookmarkExecute(Sender: TObject);
+var
+  V: TLedEdit;
+  i, X, Y: Integer;
+begin
+  V := CurrentView;
+  if V = nil then Exit;
+  { Numbered slots 0-9, as medit had.  Toggling means: if this line already
+    carries one, clear it; otherwise take the first free slot. }
+  for i := 0 to 9 do
+    if V.GetBookMark(i, X, Y) and (Y = V.CaretY) then
+    begin
+      V.ClearBookMark(i);
+      Exit;
+    end;
+  for i := 0 to 9 do
+    if not V.GetBookMark(i, X, Y) then
+    begin
+      V.SetBookMark(i, 1, V.CaretY);
+      Exit;
+    end;
+  ReportError('All ten bookmark slots are in use.');
+end;
+
+{ Walks the bookmarks in line order rather than slot order, which is what
+  "next" means to the reader. }
+procedure TLedMainForm.GotoAdjacentBookmark(AForward: Boolean);
+var
+  V: TLedEdit;
+  i, Best, X, Line: Integer;
+begin
+  V := CurrentView;
+  if V = nil then Exit;
+  Best := -1;
+  for i := 0 to 9 do
+  begin
+    if not V.GetBookMark(i, X, Line) then Continue;
+    if AForward then
+    begin
+      if (Line > V.CaretY) and ((Best < 0) or (Line < Best)) then Best := Line;
+    end
+    else
+      if (Line < V.CaretY) and ((Best < 0) or (Line > Best)) then Best := Line;
+  end;
+  if Best > 0 then
+    LedGotoLine(V, Best);
+end;
+
+procedure TLedMainForm.actNextBookmarkExecute(Sender: TObject);
+begin
+  GotoAdjacentBookmark(True);
+end;
+
+procedure TLedMainForm.actPrevBookmarkExecute(Sender: TObject);
+begin
+  GotoAdjacentBookmark(False);
+end;
+
+{ --- view toggles ---------------------------------------------------------- }
+
+procedure TLedMainForm.actWrapTextExecute(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  with ActiveTab.Document.Config do
+    if LowerCase(GetStr(LedSetWrapMode)) = 'none' then
+      SetStr(LedSetWrapMode, 'word', lcsAuto)
+    else
+      SetStr(LedSetWrapMode, 'none', lcsAuto);
+end;
+
+procedure TLedMainForm.actLineNumbersExecute(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  with ActiveTab.Document.Config do
+    SetBool(LedSetShowLineNumbers, not GetBool(LedSetShowLineNumbers), lcsAuto);
+end;
+
+{ Ctrl+wheel zooms the whole window's views.  Temporary: never written to
+  preferences, matching medit. }
+procedure TLedMainForm.ViewMouseWheel(Sender: TObject; Shift: TShiftState;
+  WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+var
+  i, j, k: Integer;
+  Tab: TLedTab;
+begin
+  if not (ssCtrl in Shift) then Exit;
+  Handled := True;
+  for i := 0 to FBook.PageCount - 1 do
+    for j := 0 to FBook.Pages[i].ControlCount - 1 do
+      if FBook.Pages[i].Controls[j] is TLedTab then
+      begin
+        Tab := TLedTab(FBook.Pages[i].Controls[j]);
+        for k := 0 to Tab.ViewCount - 1 do
+          if WheelDelta > 0 then
+            LedZoomFont(Tab.Views[k], 1)
+          else
+            LedZoomFont(Tab.Views[k], -1);
+      end;
+end;
+
+{ --- encoding and line-ending menus ---------------------------------------- }
+
+procedure TLedMainForm.miEncodingClick(Sender: TObject);
+begin
+  PopulateEncodingMenu;
+end;
+
+procedure TLedMainForm.PopulateEncodingMenu;
+var
+  Ids: TStringList;
+  i: Integer;
+  Item: TMenuItem;
+  Current: string;
+begin
+  miEncoding.Clear;
+  if ActiveTab = nil then Exit;
+  Current := ActiveTab.Document.Info.Encoding;
+
+  Ids := TStringList.Create;
+  try
+    GetSupportedEncodings(Ids);
+    for i := 0 to Ids.Count - 1 do
+    begin
+      Item := TMenuItem.Create(miEncoding);
+      Item.Caption := Ids[i];
+      Item.Hint := Ids[i];
+      Item.RadioItem := True;
+      Item.Checked := SameText(LedNormaliseEncoding(Ids[i]), Current);
+      Item.OnClick := @EncodingItemClick;
+      miEncoding.Add(Item);
+    end;
+  finally
+    Ids.Free;
+  end;
+end;
+
+procedure TLedMainForm.EncodingItemClick(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  { Changes what the next save writes; it does not re-read the file.  Use
+    Reload for that. }
+  ActiveTab.Document.SetEncoding(TMenuItem(Sender).Hint);
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.miLineEndClick(Sender: TObject);
+begin
+  PopulateLineEndMenu;
+end;
+
+procedure TLedMainForm.PopulateLineEndMenu;
+const
+  Choices: array[0..2] of TLedLineEnd = (leUnix, leWindows, leMac);
+  Labels: array[0..2] of string =
+    ('Unix (LF)', 'Windows (CRLF)', 'Classic Mac (CR)');
+var
+  i: Integer;
+  Item: TMenuItem;
+begin
+  miLineEnd.Clear;
+  if ActiveTab = nil then Exit;
+  for i := 0 to High(Choices) do
+  begin
+    Item := TMenuItem.Create(miLineEnd);
+    Item.Caption := Labels[i];
+    Item.Tag := Ord(Choices[i]);
+    Item.RadioItem := True;
+    Item.Checked := ActiveTab.Document.Info.LineEnd = Choices[i];
+    Item.OnClick := @LineEndItemClick;
+    miLineEnd.Add(Item);
+  end;
+end;
+
+procedure TLedMainForm.LineEndItemClick(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  ActiveTab.Document.SetLineEnd(TLedLineEnd(TMenuItem(Sender).Tag));
+  UpdateStatusBar;
 end;
 
 { --- language and theme menus --------------------------------------------- }
@@ -563,6 +924,7 @@ begin
   Result.Sheet := Sheet;
   ADoc.OnChanged := @DocChanged;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
+  Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   RefreshTabCaption(Result);
   FBook.ActivePage := Sheet;
   if Result.ActiveView.CanFocus then
@@ -663,6 +1025,32 @@ begin
   actUnsplit.Enabled := HasDoc and (Tab.ViewCount > 1);
   actCycleViews.Enabled := HasDoc and (Tab.ViewCount > 1);
   actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
+  actUndo.Enabled := HasDoc and Tab.ActiveView.CanUndo;
+  actRedo.Enabled := HasDoc and Tab.ActiveView.CanRedo;
+  actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;
+  actCopy.Enabled := actCut.Enabled;
+  actPaste.Enabled := HasDoc and Tab.ActiveView.CanPaste;
+  actSelectAll.Enabled := HasDoc;
+  actIndent.Enabled := HasDoc;
+  actUnindent.Enabled := HasDoc;
+  actIndentSpace.Enabled := HasDoc;
+  actUnindentSpace.Enabled := HasDoc;
+  { Greyed out rather than silently doing nothing when the language has no
+    comment syntax. }
+  actComment.Enabled := HasDoc and LedCanComment(Tab.Document.LangInfo);
+  actUncomment.Enabled := actComment.Enabled;
+  actGotoLine.Enabled := HasDoc;
+  actToggleBracket.Enabled := HasDoc;
+  actSelectToBracket.Enabled := HasDoc;
+  actToggleBookmark.Enabled := HasDoc;
+  actNextBookmark.Enabled := HasDoc;
+  actPrevBookmark.Enabled := HasDoc;
+  actWrapText.Enabled := HasDoc;
+  actWrapText.Checked := HasDoc and
+    (LowerCase(Tab.Document.Config.GetStr(LedSetWrapMode)) <> 'none');
+  actLineNumbers.Enabled := HasDoc;
+  actLineNumbers.Checked := HasDoc and
+    Tab.Document.Config.GetBool(LedSetShowLineNumbers);
   actToggleLeftPane.Checked := FDock.EdgeVisible[ledLeft];
   actToggleBottomPane.Checked := FDock.EdgeVisible[ledBottom];
 

@@ -15,12 +15,12 @@ checked off by the presence of a menu entry.
 | Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | | phase-2 |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
-| Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | | phase-2 |
+| Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
 | Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | | phase-2 |
 | Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | | phase-2 |
 | Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-2 |
-| Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | | phase-2 |
-| Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | | phase-2 |
+| Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
+| Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | | phase-5 |
 | Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
@@ -39,14 +39,14 @@ checked off by the presence of a menu entry.
 | `CaseSensitiveSort` | yes | | |
 | `Close` | yes | yes | done |
 | `CloseAll` | yes | | |
-| `Comment` | yes | | |
+| `Comment` | yes | yes | done |
 | `ConfigureShortcuts` | yes | | |
-| `Copy` | yes | | |
-| `Cut` | yes | | |
+| `Copy` | yes | yes | done |
+| `Cut` | yes | yes | done |
 | `CycleSplitViews` | yes | yes | done |
 | `Delete` | yes | | |
 | `EditBookmarks` | yes | | |
-| `EncodingMenu` | yes | | |
+| `EncodingMenu` | yes | yes | done |
 | `Find` | yes | | |
 | `FindCurrent` | yes | | |
 | `FindCurrentBack` | yes | | |
@@ -56,30 +56,30 @@ checked off by the presence of a menu entry.
 | `GoBack` | yes | | |
 | `GoForward` | yes | | |
 | `GoHome` | yes | | |
-| `GoToLine` | yes | | |
+| `GoToLine` | yes | yes | done |
 | `GoUp` | yes | | |
-| `GotoMatchingBracket` | yes | | |
+| `GotoMatchingBracket` | yes | yes | done |
 | `Help` | yes | | |
-| `Indent` | yes | | |
+| `Indent` | yes | yes | done |
 | `InputMethods` | yes | | |
 | `LanguageMenu` | yes | yes | done |
-| `LineEndMenu` | yes | | |
+| `LineEndMenu` | yes | yes | done |
 | `LineNumbers` | yes | yes | done |
 | `MoveToSplitView` | yes | | |
 | `NewDoc` | yes | yes | done |
 | `NewFolder` | yes | | |
 | `NewWindow` | yes | | |
-| `NextBookmark` | yes | | |
+| `NextBookmark` | yes | yes | done |
 | `NextPlaceholder` | yes | | |
 | `NextTab` | yes | | |
 | `NoDocuments` | yes | | |
 | `Open` | yes | yes | done |
 | `OpenRecent` | yes | yes | done |
 | `PageSetup` | yes | | |
-| `Paste` | yes | | |
+| `Paste` | yes | yes | done |
 | `Preferences` | yes | | |
 | `PrevPlaceholder` | yes | | |
-| `PreviousBookmark` | yes | | |
+| `PreviousBookmark` | yes | yes | done |
 | `PreviousTab` | yes | | |
 | `Print` | yes | | |
 | `PrintOptions` | yes | | |
@@ -88,15 +88,15 @@ checked off by the presence of a menu entry.
 | `Properties` | yes | | |
 | `QuickSearch` | yes | | |
 | `Quit` | yes | yes | done |
-| `Redo` | yes | | |
+| `Redo` | yes | yes | done |
 | `Reload` | yes | yes | done |
 | `ReopenWithEncoding` | yes | partly | prompted automatically on a failed decode; no explicit menu item yet |
 | `Replace` | yes | | |
 | `ReportBug` | yes | | |
 | `Save` | yes | yes | done |
 | `SaveAs` | yes | yes | done |
-| `SelectAll` | yes | | |
-| `SelectToMatchingBracket` | yes | | |
+| `SelectAll` | yes | yes | done |
+| `SelectToMatchingBracket` | yes | yes | done |
 | `ShowHiddenFiles` | yes | | |
 | `ShowParentFolder` | yes | | |
 | `ShowToolbar` | yes | | |
@@ -107,12 +107,12 @@ checked off by the presence of a menu entry.
 | `SplitViewHorizontal` | yes | yes | done |
 | `SplitViewVertical` | yes | yes | done |
 | `StopJob` | yes | | |
-| `ToggleBookmark` | yes | | |
+| `ToggleBookmark` | yes | yes | done |
 | `ToolbarStyle` | yes | | |
-| `Uncomment` | yes | | |
-| `Undo` | yes | | |
-| `Unindent` | yes | | |
-| `WrapText` | yes | | |
+| `Uncomment` | yes | yes | done |
+| `Undo` | yes | yes | done |
+| `Unindent` | yes | yes | done |
+| `WrapText` | yes | yes | done |
 
 ## Preference keys (45)
 

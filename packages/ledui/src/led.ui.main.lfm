@@ -63,20 +63,108 @@ object LedMainForm: TLedMainForm
       ShortCut = 24659
       OnExecute = actSaveAsExecute
     end
-    object actCloseTab: TAction
-      Caption = '&Close'
-      ShortCut = 16471
-      OnExecute = actCloseTabExecute
-    end
     object actReload: TAction
       Caption = '&Reload from Disk'
       ShortCut = 116
       OnExecute = actReloadExecute
     end
+    object actCloseTab: TAction
+      Caption = '&Close'
+      ShortCut = 16471
+      OnExecute = actCloseTabExecute
+    end
     object actQuit: TAction
       Caption = '&Quit'
       ShortCut = 16465
       OnExecute = actQuitExecute
+    end
+    object actUndo: TAction
+      Caption = '&Undo'
+      ShortCut = 16474
+      OnExecute = actUndoExecute
+    end
+    object actRedo: TAction
+      Caption = '&Redo'
+      ShortCut = 24666
+      OnExecute = actRedoExecute
+    end
+    object actCut: TAction
+      Caption = 'Cu&t'
+      ShortCut = 16472
+      OnExecute = actCutExecute
+    end
+    object actCopy: TAction
+      Caption = '&Copy'
+      ShortCut = 16451
+      OnExecute = actCopyExecute
+    end
+    object actPaste: TAction
+      Caption = '&Paste'
+      ShortCut = 16470
+      OnExecute = actPasteExecute
+    end
+    object actSelectAll: TAction
+      Caption = 'Select &All'
+      ShortCut = 16449
+      OnExecute = actSelectAllExecute
+    end
+    object actIndent: TAction
+      Caption = '&Indent'
+      OnExecute = actIndentExecute
+    end
+    object actUnindent: TAction
+      Caption = '&Unindent'
+      OnExecute = actUnindentExecute
+    end
+    object actIndentSpace: TAction
+      Caption = 'Indent by One &Space'
+      ShortCut = 16432
+      OnExecute = actIndentSpaceExecute
+    end
+    object actUnindentSpace: TAction
+      Caption = 'Unindent by One S&pace'
+      ShortCut = 16441
+      OnExecute = actUnindentSpaceExecute
+    end
+    object actComment: TAction
+      Caption = 'Co&mment'
+      ShortCut = 16575
+      OnExecute = actCommentExecute
+    end
+    object actUncomment: TAction
+      Caption = 'Uncomm&ent'
+      ShortCut = 24767
+      OnExecute = actUncommentExecute
+    end
+    object actGotoLine: TAction
+      Caption = '&Go to Line...'
+      ShortCut = 16455
+      OnExecute = actGotoLineExecute
+    end
+    object actToggleBracket: TAction
+      Caption = 'Go to &Matching Bracket'
+      ShortCut = 16605
+      OnExecute = actToggleBracketExecute
+    end
+    object actSelectToBracket: TAction
+      Caption = '&Select to Matching Bracket'
+      ShortCut = 24797
+      OnExecute = actSelectToBracketExecute
+    end
+    object actToggleBookmark: TAction
+      Caption = 'Toggle &Bookmark'
+      ShortCut = 16450
+      OnExecute = actToggleBookmarkExecute
+    end
+    object actNextBookmark: TAction
+      Caption = '&Next Bookmark'
+      ShortCut = 32808
+      OnExecute = actNextBookmarkExecute
+    end
+    object actPrevBookmark: TAction
+      Caption = '&Previous Bookmark'
+      ShortCut = 32806
+      OnExecute = actPrevBookmarkExecute
     end
     object actSplitSideBySide: TAction
       Caption = 'Split &Side by Side'
@@ -95,6 +183,14 @@ object LedMainForm: TLedMainForm
       ShortCut = 117
       OnExecute = actCycleViewsExecute
     end
+    object actWrapText: TAction
+      Caption = '&Wrap Text'
+      OnExecute = actWrapTextExecute
+    end
+    object actLineNumbers: TAction
+      Caption = 'Line &Numbers'
+      OnExecute = actLineNumbersExecute
+    end
     object actToggleLeftPane: TAction
       Caption = '&Left Pane'
       OnExecute = actToggleLeftPaneExecute
@@ -109,36 +205,102 @@ object LedMainForm: TLedMainForm
     Top = 112
     object mnuFile: TMenuItem
       Caption = '&File'
-      object miNew: TMenuItem
+      object mi_New: TMenuItem
         Action = actNew
       end
-      object miOpen: TMenuItem
+      object mi_Open: TMenuItem
         Action = actOpen
       end
       object miOpenRecent: TMenuItem
         Caption = 'Open &Recent'
         OnClick = miOpenRecentClick
       end
-      object miReload: TMenuItem
+      object mi_Reload: TMenuItem
         Action = actReload
       end
       object miSep1: TMenuItem
         Caption = '-'
       end
-      object miSave: TMenuItem
+      object mi_Save: TMenuItem
         Action = actSave
       end
-      object miSaveAs: TMenuItem
+      object mi_SaveAs: TMenuItem
         Action = actSaveAs
       end
       object miSep2: TMenuItem
         Caption = '-'
       end
-      object miCloseTab: TMenuItem
+      object mi_CloseTab: TMenuItem
         Action = actCloseTab
       end
-      object miQuit: TMenuItem
+      object mi_Quit: TMenuItem
         Action = actQuit
+      end
+    end
+    object mnuEdit: TMenuItem
+      Caption = '&Edit'
+      object mi_Undo: TMenuItem
+        Action = actUndo
+      end
+      object mi_Redo: TMenuItem
+        Action = actRedo
+      end
+      object miSep3: TMenuItem
+        Caption = '-'
+      end
+      object mi_Cut: TMenuItem
+        Action = actCut
+      end
+      object mi_Copy: TMenuItem
+        Action = actCopy
+      end
+      object mi_Paste: TMenuItem
+        Action = actPaste
+      end
+      object miSep4: TMenuItem
+        Caption = '-'
+      end
+      object mi_SelectAll: TMenuItem
+        Action = actSelectAll
+      end
+      object miSep5: TMenuItem
+        Caption = '-'
+      end
+      object mi_Indent: TMenuItem
+        Action = actIndent
+      end
+      object mi_Unindent: TMenuItem
+        Action = actUnindent
+      end
+      object mi_IndentSpace: TMenuItem
+        Action = actIndentSpace
+      end
+      object mi_UnindentSpace: TMenuItem
+        Action = actUnindentSpace
+      end
+      object miSep6: TMenuItem
+        Caption = '-'
+      end
+      object mi_Comment: TMenuItem
+        Action = actComment
+      end
+      object mi_Uncomment: TMenuItem
+        Action = actUncomment
+      end
+    end
+    object mnuSearch: TMenuItem
+      Caption = '&Search'
+      object mi_GotoLine: TMenuItem
+        Action = actGotoLine
+      end
+      object miSep7: TMenuItem
+        Caption = '-'
+      end
+      object mi_ToggleBracket: TMenuItem
+        Action = actToggleBracket
+      end
+      object mi_SelectToBracket: TMenuItem
+        Action = actSelectToBracket
       end
     end
     object mnuDocument: TMenuItem
@@ -147,32 +309,64 @@ object LedMainForm: TLedMainForm
         Caption = '&Language'
         OnClick = miLanguageClick
       end
+      object miEncoding: TMenuItem
+        Caption = '&Encoding'
+        OnClick = miEncodingClick
+      end
+      object miLineEnd: TMenuItem
+        Caption = 'Line &Endings'
+        OnClick = miLineEndClick
+      end
+      object miSep8: TMenuItem
+        Caption = '-'
+      end
+      object mi_ToggleBookmark: TMenuItem
+        Action = actToggleBookmark
+      end
+      object mi_NextBookmark: TMenuItem
+        Action = actNextBookmark
+      end
+      object mi_PrevBookmark: TMenuItem
+        Action = actPrevBookmark
+      end
     end
     object mnuView: TMenuItem
       Caption = '&View'
-      object miSplitSideBySide: TMenuItem
+      object mi_WrapText: TMenuItem
+        Action = actWrapText
+      end
+      object mi_LineNumbers: TMenuItem
+        Action = actLineNumbers
+      end
+      object miSep9: TMenuItem
+        Caption = '-'
+      end
+      object mi_SplitSideBySide: TMenuItem
         Action = actSplitSideBySide
       end
-      object miSplitStacked: TMenuItem
+      object mi_SplitStacked: TMenuItem
         Action = actSplitStacked
       end
-      object miUnsplit: TMenuItem
+      object mi_Unsplit: TMenuItem
         Action = actUnsplit
       end
-      object miCycleViews: TMenuItem
+      object mi_CycleViews: TMenuItem
         Action = actCycleViews
+      end
+      object miSep10: TMenuItem
+        Caption = '-'
       end
       object miTheme: TMenuItem
         Caption = 'Colour &Theme'
         OnClick = miThemeClick
       end
-      object miSep3: TMenuItem
+      object miSep11: TMenuItem
         Caption = '-'
       end
-      object miToggleLeftPane: TMenuItem
+      object mi_ToggleLeftPane: TMenuItem
         Action = actToggleLeftPane
       end
-      object miToggleBottomPane: TMenuItem
+      object mi_ToggleBottomPane: TMenuItem
         Action = actToggleBottomPane
       end
     end
