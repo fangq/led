@@ -59,6 +59,9 @@ type
     actSplitStacked: TAction;
     actUnsplit: TAction;
     actCycleViews: TAction;
+    actToggleFold: TAction;
+    actFoldAll: TAction;
+    actUnfoldAll: TAction;
     actWrapText: TAction;
     actLineNumbers: TAction;
     actToggleLeftPane: TAction;
@@ -117,13 +120,17 @@ type
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
     miSep10: TMenuItem;
+    mi_ToggleFold: TMenuItem;
+    mi_FoldAll: TMenuItem;
+    mi_UnfoldAll: TMenuItem;
+    miSep11: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep11: TMenuItem;
-    miTheme: TMenuItem;
     miSep12: TMenuItem;
+    miTheme: TMenuItem;
+    miSep13: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
     OpenDialog1: TOpenDialog;
@@ -179,6 +186,9 @@ type
     procedure actReplaceExecute(Sender: TObject);
     procedure actClearSelectionExecute(Sender: TObject);
     procedure actPasteColumnExecute(Sender: TObject);
+    procedure actFoldAllExecute(Sender: TObject);
+    procedure actToggleFoldExecute(Sender: TObject);
+    procedure actUnfoldAllExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -597,6 +607,21 @@ begin
 end;
 
 { --- view toggles ---------------------------------------------------------- }
+
+procedure TLedMainForm.actToggleFoldExecute(Sender: TObject);
+begin
+  LedToggleFold(CurrentView);
+end;
+
+procedure TLedMainForm.actFoldAllExecute(Sender: TObject);
+begin
+  LedFoldAll(CurrentView);
+end;
+
+procedure TLedMainForm.actUnfoldAllExecute(Sender: TObject);
+begin
+  LedUnfoldAll(CurrentView);
+end;
 
 procedure TLedMainForm.actWrapTextExecute(Sender: TObject);
 begin
@@ -1146,6 +1171,11 @@ begin
   actToggleBookmark.Enabled := HasDoc;
   actNextBookmark.Enabled := HasDoc;
   actPrevBookmark.Enabled := HasDoc;
+  { Folding comes from the highlighter, so the menu tells the truth about
+    whether this language can fold rather than offering a dead command. }
+  actToggleFold.Enabled := HasDoc and LedCanFold(Tab.ActiveView);
+  actFoldAll.Enabled := actToggleFold.Enabled;
+  actUnfoldAll.Enabled := actToggleFold.Enabled;
   actWrapText.Enabled := HasDoc;
   actWrapText.Checked := HasDoc and
     (LowerCase(Tab.Document.Config.GetStr(LedSetWrapMode)) <> 'none');
