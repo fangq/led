@@ -64,8 +64,14 @@ procedure LedParseFontSpec(const ASpec: string; out AName: string;
 
 implementation
 
+{ The whole clause is conditional, not just the unit inside it: on Windows a
+  "uses {$IFDEF LINUX}...{$ENDIF};" collapses to "uses ;", which is a syntax
+  error rather than an empty list.  Same trap as the BaseUnix import in
+  Led.Core.FileIO. }
+{$IFDEF LINUX}
 uses
-  {$IFDEF LINUX}Process{$ENDIF};
+  Process;
+{$ENDIF}
 
 { The desktop's integer window-scaling factor -- xfce's
   Gdk/WindowScalingFactor -- or 0 when it cannot be determined.  gtk2 ignores
