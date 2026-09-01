@@ -251,8 +251,18 @@ end;
 
 function ScopeForAttribute(const AStoredName: string): string;
 var
-  i: Integer;
+  i, Dot: Integer;
 begin
+  { A TextMate highlighter names each attribute after the grammar scope that
+    created it, and the converter emits the theme's own style ids as scopes
+    with a dot for the colon -- 'def.comment' for 'def:comment', because a
+    colon is not legal in a TextMate scope.  Put the colon back and the
+    theme lookup below finds it directly; without this every grammar-driven
+    language came out uncoloured. }
+  Dot := Pos('.', AStoredName);
+  if Dot > 0 then
+    Exit(Copy(AStoredName, 1, Dot - 1) + ':' + Copy(AStoredName, Dot + 1, MaxInt));
+
   for i := Low(ScopeMap) to High(ScopeMap) do
     if SameText(ScopeMap[i].StoredName, AStoredName) then
       Exit(ScopeMap[i].Scope);
