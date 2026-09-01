@@ -421,6 +421,10 @@ type
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure SaveSession;
 
+    { Empties a dynamic submenu without destroying its items mid-event.  See
+      the implementation for why TMenuItem.Clear cannot be used here. }
+    procedure ClearMenu(AItem: TMenuItem);
+
     { Crash recovery.  The journal is reconciled wholesale on a timer rather
       than hooked into every save and close path, because there are several of
       each and missing one leaves a stale entry that offers the user work they
@@ -695,7 +699,7 @@ var
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  miToolList.Clear;
+  ClearMenu(miToolList);
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
@@ -1118,7 +1122,7 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  miOpenRecent.Clear;
+  ClearMenu(miOpenRecent);
   for i := 0 to FRecent.Count - 1 do
   begin
     Item := TMenuItem.Create(miOpenRecent);
@@ -1433,7 +1437,7 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  miEncoding.Clear;
+  ClearMenu(miEncoding);
   if ActiveTab = nil then Exit;
   Current := ActiveTab.Document.Info.Encoding;
 
@@ -1479,7 +1483,7 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  miLineEnd.Clear;
+  ClearMenu(miLineEnd);
   if ActiveTab = nil then Exit;
   for i := 0 to High(Choices) do
   begin
@@ -1516,7 +1520,7 @@ var
   Lang: TLedLangInfo;
   Section, Current: string;
 begin
-  miLanguage.Clear;
+  ClearMenu(miLanguage);
   Current := '';
   if ActiveTab <> nil then
     Current := ActiveTab.Document.Config.GetStr(LedSetLang);
@@ -1582,7 +1586,7 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  miTheme.Clear;
+  ClearMenu(miTheme);
   Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
   for i := 0 to LedThemes.Count - 1 do
   begin
@@ -1789,6 +1793,34 @@ begin
   FRecovery.Clear;
   if Restored > 0 then
     ReconcileRecovery;
+end;
+
+{ Every dynamic submenu -- recent files, languages, encodings, themes, the
+  document list, the tool lists -- is rebuilt from its own parent item's
+  OnClick, which is the only moment it can be current.  Emptying it with
+  TMenuItem.Clear frees the child items right there, while the LCL is still
+  dispatching that event on that menu, and the LCL says so:
+
+    WARNING: TMenuItem.Destroy with LCLRefCount>0.
+    Hint: Maybe the component is processing an event?
+
+  Application.ReleaseComponent exists for exactly this: it detaches the item
+  now and frees it once the reference count has dropped, after the event has
+  finished with it.  Detaching first matters too -- the item must be out of
+  the menu before the new contents go in, or the old entries are still drawn.
+}
+procedure TLedMainForm.ClearMenu(AItem: TMenuItem);
+var
+  i: Integer;
+  Child: TMenuItem;
+begin
+  if AItem = nil then Exit;
+  for i := AItem.Count - 1 downto 0 do
+  begin
+    Child := AItem.Items[i];
+    AItem.Delete(i);
+    Application.ReleaseComponent(Child);
+  end;
 end;
 
 procedure TLedMainForm.SaveSession;
@@ -2438,7 +2470,7 @@ var
   Item: TMenuItem;
   Names: TStringList;
 begin
-  miReopenEncoding.Clear;
+  ClearMenu(miReopenEncoding);
   Names := TStringList.Create;
   try
     GetSupportedEncodings(Names);
@@ -2624,7 +2656,7 @@ var
   Item: TMenuItem;
   Tab: TLedTab;
 begin
-  miDocList.Clear;
+  ClearMenu(miDocList);
   for i := 0 to FBook.PageCount - 1 do
   begin
     Tab := TabOnPage(i);
@@ -2779,7 +2811,7 @@ var
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  miCtxTools.Clear;
+  ClearMenu(miCtxTools);
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
