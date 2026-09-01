@@ -182,7 +182,7 @@ begin
   Original := #$EF#$BB#$BF + 'caf'#$C3#$A9#10;
   Path := WriteRaw('bom.txt', Original);
   LedLoadTextFile(Path, Text, Info);
-  AssertTrue('BOM was seen', Info.HasBOM);
+  AssertTrue('BOM was seen', Info.BOM = bomUTF8);
   AssertEquals('BOM is not part of the text', 'caf'#$C3#$A9#10, Text);
   LedSaveTextFile(Path, Text, Info);
   AssertEquals(Original, ReadRaw(Path));
@@ -196,7 +196,7 @@ begin
   Original := 'plain'#10;
   Path := WriteRaw('nobom.txt', Original);
   LedLoadTextFile(Path, Text, Info);
-  AssertFalse('no BOM reported', Info.HasBOM);
+  AssertTrue('no BOM reported', Info.BOM = bomNone);
   LedSaveTextFile(Path, Text, Info);
   AssertEquals(Original, ReadRaw(Path));
 end;
