@@ -1,0 +1,142 @@
+{
+ "name": "GtkRC",
+ "scopeName": "source.gtkrc",
+ "patterns": [
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "::|=",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b[0-9][0-9\\.]*\\b",
+   "name": "def.decimal"
+  },
+  {
+   "match": "\\b(?:style|engine|widget_class|class|widget)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:fg|bg|bg_pixmap|base|text)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:ACTIVE|SELECTED|NORMAL|PRELIGHT|INSENSITIVE)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:include)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:TRUE|FALSE)\\b",
+   "name": "def.boolean"
+  }
+ ],
+ "fileTypes": [
+  "gtkrc",
+  "gtkrc",
+  "gtkrc-*",
+  "gtkrc-*"
+ ]
+}

@@ -26,13 +26,21 @@ uses
   Classes, SysUtils, Graphics, SynEdit, SynEditHighlighter,
   Led.Syn.Theme, Led.Syn.Languages;
 
-{ A shared highlighter for ALangId, or nil when nothing suitable is built in.
+{ A shared highlighter for ALangId, or nil when nothing suitable exists.
   Instances are cached and shared between documents, which is safe because a
-  highlighter holds no per-document state. }
+  highlighter holds no per-document state.
+
+  A bundled SynEdit highlighter is preferred where there is one: it is a
+  hand-written scanner and faster than any regex engine.  Otherwise a
+  converted grammar is loaded, which covers the rest of the 128. }
 function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 
 { True when led can highlight this language today. }
 function LedHasHighlighter(const ALangId: string): Boolean;
+
+{ Where the converted grammar for a language would be, whether or not it
+  exists. }
+function LedGrammarFile(const ALangId: string): string;
 
 { Colours AHighlighter's attributes from ATheme. }
 procedure LedApplyThemeToHighlighter(ATheme: TLedTheme;
@@ -50,6 +58,7 @@ function LedColourToTColor(AColour: TLedColour): TColor;
 implementation
 
 uses
+  SynTextMateSyn, Led.Core.Paths,
   SynHighlighterPas, SynHighlighterCpp, SynHighlighterPython,
   SynHighlighterXML, SynHighlighterHTML, SynHighlighterCss,
   SynHighlighterJScript, SynHighlighterJava, SynHighlighterPHP,
@@ -163,9 +172,14 @@ begin
   Result := nil;
 end;
 
+function LedGrammarFile(const ALangId: string): string;
+begin
+  Result := LedDataDir + 'grammars' + PathDelim + ALangId + '.tmLanguage.json';
+end;
+
 function LedHasHighlighter(const ALangId: string): Boolean;
 begin
-  Result := ClassFor(ALangId) <> nil;
+  Result := (ClassFor(ALangId) <> nil) or FileExists(LedGrammarFile(ALangId));
 end;
 
 function Cache: TStringList;
@@ -184,6 +198,8 @@ function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 var
   Cls: TSynCustomHighlighterClass;
   i: Integer;
+  Grammar: string;
+  TM: TSynTextMateSyn;
 begin
   Result := nil;
   if ALangId = '' then Exit;
@@ -193,9 +209,34 @@ begin
     Exit(TSynCustomHighlighter(Cache.Objects[i]));
 
   Cls := ClassFor(ALangId);
-  if Cls = nil then Exit;
+  if Cls <> nil then
+  begin
+    Result := Cls.Create(nil);
+    Cache.AddObject(ALangId, Result);
+    Exit;
+  end;
 
-  Result := Cls.Create(nil);
+  Grammar := LedGrammarFile(ALangId);
+  if not FileExists(Grammar) then Exit;
+
+  TM := TSynTextMateSyn.Create(nil);
+  try
+    { The first argument is a bare file name; the second is the directory
+      it lives in.  Passing a full path for both concatenates them. }
+    TM.LoadGrammar(ExtractFileName(Grammar), ExtractFilePath(Grammar));
+    if TM.ParserError <> '' then
+    begin
+      { A grammar that does not compile is worse than none: it would colour
+        the file wrongly and hide the fact.  Drop it silently and leave the
+        document as plain text. }
+      TM.Free;
+      Exit;
+    end;
+  except
+    TM.Free;
+    Exit;
+  end;
+  Result := TM;
   Cache.AddObject(ALangId, Result);
 end;
 

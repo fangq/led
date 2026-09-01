@@ -1,0 +1,148 @@
+{
+ "name": "Jade",
+ "scopeName": "source.jade",
+ "patterns": [
+  {
+   "match": "^(!!!)\\s*([a-zA-Z0-9-_]+)",
+   "name": "def.preprocessor"
+  },
+  {
+   "begin": "\\(",
+   "end": "\\)",
+   "patterns": [
+    {
+     "match": "\"[^\"]+\" *[a-zA-Z0-9_-]+",
+     "name": "def.error"
+    },
+    {
+     "match": "(\\b(?:[a-zA-Z0-9_-]+)\\s*) *=",
+     "captures": {
+      "1": {
+       "name": "def.type"
+      }
+     }
+    },
+    {
+     "begin": "[\"']",
+     "end": "\\0",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "&(?:[a-zA-Z0-9_-]+);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "[&<]",
+       "name": "def.error"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "#[a-zA-Z0-9_-]+",
+   "name": "def.type"
+  },
+  {
+   "match": "\\.[a-zA-Z0-9_-]+",
+   "name": "def.type"
+  },
+  {
+   "match": "^\\s*\\b(a|abbr|acronym|address|area|article|aside|audio|b|base|big|blockquote|body|br|button|canvas|caption|cite|code|col|colgroup|dd|del|details|dfn|div|dl|dt|em|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hgroup|hr|html|i|iframe|img|input|ins|kbd|label|legend|li|link|map|mark|menu|meta|nav|noframes|noscript|object|ol|optgroup|option|p|param|pre|q|samp|script|section|select|small|span|strike|strong|style|sub|summary|sup|table|tbody|td|textarea|tfoot|th|thead|time|title|tr|tt|ul|var|var_keys|video)\\s*\\b[\\?!:]{0,1}",
+   "captures": {
+    "1": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "^\\s*(-)",
+   "end": "$"
+  },
+  {
+   "begin": "[^\\\\](#\\{)",
+   "end": "[^\\}]+\\}",
+   "beginCaptures": {
+    "1": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "match": "^\\s*\\:[^$]+$",
+   "name": "def.preprocessor"
+  }
+ ],
+ "fileTypes": [
+  "jade",
+  "pug"
+ ]
+}

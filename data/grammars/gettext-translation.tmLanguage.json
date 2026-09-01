@@ -1,0 +1,176 @@
+{
+ "name": "gettext translation",
+ "scopeName": "source.gettext-translation",
+ "patterns": [
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+     "name": "def.underlined"
+    },
+    {
+     "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+     "name": "def.underlined"
+    },
+    {
+     "match": "[&_][[A-Za-z\\x80-\\xFF][0-9]]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "<[a-zA-Z\\=\\\"\\/ ]+>",
+     "name": "def.special-char"
+    },
+    {
+     "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
+     "name": "def.character"
+    },
+    {
+     "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "begin": "^#,",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "match": "\\bfuzzy\\b",
+     "name": "def.note"
+    }
+   ]
+  },
+  {
+   "begin": "^#:",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "^(?:domain|msgid|msgid_plural|msgstr|msgctxt)\\b",
+   "name": "def.keyword"
+  }
+ ],
+ "fileTypes": [
+  "po",
+  "pot"
+ ]
+}

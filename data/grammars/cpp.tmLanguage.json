@@ -1,0 +1,599 @@
+{
+ "name": "C++",
+ "scopeName": "source.cpp",
+ "patterns": [
+  {
+   "patterns": [
+    {
+     "match": "\\b(?:alignas|alignof|and|and_eq|bitand|bitor|catch|compl|constexpr|const_cast|decltype|delete|dynamic_cast|false|final|friend|new|noexcept|not|not_eq|nullptr|operator|or|or_eq|override|private|protected|public|reinterpret_cast|static_assert|static_cast|this|thread_local|throw|true|try|typeid|using|xor|xor_eq|class|namespace|typename|template|virtual)\\b",
+     "name": "c.keyword"
+    },
+    {
+     "match": "\\b(?:bool|char16_t|char32_t|explicit|export|inline|mutable|nullptr_t|wchar_t)\\b",
+     "name": "c.type"
+    },
+    {
+     "match": "\\b(?:__STDC__|__cplusplus)\\b",
+     "name": "c.common-defines"
+    }
+   ]
+  },
+  {
+   "patterns": [
+    {
+     "begin": "/\\*\\*(?!\\S)",
+     "end": "\\*/",
+     "beginCaptures": {
+      "0": {
+       "name": "def.doc-comment"
+      },
+      "2": {
+       "name": "def.doc-comment-element"
+      },
+      "3": {
+       "name": "def.doc-comment-element"
+      },
+      "4": {
+       "name": "def.doc-comment-element"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.doc-comment"
+      }
+     },
+     "patterns": [
+      {
+       "match": "^\\s*\\*(?!/)\\s*"
+      },
+      {
+       "begin": "(([[A-Za-z0-9_\\x80-\\xFF]_]+\\:\\:[[A-Za-z0-9_\\x80-\\xFF]_-]+)|([[A-Za-z0-9_\\x80-\\xFF]_]+\\:[[A-Za-z0-9_\\x80-\\xFF]_-]+)|([[A-Za-z0-9_\\x80-\\xFF]_]+))\\:\\s*$",
+       "end": "$",
+       "beginCaptures": {
+        "2": {
+         "name": "def.doc-comment-element"
+        },
+        "3": {
+         "name": "def.doc-comment-element"
+        },
+        "4": {
+         "name": "def.doc-comment-element"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "match": "^\\s*\\*(?!/)\\s*"
+          },
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          },
+          {
+           "match": "\\@[[A-Za-z0-9_\\x80-\\xFF]_]+",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "%[[A-Za-z0-9_\\x80-\\xFF]_]+",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "\\#[[A-Za-z0-9_\\x80-\\xFF]_]+",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "[[A-Za-z0-9_\\x80-\\xFF]_]+\\(\\s*\\)",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "(Returns|Return value)\\:",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "Since\\:",
+           "name": "def.doc-comment-element"
+          },
+          {
+           "match": "Deprecated\\:",
+           "name": "def.doc-comment-element"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "patterns": [
+        {
+         "match": "^\\s*\\*(?!/)\\s*"
+        },
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        },
+        {
+         "match": "\\@[[A-Za-z0-9_\\x80-\\xFF]_]+",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "%[[A-Za-z0-9_\\x80-\\xFF]_]+",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "\\#[[A-Za-z0-9_\\x80-\\xFF]_]+",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "[[A-Za-z0-9_\\x80-\\xFF]_]+\\(\\s*\\)",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "(Returns|Return value)\\:",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "Since\\:",
+         "name": "def.doc-comment-element"
+        },
+        {
+         "match": "Deprecated\\:",
+         "name": "def.doc-comment-element"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "//",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "/\\*",
+     "end": "\\*/",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "\\*/(?!\\*)",
+     "name": "def.error"
+    },
+    {
+     "begin": "(?:^\\s*#\\s*)if\\b\\s*0\\b",
+     "end": "(?:^\\s*#\\s*)(endif|else|elif)\\b",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "(?:^\\s*#\\s*)if(n?def)?\\b",
+       "end": "(?:^\\s*#\\s*)endif\\b",
+       "patterns": [
+        {
+         "begin": "(?:^\\s*#\\s*)if(n?def)?\\b",
+         "end": "(?:^\\s*#\\s*)endif\\b",
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "(?:^\\s*#\\s*)(include|import)\\s*(\".*?\"|<.*>)",
+     "name": "def.preprocessor",
+     "captures": {
+      "2": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "begin": "(?:^\\s*#\\s*)(define|undef|error|pragma|ident|if(n?def)?|else|elif|endif|line|warning)\\b",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "begin": "L?\"",
+       "end": "(?:\")|$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
+         "name": "def.special-char"
+        },
+        {
+         "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",
+         "name": "def.special-char"
+        },
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "begin": "//",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "\\\\$",
+           "end": "^",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           }
+          },
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "/\\*",
+       "end": "\\*/",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "L?\"",
+     "end": "(?:\")|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",
+       "name": "def.special-char"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "match": "L?'((?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))|.)'",
+     "name": "def.character"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])((\\.[0-9]+|[0-9]+\\.[0-9]*)([Ee][+-]?[0-9]*)?|([0-9]+[Ee][+-]?[0-9]*))[fFlL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.floating-point"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][a-fA-F0-9]+[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.base-n-integer"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][a-fA-F0-9]*[g-zG-Z][a-zA-Z0-9]*[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.error"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[0-7]+[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.base-n-integer"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[0-7]*[89][0-9]*[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.error"
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(0|[1-9][0-9]*)[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+     "name": "def.decimal"
+    },
+    {
+     "match": "\\b(?:asm|break|case|continue|default|do|else|enum|for|fortran|goto|if|return|struct|switch|typedef|union|while)\\b",
+     "name": "def.keyword"
+    },
+    {
+     "match": "\\b(?:\\(_A\\|a\\)lignof|_Generic|offsetof|\\(_S\\|s\\)tatic_assert|sizeof|typeof)\\b",
+     "name": "def.operator"
+    },
+    {
+     "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|char\\(16\\|32\\)_t|double|float|int|\\(u\\)\\?int\\(_least\\|_fast\\)\\?\\(8\\|16\\|32\\|64\\)_t|\\(u\\)\\?intmax_t|\\(u\\)\\?intptr_t|long|ptrdiff_t|off\\(64\\)\\?_t|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
+     "name": "def.type"
+    },
+    {
+     "match": "\\b(?:\\(_A\\|a\\)lignas|_Atomic|\\(_N\\|n\\)oreturn|\\(_T\\|t\\)hread_local|auto|const|extern|inline|register|restrict|static|volatile)\\b",
+     "name": "def.type"
+    },
+    {
+     "match": "\\b(?:true|false)\\b",
+     "name": "def.boolean"
+    },
+    {
+     "match": "\\b(?:NULL|MAX|MIN|TRUE|FALSE|__LINE__|__DATA__|__FILE__|__func__|__TIME__|__STDC__)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "\\b(?:stdin|stdout|stderr)\\b",
+     "name": "def.constant"
+    },
+    {
+     "match": "\\b(?:SIGABRT|SIGALRM|SIGCHLD|SIGCONT|SIGFPE|SIGHUP|SIGILL|SIGINT|SIGKILL|SIGPIPE|SIGQUIT|SIGSEGV|SIGSTOP|SIGTERM|SIGTRAP|SIGTSTP|SIGTTIN|SIGTTOU|SIGUSR1|SIGUSR2)\\b",
+     "name": "def.constant"
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "cpp",
+  "cxx",
+  "cc",
+  "C",
+  "c++"
+ ]
+}

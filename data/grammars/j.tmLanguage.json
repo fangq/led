@@ -1,0 +1,185 @@
+{
+ "name": "J",
+ "scopeName": "source.j",
+ "patterns": [
+  {
+   "begin": "\\bNB\\.",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "match": "'[^']*?$",
+   "name": "def.error"
+  },
+  {
+   "begin": "L?'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "=:",
+   "name": "def.type"
+  },
+  {
+   "match": "=\\.",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(_\\.|a\\.|a:)(?![\\.\\:])",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "((_?[0-9]:)|(\\bp\\.\\.)|\n        (\\b[AcCeEiIjLopr]\\.)|(\\b[ipqsux]:)|({::)|([<>\\+\\*\\-\\%\\^\\$\\~\\|\\,\\#\\{\\}\"\\?]\\.)|([<>\\_\\+\\*\\-\\%\\$\\~\\|\\,\\;\\#\\/\\\\\\[\\{\\}\"]:)|([<>\\=\\+\\*\\-\\%\\^\\$\\|\\,\\;\\#\\!\\[\\]\\{\\?]))(?![\\.\\:])",
+   "name": "def.identifier"
+  },
+  {
+   "match": "(([\\/\\\\]\\.)|(\\b[bfMt]\\.)|(\\bt:)|\n        ([\\~\\/\\\\\\}]))(?![\\.\\:])",
+   "name": "def.identifier"
+  },
+  {
+   "match": "((\\b[dDHT]\\.)|(\\b[DLS]:)|(&\\.:)|([\\;\\!\\@&]\\.)|([\\^\\!\\`\\@&]:)|([\\\"\\`\\@&])|(\\s[\\.\\:][\\.\\:])|(\\s[\\.\\:]))(?![\\.\\:])",
+   "name": "def.identifier"
+  },
+  {
+   "begin": "\\b(([1-4]|13)\\s+:\\s*0)|((adverb|conjunction|verb|monad|dyad)\\s+define)\\b",
+   "end": "(?:^\\s*\\)\\s*$)",
+   "patterns": [
+    {
+     "begin": "\\bNB\\.",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     }
+    },
+    {
+     "match": "'[^']*?$",
+     "name": "def.error"
+    },
+    {
+     "match": "\\b[nmuvxy](?![[A-Za-z0-9_\\x80-\\xFF]\\.\\:])",
+     "name": "def.special-char"
+    },
+    {
+     "match": "=:",
+     "name": "def.type"
+    },
+    {
+     "match": "=\\.",
+     "name": "def.type"
+    },
+    {
+     "match": "\\b(_\\.|a\\.|a:)(?![\\.\\:])",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "((_?[0-9]:)|(\\bp\\.\\.)|\n        (\\b[AcCeEiIjLopr]\\.)|(\\b[ipqsux]:)|({::)|([<>\\+\\*\\-\\%\\^\\$\\~\\|\\,\\#\\{\\}\"\\?]\\.)|([<>\\_\\+\\*\\-\\%\\$\\~\\|\\,\\;\\#\\/\\\\\\[\\{\\}\"]:)|([<>\\=\\+\\*\\-\\%\\^\\$\\|\\,\\;\\#\\!\\[\\]\\{\\?]))(?![\\.\\:])",
+     "name": "def.identifier"
+    },
+    {
+     "match": "(([\\/\\\\]\\.)|(\\b[bfMt]\\.)|(\\bt:)|\n        ([\\~\\/\\\\\\}]))(?![\\.\\:])",
+     "name": "def.identifier"
+    },
+    {
+     "match": "((\\b[dDHT]\\.)|(\\b[DLS]:)|(&\\.:)|([\\;\\!\\@&]\\.)|([\\^\\!\\`\\@&]:)|([\\\"\\`\\@&])|(\\s[\\.\\:][\\.\\:])|(\\s[\\.\\:]))(?![\\.\\:])",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "L?'",
+     "end": "(?:')|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "\\b[_0-9][_0-9\\.a-zA-Z]*\\b",
+     "name": "def.decimal"
+    },
+    {
+     "match": "\\b(?:assert\\\\\\.|break\\\\\\.|continue\\\\\\.|return\\\\\\.|do\\\\\\.|if\\\\\\.|else\\\\\\.|elseif\\\\\\.|end\\\\\\.|for\\\\\\.|select\\\\\\.|case\\\\\\.|fcase\\\\\\.|throw\\\\\\.|try\\\\\\.|catch\\\\\\.|catchd\\\\\\.|catcht\\\\\\.|while\\\\\\.|whilst\\\\\\.|for_\\\\%\\{valid\\-name\\}\\?\\\\\\.|goto_\\\\%\\{valid\\-name\\}\\?\\\\\\.|label_\\\\%\\{valid\\-name\\}\\?\\\\\\.)(?![\\.\\:])",
+     "name": "def.keyword"
+    }
+   ]
+  },
+  {
+   "begin": "\\b(0\\s+:\\s*0|noun\\s+define)\\b.*$",
+   "end": "(?:^\\s*\\)\\s*$)",
+   "name": "def.string"
+  },
+  {
+   "begin": "^\\s*[\\xE2\\x94\\x80|-]{2,}",
+   "end": "(?:^\\s*\\)\\s*$)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "begin": "^\\s*\\bNote\\b(?!\\s*\\=[:.])\\s*['\\d].*$",
+   "end": "(?:^\\s*\\)\\s*$)",
+   "name": "def.comment"
+  },
+  {
+   "begin": "\\bNote\\b(?!\\s*\\=[:.])\\s*['\\d].*$",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "match": "[\\(\\)]",
+   "name": "def.statement"
+  },
+  {
+   "match": "\\b[_0-9][_0-9\\.a-zA-Z]*\\b",
+   "name": "def.decimal"
+  }
+ ],
+ "fileTypes": [
+  "ijs"
+ ]
+}

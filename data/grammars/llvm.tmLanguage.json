@@ -1,0 +1,73 @@
+{
+ "name": "LLVM IR",
+ "scopeName": "source.llvm",
+ "patterns": [
+  {
+   "match": "\\b(?:private|linker_private|linker_private_weak|linker_private_weak_def_auto|internal|available_externally|linkonce|common|weak|appending|extern_weak|linkonce_odr|weak_odr|external|dllimport|dllexport|ccc|fastcc|coldcc|default|hidden|protected|type|thread_local|constant|unnamed_addr|addrspace|define|alias|declare|zeroext|signext|inreg|byval|sret|noalias|nocapture|nest|gc|address_safety|alignstack|alwaysinline|nonlazybind|inlinehint|naked|noimplicitfloat|noinline|noredzone|noreturn|nounwind|optsize|readnone|readonly|returns_twice|ssp|sspreq|uwtable|align|module|asm|target|datalayout|triple|unordered|monotonic|acquire|release|acq_rel|seq_cst|singlethread|nuw|nsw|exact|volatile|atomic|to|personality|cleanup|catch|filter|eq|ne|ugt|uge|ult|ule|sgt|slt|sle|oeq|ogt|oge|olt|ole|one|ord|ueq|ugt|uge|ult|ule|une|uno|inbounds)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ret|br|switch|indirectbr|invoke|resume|unreachable|add|fadd|sub|fsub|mul|fmul|udiv|sdiv|fdiv|urem|srem|frem|shl|lshr|ashr|and|or|xor|extractelement|insertelement|shufflevector|extractvalue|insertvalue|alloca|load|store|fence|cmpxchg|atomicrmw|getelementptr|trunc|zext|sext|fptrunc|fpext|fptoui|fptosi|uitofp|sitofp|ptrtoint|inttoptr|bitcast|icmp|fcmp|phi|select|call|va_arg|landingpad)\\b",
+   "name": "def.function"
+  },
+  {
+   "match": "\\b(?:null|zeroinitializer|undef)\\b",
+   "name": "def.constant"
+  },
+  {
+   "match": "\\b(?:true|false)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:half|float|double|x86_fp80|fp128|ppc_fp128|x86mmx|void|label|metadata|opaque)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "i[0-9]+",
+   "name": "def.type"
+  },
+  {
+   "match": "[%!][a-zA-Z$\\._0-9]*",
+   "name": "def.variable"
+  },
+  {
+   "match": "@[a-zA-Z$\\._][a-zA-Z$\\._0-9]*",
+   "name": "def.identifier"
+  },
+  {
+   "match": "(\\b([0-9]+|0x[0-9a-fA-F]+)\\b|\\b([0-9]*\\.[0-9]+[Ee][+-]?[0-9]+|[0-9]+))",
+   "name": "def.decimal"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": ";",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  }
+ ],
+ "fileTypes": [
+  "ll"
+ ]
+}

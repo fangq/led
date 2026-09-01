@@ -1,0 +1,163 @@
+{
+ "name": "Java",
+ "scopeName": "source.java",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\([\\\\\\\"\\'nrbtf]|[0-9]{1,3}|u[0-9]{1,4}))",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "'((?:\\\\([\\\\\\\"\\'nrbtf]|[0-9]{1,3}|u[0-9]{1,4}))|.)'",
+   "name": "def.character"
+  },
+  {
+   "match": "\\b(?:import|package)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:class|enum|extends|implements|instanceof|interface|native|throws)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:boolean|byte|char|double|float|int|long|short|void)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:abstract|final|static|strictfp|synchronized|transient|volatile)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:private|protected|public)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:assert|break|case|catch|continue|default|do|else|finally|for|if|return|throw|switch|try|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:new|super|this)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:const|goto)\\b",
+   "name": "def.reserved"
+  },
+  {
+   "match": "\\b(?:null)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(\\b([0-9]+|0[xX][0-9a-fA-F]+)[Ll]?\\b|\\b(([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]))",
+   "name": "def.decimal"
+  }
+ ],
+ "fileTypes": [
+  "java"
+ ]
+}

@@ -1,0 +1,160 @@
+{
+ "name": "GDB Log",
+ "scopeName": "source.gdb-log",
+ "patterns": [
+  {
+   "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
+   "end": "(?:---$)|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "match": "^\\[(?:New |Switching to )?(?:Thread|LWP)\\s+((?:(?:-?[1-9][0-9]*|\\%{def:hexadecimal})))?.*\\]$",
+   "name": "def.comment",
+   "captures": {
+    "1": {
+     "name": "def.number"
+    }
+   }
+  },
+  {
+   "match": "^Thread \\d+ \\((?:Thread|LWP)\\s+((?:(?:-?[1-9][0-9]*|\\%{def:hexadecimal}))).*\\):$",
+   "name": "def.statement",
+   "captures": {
+    "1": {
+     "name": "def.number"
+    }
+   }
+  },
+  {
+   "match": "^#(\\d+)\\s+<(signal handler called)>$",
+   "captures": {
+    "1": {
+     "name": "def.keyword"
+    },
+    "2": {
+     "name": "def.special-constant"
+    }
+   }
+  },
+  {
+   "begin": "^(?:((?P<address_15>\\%{def:hexadecimal})\\s+in\\s+)?(?:(?P<function_16>\\*?(?:[A-Za-z_][A-Za-z0-9_]*(?:@@[A-Za-z0-9_\\.]+)?))|(?P<badfunction_17>\\?\\?))\\s+\\()",
+   "end": "(?:(?:(?:at|from)\\s+(?P<filename_18>(?:.+?))(?P<linenumber_19>\\:[0-9]+)?|\\))$)",
+   "beginCaptures": {
+    "address": {
+     "name": "def.number"
+    },
+    "function": {
+     "name": "def.function"
+    },
+    "badfunction": {
+     "name": "def.error"
+    }
+   },
+   "endCaptures": {
+    "filename": {
+     "name": "def.statement"
+    },
+    "linenumber": {
+     "name": "def.number"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\b(?:value\\ optimized\\ out)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "\\b(?:incomplete\\ sequence)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
+     "end": "(?:---$)|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "^#(?P<framenumber_20>-?\\d+)\\s+(?:((?P<address_21>\\%{def:hexadecimal})\\s+in\\s+)?(?:(?P<function_22>\\*?(?:[A-Za-z_][A-Za-z0-9_]*(?:@@[A-Za-z0-9_\\.]+)?))|(?P<badfunction_23>\\?\\?))\\s+\\()",
+   "end": "(?:(?:(?:at|from)\\s+(?P<filename_24>(?:.+?))(?P<linenumber_25>\\:[0-9]+)?|\\))$)",
+   "beginCaptures": {
+    "framenumber": {
+     "name": "def.keyword"
+    },
+    "address": {
+     "name": "def.number"
+    },
+    "function": {
+     "name": "def.function"
+    },
+    "badfunction": {
+     "name": "def.error"
+    }
+   },
+   "endCaptures": {
+    "filename": {
+     "name": "def.statement"
+    },
+    "linenumber": {
+     "name": "def.number"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\b(?:value\\ optimized\\ out)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "\\b(?:incomplete\\ sequence)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
+     "end": "(?:---$)|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "^\\s+(?:at|from)\\s+(?P<filename_26>(?:.+?))(?P<linenumber_27>\\:[0-9]+)?$",
+   "captures": {
+    "filename": {
+     "name": "def.statement"
+    },
+    "linenumber": {
+     "name": "def.number"
+    }
+   }
+  }
+ ],
+ "fileTypes": [
+  "gdb"
+ ]
+}

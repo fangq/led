@@ -1,0 +1,480 @@
+{
+ "name": "YAML",
+ "scopeName": "source.yaml",
+ "patterns": [
+  {
+   "match": "^%(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|\\s+)*",
+   "name": "def.shebang"
+  },
+  {
+   "match": "^(?:-{3}|[.]{3})(?:\\s+|$)",
+   "name": "def.comment"
+  },
+  {
+   "begin": "(?<=^|\\s)[|>]$",
+   "end": "$",
+   "patterns": [
+    {
+     "begin": "^(?'indent'\\s+)",
+     "end": "^(?!\\%{indent@start})",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "(?=.)"
+    }
+   ]
+  },
+  {
+   "match": "^\\s*-\\s+"
+  },
+  {
+   "begin": "(?<=^|\\s)\\[",
+   "end": "$",
+   "patterns": [
+    {
+     "begin": "(?<=^|\\s)[|>]$",
+     "end": "$",
+     "patterns": [
+      {
+       "begin": "^(?'indent'\\s+)",
+       "end": "^(?!\\%{indent@start})",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(?=.)"
+      }
+     ]
+    },
+    {
+     "begin": "(?<=^|\\s)\\{",
+     "end": "$",
+     "patterns": [
+      {
+       "begin": "(?<=^|\\s)[|>]$",
+       "end": "$",
+       "patterns": [
+        {
+         "begin": "^(?'indent'\\s+)",
+         "end": "^(?!\\%{indent@start})",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        },
+        {
+         "match": "(?=.)"
+        }
+       ]
+      },
+      {
+       "match": "(?<=^|\\s)#.*$",
+       "name": "def.comment"
+      },
+      {
+       "match": "(?<=^|\\s)\\*(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?<=^|\\s)!(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])*)?!?(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "(?<=^|\\s)&(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.identifier"
+      },
+      {
+       "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
+       "end": "(?:[^\\\\]\\%{q@start})|$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.special-constant"
+      },
+      {
+       "match": "(?:true|false)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.boolean"
+      },
+      {
+       "match": "-?(?:0|[1-9][0-9]*)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.decimal"
+      },
+      {
+       "match": "-?(?:0|[1-9][0-9]*)(?:[.][0-9]*)?(?:[eE][-+]?[0-9]+)?(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.floating-point"
+      },
+      {
+       "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
+       "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "\\}"
+      }
+     ]
+    },
+    {
+     "match": "(?<=^|\\s)#.*$",
+     "name": "def.comment"
+    },
+    {
+     "match": "(?<=^|\\s)\\*(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.type"
+    },
+    {
+     "match": "(?<=^|\\s)!(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])*)?!?(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.preprocessor"
+    },
+    {
+     "match": "(?<=^|\\s)&(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
+     "end": "(?:[^\\\\]\\%{q@start})|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "(?:true|false)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.boolean"
+    },
+    {
+     "match": "-?(?:0|[1-9][0-9]*)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.decimal"
+    },
+    {
+     "match": "-?(?:0|[1-9][0-9]*)(?:[.][0-9]*)?(?:[eE][-+]?[0-9]+)?(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.floating-point"
+    },
+    {
+     "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
+     "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "\\]"
+    }
+   ]
+  },
+  {
+   "begin": "(?<=^|\\s)\\{",
+   "end": "$",
+   "patterns": [
+    {
+     "begin": "(?<=^|\\s)[|>]$",
+     "end": "$",
+     "patterns": [
+      {
+       "begin": "^(?'indent'\\s+)",
+       "end": "^(?!\\%{indent@start})",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(?=.)"
+      }
+     ]
+    },
+    {
+     "begin": "(?<=^|\\s)\\[",
+     "end": "$",
+     "patterns": [
+      {
+       "begin": "(?<=^|\\s)[|>]$",
+       "end": "$",
+       "patterns": [
+        {
+         "begin": "^(?'indent'\\s+)",
+         "end": "^(?!\\%{indent@start})",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        },
+        {
+         "match": "(?=.)"
+        }
+       ]
+      },
+      {
+       "match": "(?<=^|\\s)#.*$",
+       "name": "def.comment"
+      },
+      {
+       "match": "(?<=^|\\s)\\*(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?<=^|\\s)!(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])*)?!?(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "(?<=^|\\s)&(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+       "name": "def.identifier"
+      },
+      {
+       "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
+       "end": "(?:[^\\\\]\\%{q@start})|$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.special-constant"
+      },
+      {
+       "match": "(?:true|false)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.boolean"
+      },
+      {
+       "match": "-?(?:0|[1-9][0-9]*)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.decimal"
+      },
+      {
+       "match": "-?(?:0|[1-9][0-9]*)(?:[.][0-9]*)?(?:[eE][-+]?[0-9]+)?(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+       "name": "def.floating-point"
+      },
+      {
+       "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
+       "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "\\]"
+      }
+     ]
+    },
+    {
+     "match": "(?<=^|\\s)#.*$",
+     "name": "def.comment"
+    },
+    {
+     "match": "(?<=^|\\s)\\*(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.type"
+    },
+    {
+     "match": "(?<=^|\\s)!(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])*)?!?(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.preprocessor"
+    },
+    {
+     "match": "(?<=^|\\s)&(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
+     "end": "(?:[^\\\\]\\%{q@start})|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "(?:true|false)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.boolean"
+    },
+    {
+     "match": "-?(?:0|[1-9][0-9]*)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.decimal"
+    },
+    {
+     "match": "-?(?:0|[1-9][0-9]*)(?:[.][0-9]*)?(?:[eE][-+]?[0-9]+)?(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
+     "name": "def.floating-point"
+    },
+    {
+     "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
+     "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "match": "\\}"
+    }
+   ]
+  },
+  {
+   "match": "(?<=^|\\s)#.*$",
+   "name": "def.comment"
+  },
+  {
+   "match": "(?:null)(?=\\s*$|\\s+#)",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "(?:true|false)(?=\\s*$|\\s+#)",
+   "name": "def.boolean"
+  },
+  {
+   "match": "-?(?:0|[1-9][0-9]*)(?=\\s*$|\\s+#)",
+   "name": "def.decimal"
+  },
+  {
+   "match": "-?(?:0|[1-9][0-9]*)(?:[.][0-9]*)?(?:[eE][-+]?[0-9]+)?(?=\\s*$|\\s+#)",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "(?<=^|\\s)\\*(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+   "name": "def.type"
+  },
+  {
+   "match": "(?<=^|\\s)!(?:(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])*)?!?(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "(?<=^|\\s)&(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])+(?=$|\\s)",
+   "name": "def.identifier"
+  },
+  {
+   "match": "(?<=^|\\s)((?:[^:]|:(?=\\S))+)(?::\\s+|:$)",
+   "captures": {
+    "1": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
+   "end": "(?:[^\\\\]\\%{q@start})|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|[:-\\?\\]\\}]\\S)",
+   "end": "(?:(?=:\\s|:$|\\s#))|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  }
+ ],
+ "fileTypes": [
+  "yaml",
+  "yml"
+ ]
+}

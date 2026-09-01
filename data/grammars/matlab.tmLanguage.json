@@ -1,0 +1,133 @@
+{
+ "name": "Matlab",
+ "scopeName": "source.matlab",
+ "patterns": [
+  {
+   "begin": "^\\s*%{\\s*$",
+   "end": "^\\s*%}\\s*$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "%",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "(?<![0-9a-zA-Z_\\)\\]}\\.])'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "''",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "(\\.)?(\\+|\\-|\\*|\\/|\\\\|\\^|\\*\\*)|(?<=[0-9a-zA-Z_)\\]}])(\\.)?'|\\+\\+|\\-\\-|\\||&|!|~|=|<|>|:",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\b(?:cell|char|double|\\(u\\)\\?int\\(8\\|16\\|32\\|64\\)|logical|single|struct)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "(?i)@([a-z_][a-z1-9_]*)?",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:global|persistent)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:false|true)(?:\\b(?!\\s*\\())",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+   "name": "def.number"
+  },
+  {
+   "match": "(?:\\b([0-9]+e[-+]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)(e[-+]?[0-9]+)?)[fl]?\\b)",
+   "name": "def.number"
+  },
+  {
+   "match": "\\b(?:e|eps|\\(J\\|j\\|I\\|i\\)|\\(Inf\\|inf\\)|\\(NaN\\|nan\\)|NA|ones|pi|rand|zeros)(?:\\b(?!\\s*\\())",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:break|case|catch|classdef|continue|do|else|elseif|end|enumeration|events|for|function|if|methods|otherwise|parfor|properties|return|switch|try|until|varargin|varargout|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:abs|acos|asin|atan2|atan|ceil|conv|cosh|cos|cumprod|dims|error|fclose|floor|fopen|fprintf|fread|fsolve|imag|isempty|isinf|islogical|ismatrix|isnan|isna|isnumeric|isscalar|isstr|isvector|length|linspace|log10|log2|log|max|min|printf|prod|real|rem|repmat|reshape|round|setstr|sinh|sin|size|sort|sprintf|sqrt|strcat|strcmp|sum|system|tanh|tan|unlink|warning)\\b",
+   "name": "def.builtin"
+  }
+ ],
+ "fileTypes": [
+  "m"
+ ]
+}

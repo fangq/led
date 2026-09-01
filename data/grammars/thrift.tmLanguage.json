@@ -1,0 +1,243 @@
+{
+ "name": "Thrift",
+ "scopeName": "source.thrift",
+ "patterns": [
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:const|cpp_include|extends|false|include|namespace|oneway|optional|required|throws|true|typedef)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:binary|bool|byte|double|enum|exception|i16|i32|i64|list|map|service|set|string|struct|union|void)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*:)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\b(?:async|cocoa_prefix|cpp_namespace|csharp_namespace|delphi_namespace|java_package|perl_package|php_namespace|py_module|ruby_namespace|senum|smalltalk_category|slist|smalltalk_prefix|xsd_all|xsd_attrs|xsd_namespace|xsd_nillable|xsd_optional|BEGIN|END|__CLASS__|__DIR__|__FILE__|__FUNCTION__|__LINE__|__METHOD__|__NAMESPACE__|abstract|alias|and|args|as|assert|begin|break|case|catch|class|clone|continue|declare|def|default|del|delete|do|dynamic|elif|else|elseif|elsif|end|enddeclare|endfor|endforeach|endif|endswitch|endwhile|ensure|except|exec|finally|float|for|foreach|function|global|goto|if|implements|import|in|inline|instanceof|interface|is|lambda|module|native|new|next|nil|not|or|pass|public|print|private|protected|public|raise|redo|rescue|retry|register|return|self|sizeof|static|super|switch|synchronized|then|this|throw|transient|try|undef|union|unless|unsigned|until|use|var|virtual|volatile|when|while|with|xor|yield)\\b",
+   "name": "def.error"
+  }
+ ],
+ "fileTypes": [
+  "thrift"
+ ]
+}

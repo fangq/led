@@ -1,0 +1,584 @@
+{
+ "name": "Kotlin",
+ "scopeName": "source.kotlin",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "match": "@((?:field|file|property|get|set|receiver|param|setparam|delegate):)?((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)|\\[((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)\\s*)+\\])",
+   "name": "def.special-constant"
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:it|super|this@\\?)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)'",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)[^\\s]+'",
+   "name": "def.error"
+  },
+  {
+   "match": "\\b(?:class|constructor|fun|get|init|interface|object|set|typealias|val|var)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "(<|,) *(in|out)",
+   "captures": {
+    "1": {
+     "name": "def.operator"
+    },
+    "2": {
+     "name": "def.type"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:import|package)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "begin": "`",
+   "end": "`"
+  },
+  {
+   "match": "\\b(?:abstract|annotation|by|companion|const|crossinline|data|enum|external|final|infix|inline|inner|internal|lateinit|noinline|open|operator|override|private|protected|public|reified|sealed|suspend|tailrec|vararg|where)\\b",
+   "name": "def.type"
+  },
+  {
+   "begin": "\"\"\"",
+   "end": "\"\"\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\$[a-zA-Z]+",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "\\${",
+     "end": "}",
+     "beginCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "//",
+         "end": "$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "\\*/(?!\\*)",
+         "name": "def.error"
+        },
+        {
+         "match": "@((?:field|file|property|get|set|receiver|param|setparam|delegate):)?((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)|\\[((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)\\s*)+\\])",
+         "name": "def.special-constant"
+        },
+        {
+         "begin": "/\\*",
+         "end": "\\*/",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "\\b(?:it|super|this@\\?)\\b",
+         "name": "def.builtin"
+        },
+        {
+         "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)'",
+         "name": "def.special-constant"
+        },
+        {
+         "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)[^\\s]+'",
+         "name": "def.error"
+        },
+        {
+         "match": "\\b(?:class|constructor|fun|get|init|interface|object|set|typealias|val|var)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "(<|,) *(in|out)",
+         "captures": {
+          "1": {
+           "name": "def.operator"
+          },
+          "2": {
+           "name": "def.type"
+          }
+         }
+        },
+        {
+         "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+         "name": "def.keyword"
+        },
+        {
+         "match": "\\b(?:import|package)\\b",
+         "name": "def.preprocessor"
+        },
+        {
+         "begin": "`",
+         "end": "`"
+        },
+        {
+         "match": "\\b(?:abstract|annotation|by|companion|const|crossinline|data|enum|external|final|infix|inline|inner|internal|lateinit|noinline|open|operator|override|private|protected|public|reified|sealed|suspend|tailrec|vararg|where)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "\\b(0x[0-9A-Fa-f][0-9A-Fa-f_]*|0b[01][01_]*|([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]|[0-9][0-9_]*L?)",
+         "name": "def.decimal"
+        },
+        {
+         "match": "[-+*/%=.!|?@:;,_&<>()\\[\\]]",
+         "name": "def.operator"
+        },
+        {
+         "match": "\\b(?:false|true|null)\\b",
+         "name": "def.special-constant"
+        },
+        {
+         "begin": "\"",
+         "end": "(?:\")|$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))",
+           "name": "def.special-char"
+          },
+          {
+           "match": "\\$[a-zA-Z]+",
+           "name": "def.identifier"
+          }
+         ]
+        },
+        {
+         "match": "\\b(?:dynamic|Annotation|Any|Array|AssertionError|Boolean|BooleanArray|Byte|ByteArray|Char|CharArray|CharSequence|ClassCastException|Comparable|Comparator|ConcurrentModificationException|DeprecationLevel|Double|DoubleArray|Enum|Error|Exception|Float|FloatArray|Function|IllegalArgumentException|IllegalStateException|IndexOutOfBoundsException|Int|IntArray|KotlinVersion|Lazy|LazyThreadSafetyMode|Long|LongArray|NoSuchElementException|NoWhenBranchMatchedException|Nothing|NullPointerException|Number|NumberFormatException|Pair|RuntimeException|Short|ShortArray|String|Throwable|Triple|Unit|UnsupportedOperationException|NotImplementedError|AbstractCollection|AbstractIterator|AbstractList|AbstractMap|AbstractMutableCollection|AbstractMutableList|AbstractMutableMap|AbstractMutableSet|AbstractSet|ArrayList|BooleanIterator|ByteIterator|CharIterator|Collection|DoubleIterator|FloatIterator|Grouping|HashMap|HashSet|IndexedValue|IntIterator|Iterable|Iterator|LinkedHashMap|LinkedHashSet|List|ListIterator|LongIterator|Map|MutableCollection|MutableIterable|MutableIterator|MutableList|MutableListIterator|MutableMap|MutableSet|RandomAccess|Set|ShortIterator|CharProgression|CharRange|ClosedFloatingPointRange|ClosedRange|IntProgression|IntRange|LongProgression|LongRange|Sequence|Appendable|CharCategory|CharDirectionality|Charsets|MatchGroup|MatchGroupCollection|MatchNamedGroupCollection|MatchResult|Regex|RegexOption|StringBuilder|Typography)\\b",
+         "name": "def.identifier"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(0x[0-9A-Fa-f][0-9A-Fa-f_]*|0b[01][01_]*|([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]|[0-9][0-9_]*L?)",
+   "name": "def.decimal"
+  },
+  {
+   "match": "[-+*/%=.!|?@:;,_&<>()\\[\\]]",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\b(?:false|true|null)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))",
+     "name": "def.special-char"
+    },
+    {
+     "match": "\\$[a-zA-Z]+",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "\\${",
+     "end": "}",
+     "beginCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "//",
+         "end": "$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "\\*/(?!\\*)",
+         "name": "def.error"
+        },
+        {
+         "match": "@((?:field|file|property|get|set|receiver|param|setparam|delegate):)?((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)|\\[((?:(?:[a-zA-Z_$][a-zA-Z_$0-9]*)(\\.(?:[a-zA-Z_$][a-zA-Z_$0-9]*))*)\\s*)+\\])",
+         "name": "def.special-constant"
+        },
+        {
+         "begin": "/\\*",
+         "end": "\\*/",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "\\b(?:it|super|this@\\?)\\b",
+         "name": "def.builtin"
+        },
+        {
+         "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)'",
+         "name": "def.special-constant"
+        },
+        {
+         "match": "'((?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))|.)[^\\s]+'",
+         "name": "def.error"
+        },
+        {
+         "match": "\\b(?:class|constructor|fun|get|init|interface|object|set|typealias|val|var)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "(<|,) *(in|out)",
+         "captures": {
+          "1": {
+           "name": "def.operator"
+          },
+          "2": {
+           "name": "def.type"
+          }
+         }
+        },
+        {
+         "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+         "name": "def.keyword"
+        },
+        {
+         "match": "\\b(?:import|package)\\b",
+         "name": "def.preprocessor"
+        },
+        {
+         "begin": "`",
+         "end": "`"
+        },
+        {
+         "match": "\\b(?:abstract|annotation|by|companion|const|crossinline|data|enum|external|final|infix|inline|inner|internal|lateinit|noinline|open|operator|override|private|protected|public|reified|sealed|suspend|tailrec|vararg|where)\\b",
+         "name": "def.type"
+        },
+        {
+         "begin": "\"\"\"",
+         "end": "\"\"\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "\\$[a-zA-Z]+",
+           "name": "def.identifier"
+          }
+         ]
+        },
+        {
+         "match": "\\b(0x[0-9A-Fa-f][0-9A-Fa-f_]*|0b[01][01_]*|([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]|[0-9][0-9_]*L?)",
+         "name": "def.decimal"
+        },
+        {
+         "match": "[-+*/%=.!|?@:;,_&<>()\\[\\]]",
+         "name": "def.operator"
+        },
+        {
+         "match": "\\b(?:false|true|null)\\b",
+         "name": "def.special-constant"
+        },
+        {
+         "match": "\\b(?:dynamic|Annotation|Any|Array|AssertionError|Boolean|BooleanArray|Byte|ByteArray|Char|CharArray|CharSequence|ClassCastException|Comparable|Comparator|ConcurrentModificationException|DeprecationLevel|Double|DoubleArray|Enum|Error|Exception|Float|FloatArray|Function|IllegalArgumentException|IllegalStateException|IndexOutOfBoundsException|Int|IntArray|KotlinVersion|Lazy|LazyThreadSafetyMode|Long|LongArray|NoSuchElementException|NoWhenBranchMatchedException|Nothing|NullPointerException|Number|NumberFormatException|Pair|RuntimeException|Short|ShortArray|String|Throwable|Triple|Unit|UnsupportedOperationException|NotImplementedError|AbstractCollection|AbstractIterator|AbstractList|AbstractMap|AbstractMutableCollection|AbstractMutableList|AbstractMutableMap|AbstractMutableSet|AbstractSet|ArrayList|BooleanIterator|ByteIterator|CharIterator|Collection|DoubleIterator|FloatIterator|Grouping|HashMap|HashSet|IndexedValue|IntIterator|Iterable|Iterator|LinkedHashMap|LinkedHashSet|List|ListIterator|LongIterator|Map|MutableCollection|MutableIterable|MutableIterator|MutableList|MutableListIterator|MutableMap|MutableSet|RandomAccess|Set|ShortIterator|CharProgression|CharRange|ClosedFloatingPointRange|ClosedRange|IntProgression|IntRange|LongProgression|LongRange|Sequence|Appendable|CharCategory|CharDirectionality|Charsets|MatchGroup|MatchGroupCollection|MatchNamedGroupCollection|MatchResult|Regex|RegexOption|StringBuilder|Typography)\\b",
+         "name": "def.identifier"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:dynamic|Annotation|Any|Array|AssertionError|Boolean|BooleanArray|Byte|ByteArray|Char|CharArray|CharSequence|ClassCastException|Comparable|Comparator|ConcurrentModificationException|DeprecationLevel|Double|DoubleArray|Enum|Error|Exception|Float|FloatArray|Function|IllegalArgumentException|IllegalStateException|IndexOutOfBoundsException|Int|IntArray|KotlinVersion|Lazy|LazyThreadSafetyMode|Long|LongArray|NoSuchElementException|NoWhenBranchMatchedException|Nothing|NullPointerException|Number|NumberFormatException|Pair|RuntimeException|Short|ShortArray|String|Throwable|Triple|Unit|UnsupportedOperationException|NotImplementedError|AbstractCollection|AbstractIterator|AbstractList|AbstractMap|AbstractMutableCollection|AbstractMutableList|AbstractMutableMap|AbstractMutableSet|AbstractSet|ArrayList|BooleanIterator|ByteIterator|CharIterator|Collection|DoubleIterator|FloatIterator|Grouping|HashMap|HashSet|IndexedValue|IntIterator|Iterable|Iterator|LinkedHashMap|LinkedHashSet|List|ListIterator|LongIterator|Map|MutableCollection|MutableIterable|MutableIterator|MutableList|MutableListIterator|MutableMap|MutableSet|RandomAccess|Set|ShortIterator|CharProgression|CharRange|ClosedFloatingPointRange|ClosedRange|IntProgression|IntRange|LongProgression|LongRange|Sequence|Appendable|CharCategory|CharDirectionality|Charsets|MatchGroup|MatchGroupCollection|MatchNamedGroupCollection|MatchResult|Regex|RegexOption|StringBuilder|Typography)\\b",
+   "name": "def.identifier"
+  }
+ ],
+ "fileTypes": [
+  "kt"
+ ]
+}

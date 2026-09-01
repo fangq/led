@@ -1,0 +1,118 @@
+{
+ "name": ".desktop",
+ "scopeName": "source.desktop",
+ "patterns": [
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "^\\[",
+   "end": "\\]$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "patterns": [
+    {
+     "begin": "^(_?Categories)(?:(?=((?:\\[[a-zA-Z_]+@?[a-zA-Z_]*\\]))?\\s*=\\s*))",
+     "end": "$",
+     "beginCaptures": {
+      "1": {
+       "name": "def.type"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\b(?:AudioVideo|Audio|Video|Shell|Development|Education|Game|Graphics|Network|Office|Settings|System|Utility)\\b",
+       "name": "def.reserved"
+      },
+      {
+       "match": "\\b(?:2DGraphics|3DGraphics|Accessibility|ActionGame|AdventureGame|Amusement|ArcadeGame|Archiving|ArtificialIntelligence|Art|Astronomy|AudioVideoEditing|Biology|BlocksGame|BoardGame|Building|Calculator|Calendar|CardGame|Chart|Chat|Chemistry|Clock|Compression|ComputerScience|ConsoleOnly|Construction|ContactManagement|Core|Database|DataVisualization|Debugger|DesktopSettings|Dialup|Dictionary|DiscBurning|Documentation|Economy|Electricity|Electronics|Email|Emulator|Engineering|FileManager|Filesystem|FileTools|FileTransfer|Finance|FlowChart|Geography|Geology|Geoscience|GNOME|GTK|GUIDesigner|HamRadio|HardwareSettings|History|IDE|ImageProcessing|InstantMessaging|IRCClient|Java|KDE|KidsGame|Languages|Literature|LogicGame|Math|MedicalSoftware|Midi|Mixer|Monitor|Motif|Music|News|NumericalAnalysis|OCR|P2P|PackageManager|ParallelComputing|PDA|Photography|Physics|Player|Presentation|Printing|Profiling|ProjectManagement|Publishing|Qt|RasterGraphics|Recorder|RemoteAccess|RevisionControl|Robotics|RolePlaying|Scanning|Science|Security|Sequencer|Simulation|SportsGame|Sports|Spreadsheet|StrategyGame|Telephony|TelephonyTools|TerminalEmulator|TextEditor|TextTools|Translation|Tuner|TV|VectorGraphics|VideoConference|Viewer|WebBrowser|WebDevelopment|WordProcessor)\\b",
+       "name": "def.identifier"
+      },
+      {
+       "match": "\\b(?:Screensaver|TrayIcon|Applet|Shell)\\b",
+       "name": "def.note"
+      }
+     ]
+    },
+    {
+     "match": "^_?(?:Actions|BinaryPattern|Categories|Comment|DBusActivatable|DefaultApp|Dev|Encoding|Exec|Extensions|FilePattern|FSType|GenericName|Hidden|Icon|Implements|Keywords|MapNotify|MimeType|MiniIcon|MountPoint|Name|NoDisplay|NotShowIn|OnlyShowIn|Path|Patterns|Protocols|ReadOnly|SortOrder|StartupNotify|StartupWMClass|SwallowExec|SwallowTitle|Terminal|TerminalOptions|TryExec|Type|UnmountIcon|URL|Version)(?:(?=((?:\\[[a-zA-Z_]+@?[a-zA-Z_]*\\]))?\\s*=\\s*))",
+     "name": "def.type"
+    },
+    {
+     "match": "^_?X\\-[a-zA-Z\\-]+(?:(?=((?:\\[[a-zA-Z_]+@?[a-zA-Z_]*\\]))?\\s*=\\s*))",
+     "name": "def.type"
+    }
+   ]
+  },
+  {
+   "begin": "((?:\\[[a-zA-Z_]+@?[a-zA-Z_]*\\]))?\\s*=\\s*",
+   "end": "$",
+   "beginCaptures": {
+    "1": {
+     "name": "def.decimal"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\b(?:true|false)\\b",
+     "name": "def.floating-point"
+    },
+    {
+     "match": "%[fFuUdDnNimckv%]",
+     "name": "def.floating-point"
+    },
+    {
+     "match": "\\b(?:UTF\\\\\\-8|Legacy\\\\\\-Mixed)\\b",
+     "name": "def.floating-point"
+    },
+    {
+     "match": "(.\\b[0-9]+([Ll]?|[Ff]?)\\b)|(b[0-9]*\\.[^A-Za-z0-9_\\x80-\\xFF])",
+     "name": "def.floating-point"
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "desktop",
+  "kdelnk"
+ ]
+}

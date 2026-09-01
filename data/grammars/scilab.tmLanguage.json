@@ -1,0 +1,130 @@
+{
+ "name": "Scilab",
+ "scopeName": "source.scilab",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "(?<![0-9a-zA-Z_)\\]}\\.])'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "''",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:%f|%F|%t|%T)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:%pi|%eps|%inf|%nan|%e|%i|%z|%s)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:abort|break|case|clear|catch|continue|do|elseif|else|endfunction|end|for|function|global|if|pause|return|resume|select|try|then|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b([0-9]+[DdEe][+-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([DdEe][+-]?[0-9]+)?)",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "\\b(?:abs|and|acos|asin|atan|ceil|cd|chdir|clearglobal|cosh|cos|cumprod|deff|disp|error|exec|execstr|exists|exp|eye|gettext|floor|fprintf|fread|fsolve|imag|isdef|isempty|isinf|isnan|isvector|lasterror|length|load|linspace|list|listfiles|log10|log2|log|max|min|msprintf|mclose|mopen|ones|or|pathconvert|poly|printf|prod|pwd|rand|real|round|sinh|sin|size|gsort|sprintf|sqrt|strcat|strcmp|string|sum|system|tanh|tan|type|typename|warning|zeros)\\b",
+   "name": "def.function"
+  }
+ ],
+ "fileTypes": [
+  "sce",
+  "sci"
+ ]
+}

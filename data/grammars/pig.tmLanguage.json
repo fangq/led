@@ -1,0 +1,191 @@
+{
+ "name": "Pig",
+ "scopeName": "source.pig",
+ "patterns": [
+  {
+   "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+   "name": "def.number"
+  },
+  {
+   "match": "(?:\\b([0-9]+e[-+]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)(e[-+]?[0-9]+)?)[fl]?\\b)",
+   "name": "def.number"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "(?i)(?:int|long|float|double|boolean|datetime|chararray|bytearray|biginteger|bigdecimal)\\b",
+   "name": "def.type"
+  },
+  {
+   "begin": "--",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "(?i)(?:and|any|all|arrange|assert|asc|as|bag|by|cache|case|cat|cd|cogroup|copyfromlocal|copytolocal|cp|cross|cube|%declare|%default|define|describe|desc|dense|diff|distinct|dump|du|eval|exec|explain|filter|flatten|foreach|full|generate|group|help|if|illustrate|import|inner|input|into|is|join|kill|left|limit|load|ls|map|matches|mkdir|mv|not|onschema|order|or|outer|output|parallel|pig|pwd|quit|rank|register|returns|right|rmf|rm|rollup|run|sample|set|ship|split|stderr|stdin|stdout|store|stream|through|tuple|union|using|void)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ABS|ACOS|AccumuloStorage|AddDuration|ASIN|ATAN|AVG|AvroStorage|BagToString|BinStorage|CBRT|CEIL|CONCAT|COSH|COS|COUNT_STAR|COUNT|CurrentTime|DaysBetween|DIFF|ENDSWITH|EqualsIgnoreCase|EXP|FLOOR|GetDay|GetHour|GetMilliSecond|GetMinute|GetMonth|GetSecond|GetWeek|GetWeekYear|GetYear|HBaseStorage|HiveUDAF|HiveUDF|HiveUDTF|HoursBetween|INDEXOF|IsEmpty|JsonLoader|JsonStorage|LAST_INDEX_OF|LCFIRST|LOG10|LOG|LOWER|LTRIM|MAX|MilliSecondsBetween|MIN|MinutesBetween|MonthsBetween|OrcStorage|PigDump|PigStorage|PluckTuple|RANDOM|REGEX_EXTRACT_ALL|REGEX_EXTRACT|REPLACE|ROUND_TO|ROUND|RTRIM|SecondsBetween|SINH|SIN|SIZE|SPRINTF|SQRT|STARTSWITH|STRSPLITTOBAG|STRSPLIT|SUBSTRING|SubtractDuration|SUBTRACT|SUM|TANH|TAN|Terms|TextLoader|TOBAG|ToDate|TOKENIZE|TOMAP|ToMilliSeconds|TOP|ToString|TOTUPLE|ToUnixTime|TRIM|TrevniStrorage|UCFIRST|UniqueID|UPPER|Usage|WeeksBetween|YearsBetween)\\b",
+   "name": "def.function"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:null)\\b",
+   "name": "def.special-constant"
+  }
+ ],
+ "fileTypes": [
+  "pig"
+ ]
+}

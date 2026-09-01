@@ -1,0 +1,4222 @@
+{
+ "name": "MediaWiki",
+ "scopeName": "source.mediawiki",
+ "patterns": [
+  {
+   "patterns": [
+    {
+     "match": "'''''.+?'''''",
+     "name": "def.statement"
+    },
+    {
+     "match": "'''.+?'''",
+     "name": "def.statement"
+    },
+    {
+     "match": "''.+?''",
+     "name": "def.doc-comment-element"
+    },
+    {
+     "match": "~{3,5}",
+     "name": "def.statement"
+    },
+    {
+     "match": "((?:(http://|https://|ftp://|irc://|gopher://|telnet://|nntp://|worldwind://|mailto:|news:)[^\\s]+))",
+     "name": "def.underlined",
+     "captures": {
+      "1": {
+       "name": "def.comment"
+      }
+     }
+    },
+    {
+     "match": "(?:\\[\\[\\s*[^\\[\\]\\s][^\\[\\]]*?((\\|)[^\\[\\]\\|]*)?\\]\\])",
+     "name": "def.comment",
+     "captures": {
+      "2": {
+       "name": "def.shebang"
+      }
+     }
+    },
+    {
+     "match": "(?<!\\[)\\[\\s*((?:(http://|https://|ftp://|irc://|gopher://|telnet://|nntp://|worldwind://|mailto:|news:)[^\\s]+))[^\\[\\]]*\\](?!\\])",
+     "name": "def.comment",
+     "captures": {
+      "1": {
+       "name": "def.underlined"
+      }
+     }
+    },
+    {
+     "match": "^-{4,}",
+     "name": "def.type"
+    },
+    {
+     "match": "^((\\*|#(?!REDIRECT))+)\\s*[^\\*#\\s]+",
+     "captures": {
+      "1": {
+       "name": "def.statement"
+      }
+     }
+    },
+    {
+     "match": "^(;)\\s*[^;:\\s]+?[^:]*(:?)",
+     "captures": {
+      "1": {
+       "name": "def.statement"
+      },
+      "2": {
+       "name": "def.statement"
+      }
+     }
+    },
+    {
+     "match": "^(:)\\s*[^;:\\s]+",
+     "captures": {
+      "1": {
+       "name": "def.statement"
+      }
+     }
+    },
+    {
+     "match": "__(?:NOTOC|FORCETOC|TOC|NOEDITSECTION|NEWSECTIONLINK|NONEWSECTIONLINK|NOGALLERY|HIDDENCAT|NOCONTENTCONVERT|NOCC|NOTITLECONVERT|NOTC|START|END|INDEX|NOINDEX|STATICREDIRECT)__",
+     "name": "def.statement"
+    },
+    {
+     "match": "{{(?:CURRENTYEAR|CURRENTMONTH|CURRENTMONTHNAME|CURRENTMONTHNAMEGEN|CURRENTMONTHABBREV|CURRENTDAY|CURRENTDAY2|CURRENTDOW|CURRENTDAYNAME|CURRENTTIME|CURRENTHOUR|CURRENTWEEK|CURRENTTIMESTAMP|LOCALYEAR|LOCALMONTH|LOCALMONTHNAME|LOCALMONTHNAMEGEN|LOCALMONTHABBREV|LOCALDAY|LOCALDAY2|LOCALDOW|LOCALDAYNAME|LOCALTIME|LOCALHOUR|LOCALWEEK|LOCALTIMESTAMP|SITENAME|SERVER|SERVERNAME|DIRMARK|DIRECTIONMARK|SCRIPTPATH|STYLEPATH|CURRENTVERSION|CONTENTLANGUAGE|CONTENTLANG|REVISIONID|REVISIONDAY|REVISIONDAY2|REVISIONMONTH|REVISIONMONTH1|REVISIONYEAR|REVISIONTIMESTAMP|REVISIONUSER|NUMBEROFPAGES|NUMBEROFARTICLES|NUMBEROFFILES|NUMBEROFEDITS|NUMBEROFVIEWS|NUMBEROFUSERS|NUMBEROFADMINS|NUMBEROFACTIVEUSERS|FULLPAGENAME|PAGENAME|BASEPAGENAME|SUBPAGENAME|SUBJECTPAGENAME|TALKPAGENAME|FULLPAGENAMEE|PAGENAMEE|BASEPAGENAMEE|SUBPAGENAMEE|SUBJECTPAGENAMEE|TALKPAGENAMEE|NAMESPACE|SUBJECTSPACE|ARTICLESPACE|TALKSPACE|NAMESPACEE|SUBJECTSPACEE|TALKSPACEE)}}",
+     "name": "def.statement"
+    },
+    {
+     "begin": "^\\s*({\\|)",
+     "end": "^\\s*(\\|})",
+     "beginCaptures": {
+      "1": {
+       "name": "def.statement"
+      }
+     },
+     "endCaptures": {
+      "1": {
+       "name": "def.statement"
+      }
+     },
+     "patterns": [
+      {
+       "match": "'''''.+?'''''",
+       "name": "def.statement"
+      },
+      {
+       "match": "'''.+?'''",
+       "name": "def.statement"
+      },
+      {
+       "match": "''.+?''",
+       "name": "def.doc-comment-element"
+      },
+      {
+       "match": "~{3,5}",
+       "name": "def.statement"
+      },
+      {
+       "match": "((?:(http://|https://|ftp://|irc://|gopher://|telnet://|nntp://|worldwind://|mailto:|news:)[^\\s]+))",
+       "name": "def.underlined",
+       "captures": {
+        "1": {
+         "name": "def.comment"
+        }
+       }
+      },
+      {
+       "match": "(?:\\[\\[\\s*[^\\[\\]\\s][^\\[\\]]*?((\\|)[^\\[\\]\\|]*)?\\]\\])",
+       "name": "def.comment",
+       "captures": {
+        "2": {
+         "name": "def.shebang"
+        }
+       }
+      },
+      {
+       "match": "(?<!\\[)\\[\\s*((?:(http://|https://|ftp://|irc://|gopher://|telnet://|nntp://|worldwind://|mailto:|news:)[^\\s]+))[^\\[\\]]*\\](?!\\])",
+       "name": "def.comment",
+       "captures": {
+        "1": {
+         "name": "def.underlined"
+        }
+       }
+      },
+      {
+       "match": "__(?:NOTOC|FORCETOC|TOC|NOEDITSECTION|NEWSECTIONLINK|NONEWSECTIONLINK|NOGALLERY|HIDDENCAT|NOCONTENTCONVERT|NOCC|NOTITLECONVERT|NOTC|START|END|INDEX|NOINDEX|STATICREDIRECT)__",
+       "name": "def.statement"
+      },
+      {
+       "match": "{{(?:CURRENTYEAR|CURRENTMONTH|CURRENTMONTHNAME|CURRENTMONTHNAMEGEN|CURRENTMONTHABBREV|CURRENTDAY|CURRENTDAY2|CURRENTDOW|CURRENTDAYNAME|CURRENTTIME|CURRENTHOUR|CURRENTWEEK|CURRENTTIMESTAMP|LOCALYEAR|LOCALMONTH|LOCALMONTHNAME|LOCALMONTHNAMEGEN|LOCALMONTHABBREV|LOCALDAY|LOCALDAY2|LOCALDOW|LOCALDAYNAME|LOCALTIME|LOCALHOUR|LOCALWEEK|LOCALTIMESTAMP|SITENAME|SERVER|SERVERNAME|DIRMARK|DIRECTIONMARK|SCRIPTPATH|STYLEPATH|CURRENTVERSION|CONTENTLANGUAGE|CONTENTLANG|REVISIONID|REVISIONDAY|REVISIONDAY2|REVISIONMONTH|REVISIONMONTH1|REVISIONYEAR|REVISIONTIMESTAMP|REVISIONUSER|NUMBEROFPAGES|NUMBEROFARTICLES|NUMBEROFFILES|NUMBEROFEDITS|NUMBEROFVIEWS|NUMBEROFUSERS|NUMBEROFADMINS|NUMBEROFACTIVEUSERS|FULLPAGENAME|PAGENAME|BASEPAGENAME|SUBPAGENAME|SUBJECTPAGENAME|TALKPAGENAME|FULLPAGENAMEE|PAGENAMEE|BASEPAGENAMEE|SUBPAGENAMEE|SUBJECTPAGENAMEE|TALKPAGENAMEE|NAMESPACE|SUBJECTSPACE|ARTICLESPACE|TALKSPACE|NAMESPACEE|SUBJECTSPACEE|TALKSPACEE)}}",
+       "name": "def.statement"
+      },
+      {
+       "patterns": [
+        {
+         "begin": "(<!DOCTYPE)\\s+((?:[[:alpha:]_][[:alnum:].:_-]*))",
+         "end": ">",
+         "beginCaptures": {
+          "1": {
+           "name": "def.preprocessor"
+          },
+          "2": {
+           "name": "def.preprocessor"
+          },
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(SYSTEM)\\s+(\\\"[^\\\"]*\\\")",
+           "captures": {
+            "1": {
+             "name": "def.preprocessor"
+            },
+            "2": {
+             "name": "def.string"
+            }
+           }
+          },
+          {
+           "match": "(PUBLIC)\\s+(\\\"[^\\\"]*\\\")\\s+(\\\"[^\\\"]*\\\")",
+           "captures": {
+            "1": {
+             "name": "def.preprocessor"
+            },
+            "2": {
+             "name": "def.string"
+            },
+            "3": {
+             "name": "def.string"
+            }
+           }
+          },
+          {
+           "begin": "\\[",
+           "end": "\\]",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "<!--",
+               "end": "-->",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "--+",
+                 "name": "def.error"
+                },
+                {
+                 "patterns": [
+                  {
+                   "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "\\b(FIXME|TODO|XXX)\\b",
+                   "name": "def.note"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "<!ELEMENT\\b",
+               "end": ">",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                 "name": "xml.entity"
+                },
+                {
+                 "begin": "\"",
+                 "end": "\"",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                   "name": "xml.entity"
+                  },
+                  {
+                   "match": "[%&]\\S*",
+                   "name": "xml.error"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "<!ENTITY\\s+(%\\s+)?(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)\\b",
+               "end": ">",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\"",
+                 "end": "\"",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                   "name": "xml.entity"
+                  },
+                  {
+                   "match": "[%&]\\S*",
+                   "name": "xml.error"
+                  }
+                 ]
+                },
+                {
+                 "begin": "(SYSTEM|PUBLIC)(?=\\s|$)",
+                 "end": "$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.doctype"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "begin": "\"",
+                   "end": "\"",
+                   "beginCaptures": {
+                    "0": {
+                     "name": "xml.attribute-value"
+                    }
+                   },
+                   "endCaptures": {
+                    "0": {
+                     "name": "xml.attribute-value"
+                    }
+                   },
+                   "patterns": [
+                    {
+                     "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                     "name": "xml.entity"
+                    },
+                    {
+                     "match": "[%&]\\S*",
+                     "name": "xml.error"
+                    }
+                   ]
+                  },
+                  {
+                   "begin": "\\bNDATA\\b",
+                   "end": "$",
+                   "beginCaptures": {
+                    "0": {
+                     "name": "xml.doctype"
+                    }
+                   },
+                   "patterns": [
+                    {
+                     "match": "(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)"
+                    },
+                    {
+                     "match": "\\S+",
+                     "name": "xml.error"
+                    }
+                   ]
+                  },
+                  {
+                   "match": "\\S+",
+                   "name": "xml.error"
+                  }
+                 ]
+                },
+                {
+                 "match": "\\S+",
+                 "name": "xml.error"
+                }
+               ]
+              },
+              {
+               "begin": "<!ATTLIST\\b",
+               "end": ">",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                 "name": "xml.entity"
+                },
+                {
+                 "begin": "\"",
+                 "end": "\"",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                   "name": "xml.entity"
+                  },
+                  {
+                   "match": "[%&]\\S*",
+                   "name": "xml.error"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "<!NOTATION\\b",
+               "end": ">",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                 "name": "xml.entity"
+                },
+                {
+                 "begin": "\"",
+                 "end": "\"",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                   "name": "xml.entity"
+                  },
+                  {
+                   "match": "[%&]\\S*",
+                   "name": "xml.error"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+         "name": "def.preprocessor"
+        },
+        {
+         "begin": "<!\\[CDATA\\[",
+         "end": "\\]\\]>",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "begin": "<!--",
+         "end": "--\\s*>",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "<!",
+         "end": ">",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.doctype"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.doctype"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "begin": "<title>",
+           "end": "(?:</title>)|$",
+           "name": "def.heading0",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "begin": "<\\s*h1",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+               "end": "$",
+               "beginCaptures": {
+                "1": {
+                 "name": "xml.attribute-name"
+                },
+                "2": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\%{def:always-match}",
+                 "end": "(?:\\\")|$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "begin": "\\%{def:never-match}",
+                   "end": "$"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+               "end": "(?=>|\\s)",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-name"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              },
+              {
+               "match": "(?:[a-z0-9:_-]+)",
+               "name": "xml.attribute-name"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "begin": ">",
+             "end": "(?:<\\s*/h1\\s*>)|$",
+             "name": "def.heading1",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<\\s*h2",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+               "end": "$",
+               "beginCaptures": {
+                "1": {
+                 "name": "xml.attribute-name"
+                },
+                "2": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\%{def:always-match}",
+                 "end": "(?:\\\")|$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "begin": "\\%{def:never-match}",
+                   "end": "$"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+               "end": "(?=>|\\s)",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-name"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              },
+              {
+               "match": "(?:[a-z0-9:_-]+)",
+               "name": "xml.attribute-name"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "begin": ">",
+             "end": "(?:<\\s*/h2\\s*>)|$",
+             "name": "def.heading2",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<\\s*h3",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+               "end": "$",
+               "beginCaptures": {
+                "1": {
+                 "name": "xml.attribute-name"
+                },
+                "2": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\%{def:always-match}",
+                 "end": "(?:\\\")|$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "begin": "\\%{def:never-match}",
+                   "end": "$"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+               "end": "(?=>|\\s)",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-name"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              },
+              {
+               "match": "(?:[a-z0-9:_-]+)",
+               "name": "xml.attribute-name"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "begin": ">",
+             "end": "(?:<\\s*/h3\\s*>)|$",
+             "name": "def.heading3",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<\\s*h4",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+               "end": "$",
+               "beginCaptures": {
+                "1": {
+                 "name": "xml.attribute-name"
+                },
+                "2": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\%{def:always-match}",
+                 "end": "(?:\\\")|$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "begin": "\\%{def:never-match}",
+                   "end": "$"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+               "end": "(?=>|\\s)",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-name"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              },
+              {
+               "match": "(?:[a-z0-9:_-]+)",
+               "name": "xml.attribute-name"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "begin": ">",
+             "end": "(?:<\\s*/h4\\s*>)|$",
+             "name": "def.heading4",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<\\s*h5",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+               "end": "$",
+               "beginCaptures": {
+                "1": {
+                 "name": "xml.attribute-name"
+                },
+                "2": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\%{def:always-match}",
+                 "end": "(?:\\\")|$",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "xml.attribute-value"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                   "name": "def.preprocessor"
+                  },
+                  {
+                   "begin": "\\%{def:never-match}",
+                   "end": "$"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+               "end": "(?=>|\\s)",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-name"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              },
+              {
+               "match": "(?:[a-z0-9:_-]+)",
+               "name": "xml.attribute-name"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "begin": ">",
+             "end": "(?:<\\s*/h5\\s*>)|$",
+             "name": "def.heading5",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.element-name"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "<\\s*style\\b",
+         "end": "$",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+             "end": "$",
+             "beginCaptures": {
+              "1": {
+               "name": "xml.attribute-name"
+              },
+              "2": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:always-match}",
+               "end": "(?:\\\")|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+             "end": "(?=>|\\s)",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "match": "(?:[a-z0-9:_-]+)",
+             "name": "xml.attribute-name"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "/\\s*>",
+           "name": "xml.element-name"
+          },
+          {
+           "begin": ">",
+           "end": "<\\s*/\\s*style\\s*>",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            },
+            {
+             "patterns": [
+              {
+               "begin": "\"",
+               "end": "(?:\")|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "\\\\.",
+                 "name": "def.special-char"
+                },
+                {
+                 "begin": "\\\\$",
+                 "end": "^",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 }
+                }
+               ]
+              },
+              {
+               "begin": "'",
+               "end": "(?:')|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "\\\\.",
+                 "name": "def.special-char"
+                },
+                {
+                 "begin": "\\\\$",
+                 "end": "^",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 }
+                }
+               ]
+              },
+              {
+               "begin": "/\\*",
+               "end": "\\*/",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "patterns": [
+                {
+                 "patterns": [
+                  {
+                   "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "\\b(FIXME|TODO|XXX)\\b",
+                   "name": "def.note"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "match": "\\*/(?!\\*)",
+               "name": "def.error"
+              },
+              {
+               "match": "\\\\([a-fA-F0-9]{1,5}[ \\t]|[a-fA-F0-9]{6})",
+               "name": "css.others-2"
+              },
+              {
+               "match": ":(?:first\\-line|first\\-letter|before|after)\\b",
+               "name": "def.function"
+              },
+              {
+               "match": ":(?:enabled|disabled|checked|indeterminate|root|nth\\-child|nth\\-last\\-child|nth\\-of\\-type|nth\\-last\\-of\\-type|first\\-child|last\\-child|first\\-of\\-type|last\\-of\\-type|only\\-child|only\\-of\\-type|empty|not|link|visited|hover|active|focus|target|lang)\\b",
+               "name": "def.function"
+              },
+              {
+               "match": "^[ \\t]*@(?:annotation|character\\-variant|font\\-face|font\\-feature\\-values|keyframes|ornaments|styleset|stylistic|swash)\\b",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "^[ \\t]*@(?:charset|import|media|page)\\b",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\{",
+               "end": "\\}",
+               "patterns": [
+                {
+                 "begin": "/\\*",
+                 "end": "\\*/",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.comment"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.comment"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "patterns": [
+                    {
+                     "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                     "name": "def.underlined"
+                    },
+                    {
+                     "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                     "name": "def.underlined"
+                    },
+                    {
+                     "match": "\\b(FIXME|TODO|XXX)\\b",
+                     "name": "def.note"
+                    }
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "match": "\\*/(?!\\*)",
+                 "name": "def.error"
+                },
+                {
+                 "match": "^[ \\t]*@(?:annotation|character\\-variant|font\\-face|font\\-feature\\-values|keyframes|ornaments|styleset|stylistic|swash)\\b",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "^[ \\t]*@(?:charset|import|media|page)\\b",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+                 "name": "def.base-n-integer"
+                },
+                {
+                 "match": "\\s(?:aqua|black|blue|fuchsia|gray|green|lime|maroon|navy|olive|orange|purple|red|silver|teal|white|yellow)($|(?=[;\\s]))",
+                 "name": "def.base-n-integer"
+                },
+                {
+                 "begin": "[a-zA-Z][a-zA-Z0-9-]+\\(",
+                 "end": "\\)",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.function"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.function"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "\\\\.",
+                   "name": "def.special-char"
+                  },
+                  {
+                   "begin": "\\\\$",
+                   "end": "^",
+                   "beginCaptures": {
+                    "0": {
+                     "name": "def.preprocessor"
+                    }
+                   },
+                   "endCaptures": {
+                    "0": {
+                     "name": "def.preprocessor"
+                    }
+                   }
+                  },
+                  {
+                   "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+                   "name": "def.base-n-integer"
+                  },
+                  {
+                   "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(dpi|dpcm|dppx)",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+                   "name": "def.decimal"
+                  }
+                 ]
+                },
+                {
+                 "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+                 "name": "def.floating-point"
+                },
+                {
+                 "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+                 "name": "def.floating-point"
+                },
+                {
+                 "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+                 "name": "def.decimal"
+                },
+                {
+                 "match": "[uU]\\+[a-fA-F0-9]{1,6}(-[a-fA-F0-9]{1,6})?",
+                 "name": "css.others-2"
+                },
+                {
+                 "match": "\\![ \\t]*important",
+                 "name": "def.keyword"
+                },
+                {
+                 "match": "\\b(?:clip\\-path|clip\\-rule|color\\-interpolatation\\-filters|color\\-interpolatation|dominant\\-baseline|fill\\-rule|fill\\-opacity|fill|flood\\-color|flood\\-opacity|lighting\\-color|marker\\-end|marker\\-mid|marker\\-start|shape\\-rendering|stop\\-color|stop\\-opacity|stroke\\-dasharray|stroke\\-dashoffset|stroke\\-linecap|stroke\\-linejoin|stroke\\-miterlimit|stroke\\-opacity|stroke\\-width|stroke|text\\-anchor|text\\-rendering)(?=\\s*:)",
+                 "name": "def.keyword"
+                },
+                {
+                 "match": "\\b(?:align\\-content|align\\-items|align\\-self|animation\\-delay|animation\\-direction|animation\\-duration|animation\\-fill\\-mode|animation\\-iteration\\-count|animation\\-name|animation\\-play\\-state|animation\\-timing\\-function|animation|appearance|backface\\-visibility|background\\-blend\\-mode|background\\-clip|background\\-origin|background\\-size|border\\-image\\-outset|border\\-image\\-repeat|border\\-image\\-slice|border\\-image\\-source|border\\-image\\-width|border\\-image|box\\-decoration\\-break|box\\-sizing|break\\-after|break\\-before|break\\-inside|column\\-count|column\\-fill|column\\-gap|column\\-rule\\-color|column\\-rule\\-style|column\\-rule\\-width|column\\-rule|column\\-span|column\\-width|columns|filter|flex\\-basis|flex\\-direction|flex\\-flow|flex\\-grow|flex\\-shrink|flex\\-wrap|flex|font\\-feature\\-settings|font\\-kerning|font\\-language\\-override|font\\-stretch|font\\-synthesis|font\\-variant\\-alternates|font\\-variant\\-caps|font\\-variant\\-east\\-asian|font\\-variant\\-ligatures|font\\-variant\\-numeric|font\\-variant\\-position|grid\\-area|grid\\-gap|grid\\-auto\\-columns|grid\\-auto\\-flow|grid\\-auto\\-rows|grid\\-column\\-end|grid\\-column\\-gap|grid\\-column\\-start|grid\\-column|grid\\-row\\-end|grid\\-row\\-gap|grid\\-row\\-start|grid\\-row|grid\\-template\\-areas|grid\\-template\\-columns|grid\\-template\\-rows|grid\\-template|grid|hanging\\-punctuation|hyphens|image\\-orientation|image\\-rendering|image\\-resolution|ime\\-mode|justify\\-content|justify\\-self|line\\-break|mask\\-type|mask|nav\\-down|nav\\-index|nav\\-left|nav\\-right|nav\\-up|object\\-fit|object\\-position|opacity|order|outline\\-offset|overflow\\-wrap|overflow\\-x|overflow\\-y|perspective\\-origin|perspective|pointer\\-events|resize|tab\\-size|text\\-align\\-last|text\\-combine\\-upright|text\\-decoration\\-color|text\\-decoration\\-line|text\\-decoration\\-style|text\\-justify|text\\-orientation|text\\-overflow|text\\-underline\\-position|transform\\-origin|transform\\-style|transform|transition\\-delay|transition\\-duration|transition\\-property|transition\\-timing\\-function|transition|word\\-break|word\\-wrap|writing\\-mode)(?=\\s*:)",
+                 "name": "def.keyword"
+                },
+                {
+                 "match": "\\b(?:azimuth|background\\-attachment|background\\-color|background\\-image|background\\-position|background\\-repeat|background|border\\-bottom\\-color|border\\-bottom\\-left\\-radius|border\\-bottom\\-right\\-radius|border\\-bottom\\-style|border\\-bottom\\-width|border\\-bottom|border\\-collapse|border\\-color|border\\-left\\-color|border\\-left\\-style|border\\-left\\-width|border\\-left|border\\-radius|border\\-right\\-color|border\\-right\\-style|border\\-right\\-width|border\\-right|border\\-spacing|border\\-style|border\\-top\\-color|border\\-top\\-left\\-radius|border\\-top\\-right\\-radius|border\\-top\\-style|border\\-top\\-width|border\\-top|border\\-width|border|bottom|box\\-shadow|caption\\-side|clear|clip|color|content|counter\\-increment|counter\\-reset|cue\\-after|cue\\-before|cue|cursor|direction|display|elevation|empty\\-cells|float|font\\-family|font\\-size\\-adjust|font\\-size|font\\-style|font\\-variant|font\\-weight|font|height|left|letter\\-spacing|line\\-height|list\\-style\\-image|list\\-style\\-position|list\\-style\\-type|list\\-style|margin\\-bottom|margin\\-left|margin\\-right|margin\\-top|margin|marker\\-offset|marks|max\\-height|max\\-width|min\\-height|min\\-width|orphans|outline\\-color|outline\\-style|outline\\-width|outline|overflow|padding\\-bottom|padding\\-left|padding\\-right|padding\\-top|padding|page\\-break\\-after|page\\-break\\-before|page\\-break\\-inside|page|pause\\-after|pause\\-before|pause|pitch\\-range|pitch|play\\-during|position|quotes|richness|right|size|speak\\-header|speak\\-numeral|speak\\-punctuation|speak|speech\\-rate|stress|table\\-layout|text\\-align|text\\-decoration|text\\-indent|text\\-shadow|text\\-transform|top|unicode\\-bidi|vertical\\-align|visibility|voice\\-family|volume|white\\-space|widows|width|word\\-spacing|z\\-index)(?=\\s*:)",
+                 "name": "def.keyword"
+                },
+                {
+                 "match": "\\s(?:alphabetic|bevel|butt|central|crisp\\(E\\|e\\)dges|evenodd|geometric\\(P\\|p\\)recision|hanging|ideographic|lr\\-tb|lr|mathematical|miter|no\\-change|nonzero|optimize\\(L\\|l\\)egibility|optimize\\(S\\|s\\)peed|reset\\-size|rl\\-tb|rl|tb\\-rl|tb|text\\-after\\-edge|text\\-before\\-edge|use\\-script)($|(?=[;\\s]))",
+                 "name": "def.constant"
+                },
+                {
+                 "match": "\\s(?:active|add|allow\\-end|all\\-petite\\-caps|all\\-small\\-caps|all\\-scroll|all|alpha|alternate\\-reverse|alternate|avoid\\-page|auto\\-flow|backwards|balance|border\\-box|break\\-all|break\\-word|clip|color\\-dodge|color|column\\-reverse|column|common\\-ligatures|contain|content\\-box|contextual|cover|crisp\\-edges|darken|dense|diagonal\\-fractions|disabled|discretionary\\-ligatures|distribute|ease\\-in\\-out|ease\\-in|ease\\-out|ease|ellipsis|end|exclude|fill\\-box|fill|first|flat|flex\\-end|flex\\-start|flex|flip|force\\-end|forwards|from\\-image|full\\-width|grid|historical\\-forms|historical\\-ligatures|horizontal\\-tb|horizontal|inactive|infinite|initial|inline\\-flex|inline\\-grid|inter\\-cluster|inter\\-ideograph|inter\\-word|intersect|kashida|keep\\-all|last|left\\-side|left|lighten|linear|lining\\-nums|local|loose|luminance|luminosity|manual|mixed|multiply|no\\-clip|no\\-common\\-ligatures|no\\-contextual|no\\-discretionary\\-ligatures|no\\-historical\\-ligatures|oldstyle\\-nums|ordinal|overlay|padding\\-box|page|paused|petite\\-caps|pixelated|preserve\\-3d|proportional\\-nums|proportional\\-width|reverse|round|row\\-reverse|row|ruby|running|saturation|scale\\-down|screen|sideways\\-left|sideways\\-right|sideways|simplified|slashed\\-zero|space\\-around|space\\-between|space\\-evenly|space|stacked\\-fractions|start|stretch|strict|stroke\\-box|style|stylistic|subtract|tabular\\-nums|titling\\-caps|traditional|trim|under|unicase|unset|upright|use\\-glyph\\-orientation|vertical\\-lr|vertical\\-rl|vertical|view\\-box|wavy|weight|wrap\\-reverse|wrap)($|(?=[;\\s]))",
+                 "name": "def.constant"
+                },
+                {
+                 "match": "\\s(?:above|absolute|alias|all\\-scroll|always|armenian|auto|avoid|baseline|behind|below|bidi\\-override|blink|block|bolder|bold|both|bottom|capitalize|caption|cell|center\\-left|center\\-right|center|circle|cjk\\-ideographic|close\\-quote|code|collapse|col\\-resize|compact|condensed|continuous|context\\-menu|copy|crop|crosshair|cross|cue\\-after|cue\\-before|cursive|dashed|decimal|decimal\\-leading\\-zero|default|digits|disc|dotted|double|embed|e\\-resize|ew\\-resize|expanded|extra\\-condensed|extra\\-expanded|fantasy|far\\-left|far\\-right|faster|fast|fixed|flow\\-root|georgian|grabbing|grab|groove|hebrew|help|hidden|hide|higher|high|hiragana\\-iroha|hiragana|icon|inherit|inline\\-block|inline\\-table|inline|inset|inside|invert|italic|justify|katakana\\-iroha|katakana|landscape|large|larger|left\\-side|leftwards|level|lighter|line\\-through|list\\-item|loud|lower\\-alpha|lowercase|lower\\-greek|lower\\-latin|lower\\-roman|lower|low|ltr|marker|medium|menu|message\\-box|middle|mix|monospace|move|narrower|ne\\-resize|nesw\\-resize|no\\-close\\-quote|no\\-drop|no\\-open\\-quote|no\\-repeat|none|normal|not\\-allowed|nowrap|ns\\-resize|nw\\-resize|n\\-resize|oblique|once|open\\-quote|outset|outside|overline|pointer|portait|pre\\-line|pre\\-wrap|pre|progress|relative|repeat\\-x|repeat\\-y|repeat|ridge|right\\-side|right|rightwards|row\\-resize|rtl|run\\-in|sans\\-serif|scroll|semi\\-condensed|semi\\-expanded|separate|se\\-resize|serif|show|silent|slower|slow|small\\-caps|smaller|small\\-caption|small|soft|solid|spell\\-out|square|se\\-resize|sw\\-resize|s\\-resize|static|status\\-bar|sub|super|sw\\-resize|table\\-caption|table\\-cell|table\\-column\\-group|table\\-column|table\\-footer\\-group|table\\-header\\-group|table\\-row\\-group|table\\-row|table|text\\-bottom|text|text\\-top|thick|thin|top|transparent|ultra\\-condensed|ultra\\-expanded|underline|upper\\-alpha|uppercase|upper\\-latin|upper\\-roman|vertical\\-text|visible|wait|wider|w\\-resize|x\\-fast|x\\-high|x\\-large|x\\-loud|x\\-low|x\\-slow|x\\-small|x\\-soft|xx\\-large|xx\\-small|zoom\\-in|zoom\\-out)($|(?=[;\\s]))",
+                 "name": "def.constant"
+                }
+               ]
+              },
+              {
+               "match": "[{}();,]",
+               "name": "css.others-3"
+              },
+              {
+               "match": "(\\[|\\])",
+               "name": "css.others-2"
+              },
+              {
+               "match": "[@%~|!=]",
+               "name": "def.function"
+              },
+              {
+               "match": "[*>+]",
+               "name": "css.others-3"
+              },
+              {
+               "match": "#[a-zA-Z][a-zA-Z0-9_-]*\\b",
+               "name": "def.statement"
+              },
+              {
+               "match": "\\.[a-zA-Z][a-zA-Z0-9_-]*\\b",
+               "name": "def.identifier"
+              },
+              {
+               "match": "\\b[a-zA-Z][a-zA-Z0-9_-]*\\b",
+               "name": "def.type"
+              },
+              {
+               "begin": "(?<=(@media))",
+               "end": "\\{",
+               "patterns": [
+                {
+                 "match": "\\b(?:and|not|only)\\b",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "\\b(?:all|print|screen|speech)\\b",
+                 "name": "def.keyword"
+                },
+                {
+                 "begin": "\\(",
+                 "end": "\\)",
+                 "patterns": [
+                  {
+                   "match": "\\b(?:aspect\\-ratio|color\\-index|color|device\\-aspect\\-ratio|device\\-height|device\\-width|grid|height|max\\-aspect\\-ratio|max\\-color\\-index|max\\-color|max\\-device\\-aspect\\-ratio|max\\-device\\-height|max\\-device\\-width|max\\-height|max\\-monochrome|max\\-resolution|max\\-width|min\\-aspect\\-ratio|min\\-color\\-index|min\\-color|min\\-device\\-aspect\\-ratio|min\\-device\\-width|min\\-device\\-height|min\\-height|min\\-monochrome|min\\-resolution|min\\-width|monochrome|orientation|overflow\\-block|overflow\\-inline|resolution|scan|update\\-frequency|width)\\b",
+                   "name": "def.keyword"
+                  },
+                  {
+                   "match": "\\b(?:interlace|landscape|portrait|progressive)\\b",
+                   "name": "def.constant"
+                  },
+                  {
+                   "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+                   "name": "def.base-n-integer"
+                  },
+                  {
+                   "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(dpi|dpcm|dppx)",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+                   "name": "def.floating-point"
+                  },
+                  {
+                   "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+                   "name": "def.decimal"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "<\\s*script\\b",
+         "end": "$",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+             "end": "$",
+             "beginCaptures": {
+              "1": {
+               "name": "xml.attribute-name"
+              },
+              "2": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:always-match}",
+               "end": "(?:\\\")|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+             "end": "(?=>|\\s)",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "match": "(?:[a-z0-9:_-]+)",
+             "name": "xml.attribute-name"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "/\\s*>",
+           "name": "xml.element-name"
+          },
+          {
+           "begin": ">",
+           "end": "<\\s*/\\s*script\\s*>",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.element-name"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            },
+            {
+             "patterns": [
+              {
+               "begin": "//",
+               "end": "$",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "patterns": [
+                {
+                 "patterns": [
+                  {
+                   "begin": "\\\\$",
+                   "end": "^",
+                   "beginCaptures": {
+                    "0": {
+                     "name": "def.preprocessor"
+                    }
+                   },
+                   "endCaptures": {
+                    "0": {
+                     "name": "def.preprocessor"
+                    }
+                   }
+                  },
+                  {
+                   "patterns": [
+                    {
+                     "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                     "name": "def.underlined"
+                    },
+                    {
+                     "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                     "name": "def.underlined"
+                    },
+                    {
+                     "match": "\\b(FIXME|TODO|XXX)\\b",
+                     "name": "def.note"
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "begin": "/\\*",
+               "end": "\\*/",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.comment"
+                }
+               },
+               "patterns": [
+                {
+                 "patterns": [
+                  {
+                   "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                   "name": "def.underlined"
+                  },
+                  {
+                   "match": "\\b(FIXME|TODO|XXX)\\b",
+                   "name": "def.note"
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "match": "\\*/(?!\\*)",
+               "name": "def.error"
+              },
+              {
+               "begin": "\"",
+               "end": "(?:\")|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "\\\\.",
+                 "name": "def.special-char"
+                },
+                {
+                 "begin": "\\\\$",
+                 "end": "^",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 }
+                }
+               ]
+              },
+              {
+               "begin": "'",
+               "end": "(?:')|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.constant"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "\\\\.",
+                 "name": "def.special-char"
+                },
+                {
+                 "begin": "\\\\$",
+                 "end": "^",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 }
+                }
+               ]
+              },
+              {
+               "begin": "`",
+               "end": "`",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "patterns": [
+                {
+                 "begin": "\\$\\{",
+                 "end": "\\}",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.builtin"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.builtin"
+                  }
+                 }
+                }
+               ]
+              },
+              {
+               "match": "(?:\\b([0-9]+e[-+]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)(e[-+]?[0-9]+)?)[fl]?\\b)",
+               "name": "def.number"
+              },
+              {
+               "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+               "name": "def.number"
+              },
+              {
+               "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[0-7]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+               "name": "def.number"
+              },
+              {
+               "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][0-9a-fA-F]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+               "name": "def.number"
+              },
+              {
+               "match": "\\b(?:undefined)\\b",
+               "name": "def.special-constant"
+              },
+              {
+               "match": "\\b(?:null)\\b",
+               "name": "def.special-constant"
+              },
+              {
+               "match": "\\b(?:false|true)\\b",
+               "name": "def.boolean"
+              },
+              {
+               "match": "\\b(?:async|await|break|case|catch|continue|debugger|default|delete|do|else|export|finally|for|function|if|import|instanceof|in|new|of|return|switch|this|throw|try|typeof|var|void|while|with|class|extends|super|static)\\b",
+               "name": "def.keyword"
+              },
+              {
+               "match": "\\b(?:const|let|yield)\\b",
+               "name": "def.keyword"
+              },
+              {
+               "match": "\\b(?:Infinity|NaN)\\b",
+               "name": "def.type"
+              },
+              {
+               "match": "\\b(?:abs|acos|apply|asin|atan2|atan|call|ceil|charAt|charCodeAt|concat|cos|decodeURIComponent|decodeURI|encodeURIComponent|encodeURI|escape|eval|exec|exp|floor|fromCharCode|getDate|getDay|getFullYear|getHours|getMilliseconds|getMinutes|getMonth|getSeconds|getTime|getTimezoneOffset|getUTCDate|getUTCDay|getUTCFullYear|getUTCHours|getUTCMilliseconds|getUTCMinutes|getUTCMonth|getUTCSeconds|getYear|hasOwnProperty|indexOf|isFinite|isNaN|isPrototypeOf|join|lastIndexOf|localeCompare|log|match|max|min|parseFloat|parseInt|parse|pop|pow|propertyIsEnumerable|push|random|replace|reverse|round|search|setDate|setFullYear|setHours|setMilliseconds|setMinutes|setMonth|setSeconds|setTime|setUTCDate|setUTCFullYear|setUTCHours|setUTCMilliseconds|setUTCMinutes|setUTCMonth|setUTCSeconds|setYear|shift|sin|slice|sort|split|sqrt|substring|substr|tan|toDateString|toExponential|toFixed|toGMTString|toLocaleDateString|toLocaleLowerCase|toLocaleString|toLocaleTimeString|toLocaleUpperCase|toLowerCase|toPrecision|toString|toTimeString|toUpperCase|toUTCString|unescape|unshift|UTC|valueOf)\\b",
+               "name": "def.builtin"
+              },
+              {
+               "match": "\\.(?:constructor|global|ignoreCase|lastIndex|length|message|multiline|name|NEGATIVE_INFINITY|POSITIVE_INFINITY|prototype|source)\\b",
+               "name": "def.statement"
+              },
+              {
+               "match": "\\b(?:Array|Boolean|Date|Error|EvalError|Function|Math|Number|Object|RangeError|RegExp|String|SyntaxError|TypeError|URIError)\\b",
+               "name": "def.type"
+              },
+              {
+               "match": "\\b(?:enum|implements|interface|package|private|protected|public)\\b",
+               "name": "def.error"
+              },
+              {
+               "begin": "((?<=([(]|\\s))|^)\\/(?=([^/\\\\]*(\\\\.))*[^/]*\\/(?:[gim]*)\\s*([),;.\\/\\]:}]|$))",
+               "end": "\\/(?:[gim]*)",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "\\\\((0-7){3}|(x[a-fA-F0-9]{2})|(c\\S)|([CM]-\\S)|(M-C-\\S)|.)",
+                 "name": "def.special-char"
+                },
+                {
+                 "begin": "\\\\$",
+                 "end": "^",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.preprocessor"
+                  }
+                 }
+                },
+                {
+                 "begin": "(?<!\\\\)[[]",
+                 "end": "(?<!\\\\)]",
+                 "name": "def.special-char"
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "<\\s*/?\\s*[a-z0-9_-]+",
+         "end": "/?\\s*>",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+             "end": "$",
+             "beginCaptures": {
+              "1": {
+               "name": "xml.attribute-name"
+              },
+              "2": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\\%{def:always-match}",
+               "end": "(?:\\\")|$",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+                 "name": "def.preprocessor"
+                },
+                {
+                 "begin": "\\%{def:never-match}",
+                 "end": "$"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+             "end": "(?=>|\\s)",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-name"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            },
+            {
+             "match": "(?:[a-z0-9:_-]+)",
+             "name": "xml.attribute-name"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "match": "^\\s*(\\|\\+|\\|-+|!)|\\||!{2,}",
+       "name": "def.statement"
+      }
+     ]
+    },
+    {
+     "match": "^ +[^ ]+.*$",
+     "name": "def.identifier"
+    },
+    {
+     "match": "^(#REDIRECT)\\s*((?:\\[\\[\\s*[^\\[\\]\\s][^\\[\\]]*?((\\|)[^\\[\\]\\|]*)?\\]\\]))",
+     "captures": {
+      "1": {
+       "name": "def.statement"
+      },
+      "2": {
+       "name": "def.comment"
+      },
+      "4": {
+       "name": "def.shebang"
+      }
+     }
+    },
+    {
+     "match": "^=.+=\\s*$",
+     "name": "def.type"
+    },
+    {
+     "match": "({{)\\s*[^{}\\s]+[^{}]*(}})",
+     "captures": {
+      "1": {
+       "name": "def.statement"
+      },
+      "2": {
+       "name": "def.statement"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "patterns": [
+    {
+     "begin": "(<!DOCTYPE)\\s+((?:[[:alpha:]_][[:alnum:].:_-]*))",
+     "end": ">",
+     "beginCaptures": {
+      "1": {
+       "name": "def.preprocessor"
+      },
+      "2": {
+       "name": "def.preprocessor"
+      },
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "patterns": [
+      {
+       "match": "(SYSTEM)\\s+(\\\"[^\\\"]*\\\")",
+       "captures": {
+        "1": {
+         "name": "def.preprocessor"
+        },
+        "2": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(PUBLIC)\\s+(\\\"[^\\\"]*\\\")\\s+(\\\"[^\\\"]*\\\")",
+       "captures": {
+        "1": {
+         "name": "def.preprocessor"
+        },
+        "2": {
+         "name": "def.string"
+        },
+        "3": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "begin": "\\[",
+       "end": "\\]",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "<!--",
+           "end": "-->",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "match": "--+",
+             "name": "def.error"
+            },
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!ELEMENT\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!ENTITY\\s+(%\\s+)?(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            },
+            {
+             "begin": "(SYSTEM|PUBLIC)(?=\\s|$)",
+             "end": "$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.doctype"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\"",
+               "end": "\"",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                 "name": "xml.entity"
+                },
+                {
+                 "match": "[%&]\\S*",
+                 "name": "xml.error"
+                }
+               ]
+              },
+              {
+               "begin": "\\bNDATA\\b",
+               "end": "$",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)"
+                },
+                {
+                 "match": "\\S+",
+                 "name": "xml.error"
+                }
+               ]
+              },
+              {
+               "match": "\\S+",
+               "name": "xml.error"
+              }
+             ]
+            },
+            {
+             "match": "\\S+",
+             "name": "xml.error"
+            }
+           ]
+          },
+          {
+           "begin": "<!ATTLIST\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!NOTATION\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+     "name": "def.preprocessor"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.preprocessor"
+    },
+    {
+     "begin": "<!\\[CDATA\\[",
+     "end": "\\]\\]>",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "begin": "<!--",
+     "end": "--\\s*>",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "<!",
+     "end": ">",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.doctype"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.doctype"
+      }
+     }
+    },
+    {
+     "patterns": [
+      {
+       "begin": "<title>",
+       "end": "(?:</title>)|$",
+       "name": "def.heading0",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        }
+       ]
+      },
+      {
+       "begin": "<\\s*h1",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+           "end": "$",
+           "beginCaptures": {
+            "1": {
+             "name": "xml.attribute-name"
+            },
+            "2": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:always-match}",
+             "end": "(?:\\\")|$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+           "end": "(?=>|\\s)",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "(?:[a-z0-9:_-]+)",
+           "name": "xml.attribute-name"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "begin": ">",
+         "end": "(?:<\\s*/h1\\s*>)|$",
+         "name": "def.heading1",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "<\\s*h2",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+           "end": "$",
+           "beginCaptures": {
+            "1": {
+             "name": "xml.attribute-name"
+            },
+            "2": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:always-match}",
+             "end": "(?:\\\")|$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+           "end": "(?=>|\\s)",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "(?:[a-z0-9:_-]+)",
+           "name": "xml.attribute-name"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "begin": ">",
+         "end": "(?:<\\s*/h2\\s*>)|$",
+         "name": "def.heading2",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "<\\s*h3",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+           "end": "$",
+           "beginCaptures": {
+            "1": {
+             "name": "xml.attribute-name"
+            },
+            "2": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:always-match}",
+             "end": "(?:\\\")|$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+           "end": "(?=>|\\s)",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "(?:[a-z0-9:_-]+)",
+           "name": "xml.attribute-name"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "begin": ">",
+         "end": "(?:<\\s*/h3\\s*>)|$",
+         "name": "def.heading3",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "<\\s*h4",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+           "end": "$",
+           "beginCaptures": {
+            "1": {
+             "name": "xml.attribute-name"
+            },
+            "2": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:always-match}",
+             "end": "(?:\\\")|$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+           "end": "(?=>|\\s)",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "(?:[a-z0-9:_-]+)",
+           "name": "xml.attribute-name"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "begin": ">",
+         "end": "(?:<\\s*/h4\\s*>)|$",
+         "name": "def.heading4",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "<\\s*h5",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+           "end": "$",
+           "beginCaptures": {
+            "1": {
+             "name": "xml.attribute-name"
+            },
+            "2": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\%{def:always-match}",
+             "end": "(?:\\\")|$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+               "name": "def.preprocessor"
+              },
+              {
+               "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+               "name": "def.preprocessor"
+              },
+              {
+               "begin": "\\%{def:never-match}",
+               "end": "$"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+           "end": "(?=>|\\s)",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-name"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          },
+          {
+           "match": "(?:[a-z0-9:_-]+)",
+           "name": "xml.attribute-name"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "begin": ">",
+         "end": "(?:<\\s*/h5\\s*>)|$",
+         "name": "def.heading5",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.element-name"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "<\\s*style\\b",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+         "end": "$",
+         "beginCaptures": {
+          "1": {
+           "name": "xml.attribute-name"
+          },
+          "2": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:always-match}",
+           "end": "(?:\\\")|$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+         "end": "(?=>|\\s)",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.attribute-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+           "name": "def.preprocessor"
+          },
+          {
+           "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+           "name": "def.preprocessor"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "match": "(?:[a-z0-9:_-]+)",
+         "name": "xml.attribute-name"
+        },
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        }
+       ]
+      },
+      {
+       "match": "/\\s*>",
+       "name": "xml.element-name"
+      },
+      {
+       "begin": ">",
+       "end": "<\\s*/\\s*style\\s*>",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        },
+        {
+         "patterns": [
+          {
+           "begin": "\"",
+           "end": "(?:\")|$",
+           "beginCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "begin": "'",
+           "end": "(?:')|$",
+           "beginCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "begin": "/\\*",
+           "end": "\\*/",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "match": "\\*/(?!\\*)",
+           "name": "def.error"
+          },
+          {
+           "match": "\\\\([a-fA-F0-9]{1,5}[ \\t]|[a-fA-F0-9]{6})",
+           "name": "css.others-2"
+          },
+          {
+           "match": ":(?:first\\-line|first\\-letter|before|after)\\b",
+           "name": "def.function"
+          },
+          {
+           "match": ":(?:enabled|disabled|checked|indeterminate|root|nth\\-child|nth\\-last\\-child|nth\\-of\\-type|nth\\-last\\-of\\-type|first\\-child|last\\-child|first\\-of\\-type|last\\-of\\-type|only\\-child|only\\-of\\-type|empty|not|link|visited|hover|active|focus|target|lang)\\b",
+           "name": "def.function"
+          },
+          {
+           "match": "^[ \\t]*@(?:annotation|character\\-variant|font\\-face|font\\-feature\\-values|keyframes|ornaments|styleset|stylistic|swash)\\b",
+           "name": "def.preprocessor"
+          },
+          {
+           "match": "^[ \\t]*@(?:charset|import|media|page)\\b",
+           "name": "def.preprocessor"
+          },
+          {
+           "begin": "\\{",
+           "end": "\\}",
+           "patterns": [
+            {
+             "begin": "/\\*",
+             "end": "\\*/",
+             "beginCaptures": {
+              "0": {
+               "name": "def.comment"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.comment"
+              }
+             },
+             "patterns": [
+              {
+               "patterns": [
+                {
+                 "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                 "name": "def.underlined"
+                },
+                {
+                 "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                 "name": "def.underlined"
+                },
+                {
+                 "match": "\\b(FIXME|TODO|XXX)\\b",
+                 "name": "def.note"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "match": "\\*/(?!\\*)",
+             "name": "def.error"
+            },
+            {
+             "match": "^[ \\t]*@(?:annotation|character\\-variant|font\\-face|font\\-feature\\-values|keyframes|ornaments|styleset|stylistic|swash)\\b",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "^[ \\t]*@(?:charset|import|media|page)\\b",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+             "name": "def.base-n-integer"
+            },
+            {
+             "match": "\\s(?:aqua|black|blue|fuchsia|gray|green|lime|maroon|navy|olive|orange|purple|red|silver|teal|white|yellow)($|(?=[;\\s]))",
+             "name": "def.base-n-integer"
+            },
+            {
+             "begin": "[a-zA-Z][a-zA-Z0-9-]+\\(",
+             "end": "\\)",
+             "beginCaptures": {
+              "0": {
+               "name": "def.function"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.function"
+              }
+             },
+             "patterns": [
+              {
+               "match": "\\\\.",
+               "name": "def.special-char"
+              },
+              {
+               "begin": "\\\\$",
+               "end": "^",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               }
+              },
+              {
+               "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+               "name": "def.base-n-integer"
+              },
+              {
+               "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(dpi|dpcm|dppx)",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+               "name": "def.decimal"
+              }
+             ]
+            },
+            {
+             "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+             "name": "def.floating-point"
+            },
+            {
+             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+             "name": "def.floating-point"
+            },
+            {
+             "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+             "name": "def.decimal"
+            },
+            {
+             "match": "[uU]\\+[a-fA-F0-9]{1,6}(-[a-fA-F0-9]{1,6})?",
+             "name": "css.others-2"
+            },
+            {
+             "match": "\\![ \\t]*important",
+             "name": "def.keyword"
+            },
+            {
+             "match": "\\b(?:clip\\-path|clip\\-rule|color\\-interpolatation\\-filters|color\\-interpolatation|dominant\\-baseline|fill\\-rule|fill\\-opacity|fill|flood\\-color|flood\\-opacity|lighting\\-color|marker\\-end|marker\\-mid|marker\\-start|shape\\-rendering|stop\\-color|stop\\-opacity|stroke\\-dasharray|stroke\\-dashoffset|stroke\\-linecap|stroke\\-linejoin|stroke\\-miterlimit|stroke\\-opacity|stroke\\-width|stroke|text\\-anchor|text\\-rendering)(?=\\s*:)",
+             "name": "def.keyword"
+            },
+            {
+             "match": "\\b(?:align\\-content|align\\-items|align\\-self|animation\\-delay|animation\\-direction|animation\\-duration|animation\\-fill\\-mode|animation\\-iteration\\-count|animation\\-name|animation\\-play\\-state|animation\\-timing\\-function|animation|appearance|backface\\-visibility|background\\-blend\\-mode|background\\-clip|background\\-origin|background\\-size|border\\-image\\-outset|border\\-image\\-repeat|border\\-image\\-slice|border\\-image\\-source|border\\-image\\-width|border\\-image|box\\-decoration\\-break|box\\-sizing|break\\-after|break\\-before|break\\-inside|column\\-count|column\\-fill|column\\-gap|column\\-rule\\-color|column\\-rule\\-style|column\\-rule\\-width|column\\-rule|column\\-span|column\\-width|columns|filter|flex\\-basis|flex\\-direction|flex\\-flow|flex\\-grow|flex\\-shrink|flex\\-wrap|flex|font\\-feature\\-settings|font\\-kerning|font\\-language\\-override|font\\-stretch|font\\-synthesis|font\\-variant\\-alternates|font\\-variant\\-caps|font\\-variant\\-east\\-asian|font\\-variant\\-ligatures|font\\-variant\\-numeric|font\\-variant\\-position|grid\\-area|grid\\-gap|grid\\-auto\\-columns|grid\\-auto\\-flow|grid\\-auto\\-rows|grid\\-column\\-end|grid\\-column\\-gap|grid\\-column\\-start|grid\\-column|grid\\-row\\-end|grid\\-row\\-gap|grid\\-row\\-start|grid\\-row|grid\\-template\\-areas|grid\\-template\\-columns|grid\\-template\\-rows|grid\\-template|grid|hanging\\-punctuation|hyphens|image\\-orientation|image\\-rendering|image\\-resolution|ime\\-mode|justify\\-content|justify\\-self|line\\-break|mask\\-type|mask|nav\\-down|nav\\-index|nav\\-left|nav\\-right|nav\\-up|object\\-fit|object\\-position|opacity|order|outline\\-offset|overflow\\-wrap|overflow\\-x|overflow\\-y|perspective\\-origin|perspective|pointer\\-events|resize|tab\\-size|text\\-align\\-last|text\\-combine\\-upright|text\\-decoration\\-color|text\\-decoration\\-line|text\\-decoration\\-style|text\\-justify|text\\-orientation|text\\-overflow|text\\-underline\\-position|transform\\-origin|transform\\-style|transform|transition\\-delay|transition\\-duration|transition\\-property|transition\\-timing\\-function|transition|word\\-break|word\\-wrap|writing\\-mode)(?=\\s*:)",
+             "name": "def.keyword"
+            },
+            {
+             "match": "\\b(?:azimuth|background\\-attachment|background\\-color|background\\-image|background\\-position|background\\-repeat|background|border\\-bottom\\-color|border\\-bottom\\-left\\-radius|border\\-bottom\\-right\\-radius|border\\-bottom\\-style|border\\-bottom\\-width|border\\-bottom|border\\-collapse|border\\-color|border\\-left\\-color|border\\-left\\-style|border\\-left\\-width|border\\-left|border\\-radius|border\\-right\\-color|border\\-right\\-style|border\\-right\\-width|border\\-right|border\\-spacing|border\\-style|border\\-top\\-color|border\\-top\\-left\\-radius|border\\-top\\-right\\-radius|border\\-top\\-style|border\\-top\\-width|border\\-top|border\\-width|border|bottom|box\\-shadow|caption\\-side|clear|clip|color|content|counter\\-increment|counter\\-reset|cue\\-after|cue\\-before|cue|cursor|direction|display|elevation|empty\\-cells|float|font\\-family|font\\-size\\-adjust|font\\-size|font\\-style|font\\-variant|font\\-weight|font|height|left|letter\\-spacing|line\\-height|list\\-style\\-image|list\\-style\\-position|list\\-style\\-type|list\\-style|margin\\-bottom|margin\\-left|margin\\-right|margin\\-top|margin|marker\\-offset|marks|max\\-height|max\\-width|min\\-height|min\\-width|orphans|outline\\-color|outline\\-style|outline\\-width|outline|overflow|padding\\-bottom|padding\\-left|padding\\-right|padding\\-top|padding|page\\-break\\-after|page\\-break\\-before|page\\-break\\-inside|page|pause\\-after|pause\\-before|pause|pitch\\-range|pitch|play\\-during|position|quotes|richness|right|size|speak\\-header|speak\\-numeral|speak\\-punctuation|speak|speech\\-rate|stress|table\\-layout|text\\-align|text\\-decoration|text\\-indent|text\\-shadow|text\\-transform|top|unicode\\-bidi|vertical\\-align|visibility|voice\\-family|volume|white\\-space|widows|width|word\\-spacing|z\\-index)(?=\\s*:)",
+             "name": "def.keyword"
+            },
+            {
+             "match": "\\s(?:alphabetic|bevel|butt|central|crisp\\(E\\|e\\)dges|evenodd|geometric\\(P\\|p\\)recision|hanging|ideographic|lr\\-tb|lr|mathematical|miter|no\\-change|nonzero|optimize\\(L\\|l\\)egibility|optimize\\(S\\|s\\)peed|reset\\-size|rl\\-tb|rl|tb\\-rl|tb|text\\-after\\-edge|text\\-before\\-edge|use\\-script)($|(?=[;\\s]))",
+             "name": "def.constant"
+            },
+            {
+             "match": "\\s(?:active|add|allow\\-end|all\\-petite\\-caps|all\\-small\\-caps|all\\-scroll|all|alpha|alternate\\-reverse|alternate|avoid\\-page|auto\\-flow|backwards|balance|border\\-box|break\\-all|break\\-word|clip|color\\-dodge|color|column\\-reverse|column|common\\-ligatures|contain|content\\-box|contextual|cover|crisp\\-edges|darken|dense|diagonal\\-fractions|disabled|discretionary\\-ligatures|distribute|ease\\-in\\-out|ease\\-in|ease\\-out|ease|ellipsis|end|exclude|fill\\-box|fill|first|flat|flex\\-end|flex\\-start|flex|flip|force\\-end|forwards|from\\-image|full\\-width|grid|historical\\-forms|historical\\-ligatures|horizontal\\-tb|horizontal|inactive|infinite|initial|inline\\-flex|inline\\-grid|inter\\-cluster|inter\\-ideograph|inter\\-word|intersect|kashida|keep\\-all|last|left\\-side|left|lighten|linear|lining\\-nums|local|loose|luminance|luminosity|manual|mixed|multiply|no\\-clip|no\\-common\\-ligatures|no\\-contextual|no\\-discretionary\\-ligatures|no\\-historical\\-ligatures|oldstyle\\-nums|ordinal|overlay|padding\\-box|page|paused|petite\\-caps|pixelated|preserve\\-3d|proportional\\-nums|proportional\\-width|reverse|round|row\\-reverse|row|ruby|running|saturation|scale\\-down|screen|sideways\\-left|sideways\\-right|sideways|simplified|slashed\\-zero|space\\-around|space\\-between|space\\-evenly|space|stacked\\-fractions|start|stretch|strict|stroke\\-box|style|stylistic|subtract|tabular\\-nums|titling\\-caps|traditional|trim|under|unicase|unset|upright|use\\-glyph\\-orientation|vertical\\-lr|vertical\\-rl|vertical|view\\-box|wavy|weight|wrap\\-reverse|wrap)($|(?=[;\\s]))",
+             "name": "def.constant"
+            },
+            {
+             "match": "\\s(?:above|absolute|alias|all\\-scroll|always|armenian|auto|avoid|baseline|behind|below|bidi\\-override|blink|block|bolder|bold|both|bottom|capitalize|caption|cell|center\\-left|center\\-right|center|circle|cjk\\-ideographic|close\\-quote|code|collapse|col\\-resize|compact|condensed|continuous|context\\-menu|copy|crop|crosshair|cross|cue\\-after|cue\\-before|cursive|dashed|decimal|decimal\\-leading\\-zero|default|digits|disc|dotted|double|embed|e\\-resize|ew\\-resize|expanded|extra\\-condensed|extra\\-expanded|fantasy|far\\-left|far\\-right|faster|fast|fixed|flow\\-root|georgian|grabbing|grab|groove|hebrew|help|hidden|hide|higher|high|hiragana\\-iroha|hiragana|icon|inherit|inline\\-block|inline\\-table|inline|inset|inside|invert|italic|justify|katakana\\-iroha|katakana|landscape|large|larger|left\\-side|leftwards|level|lighter|line\\-through|list\\-item|loud|lower\\-alpha|lowercase|lower\\-greek|lower\\-latin|lower\\-roman|lower|low|ltr|marker|medium|menu|message\\-box|middle|mix|monospace|move|narrower|ne\\-resize|nesw\\-resize|no\\-close\\-quote|no\\-drop|no\\-open\\-quote|no\\-repeat|none|normal|not\\-allowed|nowrap|ns\\-resize|nw\\-resize|n\\-resize|oblique|once|open\\-quote|outset|outside|overline|pointer|portait|pre\\-line|pre\\-wrap|pre|progress|relative|repeat\\-x|repeat\\-y|repeat|ridge|right\\-side|right|rightwards|row\\-resize|rtl|run\\-in|sans\\-serif|scroll|semi\\-condensed|semi\\-expanded|separate|se\\-resize|serif|show|silent|slower|slow|small\\-caps|smaller|small\\-caption|small|soft|solid|spell\\-out|square|se\\-resize|sw\\-resize|s\\-resize|static|status\\-bar|sub|super|sw\\-resize|table\\-caption|table\\-cell|table\\-column\\-group|table\\-column|table\\-footer\\-group|table\\-header\\-group|table\\-row\\-group|table\\-row|table|text\\-bottom|text|text\\-top|thick|thin|top|transparent|ultra\\-condensed|ultra\\-expanded|underline|upper\\-alpha|uppercase|upper\\-latin|upper\\-roman|vertical\\-text|visible|wait|wider|w\\-resize|x\\-fast|x\\-high|x\\-large|x\\-loud|x\\-low|x\\-slow|x\\-small|x\\-soft|xx\\-large|xx\\-small|zoom\\-in|zoom\\-out)($|(?=[;\\s]))",
+             "name": "def.constant"
+            }
+           ]
+          },
+          {
+           "match": "[{}();,]",
+           "name": "css.others-3"
+          },
+          {
+           "match": "(\\[|\\])",
+           "name": "css.others-2"
+          },
+          {
+           "match": "[@%~|!=]",
+           "name": "def.function"
+          },
+          {
+           "match": "[*>+]",
+           "name": "css.others-3"
+          },
+          {
+           "match": "#[a-zA-Z][a-zA-Z0-9_-]*\\b",
+           "name": "def.statement"
+          },
+          {
+           "match": "\\.[a-zA-Z][a-zA-Z0-9_-]*\\b",
+           "name": "def.identifier"
+          },
+          {
+           "match": "\\b[a-zA-Z][a-zA-Z0-9_-]*\\b",
+           "name": "def.type"
+          },
+          {
+           "begin": "(?<=(@media))",
+           "end": "\\{",
+           "patterns": [
+            {
+             "match": "\\b(?:and|not|only)\\b",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "\\b(?:all|print|screen|speech)\\b",
+             "name": "def.keyword"
+            },
+            {
+             "begin": "\\(",
+             "end": "\\)",
+             "patterns": [
+              {
+               "match": "\\b(?:aspect\\-ratio|color\\-index|color|device\\-aspect\\-ratio|device\\-height|device\\-width|grid|height|max\\-aspect\\-ratio|max\\-color\\-index|max\\-color|max\\-device\\-aspect\\-ratio|max\\-device\\-height|max\\-device\\-width|max\\-height|max\\-monochrome|max\\-resolution|max\\-width|min\\-aspect\\-ratio|min\\-color\\-index|min\\-color|min\\-device\\-aspect\\-ratio|min\\-device\\-width|min\\-device\\-height|min\\-height|min\\-monochrome|min\\-resolution|min\\-width|monochrome|orientation|overflow\\-block|overflow\\-inline|resolution|scan|update\\-frequency|width)\\b",
+               "name": "def.keyword"
+              },
+              {
+               "match": "\\b(?:interlace|landscape|portrait|progressive)\\b",
+               "name": "def.constant"
+              },
+              {
+               "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
+               "name": "def.base-n-integer"
+              },
+              {
+               "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(dpi|dpcm|dppx)",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "[\\+-]?([0-9]+|[0-9]*\\.[0-9]+)(%|e(m|x)|(v(h|w|min|max))|ch|fr|rem|p(x|t|c)|in|ft|(m|c)m|k?Hz|deg|g?rad|m?s)",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+               "name": "def.floating-point"
+              },
+              {
+               "match": "\\b(0|[\\+-]?[1-9][0-9]*)",
+               "name": "def.decimal"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "<\\s*script\\b",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+         "end": "$",
+         "beginCaptures": {
+          "1": {
+           "name": "xml.attribute-name"
+          },
+          "2": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:always-match}",
+           "end": "(?:\\\")|$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+         "end": "(?=>|\\s)",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.attribute-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+           "name": "def.preprocessor"
+          },
+          {
+           "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+           "name": "def.preprocessor"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "match": "(?:[a-z0-9:_-]+)",
+         "name": "xml.attribute-name"
+        },
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        }
+       ]
+      },
+      {
+       "match": "/\\s*>",
+       "name": "xml.element-name"
+      },
+      {
+       "begin": ">",
+       "end": "<\\s*/\\s*script\\s*>",
+       "beginCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "xml.element-name"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        },
+        {
+         "patterns": [
+          {
+           "begin": "//",
+           "end": "$",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "begin": "\\\\$",
+               "end": "^",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               }
+              },
+              {
+               "patterns": [
+                {
+                 "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+                 "name": "def.underlined"
+                },
+                {
+                 "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+                 "name": "def.underlined"
+                },
+                {
+                 "match": "\\b(FIXME|TODO|XXX)\\b",
+                 "name": "def.note"
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "/\\*",
+           "end": "\\*/",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "match": "\\*/(?!\\*)",
+           "name": "def.error"
+          },
+          {
+           "begin": "\"",
+           "end": "(?:\")|$",
+           "beginCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "begin": "'",
+           "end": "(?:')|$",
+           "beginCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.constant"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "begin": "`",
+           "end": "`",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\\$\\{",
+             "end": "\\}",
+             "beginCaptures": {
+              "0": {
+               "name": "def.builtin"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.builtin"
+              }
+             }
+            }
+           ]
+          },
+          {
+           "match": "(?:\\b([0-9]+e[-+]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)(e[-+]?[0-9]+)?)[fl]?\\b)",
+           "name": "def.number"
+          },
+          {
+           "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+           "name": "def.number"
+          },
+          {
+           "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[0-7]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+           "name": "def.number"
+          },
+          {
+           "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][0-9a-fA-F]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+           "name": "def.number"
+          },
+          {
+           "match": "\\b(?:undefined)\\b",
+           "name": "def.special-constant"
+          },
+          {
+           "match": "\\b(?:null)\\b",
+           "name": "def.special-constant"
+          },
+          {
+           "match": "\\b(?:false|true)\\b",
+           "name": "def.boolean"
+          },
+          {
+           "match": "\\b(?:async|await|break|case|catch|continue|debugger|default|delete|do|else|export|finally|for|function|if|import|instanceof|in|new|of|return|switch|this|throw|try|typeof|var|void|while|with|class|extends|super|static)\\b",
+           "name": "def.keyword"
+          },
+          {
+           "match": "\\b(?:const|let|yield)\\b",
+           "name": "def.keyword"
+          },
+          {
+           "match": "\\b(?:Infinity|NaN)\\b",
+           "name": "def.type"
+          },
+          {
+           "match": "\\b(?:abs|acos|apply|asin|atan2|atan|call|ceil|charAt|charCodeAt|concat|cos|decodeURIComponent|decodeURI|encodeURIComponent|encodeURI|escape|eval|exec|exp|floor|fromCharCode|getDate|getDay|getFullYear|getHours|getMilliseconds|getMinutes|getMonth|getSeconds|getTime|getTimezoneOffset|getUTCDate|getUTCDay|getUTCFullYear|getUTCHours|getUTCMilliseconds|getUTCMinutes|getUTCMonth|getUTCSeconds|getYear|hasOwnProperty|indexOf|isFinite|isNaN|isPrototypeOf|join|lastIndexOf|localeCompare|log|match|max|min|parseFloat|parseInt|parse|pop|pow|propertyIsEnumerable|push|random|replace|reverse|round|search|setDate|setFullYear|setHours|setMilliseconds|setMinutes|setMonth|setSeconds|setTime|setUTCDate|setUTCFullYear|setUTCHours|setUTCMilliseconds|setUTCMinutes|setUTCMonth|setUTCSeconds|setYear|shift|sin|slice|sort|split|sqrt|substring|substr|tan|toDateString|toExponential|toFixed|toGMTString|toLocaleDateString|toLocaleLowerCase|toLocaleString|toLocaleTimeString|toLocaleUpperCase|toLowerCase|toPrecision|toString|toTimeString|toUpperCase|toUTCString|unescape|unshift|UTC|valueOf)\\b",
+           "name": "def.builtin"
+          },
+          {
+           "match": "\\.(?:constructor|global|ignoreCase|lastIndex|length|message|multiline|name|NEGATIVE_INFINITY|POSITIVE_INFINITY|prototype|source)\\b",
+           "name": "def.statement"
+          },
+          {
+           "match": "\\b(?:Array|Boolean|Date|Error|EvalError|Function|Math|Number|Object|RangeError|RegExp|String|SyntaxError|TypeError|URIError)\\b",
+           "name": "def.type"
+          },
+          {
+           "match": "\\b(?:enum|implements|interface|package|private|protected|public)\\b",
+           "name": "def.error"
+          },
+          {
+           "begin": "((?<=([(]|\\s))|^)\\/(?=([^/\\\\]*(\\\\.))*[^/]*\\/(?:[gim]*)\\s*([),;.\\/\\]:}]|$))",
+           "end": "\\/(?:[gim]*)",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\((0-7){3}|(x[a-fA-F0-9]{2})|(c\\S)|([CM]-\\S)|(M-C-\\S)|.)",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "begin": "(?<!\\\\)[[]",
+             "end": "(?<!\\\\)]",
+             "name": "def.special-char"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "<\\s*/?\\s*[a-z0-9_-]+",
+     "end": "/?\\s*>",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.element-name"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "((?:[a-z0-9:_-]+)\\s*=\\s*)(\\\")",
+         "end": "$",
+         "beginCaptures": {
+          "1": {
+           "name": "xml.attribute-name"
+          },
+          "2": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\\%{def:always-match}",
+           "end": "(?:\\\")|$",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.attribute-value"
+            }
+           },
+           "patterns": [
+            {
+             "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+             "name": "def.preprocessor"
+            },
+            {
+             "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+             "name": "def.preprocessor"
+            },
+            {
+             "begin": "\\%{def:never-match}",
+             "end": "$"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
+         "end": "(?=>|\\s)",
+         "beginCaptures": {
+          "0": {
+           "name": "xml.attribute-name"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "xml.attribute-value"
+          }
+         },
+         "patterns": [
+          {
+           "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+           "name": "def.preprocessor"
+          },
+          {
+           "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+           "name": "def.preprocessor"
+          },
+          {
+           "begin": "\\%{def:never-match}",
+           "end": "$"
+          }
+         ]
+        },
+        {
+         "match": "(?:[a-z0-9:_-]+)",
+         "name": "xml.attribute-name"
+        },
+        {
+         "begin": "\\%{def:never-match}",
+         "end": "$"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

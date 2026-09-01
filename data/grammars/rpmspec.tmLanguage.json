@@ -1,0 +1,130 @@
+{
+ "name": "RPM spec",
+ "scopeName": "source.rpmspec",
+ "patterns": [
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "%(?:define|global)",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "^(?:Auto\\[A\\-Za\\-z\\]\\+|\\[A\\-Za\\-z\\]\\+Arch|\\[A\\-Za\\-z\\]\\+Req|Build\\[A\\-Za\\-z\\]\\+|Conflicts|Enhances|Epoch|Group|Icon|License|Name|Obsoletes|Packager|Patch\\[0\\-9\\]\\*|Provides|Recommends|Release|Requires\\\\\\(\\?\\[a\\-z\\]\\*\\\\\\)\\?|Source\\[0\\-9\\]\\*|Suggests|Summary|Supplements|Url|URL|Vendor|Version):",
+   "name": "def.keyword"
+  },
+  {
+   "match": "^%(?:global|description|package|prep|build|install|clean|check|pre\\[a\\-z\\]\\*|post\\[a\\-z\\]\\*|trigger\\[a\\-z\\]\\*|files)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "%(?:defattr|docdir|doc|license|setup|autosetup|config|configure|make|makeinstall|make_install|make_build|dir|ghost|patch\\[0\\-9\\]\\+|find_lang|exclude)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "%\\{?_([a-z_]+dir|[a-z_]+path|prefix)\\}?",
+   "name": "def.identifier"
+  },
+  {
+   "match": "%\\{?__[a-z_]+\\}?",
+   "name": "def.identifier"
+  },
+  {
+   "match": "%\\{\\?[A-Za-z0-9_]+\\}",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "%(?:ifarch|if|else|elif|endif)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\$\\{?RPM_[A-Z0-9_]+\\}?",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\s(-[A-Za-z0-9_\\x80-\\xFF]+|--[A-Za-z0-9_\\x80-\\xFF][a-zA-Z_-]+)",
+   "name": "def.operator"
+  },
+  {
+   "begin": "%changelog",
+   "end": "^(?=%)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.type"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}\\s+(\\d{1,2}:\\d{1,2}:\\d{1,2}\\s+)?\\d{4}|\\d{4}-\\d{2}-\\d{2})",
+     "name": "changelog.date"
+    },
+    {
+     "match": "<[A-Za-z0-9._+-]+@[A-Za-z0-9._+-]+\\.[A-Za-z0-9]{2,4}>",
+     "name": "changelog.email"
+    }
+   ]
+  },
+  {
+   "match": "%\\{?[a-zA-Z][a-zA-Z0-9_]+\\}?",
+   "name": "def.identifier"
+  }
+ ],
+ "fileTypes": [
+  "spec"
+ ]
+}

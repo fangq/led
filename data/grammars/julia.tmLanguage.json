@@ -1,0 +1,145 @@
+{
+ "name": "Julia",
+ "scopeName": "source.julia",
+ "patterns": [
+  {
+   "begin": "^#!",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "'(([^\\\\']|\\\\.)|\\\\[0-7]{1,3}|\\\\x[0-9a-fA-F]{1,2}|\\\\u[0-9a-fA-F]{1,3}|\\\\u[0-9a-cA-C][0-9a-fA-F]{3}|\\\\u[dD][0-7][0-9a-fA-F]{2}|\\\\U[0-9a-fA-F]{1,5}|\\\\U10[0-9a-fA-F]{4})'",
+   "name": "def.character"
+  },
+  {
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF])0b[01]+|(?<![A-Za-z0-9_\\x80-\\xFF])0o[0-7]+|(?<![A-Za-z0-9_\\x80-\\xFF])0x[0-9a-fA-F]+|(?<![A-Za-z0-9_\\x80-\\xFF])(\\d+(\\.\\d+)?|\\.\\d+)([eE][+-]?\\d+)?",
+   "name": "def.number"
+  },
+  {
+   "match": "\\b(?:true\\|false)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?<=\\d|\\b)pi\\b|(?<=\\d|\\b)e\\b|(?<=\\d|\\b)im\\b|(?<=\\d|\\b)Inf(32)?\\b|(?<=\\d|\\b)NaN(32)?\\b",
+   "name": "def.constant"
+  },
+  {
+   "match": "\\b(?:nothing|ARGS|LOAD_PATH|CPU_CORES|OS_NAME|C_NULL|WORD_SIZE|VERSION|ENDIAN_BOM|ENV|STDERR|STDIN|STDOUT|T|ANY)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "patterns": [
+    {
+     "match": "(\\.)?(\\+|\\-|\\*|\\/|\\\\|\\^|\\*\\*)|(?<=[0-9a-zA-Z_)\\]}])(\\.)?'|\\+\\+|\\-\\-|\\||&|!|~|=|<|>|:",
+     "name": "def.operator"
+    },
+    {
+     "match": "[$%]=?|\\.[<>%']|\\.[<>=!]=",
+     "name": "def.operator"
+    }
+   ]
+  },
+  {
+   "match": "\\(|\\)|\\[|\\]|\\{|\\}|\\.|,|;|\\?|\\.\\.\\.",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\b(?:begin|do|for|in|function|if|immutable|let|quote|try|type|while|catch|finally|else|elseif|end|abstract|bitstype|break|ccall|const|continue|export|global|import|importall|local|macro|module|baremodule|return|typealias|using)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "begin": "`",
+   "end": "`",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:is|typeof|subtype|isa|typeassert|apply|kwcall|throw|tuple|Union|method_exists|applicable|invoke|eval|isdefined|yieldto)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "\\b(?:Base|Core|Main|PCRE|FFTW|Collections|DSP|LinAlg|LibRandom|Random|Math|MPFR|GMP|Sort|Test|Pkg|Operators|Errno|Meta|Graphics)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "\\b(?:Any\\|None\\|Nothing\\|Void|Type\\(Constructor\\|Name\\|Var\\|_Array\\)\\?\\|\\(Union\\|Data\\|NonTuple\\)Type|\\(Abstract\\|Strided\\|Bit\\)\\?\\(Array\\|Matrix\\|Vector\\)|Abstract\\(Cmd\\|RNG\\|SparseMatrix\\)|\\(Abstract\\|Strided\\)\\?VecOrMat|SparseMatrixCSC|\\(D\\|Sub\\(\\(Or\\)\\?D\\)\\?\\)Array|Chars\\?|\\(ASCII\\|Byte\\|Char\\|DirectIndex\\|Generic\\|Rep\\|Rev\\|Rope\\|Sub\\|UTF8\\)\\?String|Bool|Number|Real|Rational|ImaginaryUnit|Signed\\|Unsigned|Int\\(eger\\|Set\\|8\\|16\\|32\\|64\\|128\\)\\?|Uint\\(8\\|16\\|32\\|64\\|128\\)\\?|Float\\(ingPoint\\|32\\|64\\)|Complex\\(Pair\\|64\\|128\\)\\?|Big\\(Int\\|Float\\)|C\\(float\\|double\\|ptrdiff_t\\|u\\?\\(int\\|long\\(long\\)\\?\\|char\\|short\\)\\|s\\?size_t\\|wchar_t\\)|\\(Argument\\|Bounds\\|Divide\\|Domain\\|EOF\\|Inexact\\|Key\\|Load\\|Memory\\|Method\\|Parse\\|\\(Stack\\)\\?Overflow\\|System\\|Type\\|UV\\|UndefRef\\)Error|\\(Error\\|Interrupt\\|Disconnect\\)\\?Exception|Algorithm|Associative|AsyncStream|Box|BunchKaufman|CPUinfo|CallStack|Callback|Cholesky|CholeskyPivoted|Cmd\\(Redirect\\)\\?|\\(And\\|Or\\)Cmds|Colon|LU\\|\\(\\(\\(Sym\\|LDLT\\|LU\\)\\?Tr\\|B\\)id\\|D\\)iagonal|Dict|EachLine|Eigen|EmptyCallStack|Enumerate|EnvHash|Executable|Expr\\(Node\\)\\?|Factorization|FDWatcher|\\(Abstract\\)\\?File|File\\(Monitor\\|Offset\\)|Filter|\\(Intrinsic\\)\\?Function|Hermitian|Hessenberg|IO\\(Buffer\\|Stream\\)\\?|InetAddr|IpAddr\\|IPv\\[46\\]|\\(Key\\|Value\\)Iterator|LambdaStaticData|LocalProcess|Long\\(Expr\\|Symbol\\|Tuple\\)|MersenneTwister|Method\\(Table\\)\\?|MmapArrayInfo|Module|NTuple|NamedPipe|\\(Getfield\\|Goto\\|Label\\|LineNumber\\|Quote\\)Node|NotFound|OS_FD|ObjectIdDict|PollingFileWatcher|Process\\(Chain\\(OrNot\\)\\?\\|Group\\)\\?|Ptr|QR\\(Pivoted\\)\\?|Range\\(s\\|1\\|Index\\|VecIntList\\)\\?|RawOrBoxedHandle|Redirectable|Regex\\(Match\\(Iterator\\)\\?\\)\\?|RemoteRef|Rest|Reverse|\\(Generalized\\)\\?\\(SVD\\|Schur\\)|Set|Socket|\\(Merge\\|Insertion\\|Tim\\|Quick\\)Sort|SpawnNullStream|Stat|StateUpdate|StaticVarInfo|Symbol\\(Node\\)\\?|TTY|Task|TcpSocket|TmStruct|Top\\(Node\\)\\?|Triangular|UV\\(Handle\\|PollingWatcher\\|Stream\\)|UdpSocket|Undef\\(RefTag\\)\\?|VarTable|Vararg|VersionNumber|Wait\\(For\\|Task\\)|Weak\\(KeyDict\\|Ref\\)|Woodbury|\\(Timeout\\|Idle\\|Single\\)\\?AsyncWork|Work\\(er\\|Item\\)|Zip)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "(?i)@([a-z_][a-z1-9_]*)?",
+   "name": "def.type"
+  }
+ ],
+ "fileTypes": [
+  "jl"
+ ]
+}

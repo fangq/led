@@ -1,0 +1,1354 @@
+{
+ "name": "DPatch",
+ "scopeName": "source.dpatch",
+ "patterns": [
+  {
+   "patterns": [
+    {
+     "begin": "^#!",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     }
+    },
+    {
+     "begin": "(?<!\\S)#",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "'",
+     "end": "'",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     }
+    },
+    {
+     "begin": "\"",
+     "end": "\"",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\[$`\"\\\\]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "\\\\"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+         "name": "def.type"
+        },
+        {
+         "begin": "\\$\\{",
+         "end": "\\}",
+         "beginCaptures": {
+          "0": {
+           "name": "def.type"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.type"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "'",
+           "end": "'",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           }
+          },
+          {
+           "begin": "`",
+           "end": "`",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "patterns": [
+              {
+               "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+               "name": "def.keyword"
+              },
+              {
+               "begin": "\\bfor\\b",
+               "end": "\\b(in|do)\\b",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.keyword"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.keyword"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+                 "name": "sh.variable"
+                }
+               ]
+              },
+              {
+               "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+               "name": "def.keyword"
+              }
+             ]
+            },
+            {
+             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+             "name": "def.keyword"
+            },
+            {
+             "begin": "'",
+             "end": "'",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "`",
+       "end": "`",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\\\.",
+         "name": "def.special-char"
+        },
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+           "name": "def.type"
+          },
+          {
+           "begin": "\\$\\{",
+           "end": "\\}",
+           "beginCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "'",
+             "end": "'",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "patterns": [
+          {
+           "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+           "name": "def.keyword"
+          },
+          {
+           "begin": "\\bfor\\b",
+           "end": "\\b(in|do)\\b",
+           "beginCaptures": {
+            "0": {
+             "name": "def.keyword"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.keyword"
+            }
+           },
+           "patterns": [
+            {
+             "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+             "name": "sh.variable"
+            }
+           ]
+          },
+          {
+           "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+           "name": "def.keyword"
+          }
+         ]
+        },
+        {
+         "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+         "name": "def.keyword"
+        },
+        {
+         "begin": "'",
+         "end": "'",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "\\(",
+     "end": "\\)",
+     "beginCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     }
+    },
+    {
+     "begin": "`",
+     "end": "`",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\.",
+       "name": "def.special-char"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+         "name": "def.type"
+        },
+        {
+         "begin": "\\$\\{",
+         "end": "\\}",
+         "beginCaptures": {
+          "0": {
+           "name": "def.type"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.type"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "'",
+           "end": "'",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           }
+          },
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\[$`\"\\\\]",
+             "name": "def.special-char"
+            },
+            {
+             "match": "\\\\"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "patterns": [
+        {
+         "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+         "name": "def.keyword"
+        },
+        {
+         "begin": "\\bfor\\b",
+         "end": "\\b(in|do)\\b",
+         "beginCaptures": {
+          "0": {
+           "name": "def.keyword"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.keyword"
+          }
+         },
+         "patterns": [
+          {
+           "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+           "name": "sh.variable"
+          }
+         ]
+        },
+        {
+         "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+         "name": "def.keyword"
+        }
+       ]
+      },
+      {
+       "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+       "name": "def.keyword"
+      },
+      {
+       "begin": "'",
+       "end": "'",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\\\[$`\"\\\\]",
+         "name": "def.special-char"
+        },
+        {
+         "match": "\\\\"
+        },
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+           "name": "def.type"
+          },
+          {
+           "begin": "\\$\\{",
+           "end": "\\}",
+           "beginCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "'",
+             "end": "'",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "\\bcase\\b",
+     "end": "\\besac\\b",
+     "beginCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\\\[$`\"\\\\]",
+         "name": "def.special-char"
+        },
+        {
+         "match": "\\\\"
+        },
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+           "name": "def.type"
+          },
+          {
+           "begin": "\\$\\{",
+           "end": "\\}",
+           "beginCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.type"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "'",
+             "end": "'",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             }
+            },
+            {
+             "begin": "`",
+             "end": "`",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "patterns": [
+              {
+               "match": "\\\\.",
+               "name": "def.special-char"
+              },
+              {
+               "begin": "\\\\$",
+               "end": "^",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.preprocessor"
+                }
+               }
+              },
+              {
+               "patterns": [
+                {
+                 "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+                 "name": "def.keyword"
+                },
+                {
+                 "begin": "\\bfor\\b",
+                 "end": "\\b(in|do)\\b",
+                 "beginCaptures": {
+                  "0": {
+                   "name": "def.keyword"
+                  }
+                 },
+                 "endCaptures": {
+                  "0": {
+                   "name": "def.keyword"
+                  }
+                 },
+                 "patterns": [
+                  {
+                   "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+                   "name": "sh.variable"
+                  }
+                 ]
+                },
+                {
+                 "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+                 "name": "def.keyword"
+                }
+               ]
+              },
+              {
+               "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+               "name": "def.keyword"
+              },
+              {
+               "begin": "'",
+               "end": "'",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               }
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "`",
+         "end": "`",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "patterns": [
+          {
+           "match": "\\\\.",
+           "name": "def.special-char"
+          },
+          {
+           "begin": "\\\\$",
+           "end": "^",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           }
+          },
+          {
+           "patterns": [
+            {
+             "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+             "name": "def.type"
+            },
+            {
+             "begin": "\\$\\{",
+             "end": "\\}",
+             "beginCaptures": {
+              "0": {
+               "name": "def.type"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.type"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "'",
+               "end": "'",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.string"
+                }
+               }
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "patterns": [
+            {
+             "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+             "name": "def.keyword"
+            },
+            {
+             "begin": "\\bfor\\b",
+             "end": "\\b(in|do)\\b",
+             "beginCaptures": {
+              "0": {
+               "name": "def.keyword"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.keyword"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+               "name": "sh.variable"
+              }
+             ]
+            },
+            {
+             "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+             "name": "def.keyword"
+            }
+           ]
+          },
+          {
+           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+           "name": "def.keyword"
+          },
+          {
+           "begin": "'",
+           "end": "'",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           }
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "'",
+       "end": "'",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "[^\\)\\s]+\\s*\\)|;;",
+       "name": "def.keyword"
+      }
+     ]
+    },
+    {
+     "match": "[;\\|&/]",
+     "name": "def.keyword"
+    },
+    {
+     "match": "\\b[a-zA-Z_][a-zA-Z0-9_]+[ \\t]*\\(\\)",
+     "name": "def.function"
+    },
+    {
+     "begin": "(?<!<)<<-?\\s*\\\\?(\\\"(?P<HDB_12>[^\\s<]+)\\\"|\\'(?P<HDB_13>[^\\s<]+)\\'|(?P<HDB_14>[^\\s<]+))$",
+     "end": "^\\t*\\%{HDB@start}$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.keyword"
+      }
+     }
+    },
+    {
+     "match": "\\b(?:>\\&\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+>\\&|\\\\b\\[0\\-9\\]\\+>\\&\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+>|>>|\\\\b\\[0\\-9\\]\\+>>|<\\&\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<\\&|\\\\b\\[0\\-9\\]\\+<\\&\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<|<<\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<<)\\b",
+     "name": "def.keyword"
+    },
+    {
+     "match": "\\b(?:\\\\\\-a\\\\b|\\\\\\-b\\\\b|\\\\\\-c\\\\b|\\\\\\-d\\\\b|\\\\\\-e\\\\b|\\\\\\-f\\\\b|\\\\\\-g\\\\b|\\\\\\-h\\\\b|\\\\\\-k\\\\b|\\\\\\-p\\\\b|\\\\\\-r\\\\b|\\\\\\-s\\\\b|\\\\\\-t\\\\b|\\\\\\-u\\\\b|\\\\\\-w\\\\b|\\\\\\-x\\\\b|\\\\\\-O\\\\b|\\\\\\-G\\\\b|\\\\\\-L\\\\b|\\\\\\-S\\\\b|\\\\\\-N\\\\b|\\\\\\-nt\\\\b|\\\\\\-ot\\\\b|\\\\\\-ef\\\\b|\\\\\\-o\\\\b|\\\\\\-z\\\\b|\\\\\\-n\\\\b|<|>|\\\\!=|\\\\\\-eq\\\\b|\\\\\\-ne\\\\b|\\\\\\-lt\\\\b|\\\\\\-le\\\\b|\\\\\\-gt\\\\b|\\\\\\-ge\\\\b)\\b",
+     "name": "def.function"
+    },
+    {
+     "patterns": [
+      {
+       "match": "\\$([!@?*#\\$0-9]|[a-zA-Z0-9_]+)",
+       "name": "def.type"
+      },
+      {
+       "begin": "\\$\\{",
+       "end": "\\}",
+       "beginCaptures": {
+        "0": {
+         "name": "def.type"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.type"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "'",
+         "end": "'",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        },
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "\\\\[$`\"\\\\]",
+           "name": "def.special-char"
+          },
+          {
+           "match": "\\\\"
+          },
+          {
+           "begin": "\\\\$",
+           "end": "^",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           }
+          },
+          {
+           "begin": "`",
+           "end": "`",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\.",
+             "name": "def.special-char"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "patterns": [
+              {
+               "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+               "name": "def.keyword"
+              },
+              {
+               "begin": "\\bfor\\b",
+               "end": "\\b(in|do)\\b",
+               "beginCaptures": {
+                "0": {
+                 "name": "def.keyword"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "def.keyword"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+                 "name": "sh.variable"
+                }
+               ]
+              },
+              {
+               "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+               "name": "def.keyword"
+              }
+             ]
+            },
+            {
+             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+             "name": "def.keyword"
+            },
+            {
+             "begin": "'",
+             "end": "'",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "`",
+         "end": "`",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "patterns": [
+          {
+           "match": "\\\\.",
+           "name": "def.special-char"
+          },
+          {
+           "begin": "\\\\$",
+           "end": "^",
+           "beginCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.preprocessor"
+            }
+           }
+          },
+          {
+           "patterns": [
+            {
+             "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+             "name": "def.keyword"
+            },
+            {
+             "begin": "\\bfor\\b",
+             "end": "\\b(in|do)\\b",
+             "beginCaptures": {
+              "0": {
+               "name": "def.keyword"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.keyword"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+               "name": "sh.variable"
+              }
+             ]
+            },
+            {
+             "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+             "name": "def.keyword"
+            }
+           ]
+          },
+          {
+           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+           "name": "def.keyword"
+          },
+          {
+           "begin": "'",
+           "end": "'",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           }
+          },
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "\\\\[$`\"\\\\]",
+             "name": "def.special-char"
+            },
+            {
+             "match": "\\\\"
+            },
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "(^\\s*|(?<=then|else|do|export)\\s+)([a-zA-Z_][a-zA-Z0-9_]*)\\=",
+     "captures": {
+      "2": {
+       "name": "sh.variable"
+      }
+     }
+    },
+    {
+     "patterns": [
+      {
+       "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+       "name": "def.keyword"
+      },
+      {
+       "begin": "\\bfor\\b",
+       "end": "\\b(in|do)\\b",
+       "beginCaptures": {
+        "0": {
+         "name": "def.keyword"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.keyword"
+        }
+       },
+       "patterns": [
+        {
+         "match": "[A-Za-z0-9_\\x80-\\xFF]+",
+         "name": "sh.variable"
+        }
+       ]
+      },
+      {
+       "match": "(?<![^\\s;\\(\\)\\`])(?:do|done|elif|else|fi|for|function|if|in|select|then|until|while|alias|bg|bind|break|builtin|cd|command|compgen|complete|continue|declare|dirs|disown|echo|enable|eval|exec|exit|export|fc|fg|getopts|hash|help|history|jobs|let|local|logout|popd|printf|pushd|read|readonly|return|set|shift|shopt|source|suspend|test|times|trap|type|typeset|ulimit|umask|unalias|unset|wait)(?![^\\s;\\(\\)\\`])",
+       "name": "def.keyword"
+      }
+     ]
+    },
+    {
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+     "name": "def.keyword"
+    }
+   ]
+  },
+  {
+   "begin": "^(\\@DPATCH\\@).*",
+   "end": "$",
+   "beginCaptures": {
+    "1": {
+     "name": "def.keyword"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "(?:^(diff |\\+\\+\\+ |Index: |==== |\\*\\*\\* |--- ))",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "diff.diff-file"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "diff.diff-file"
+        }
+       }
+      },
+      {
+       "match": "^(<|-).*$",
+       "name": "diff.removed-line"
+      },
+      {
+       "match": "^(\\+|>).*$",
+       "name": "diff.added-line"
+      },
+      {
+       "match": "^\\! .*$",
+       "name": "diff.changed-line"
+      },
+      {
+       "begin": "^((@@)|[0-9]|\\*\\*\\*\\*)",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "diff.location"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "diff.location"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\\\.",
+         "name": "def.special-char"
+        }
+       ]
+      },
+      {
+       "match": "^(?:Only\\ in\\ \\.\\*|Files\\ \\.\\*\\ and\\ \\.\\*\\ are\\ identical\\$|Files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|Binary\\ files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|File\\ \\.\\*\\ is\\ a\\ \\.\\*\\ while\\ file\\ \\.\\*\\ is\\ a\\ \\.\\*|No\\ newline\\ at\\ end\\ of\\ file\\ \\.\\*)\\b",
+       "name": "diff.special-case"
+      },
+      {
+       "begin": "^\\S",
+       "end": "$",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "dpatch"
+ ]
+}

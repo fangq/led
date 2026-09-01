@@ -1,0 +1,199 @@
+{
+ "name": "Haxe",
+ "scopeName": "source.haxe",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "match": "\\b(?:import|package|extern|using)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "^\\s*#\\s*(?:if|else|elseif|end)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:class|enum|extends|function|implements|interface|typedef|var|macro)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "[A-Z][a-zA-Z0-9]*",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\b(?:static|inline|abstract)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:private|public|dynamic|override)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:break|case|cast|catch|continue|default|do|else|for|if|in|return|switch|throw|try|untyped|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:new|super|this)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\(x?\\d+|[\\\\\\?\\\"\\'nt]))",
+     "name": "def.special-char"
+    },
+    {
+     "match": "(?:\\\\[^\\\\\\?\\\"\\'ntx\\d])",
+     "name": "def.error"
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "'",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\(x?\\d+|[\\\\\\?\\\"\\'nt]))",
+     "name": "def.special-char"
+    },
+    {
+     "match": "(?:\\\\[^\\\\\\?\\\"\\'ntx\\d])",
+     "name": "def.error"
+    }
+   ]
+  },
+  {
+   "match": "(\\b([0-9]+|0[xX][0-9a-fA-F]+)[Ll]?\\b|\\b(([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]))",
+   "name": "def.decimal"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:null)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "@[A-Za-z0-9_\\x80-\\xFF]+",
+   "name": "def.constant"
+  },
+  {
+   "match": "@:[A-Za-z0-9_\\x80-\\xFF]+",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "_hx_[A-Za-z0-9_\\x80-\\xFF]+",
+   "name": "def.warning"
+  }
+ ],
+ "fileTypes": [
+  "hx"
+ ]
+}

@@ -1,0 +1,181 @@
+{
+ "name": "Verilog",
+ "scopeName": "source.verilog",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\%\\%|\\%0?(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?[bBoOdDhHeEfFtTsSmMlL]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "(?:\\\\([\\\\\\\"\\'nt]))",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "`(?:celldefine|default_nettype|define|else|elsif|endcelldefine|endif|ifdef|ifndef|include|line|nounconnected_drive|resetall|timescale|unconnected_drive|undef)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\$(?:acos|acosh|asin|asinh|atan|atan2|atanh|async\\\\\\$and\\\\\\$array|async\\\\\\$and\\\\\\$plane|async\\\\\\$nand\\\\\\$array|async\\\\\\$nand\\\\\\$plane|async\\\\\\$or\\\\\\$array|async\\\\\\$or\\\\\\$plane|async\\\\\\$nor\\\\\\$array|async\\\\\\$nor\\\\\\$plane|bitstoreal|ceil|cos|cosh|clog2|display|displayb|displayh|displayo|dist_chi_square|dist_erlang|dist_exponential|dist_normal|dist_poisson|dist_t|dist_uniform|dummpall|dumpfile|dumpflush|dumplimit|dumpoff|dumpon|dumpvars|exp|fclose|fdisplay|fdisplayb|fdisplayh|fdisplayo|feof|ferror|fflush|fgetc|fgets|finish|floor|fmonitor|fmonitorb|fmonitorh|fmonitoro|fopen|fread|fscanf|fseek|fstrobe|fstrobeb|fstrobeh|fstrobeo|ftell|fwrite|fwriteb|fwriteh|fwriteo|hold|hypot|itor|ln|log10|monitor|monitorb|monitorh|monitoro|monitoroff|monitoron|nochange|period|pow|printtimescale|q_add|q_exam|q_full|q_initialize|q_remove|random|readmemb|readmemh|realtime|realtobits|recovery|rewind|rtoi|sdf_annotate|setup|setuphold|sformat|signed|sin|sinh|skew|sqrt|sscanf|stime|stop|strobe|strobeb|strobeh|strobeo|swrite|swriteb|swriteh|swriteo|sync\\\\\\$and\\\\\\$array|sync\\\\\\$and\\\\\\$plane|sync\\\\\\$nand\\\\\\$array|sync\\\\\\$nand\\\\\\$plane|sync\\\\\\$or\\\\\\$array|sync\\\\\\$or\\\\\\$plane|sync\\\\\\$nor\\\\\\$array|sync\\\\\\$nor\\\\\\$plane|tan|tanh|test\\\\\\$plusargs|time|timeformat|ungetc|unsigned|value\\\\\\$plusargs|width|write|writeb|writeh|writeo)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\$(?:countdrivers|getpattern|incsave|key|list|log|nokey|nolog|reset|reset_count|reset_value|restart|save|scale|scope|showscopes|showvars|sreadmemb|sreadmemh)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:always|assign|attribute|begin|case|casex|casez|deassign|default|defparam|disable|edge|else|end|endattribute|endcase|endfunction|endgenerate|endmodule|endprimitive|endspecify|endtable|endtask|for|force|forever|fork|function|generate|highz0|highz1|if|ifnone|initial|join|large|macromodule|medium|module|negedge|posedge|primitive|pull0|pull1|release|repeat|signed|small|specify|specparam|strength|strong0|strong1|table|task|unsigned|wait|weak0|weak1|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:and|buf|bufif0|bufif1|cmos|nand|nmos|nor|not|notif0|notif1|or|pmos|pullup|pulldown|rcmos|rnmos|rpmos|rtran|rtranif0|rtranif1|tran|tranif0|tranif1|xnor|xor)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:event|genvar|inout|input|integer|output|parameter|real|reg|realtime|scalared|supply0|supply1|time|tri|tri0|tri1|triand|trior|trireg|vectored|wand|wire|wor)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[1-9][0-9]*'[bB][0-1_xXzZ?]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[1-9][0-9]*'[oO][0-7_xXzZ?]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[1-9][0-9]*'[dD][0-9_xXzZ?]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[1-9][0-9]*'[hH][0-9a-fA-F_xXzZ?]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9][0-9_]*\\.[0-9][0-9_]*(?:[Ee][+-]?[0-9][0-9_]*)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9][0-9_]*(E[+]?[0-9][0-9_]*)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.number"
+  }
+ ],
+ "fileTypes": [
+  "v"
+ ]
+}

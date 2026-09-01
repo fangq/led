@@ -1,0 +1,171 @@
+{
+ "name": "OOC",
+ "scopeName": "source.ooc",
+ "patterns": [
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\([\\\\\\\"\\'nrbtf]|[0-9]{1,3}|u[0-9]{1,4}))",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "match": "\\b(?:import|include|use)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:class|cover|func|implement|interface|operator)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:Int|Int8|Int16|Int32|Int64|Int80|Int128|UInt|UInt8|UInt16|UInt32|UInt64|UInt80|UInt128|Octet|Short|UShort|Long|ULong|LLong|ULLong|Float|Double|LDouble|Float32|Float64|Float128|Char|UChar|SChar|WChar|String|Void|Pointer|Bool|SizeT|This)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:abstract|static|final|extern|const|proto)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:private|protected|public|internal)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:as|break|continue|else|fallthrough|finally|for|if|match|return|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:new|this)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:catch|const|goto|finally|throw|try|with|scope)\\b",
+   "name": "def.error"
+  },
+  {
+   "match": "\\b(?:null)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9]+[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][a-fA-F0-9]+[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[cC][0-7]+[uUlL]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])((\\.[0-9]+|[0-9]+\\.[0-9]*)([Ee][+-]?[0-9]*)?|([0-9]+[Ee][+-]?[0-9]*))[fFlL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.floating-point"
+  }
+ ],
+ "fileTypes": [
+  "ooc"
+ ]
+}

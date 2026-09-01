@@ -1,0 +1,137 @@
+{
+ "name": "NetRexx",
+ "scopeName": "source.netrexx",
+ "patterns": [
+  {
+   "begin": "[\"']",
+   "end": "(?:\\0)|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\(leadingbackslash[\\\\\\\"\\'nrbtf]|[0-9]{1,3}|latinencodedcharu[0-9]{1,4}))",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "'((?:\\\\(leadingbackslash[\\\\\\\"\\'nrbtf]|[0-9]{1,3}|latinencodedcharu[0-9]{1,4}))|.)'",
+   "name": "def.character"
+  },
+  {
+   "begin": "--",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:package|import|options)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:binary|nobinary|comments|nocomments|compact|nocompact|crossref|nocrossref|decimal|nodecimal|diag|nodiag|explicit|noexplicit|format|noformat|java|nojava|logo|nologo|replace|noreplace|sourcedir|nosourcedir|strictargs|nostrictargs|strictassign|nostrictassign|strictcase|nostrictcase|strictimport|nostrictimport|strictprops|nostrictprops|strictsignal|nostrictsignal|symbols|nosymbols|notrace|trace1|trace2|verbose|verbose0|verbose1|verbose2|verbose3|verbose4|verbose5|utf8|noutf8)\\b",
+   "name": "def.function"
+  },
+  {
+   "match": "\\b(?:boolean|byte|char|double|float|int|long|short)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:ask|class|digits|form|length|null|source|sourceline|super|this|trace|version)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:inheritable|private|public|shared)\\b",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\b(?:abstract|adapter|constant|final|interface|native|static|transient|volatile|protect|binary|deprecated|returns|signals|extends|uses|implements|unused)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:catch|do|else|end|exit|finally|if|iterate|leave|loop|method|nop|numeric|otherwise|parse|properties|return|say|select|signal|then|when)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:all|by|case|engineering|for|forever|label|methods|off|over|results|scientific|to|until|var|while)\\b",
+   "name": "def.shebang"
+  },
+  {
+   "match": "\\b(?:abbrev|abs|b2x|center|centre|changestr|compare|copies|copyindexed|countstr|c2d|c2x|datatype|delstr|delword|d2c|d2x|exists|format|insert|lastpos|left|lower|max|min|overlay|pos|right|sequence|sign|space|strip|substr|subword|translate|trunc|upper|verify|word|wordindex|wordlength|wordpos|words|x2b|x2c|x2d)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "(\\b([0-9]+|0[xX][0-9a-fA-F]+)[Ll]?\\b|\\b(([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]))",
+   "name": "def.number"
+  }
+ ],
+ "fileTypes": [
+  "nrx"
+ ]
+}

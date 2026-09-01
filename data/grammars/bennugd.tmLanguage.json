@@ -1,0 +1,327 @@
+{
+ "name": "BennuGD",
+ "scopeName": "source.bennugd",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "begin": "(?:^\\s*#\\s*)(define|if(n?def)?|else|elsif|endif)\\b",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "begin": "L?\"",
+     "end": "(?:\")|$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",
+       "name": "def.special-char"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "begin": "//",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.preprocessor"
+          }
+         }
+        },
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "/\\*",
+     "end": "\\*/",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "L?\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "L?'((?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))|.)'",
+   "name": "def.character"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([0-9]+[Ee][+-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.[0-9]*)([Ee][+-]?[0-9]+)?)(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[+-]?([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[+-]?0x[0-9a-fA-F]+(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "\\b(?:begin|break|call|case|clone|const|continue|debug|declare|default|dup|elif|else|elseif|elsif|end|error|exit|for|frame|from|function|global|goto|if|import|include|jmp|local|loop|mod|mouse|next|offset|on|onerror|onexit|private|process|program|public|repeat|resume|return|sizeof|step|switch|to|until|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:argc|argv|os_id)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:bigbro|father|frame_percent|id|process_type|reserved|reserved\\.frame_percent|reserved\\.process_type|reserved\\.saved_priority|reserved\\.saved_status|reserved\\.status|saved_priority|saved_status|smallbro|status|son)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "(?<!(?:[-!+\\\\|=:&><]))(?:==|!=|!|<|>|<=|>=|\\&\\&|\\&|=|\\|\\||\\||\\^\\^|\\^)(?!(?:[-!+\\\\|=:&><]))",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\b(?:byte|char|dword|float|int|pointer|short|signed|string|struct|type|unsigned|word)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:COMPILER_VERSION|__DATE__|__FILE__|__LINE__|max_byte|max_dword|max_int|max_sbyte|max_short|max_word|min_byte|min_dword|min_int|min_sbyte|min_short|min_word|null|os_beos|os_bsd|os_dc|os_gp32|os_linux|os_macos|os_win32|status_dead|status_frozen|status_killed|status_running|status_sleeping|status_waiting|__TIME__|__VERSION__)\\b",
+   "name": "def.preprocessor"
+  }
+ ],
+ "fileTypes": [
+  "prg"
+ ]
+}

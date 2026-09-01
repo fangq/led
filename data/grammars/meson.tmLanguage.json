@@ -1,0 +1,86 @@
+{
+ "name": "Meson",
+ "scopeName": "source.meson",
+ "patterns": [
+  {
+   "begin": "'''",
+   "end": "'''",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "(?i)(?:add_global_arguments|add_global_link_arguments|add_languages|add_project_arguments|add_project_link_arguments|benchmark|build_target|configuration_data|configure_file|custom_target|declare_dependency|dependency|error|environment|executable|find_program|find_library|files|generator|get_option|get_variable|import|include_directories|install_data|install_headers|install_man|install_subdir|is_subproject|is_variable|jar|join_paths|library|message|project|run_command|run_target|set_variable|shared_library|static_library|subdir|subproject|test|vcs_tag|option)\\b",
+   "name": "def.function"
+  },
+  {
+   "match": "\\b(?:if|elif|else|endif|foreach|endforeach)\\b",
+   "name": "def.operator"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:and|not|or)\\b",
+   "name": "meson.keyword"
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "meson.build",
+  "meson_options.txt"
+ ]
+}

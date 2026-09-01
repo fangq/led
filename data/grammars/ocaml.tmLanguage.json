@@ -1,0 +1,876 @@
+{
+ "name": "OCaml",
+ "scopeName": "source.ocaml",
+ "patterns": [
+  {
+   "begin": "\\(\\*\\*(?!\\))",
+   "end": "\\*\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.note"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.note"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "\\(\\*",
+     "end": "\\*\\)",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+         "name": "def.special-char"
+        }
+       ]
+      },
+      {
+       "begin": "\\(\\*",
+       "end": "\\*\\)",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+           "name": "def.special-char"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "\"",
+     "end": "\"",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+       "name": "def.special-char"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\\(\\*",
+   "end": "\\*\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "\"",
+     "end": "\"",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+       "name": "def.special-char"
+      }
+     ]
+    },
+    {
+     "begin": "\\(\\*",
+     "end": "\\*\\)",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+         "name": "def.special-char"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "[-]?0[xX][0-9A-Fa-f][0-9A-Fa-f_]*[lL]?",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "[-]?0[oO][0-7][0-7_]*[lL]?",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "[-]?0[bB][01][01_]*[lL]?",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "[-]?[0-9][0-9_]*[lLn]?",
+   "name": "def.decimal"
+  },
+  {
+   "match": "[-]?[0-9][0-9_]*(\\.[0-9_]*)?([Ee][+-]?[0-9][0-9_]*)?",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "[~?](?:\\b[a-z][A-Za-z0-9_']*)",
+   "name": "def.type"
+  },
+  {
+   "match": "`(?:\\b[A-Z][A-Za-z0-9_']*)",
+   "name": "def.type"
+  },
+  {
+   "match": "(?:\\b[A-Z][A-Za-z0-9_']*)(\\.(?:\\b[A-Z][A-Za-z0-9_']*))*(?=\\.)",
+   "name": "def.type"
+  },
+  {
+   "match": "(?:\\b[A-Z][A-Za-z0-9_']*)",
+   "name": "def.type"
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "('(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))')|('[^\\\\']')",
+   "name": "def.string"
+  },
+  {
+   "match": "'(?:\\b[a-z][A-Za-z0-9_']*)",
+   "name": "def.type"
+  },
+  {
+   "begin": "\\[\\|",
+   "end": "\\|\\]",
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\(\\*\\*(?!\\))",
+       "end": "\\*\\)",
+       "beginCaptures": {
+        "0": {
+         "name": "def.note"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.note"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\\(\\*",
+         "end": "\\*\\)",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+             "name": "def.special-char"
+            }
+           ]
+          },
+          {
+           "begin": "\\(\\*",
+           "end": "\\*\\)",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "patterns": [
+              {
+               "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+               "name": "def.special-char"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+           "name": "def.special-char"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "\\(\\*",
+       "end": "\\*\\)",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+           "name": "def.special-char"
+          }
+         ]
+        },
+        {
+         "begin": "\\(\\*",
+         "end": "\\*\\)",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+             "name": "def.special-char"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "match": "[-]?0[xX][0-9A-Fa-f][0-9A-Fa-f_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?0[oO][0-7][0-7_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?0[bB][01][01_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?[0-9][0-9_]*[lLn]?",
+       "name": "def.decimal"
+      },
+      {
+       "match": "[-]?[0-9][0-9_]*(\\.[0-9_]*)?([Ee][+-]?[0-9][0-9_]*)?",
+       "name": "def.floating-point"
+      },
+      {
+       "match": "[~?](?:\\b[a-z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "match": "`(?:\\b[A-Z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?:\\b[A-Z][A-Za-z0-9_']*)(\\.(?:\\b[A-Z][A-Za-z0-9_']*))*(?=\\.)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?:\\b[A-Z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+         "name": "def.special-char"
+        }
+       ]
+      },
+      {
+       "match": "('(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))')|('[^\\\\']')",
+       "name": "def.string"
+      },
+      {
+       "match": "'(?:\\b[a-z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "begin": "\\[\\|",
+       "end": "\\|\\]"
+      },
+      {
+       "match": "\\|\\]",
+       "name": "def.error"
+      },
+      {
+       "begin": "\\[",
+       "end": "(?<!\\|)\\]"
+      },
+      {
+       "match": "\\]",
+       "name": "def.error"
+      },
+      {
+       "match": "\\b(?:true|false)\\b",
+       "name": "def.boolean"
+      },
+      {
+       "match": "\\b(?:and|assert|begin|do|done|downto|else|end|for|fun|function|if|in|let|match|rec|then|to|try|val|when|while|with)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:as|class|constraint|exception|external|functor|include|inherit|initializer|method|module|mutable|new|object|of|open|private|struct|sig|type|virtual)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:asr|land|lazy|lor|lsl|lsr|lxor|mod|or|lnot)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:option|ignore|ref|array|bool|char|float|int|list|string|unit)\\b",
+       "name": "def.type"
+      },
+      {
+       "match": "\\b(?:Arg|Arith_status|Array|ArrayLabels|Big_int|Bigarray|Buffer|Callback|CamlinternalMod|CamlinternalOO|Char|Complex|Condition|Dbm|Digest|DynLink|Event|Filename|Format|Gc|Genlex|Graphics|GraphicsX11|Hashtbl|Int32|Int64|LargeFile|Lazy|Lexing|List|ListLabels|Map|Marshal|MoreLabels|Mutex|Mativeint|Num|Oo|Parsing|Printexc|Printf|Queue|Random|Scanf|Set|Sort|Stack|StdLabels|Str|Stream|StringLabels|Sys|Thread|ThreadUnix|Unix|UnixLabels|Weak)\\b",
+       "name": "def.type"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\|\\]",
+   "name": "def.error"
+  },
+  {
+   "begin": "\\[",
+   "end": "(?<!\\|)\\]",
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\(\\*\\*(?!\\))",
+       "end": "\\*\\)",
+       "beginCaptures": {
+        "0": {
+         "name": "def.note"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.note"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\\(\\*",
+         "end": "\\*\\)",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+             "name": "def.special-char"
+            }
+           ]
+          },
+          {
+           "begin": "\\(\\*",
+           "end": "\\*\\)",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.string"
+              }
+             },
+             "patterns": [
+              {
+               "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+               "name": "def.special-char"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+           "name": "def.special-char"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "begin": "\\(\\*",
+       "end": "\\*\\)",
+       "beginCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.comment"
+        }
+       },
+       "patterns": [
+        {
+         "begin": "\"",
+         "end": "\"",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "patterns": [
+          {
+           "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+           "name": "def.special-char"
+          }
+         ]
+        },
+        {
+         "begin": "\\(\\*",
+         "end": "\\*\\)",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "begin": "\"",
+           "end": "\"",
+           "beginCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.string"
+            }
+           },
+           "patterns": [
+            {
+             "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+             "name": "def.special-char"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "match": "[-]?0[xX][0-9A-Fa-f][0-9A-Fa-f_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?0[oO][0-7][0-7_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?0[bB][01][01_]*[lL]?",
+       "name": "def.base-n-integer"
+      },
+      {
+       "match": "[-]?[0-9][0-9_]*[lLn]?",
+       "name": "def.decimal"
+      },
+      {
+       "match": "[-]?[0-9][0-9_]*(\\.[0-9_]*)?([Ee][+-]?[0-9][0-9_]*)?",
+       "name": "def.floating-point"
+      },
+      {
+       "match": "[~?](?:\\b[a-z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "match": "`(?:\\b[A-Z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?:\\b[A-Z][A-Za-z0-9_']*)(\\.(?:\\b[A-Z][A-Za-z0-9_']*))*(?=\\.)",
+       "name": "def.type"
+      },
+      {
+       "match": "(?:\\b[A-Z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "begin": "\"",
+       "end": "\"",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
+         "name": "def.special-char"
+        }
+       ]
+      },
+      {
+       "match": "('(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))')|('[^\\\\']')",
+       "name": "def.string"
+      },
+      {
+       "match": "'(?:\\b[a-z][A-Za-z0-9_']*)",
+       "name": "def.type"
+      },
+      {
+       "begin": "\\[\\|",
+       "end": "\\|\\]"
+      },
+      {
+       "match": "\\|\\]",
+       "name": "def.error"
+      },
+      {
+       "begin": "\\[",
+       "end": "(?<!\\|)\\]"
+      },
+      {
+       "match": "\\]",
+       "name": "def.error"
+      },
+      {
+       "match": "\\b(?:true|false)\\b",
+       "name": "def.boolean"
+      },
+      {
+       "match": "\\b(?:and|assert|begin|do|done|downto|else|end|for|fun|function|if|in|let|match|rec|then|to|try|val|when|while|with)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:as|class|constraint|exception|external|functor|include|inherit|initializer|method|module|mutable|new|object|of|open|private|struct|sig|type|virtual)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:asr|land|lazy|lor|lsl|lsr|lxor|mod|or|lnot)\\b",
+       "name": "def.keyword"
+      },
+      {
+       "match": "\\b(?:option|ignore|ref|array|bool|char|float|int|list|string|unit)\\b",
+       "name": "def.type"
+      },
+      {
+       "match": "\\b(?:Arg|Arith_status|Array|ArrayLabels|Big_int|Bigarray|Buffer|Callback|CamlinternalMod|CamlinternalOO|Char|Complex|Condition|Dbm|Digest|DynLink|Event|Filename|Format|Gc|Genlex|Graphics|GraphicsX11|Hashtbl|Int32|Int64|LargeFile|Lazy|Lexing|List|ListLabels|Map|Marshal|MoreLabels|Mutex|Mativeint|Num|Oo|Parsing|Printexc|Printf|Queue|Random|Scanf|Set|Sort|Stack|StdLabels|Str|Stream|StringLabels|Sys|Thread|ThreadUnix|Unix|UnixLabels|Weak)\\b",
+       "name": "def.type"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\]",
+   "name": "def.error"
+  },
+  {
+   "match": "\\b(?:true|false)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b(?:and|assert|begin|do|done|downto|else|end|for|fun|function|if|in|let|match|rec|then|to|try|val|when|while|with)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:as|class|constraint|exception|external|functor|include|inherit|initializer|method|module|mutable|new|object|of|open|private|struct|sig|type|virtual)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:asr|land|lazy|lor|lsl|lsr|lxor|mod|or|lnot)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:option|ignore|ref|array|bool|char|float|int|list|string|unit)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:Arg|Arith_status|Array|ArrayLabels|Big_int|Bigarray|Buffer|Callback|CamlinternalMod|CamlinternalOO|Char|Complex|Condition|Dbm|Digest|DynLink|Event|Filename|Format|Gc|Genlex|Graphics|GraphicsX11|Hashtbl|Int32|Int64|LargeFile|Lazy|Lexing|List|ListLabels|Map|Marshal|MoreLabels|Mutex|Mativeint|Num|Oo|Parsing|Printexc|Printf|Queue|Random|Scanf|Set|Sort|Stack|StdLabels|Str|Stream|StringLabels|Sys|Thread|ThreadUnix|Unix|UnixLabels|Weak)\\b",
+   "name": "def.type"
+  }
+ ],
+ "fileTypes": [
+  "ml",
+  "mli",
+  "mll",
+  "mly"
+ ]
+}

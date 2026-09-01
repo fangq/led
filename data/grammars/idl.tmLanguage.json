@@ -1,0 +1,191 @@
+{
+ "name": "IDL",
+ "scopeName": "source.idl",
+ "patterns": [
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "%\\{",
+   "end": "%\\}",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "^#[ \\t]*(include|pragma)",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:abstract|attribute|case|const|context|custom|default|exception|enum|factory|FALSE|in|inout|interface|local|module|native|oneway|out|private|public|raises|readonly|struct|support|switch|TRUE|truncatable|typedef|union|valuetype)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:any|boolean|char|double|fixed|float|long|Object|octet|sequence|short|string|unsigned|ValueBase|void|wchar|wstring)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "^[ \\t]*#[ \\t]*(?:if|ifdef|ifndef|else|elif|define|endif|undef)\\b",
+   "name": "def.preprocessor"
+  }
+ ],
+ "fileTypes": [
+  "idl"
+ ]
+}

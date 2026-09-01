@@ -1,0 +1,109 @@
+{
+ "name": "reStructuredText",
+ "scopeName": "source.rst",
+ "patterns": [
+  {
+   "match": "^\\s*\\.\\. .*::.*$",
+   "name": "def.constant"
+  },
+  {
+   "match": "^\\s*\\.\\. _.*:.*$",
+   "name": "def.constant"
+  },
+  {
+   "match": "^\\s*\\.\\. \\[.+\\] .*$",
+   "name": "def.constant"
+  },
+  {
+   "begin": "(\\s*)\\.\\.(\\s+).+$",
+   "end": "^(?!(\\1  \\2)|(^$))",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "begin": "^(\\s*)\\.\\.(\\s*)$",
+   "end": "x",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "(\\s*).+$",
+     "end": "^(?!(\\1))",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "^\\s*(=+|\\-+|`+|:+|(\\.\\.\\.+)|'+|\"+|~+|\\^+|_+|\\*+|\\++|#+)\\s*$",
+   "name": "def.type"
+  },
+  {
+   "match": "^\\s*[\\*\\+\\-•‣⁃] ",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "^\\s*(((?:([a-zA-Z]|([0-9]+)))\\.)|(\\(?(?:([a-zA-Z]|([0-9]+)))\\)) )",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "^\\s*:.+?:",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\*\\*(?!\\s).+?(?!\\s)\\*\\*",
+   "name": "def.statement"
+  },
+  {
+   "match": "\\*(?!\\s).+?(?!\\s)\\*",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "(\\S+_)|(`\\b.*?\\b`_)",
+   "name": "def.type"
+  },
+  {
+   "match": "\\|\\b.*\\b\\|",
+   "name": "def.type"
+  },
+  {
+   "patterns": [
+    {
+     "match": "``(?!\\s).*(?!\\s)``",
+     "name": "def.identifier"
+    }
+   ]
+  },
+  {
+   "match": "((http)|(file))://\\S*",
+   "name": "def.underlined"
+  }
+ ],
+ "fileTypes": [
+  "rst"
+ ]
+}

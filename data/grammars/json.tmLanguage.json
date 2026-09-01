@@ -1,0 +1,146 @@
+{
+ "name": "JSON",
+ "scopeName": "source.json",
+ "patterns": [
+  {
+   "patterns": [
+    {
+     "begin": "\\{",
+     "end": "\\}",
+     "beginCaptures": {
+      "0": {
+       "name": "def.constant"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\"",
+       "end": "(?:\")|$",
+       "beginCaptures": {
+        "0": {
+         "name": "js.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "js.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "\\\\(?:[ntrfb\"\\\\/]|u[0-9a-fA-F]{4})",
+         "name": "js.escape"
+        },
+        {
+         "match": "\\\\(?:x[0-9a-fA-F]{2}|[0-3]?[0-7]{1,2}|.)",
+         "name": "def.error"
+        },
+        {
+         "begin": "\\\\$",
+         "end": "^",
+         "beginCaptures": {
+          "0": {
+           "name": "def.error"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.error"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "begin": ":",
+       "end": ",|\\s*(?=})",
+       "beginCaptures": {
+        "0": {
+         "name": "def.constant"
+        }
+       }
+      },
+      {
+       "match": "\\S",
+       "name": "def.error"
+      }
+     ]
+    },
+    {
+     "begin": "\\[",
+     "end": "\\]"
+    },
+    {
+     "begin": "\"",
+     "end": "(?:\")|$",
+     "beginCaptures": {
+      "0": {
+       "name": "js.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "js.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\(?:[ntrfb\"\\\\/]|u[0-9a-fA-F]{4})",
+       "name": "js.escape"
+      },
+      {
+       "match": "\\\\(?:x[0-9a-fA-F]{2}|[0-3]?[0-7]{1,2}|.)",
+       "name": "def.error"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.error"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.error"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "match": "-?(?:[1-9][0-9]*|0)(?:\\.[0-9]+)(?:[eE][+-]?[0-9]+)?|-?(?:[1-9][0-9]*|0)(?:[eE][+-]?[0-9]+)",
+     "name": "def.floating-point"
+    },
+    {
+     "match": "-?(?:[1-9][0-9]*|0)(?![0-9.eE])",
+     "name": "def.decimal"
+    },
+    {
+     "match": "\\b(?:null)\\b",
+     "name": "def.special-constant"
+    },
+    {
+     "match": "\\b(?:false|true)\\b",
+     "name": "def.boolean"
+    },
+    {
+     "match": "\\S",
+     "name": "def.error"
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "json",
+  "geojson",
+  "topojson",
+  "jnii",
+  "jnirs",
+  "jmsh",
+  "jdt",
+  "jdat",
+  "jgii",
+  "jbids"
+ ]
+}

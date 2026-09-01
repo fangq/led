@@ -1,0 +1,146 @@
+{
+ "name": "Modelica",
+ "scopeName": "source.modelica",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\*/(?!\\*)",
+   "name": "def.error"
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "(\\.)?\\+{1,2}?(?!\\+)|(\\.)?\\-{1,2}?(?!\\-)|(\\.)?\\*{1,2}?(?!\\*)|(\\.)?\\/(?!\\^)|(\\.)?\\\\(?!\\^)|(\\.)?\\^(?!\\^)|(?<=[0-9a-zA-Z_)\\]}])(\\.)?'|<=?|>=?|!=|~=|==|<>|&{1,2}?(?!&)|\\|{1,2}?(?!\\|)|!|~|=|:|",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\b(?:class|block|connector|function|model|package|record|type)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:Boolean|enumeration|ExternalObject|Integer|Real|StateSelect|String)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:display|fixed|max|min|nominal|quantity|start|stateSelect|unit|value)\\b",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\b(?:false|true)\\b(?!(\\s)*\\()",
+   "name": "def.boolean"
+  },
+  {
+   "match": "\\b([1-9][0-9]*|0)([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?\\b",
+   "name": "def.decimal"
+  },
+  {
+   "match": "\\b([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFlL]?",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "\\b(?:algorithm|and|annotation|assert|break|connect|constant|constrainedby|discrete|else|elseif|elsewhen|encapsulated|end|equation|expandable|extends|external|false|final|flow|for|if|import|in|inner|input|loop|not|or|outer|output|parameter|partial|protected|public|redeclare|replaceable|return|then|true|when|while|within)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:time|abs|ceil|div|floor|integer|mod|rem|sign|sqrt|sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|analysisType|cardinality|change|delay|der|direction|edge|initial|isPresent|noEvent|pre|reinit|sample|semiLinear|smooth|terminal|terminate|ndims|size|scalar|vector|matrix|array|zeros|ones|fill|identity|diagonal|linspace|min|max|sum|product|transpose|outerProduct|symmetric|cross|skew|cat)\\b",
+   "name": "def.builtin"
+  }
+ ],
+ "fileTypes": [
+  "mo",
+  "mop"
+ ]
+}

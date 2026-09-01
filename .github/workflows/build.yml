@@ -40,6 +40,23 @@ jobs:
       - name: Run headless tests
         run: ./bin/ledcoretest --all --format=plain
 
+  grammars:
+    # Every converted grammar must load in the engine the editor uses. A
+    # converter that emits plausible JSON the engine then rejects is worse
+    # than one that fails loudly.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: stable
+      - name: Regenerate grammars from the .lang sources
+        run: python3 tools/lang2tm.py data/langs data/grammars
+      - name: Build the checker
+        run: lazbuild --widgetset=nogui tools/langcheck/langcheck.lpi
+      - name: Check every grammar loads
+        run: ./bin/langcheck data/grammars
+
   gui-self-test:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,295 @@
+{
+ "name": "Fortran 95",
+ "scopeName": "source.fortran",
+ "patterns": [
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[+-]?((\\.[0-9]+|[0-9]+\\.[0-9]*)([ed][+-]?[0-9]*)?|([0-9]+[ed][+-]?[0-9]*))([_]([0-9]+|[a-z][[A-Za-z0-9_\\x80-\\xFF]_]*))?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[+-]?([1-9][0-9]*|0)([_]([0-9]+|[a-z][[A-Za-z0-9_\\x80-\\xFF]_]*))?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  },
+  {
+   "match": "\\bb'[01]+'|\\bb\"[01]+\"|\\bo'[0-7]+'|\\bo\"[0-7]+\"|\\bz'[0-9a-f]+'|\\bz\"[0-9a-f]+\"",
+   "name": "def.base-n-integer"
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "(![^$])|(^[Cc](\\s|[^$OoAaYyHh]))|(^[Cc]$)",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:byte|character|complex|double\\ complex|double\\ precision|integer|logical|procedure|real)\\b",
+   "name": "def.type"
+  },
+  {
+   "begin": ",\\s*\\b",
+   "end": "\\b",
+   "patterns": [
+    {
+     "match": "\\b(?:allocatable|dimension|external|intent|intrinsic|optional|parameter|pointer|private|public|save|target)\\b",
+     "name": "def.type"
+    }
+   ]
+  },
+  {
+   "match": "\\.(?:true|false|not|and|or|xor|eqv|neqv|eq|ne|gt|ge|lt|le)\\.",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:abstract\\ interface|allocate|assign|assignment|block\\ data|call|case|class|common|contains|continue|cycle|data|deallocate|default|do|do\\ concurrent|elemental|elseif|else|elsewhere|enddo|endif|endselect|end|entry|equivalence|exit|external|forall|function|go\\ to|goto|if|implicit\\ none|in|\\[\\^\\#\\]include|inout|interface|intrinsic|kind|len|module|namelist|nullify|only|operator|out|pause|private|program|public|pure|recursive|result|return|save|select|stop|subroutine|then|type|use|where|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:backspace|close|endfile|format|inquire|open|print|read|rewind|write)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:access|action|advance|blank|delim|direct|end|eor|err|exist|file|fmt|form|formatted|iolength|iostat|name|named|nextrec|nml|number|opened|pad|position|readwrite|rec|recl|sequential|status|unformatted|unit|write)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:abs|achar|acos|adjustl|adjustr|aimag|aint|algama|allocated|all|alog10|alog|amax0|amax1|amin0|amin1|amod|anint|any|asin|associated|atan2|atan|bit_size|btest|c_associated|c_loc|c_funloc|c_f_pointer|c_f_procpointer|cabs|ccos|cdabs|cdcos|cdexp|cdlog|cdsin|cdsqrt|ceiling|cexp|char|clog|cmplx|command_argument_count|conjg|cosh|cos|count|cpu_time|cqabs|cqcos|cqexp|cqlog|cqsin|cqsqrt|cshift|csin|csqrt|dabs|dacos|dasin|datan2|datan|date_and_time|dble|dcmplx|dconjg|dcosh|dcos|ddim|derf|derfc|dexp|dfloat|dgamma|digits|dim|dimag|dint|dlgama|dlog10|dlog|dmax1|dmin1|dmod|dnint|dot_product|dprod|dsign|dsinh|dsin|dsqrt|dtanh|dtan|eoshift|epsilon|erfc|erf|exp|exponent|float|floor|fraction|gamma|getarg|get_command|get_command_argument|get_environment_variable|huge|iabs|iachar|iand|iargc|ibclr|ibits|ibset|ichar|idim|idint|idnint|ieor|ifix|index|int|ior|iqint|is_iostat_end|is_iostat_eor|ishftc|ishft|isign|kind|lbound|len_trim|len|lge|lgt|lle|llt|loc|log10|log|logical|matmul|max0|max1|maxexponent|maxloc|maxval|max|merge|min0|min1|minexponent|minloc|minval|min|mod|modulo|move_alloc|mvbits|nearest|new_line|nint|norm2|not|null|or|pack|precision|present|product|qabs|qacos|qasin|qatan2|qatan|qcmplx|qconjg|qcosh|qcos|qdim|qerf|qerfc|qexp|qgamma|qimag|qlgama|qlog10|qlog|qmax1|qmin1|qmod|qnint|qsign|qsinh|qsin|qsqrt|qtanh|qtan|radix|random_number|random_seed|range|real|repeat|reshape|rrspacing|scale|scan|selected_char_kind|selected_int_kind|selected_real_kind|set_exponent|shape|sign|sinh|sin|size|sngl|spacing|spread|sqrt|sum|system_clock|tanh|tan|tiny|transfer|transpose|trim|ubound|unpack|verify|zabs|zcos|zexp|zlog|zsin|zsqrt)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "begin": "(?:^#)if\\b\\s*0\\b",
+   "end": "(?:^#)(endif|else|elif)\\b",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "(?:^#)if(n?def)?\\b",
+     "end": "(?:^#)endif\\b",
+     "patterns": [
+      {
+       "begin": "(?:^#)if(n?def)?\\b",
+       "end": "(?:^#)endif\\b",
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+           "name": "def.underlined"
+          },
+          {
+           "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+           "name": "def.underlined"
+          },
+          {
+           "match": "\\b(FIXME|TODO|XXX)\\b",
+           "name": "def.note"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "(?:^#)(include|import)\\s*(\".*?\"|<.*>)",
+   "name": "def.preprocessor",
+   "captures": {
+    "2": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "(?:^#)(define|undef|error|pragma|ident|if(n?def)?|else|elif|endif|line|warning)\\b",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "begin": "((^[Cc])|^\\s*!)\\$",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  }
+ ],
+ "fileTypes": [
+  "f",
+  "f90",
+  "f95",
+  "for",
+  "F",
+  "F90"
+ ]
+}
