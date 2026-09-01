@@ -24,8 +24,8 @@ unit Led.UI.Dock;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, ComCtrls, Forms, Graphics,
-  AnchorDocking, AnchorDockPanel, AnchorDockStorage, XMLPropStorage;
+  Classes, SysUtils, Controls, ExtCtrls, ComCtrls, Buttons, Forms, Graphics,
+  ImgList, AnchorDocking, AnchorDockPanel, AnchorDockStorage, XMLPropStorage;
 
 type
   TLedDockEdge = (ledLeft, ledRight, ledTop, ledBottom);
@@ -38,12 +38,16 @@ type
     FPaneId: string;
     FEdge: TLedDockEdge;
     FContent: TControl;
+    FIconName: string;
   public
     constructor CreatePane(AOwner: TComponent; const AId, ACaption: string;
       AEdge: TLedDockEdge; AControl: TControl);
     property PaneId: string read FPaneId;
     property Edge: TLedDockEdge read FEdge;
     property Content: TControl read FContent;
+    { Which icon the edge rail draws for this pane.  Defaults to the pane id,
+      which is right for the panes whose id happens to name an icon. }
+    property IconName: string read FIconName write FIconName;
   end;
 
   TLedDockHost = class(TPanel)
@@ -53,6 +57,13 @@ type
     FCenterForm: TLedPaneForm;
     FPanes: TFPList;               // of TLedPaneForm, in registration order
     FReady: Boolean;
+    FRails: array[TLedDockEdge] of TPanel;
+    FImages: TCustomImageList;
+    FShowRails: Boolean;
+    procedure BuildRail(AEdge: TLedDockEdge);
+    procedure RailButtonClick(Sender: TObject);
+    procedure SetShowRails(AValue: Boolean);
+    procedure SetImages(AValue: TCustomImageList);
     function GetEdgeVisible(AEdge: TLedDockEdge): Boolean;
     procedure SetEdgeVisible(AEdge: TLedDockEdge; AValue: Boolean);
     function GetEdgeSize(AEdge: TLedDockEdge): Integer;
@@ -69,7 +80,7 @@ type
       it in the saved layout; ACaption is the header text; AEdge is where it
       goes the first time, before the user has moved it. }
     function AddPane(AEdge: TLedDockEdge; const AId, ACaption: string;
-      AControl: TControl): TLedPaneForm;
+      AControl: TControl; const AIconName: string = ''): TLedPaneForm;
     function FindPane(const AId: string): TLedPaneForm;
     procedure ShowPane(const AId: string);
     procedure HidePane(const AId: string);
@@ -93,7 +104,19 @@ type
     procedure SaveLayout(const AFileName: string);
     function LoadLayout(const AFileName: string): Boolean;
 
+    { The edge rails: a thin strip on each edge carrying one button per pane
+      registered there, pressed while that pane is open.  Without them a
+      closed pane can only be brought back from the View menu, because
+      AnchorDocking removes the pane entirely rather than collapsing it to
+      anything clickable -- which is what medit's collapsed pane titles were
+      for.  Rebuilt when panes are added, refreshed when one opens or
+      closes. }
+    procedure RebuildRails;
+    procedure RefreshRails;
+
     property Center: TPanel read FCenter;
+    property Images: TCustomImageList read FImages write SetImages;
+    property ShowRails: Boolean read FShowRails write SetShowRails;
     property EdgeVisible[AEdge: TLedDockEdge]: Boolean
       read GetEdgeVisible write SetEdgeVisible;
     property EdgeSize[AEdge: TLedDockEdge]: Integer
@@ -105,6 +128,9 @@ const
     ('left', 'right', 'top', 'bottom');
 
 implementation
+
+uses
+  Led.UI.Icons;
 
 const
   { Where each edge's panes are dropped the first time.  After that the saved
@@ -124,6 +150,7 @@ begin
   FPaneId := AId;
   FEdge := AEdge;
   FContent := AControl;
+  FIconName := AId;    { overridden by AddPane where the id names no icon }
 
   { AnchorDocking identifies a control by its Name in the saved layout, and
     the LCL only accepts an identifier, so the id is sanitised rather than
@@ -144,11 +171,30 @@ end;
 { TLedDockHost }
 
 constructor TLedDockHost.Create(AOwner: TComponent);
+var
+  E: TLedDockEdge;
 begin
   inherited Create(AOwner);
   BevelOuter := bvNone;
   Caption := '';
   FPanes := TFPList.Create;
+  FShowRails := True;
+
+  { The rails are created before the dock site and aligned to the edges, so
+    the site's alClient takes what is left and the strips stay outside it --
+    they must not become part of anything AnchorDocking can rearrange, or the
+    user could drag a pane on top of the control for reopening it. }
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+  begin
+    FRails[E] := TPanel.Create(Self);
+    FRails[E].Parent := Self;
+    FRails[E].BevelOuter := bvNone;
+    FRails[E].Caption := '';
+    FRails[E].Align := EdgeAlign[E];
+    FRails[E].Visible := False;      { until an edge has panes }
+    FRails[E].Width := 0;
+    FRails[E].Height := 0;
+  end;
 
   FSite := TAnchorDockPanel.Create(Self);
   FSite.Parent := Self;
@@ -206,11 +252,15 @@ begin
 end;
 
 function TLedDockHost.AddPane(AEdge: TLedDockEdge;
-  const AId, ACaption: string; AControl: TControl): TLedPaneForm;
+  const AId, ACaption: string; AControl: TControl;
+  const AIconName: string): TLedPaneForm;
 begin
   Result := TLedPaneForm.CreatePane(Self, AId, ACaption, AEdge, AControl);
+  if AIconName <> '' then
+    Result.IconName := AIconName;
   FPanes.Add(Result);
   DockMaster.MakeDockable(Result, False, True, True);
+  BuildRail(AEdge);
 end;
 
 function TLedDockHost.PaneById(const AId: string): TLedPaneForm;
@@ -280,6 +330,139 @@ end;
 procedure TLedDockHost.TogglePane(const AId: string);
 begin
   if PaneVisible(AId) then HidePane(AId) else ShowPane(AId);
+  RefreshRails;
+end;
+
+{ --- edge rails ----------------------------------------------------------- }
+
+procedure TLedDockHost.SetImages(AValue: TCustomImageList);
+begin
+  if FImages = AValue then Exit;
+  FImages := AValue;
+  RebuildRails;
+end;
+
+procedure TLedDockHost.SetShowRails(AValue: Boolean);
+var
+  E: TLedDockEdge;
+begin
+  if FShowRails = AValue then Exit;
+  FShowRails := AValue;
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    if FRails[E] <> nil then
+      FRails[E].Visible := FShowRails and EdgeHasPanes(E);
+end;
+
+procedure TLedDockHost.RailButtonClick(Sender: TObject);
+begin
+  if not (Sender is TSpeedButton) then Exit;
+  TogglePane(TSpeedButton(Sender).Hint);
+end;
+
+{ One button per pane registered for this edge, laid out along it.  The rail
+  is built from scratch rather than patched, because panes are registered
+  once at startup and the cost is irrelevant next to getting the incremental
+  case wrong. }
+procedure TLedDockHost.BuildRail(AEdge: TLedDockEdge);
+var
+  Rail: TPanel;
+  Btn: TSpeedButton;
+  Pane: TLedPaneForm;
+  i, N, Size, Pad: Integer;
+  Horizontal: Boolean;
+begin
+  Rail := FRails[AEdge];
+  if Rail = nil then Exit;
+
+  Horizontal := AEdge in [ledTop, ledBottom];
+
+  while Rail.ControlCount > 0 do
+    Rail.Controls[0].Free;
+
+  { Sized from the image list so the rail follows the display: the icons are
+    built at 16 for a 96-dpi screen and scaled with everything else. }
+  Size := 16;
+  if (FImages <> nil) and (FImages.Width > 0) then
+    Size := FImages.Width;
+  Pad := 4;
+
+  N := 0;
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    if Pane.Edge <> AEdge then Continue;
+
+    Btn := TSpeedButton.Create(Rail);
+    Btn.Parent := Rail;
+    Btn.Width := Size + Pad * 2;
+    Btn.Height := Size + Pad * 2;
+    if Horizontal then
+    begin
+      Btn.Left := N * (Size + Pad * 2);
+      Btn.Top := 0;
+    end
+    else
+    begin
+      Btn.Left := 0;
+      Btn.Top := N * (Size + Pad * 2);
+    end;
+    Btn.Flat := True;
+    Btn.AllowAllUp := True;
+    Btn.GroupIndex := 1000 + i;      { so Down can be toggled independently }
+    { The id travels in Hint: it is also the tooltip the user needs, and it
+      saves a parallel lookup table that could fall out of step. }
+    Btn.Hint := Pane.PaneId;
+    Btn.ShowHint := True;
+    Btn.Images := FImages;
+    Btn.ImageIndex := LedIconIndex(Pane.IconName);
+    if Btn.ImageIndex < 0 then
+    begin
+      { No icon for this pane: fall back to a letter, so the button is still
+        something the user can hit rather than a blank square. }
+      Btn.Images := nil;
+      if Pane.PaneId <> '' then
+        Btn.Caption := UpperCase(Copy(Pane.PaneId, 1, 1));
+    end;
+    Btn.OnClick := @RailButtonClick;
+    Inc(N);
+  end;
+
+  if Horizontal then
+    Rail.Height := Size + Pad * 2
+  else
+    Rail.Width := Size + Pad * 2;
+  Rail.Visible := FShowRails and (N > 0);
+
+  RefreshRails;
+end;
+
+procedure TLedDockHost.RebuildRails;
+var
+  E: TLedDockEdge;
+begin
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    BuildRail(E);
+end;
+
+{ Reflect which panes are actually open.  Called after led changes a pane
+  itself; the main form also calls it on idle, because a pane closed with the
+  header's own close button never comes through here. }
+procedure TLedDockHost.RefreshRails;
+var
+  E: TLedDockEdge;
+  i: Integer;
+  Btn: TSpeedButton;
+begin
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+  begin
+    if FRails[E] = nil then Continue;
+    for i := 0 to FRails[E].ControlCount - 1 do
+      if FRails[E].Controls[i] is TSpeedButton then
+      begin
+        Btn := TSpeedButton(FRails[E].Controls[i]);
+        Btn.Down := PaneVisible(Btn.Hint);
+      end;
+  end;
 end;
 
 function TLedDockHost.GetEdgeVisible(AEdge: TLedDockEdge): Boolean;
