@@ -136,6 +136,31 @@ object LedMainForm: TLedMainForm
       ShortCut = 24767
       OnExecute = actUncommentExecute
     end
+    object actFind: TAction
+      Caption = '&Find...'
+      ShortCut = 16454
+      OnExecute = actFindExecute
+    end
+    object actReplace: TAction
+      Caption = '&Replace...'
+      ShortCut = 16466
+      OnExecute = actReplaceExecute
+    end
+    object actFindNext: TAction
+      Caption = 'Find &Next'
+      ShortCut = 114
+      OnExecute = actFindNextExecute
+    end
+    object actFindPrev: TAction
+      Caption = 'Find &Previous'
+      ShortCut = 8306
+      OnExecute = actFindPrevExecute
+    end
+    object actQuickFind: TAction
+      Caption = '&Incremental Find'
+      ShortCut = 24646
+      OnExecute = actQuickFindExecute
+    end
     object actGotoLine: TAction
       Caption = '&Go to Line...'
       ShortCut = 16455
@@ -290,10 +315,28 @@ object LedMainForm: TLedMainForm
     end
     object mnuSearch: TMenuItem
       Caption = '&Search'
+      object mi_Find: TMenuItem
+        Action = actFind
+      end
+      object mi_Replace: TMenuItem
+        Action = actReplace
+      end
+      object mi_FindNext: TMenuItem
+        Action = actFindNext
+      end
+      object mi_FindPrev: TMenuItem
+        Action = actFindPrev
+      end
+      object mi_QuickFind: TMenuItem
+        Action = actQuickFind
+      end
+      object miSep7: TMenuItem
+        Caption = '-'
+      end
       object mi_GotoLine: TMenuItem
         Action = actGotoLine
       end
-      object miSep7: TMenuItem
+      object miSep8: TMenuItem
         Caption = '-'
       end
       object mi_ToggleBracket: TMenuItem
@@ -317,7 +360,7 @@ object LedMainForm: TLedMainForm
         Caption = 'Line &Endings'
         OnClick = miLineEndClick
       end
-      object miSep8: TMenuItem
+      object miSep9: TMenuItem
         Caption = '-'
       end
       object mi_ToggleBookmark: TMenuItem
@@ -338,7 +381,7 @@ object LedMainForm: TLedMainForm
       object mi_LineNumbers: TMenuItem
         Action = actLineNumbers
       end
-      object miSep9: TMenuItem
+      object miSep10: TMenuItem
         Caption = '-'
       end
       object mi_SplitSideBySide: TMenuItem
@@ -353,14 +396,14 @@ object LedMainForm: TLedMainForm
       object mi_CycleViews: TMenuItem
         Action = actCycleViews
       end
-      object miSep10: TMenuItem
+      object miSep11: TMenuItem
         Caption = '-'
       end
       object miTheme: TMenuItem
         Caption = 'Colour &Theme'
         OnClick = miThemeClick
       end
-      object miSep11: TMenuItem
+      object miSep12: TMenuItem
         Caption = '-'
       end
       object mi_ToggleLeftPane: TMenuItem

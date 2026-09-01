@@ -22,7 +22,7 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
-  Led.UI.Commands;
+  Led.UI.Commands, Led.UI.Find;
 
 var
   Failures: Integer = 0;
@@ -546,6 +546,79 @@ begin
   DeleteFile(Path);
 end;
 
+procedure TestFindReplace(F: TLedMainForm);
+var
+  V: TLedEdit;
+  State: TLedSearchState;
+  Path: string;
+  L: TStringList;
+begin
+  WriteLn('find and replace');
+
+  Path := TempName('find.txt');
+  L := TStringList.Create;
+  try
+    L.Add('alpha beta gamma');
+    L.Add('beta again');
+    L.Add('BETA shouting');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  F.ActiveTab.Document.LoadFromFile(Path);
+  Pump;
+  V := F.ActiveTab.ActiveView;
+
+  State := TLedSearchState.Create;
+  try
+    State.SearchText := 'beta';
+    V.CaretXY := Point(1, 1);
+    Check('finds the first match', LedFindNext(V, State, False) = lfoFound);
+    CheckEqInt('on line 1', 1, V.CaretY);
+    Check('finds the second', LedFindNext(V, State, False) = lfoFound);
+    CheckEqInt('on line 2', 2, V.CaretY);
+
+    { Case-insensitive by default, so the shouting one counts. }
+    Check('and the third', LedFindNext(V, State, False) = lfoFound);
+    CheckEqInt('on line 3', 3, V.CaretY);
+
+    { Past the end it wraps, and says so rather than jumping silently. }
+    Check('wraps at the end', LedFindNext(V, State, False) = lfoWrapped);
+    CheckEqInt('back to line 1', 1, V.CaretY);
+
+    State.MatchCase := True;
+    V.CaretXY := Point(1, 3);
+    Check('case-sensitive skips the shouting one',
+      LedFindNext(V, State, False) = lfoWrapped);
+
+    State.MatchCase := False;
+    State.SearchText := 'nowhere';
+    Check('a miss is reported', LedFindNext(V, State, False) = lfoNotFound);
+
+    State.SearchText := 'beta';
+    State.ReplaceText := 'BETA';
+    State.MatchCase := True;
+    CheckEqInt('replace all counts what it did', 2,
+      LedReplaceAll(V, State));
+    CheckEq('and did it', 'alpha BETA gamma', V.Lines[0]);
+
+    { Regex, since it is a separate code path in SynEdit. }
+    State.Regex := True;
+    State.SearchText := 'g[a-z]+a';
+    State.ReplaceText := 'X';
+    CheckEqInt('regex replace', 1, LedReplaceAll(V, State));
+    CheckEq('regex matched the right span', 'alpha BETA X', V.Lines[0]);
+    State.Regex := False;
+  finally
+    State.Free;
+  end;
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -577,6 +650,8 @@ begin
   TestGlobRulesAndEncodingPrompt(F);
   WriteLn;
   TestEditingCommands(F);
+  WriteLn;
+  TestFindReplace(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

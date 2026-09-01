@@ -17,7 +17,8 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
-  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands;
+  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
+  Led.UI.Find;
 
 type
   TLedMainForm = class(TForm)
@@ -41,6 +42,11 @@ type
     actUnindentSpace: TAction;
     actComment: TAction;
     actUncomment: TAction;
+    actFind: TAction;
+    actReplace: TAction;
+    actFindNext: TAction;
+    actFindPrev: TAction;
+    actQuickFind: TAction;
     actGotoLine: TAction;
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
@@ -85,29 +91,35 @@ type
     mi_Comment: TMenuItem;
     mi_Uncomment: TMenuItem;
     mnuSearch: TMenuItem;
-    mi_GotoLine: TMenuItem;
+    mi_Find: TMenuItem;
+    mi_Replace: TMenuItem;
+    mi_FindNext: TMenuItem;
+    mi_FindPrev: TMenuItem;
+    mi_QuickFind: TMenuItem;
     miSep7: TMenuItem;
+    mi_GotoLine: TMenuItem;
+    miSep8: TMenuItem;
     mi_ToggleBracket: TMenuItem;
     mi_SelectToBracket: TMenuItem;
     mnuDocument: TMenuItem;
     miLanguage: TMenuItem;
     miEncoding: TMenuItem;
     miLineEnd: TMenuItem;
-    miSep8: TMenuItem;
+    miSep9: TMenuItem;
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
     mnuView: TMenuItem;
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
-    miSep9: TMenuItem;
+    miSep10: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep10: TMenuItem;
-    miTheme: TMenuItem;
     miSep11: TMenuItem;
+    miTheme: TMenuItem;
+    miSep12: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
     OpenDialog1: TOpenDialog;
@@ -156,12 +168,21 @@ type
     procedure actWrapTextExecute(Sender: TObject);
     procedure miEncodingClick(Sender: TObject);
     procedure miLineEndClick(Sender: TObject);
+    procedure actFindExecute(Sender: TObject);
+    procedure actFindNextExecute(Sender: TObject);
+    procedure actFindPrevExecute(Sender: TObject);
+    procedure actQuickFindExecute(Sender: TObject);
+    procedure actReplaceExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
     FRecent: TLedRecentFiles;
+    FSearch: TLedSearchState;
+    FFindForm: TLedFindForm;
+    FFindBar: TLedFindBar;
     FCheckingDisk: Boolean;
+    function SearchView: TLedEdit;
     procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
     procedure PopulateLanguageMenu;
@@ -179,6 +200,7 @@ type
     procedure CheckExternalChanges;
     function CurrentView: TLedEdit;
     procedure GotoAdjacentBookmark(AForward: Boolean);
+    procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
@@ -280,6 +302,7 @@ begin
   FDocs := TLedDocuments.Create(Self);
   FRecent := TLedRecentFiles.Create;
   FRecent.Load;
+  FSearch := TLedSearchState.Create;
 
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
@@ -304,6 +327,61 @@ end;
 procedure TLedMainForm.FormDestroy(Sender: TObject);
 begin
   FRecent.Free;
+  FSearch.Free;
+end;
+
+{ --- find and replace ------------------------------------------------------ }
+
+function TLedMainForm.SearchView: TLedEdit;
+begin
+  Result := ActiveView;
+end;
+
+procedure TLedMainForm.ShowFindForm(AReplace: Boolean);
+begin
+  if Silent then Exit;
+  if FFindForm = nil then
+    FFindForm := TLedFindForm.CreateFor(Self, FSearch, @SearchView);
+  FFindForm.ShowFor(AReplace);
+end;
+
+procedure TLedMainForm.actFindExecute(Sender: TObject);
+begin
+  ShowFindForm(False);
+end;
+
+procedure TLedMainForm.actReplaceExecute(Sender: TObject);
+begin
+  ShowFindForm(True);
+end;
+
+procedure TLedMainForm.actFindNextExecute(Sender: TObject);
+begin
+  { With nothing to search for yet, F3 opens the dialog rather than doing
+    nothing at all. }
+  if FSearch.SearchText = '' then
+    ShowFindForm(False)
+  else
+    LedFindNext(SearchView, FSearch, False);
+end;
+
+procedure TLedMainForm.actFindPrevExecute(Sender: TObject);
+begin
+  if FSearch.SearchText = '' then
+    ShowFindForm(False)
+  else
+    LedFindNext(SearchView, FSearch, True);
+end;
+
+procedure TLedMainForm.actQuickFindExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  if FFindBar = nil then
+  begin
+    FFindBar := TLedFindBar.CreateFor(Self, FSearch, @SearchView);
+    FFindBar.Parent := FDock.Center;
+  end;
+  FFindBar.Activate;
 end;
 
 { --- recent files --------------------------------------------------------- }
@@ -1040,6 +1118,11 @@ begin
   actComment.Enabled := HasDoc and LedCanComment(Tab.Document.LangInfo);
   actUncomment.Enabled := actComment.Enabled;
   actGotoLine.Enabled := HasDoc;
+  actFind.Enabled := HasDoc;
+  actReplace.Enabled := HasDoc;
+  actFindNext.Enabled := HasDoc;
+  actFindPrev.Enabled := HasDoc;
+  actQuickFind.Enabled := HasDoc;
   actToggleBracket.Enabled := HasDoc;
   actSelectToBracket.Enabled := HasDoc;
   actToggleBookmark.Enabled := HasDoc;
