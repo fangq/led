@@ -266,11 +266,18 @@ begin
   FTerminals.Remove(Doomed);
   FActive := nil;
   Doomed.Stop;
-  Doomed.Free;
 
   Keeper.Parent := Host;
   Keeper.Align := alClient;
-  Splitter.Free;
+
+  { Released rather than freed.  The usual way here is a shell that has just
+    exited, which is noticed inside the view's own poll timer -- so this runs
+    with that view's event still on the stack, and freeing it there is a
+    use-after-free.  ReleaseComponent hands both to the LCL to destroy once
+    the reference count has dropped.  Same reasoning as ClearMenu in
+    Led.UI.Main. }
+  Application.ReleaseComponent(Doomed);
+  Application.ReleaseComponent(Splitter);
 
   if FTerminals.Count > 0 then
     FActive := TLedTermView(FTerminals[0]);

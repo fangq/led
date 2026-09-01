@@ -425,6 +425,7 @@ type
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure PaneShown(const AId: string);
+    procedure StartTerminalDeferred(Data: PtrInt);
     procedure StartTerminal;
     procedure PopulateHeaderStyleMenu;
     procedure SaveSession;
@@ -1853,10 +1854,24 @@ begin
   FTerminal.Start(Dir);
 end;
 
+procedure TLedMainForm.StartTerminalDeferred(Data: PtrInt);
+begin
+  StartTerminal;
+  if FTerminal <> nil then
+    LedTryFocus(FTerminal.Active);
+end;
+
 procedure TLedMainForm.PaneShown(const AId: string);
 begin
   if SameText(AId, 'terminal') then
-    StartTerminal
+    { Queued, not called.  OnPaneShown fires from inside ShowPane, while
+      AnchorDocking is still docking the pane, so the view has no size yet --
+      and TLedTermView.Start measures Width div FCharW to decide how many
+      columns to ask the shell for.  Started there it came up against a
+      control of no size and, often enough to be the first thing anyone
+      noticed, showed nothing at all until it was toggled again.  A queued
+      call runs once the layout has settled. }
+    Application.QueueAsyncCall(@StartTerminalDeferred, 0)
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it. }
