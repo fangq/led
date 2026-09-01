@@ -53,6 +53,15 @@ function LedDefaultFontSize: Integer;
 { The default monospace family for this platform. }
 function LedDefaultFontName: string;
 
+{ Split an "Editor/font" value into a family and a point size.  The
+  Preferences dialog writes these as Pango does -- "Fira Code 11" -- so the
+  size is a trailing integer and everything before it is the family, which
+  may itself contain spaces.  An empty or unparseable spec yields the
+  platform defaults rather than an error: a bad font preference should look
+  wrong, not stop the editor. }
+procedure LedParseFontSpec(const ASpec: string; out AName: string;
+  out ASize: Integer);
+
 implementation
 
 uses
@@ -190,6 +199,44 @@ function LedDefaultFontName: string;
 begin
   Result := {$IFDEF WINDOWS}'Consolas'{$ELSE}
             {$IFDEF DARWIN}'Menlo'{$ELSE}'Monospace'{$ENDIF}{$ENDIF};
+end;
+
+procedure LedParseFontSpec(const ASpec: string; out AName: string;
+  out ASize: Integer);
+var
+  Spec, Tail: string;
+  p, n: Integer;
+begin
+  AName := LedDefaultFontName;
+  ASize := LedDefaultFontSize;
+
+  Spec := Trim(ASpec);
+  if Spec = '' then Exit;
+
+  p := 0;
+  for n := Length(Spec) downto 1 do
+    if Spec[n] = ' ' then
+    begin
+      p := n;
+      Break;
+    end;
+  if p > 1 then
+  begin
+    Tail := Copy(Spec, p + 1, MaxInt);
+    n := StrToIntDef(Tail, -1);
+    if n > 0 then
+    begin
+      AName := Trim(Copy(Spec, 1, p - 1));
+      ASize := n;
+      if AName = '' then
+        AName := LedDefaultFontName;
+      Exit;
+    end;
+  end;
+
+  { No trailing size: the whole thing is a family name, and the size stays at
+    the system default rather than reverting to a hard-coded one. }
+  AName := Spec;
 end;
 
 function LedDefaultFontSize: Integer;

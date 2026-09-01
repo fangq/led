@@ -23,7 +23,7 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
-  Led.Syn.Factory, Led.UI.Edit;
+  Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi;
 
 type
   TLedDocument = class;
@@ -194,6 +194,20 @@ begin
   FConfig.OnChanged := @ConfigChanged;
 
   FInfo := LedDefaultTextInfo;
+
+  { A freshly created TSynEdit's string list holds *no* lines, not one empty
+    one, so a new untitled document had no line 1 for the gutter to number --
+    which is why it opened with a blank gutter where medit shows "1".  The
+    caret still reported 1:1, because CaretX and CaretY are 1-based whether
+    or not a line exists, so the status bar looked right while the gutter did
+    not.
+
+    Giving the buffer its empty first line here covers every document: a file
+    load replaces the contents wholesale, so this only ever shows through on
+    the untitled case it is meant for. }
+  if FMaster.Lines.Count = 0 then
+    FMaster.Lines.Add('');
+  FMaster.Modified := False;
 end;
 
 destructor TLedDocument.Destroy;
@@ -210,8 +224,22 @@ end;
 
 procedure TLedDocument.ApplyConfigToView(AView: TLedEdit);
 var
-  Wrap: string;
+  Wrap, FontName: string;
+  FontSize: Integer;
 begin
+  { Editor/font existed as a preference, appeared in the Preferences dialog,
+    and was read by nothing at all -- so choosing a font there did nothing
+    and every view kept the hard-coded default.  It is a global preference
+    rather than per-document, but this is the one place every view passes
+    through, and PrefsApplied routes here, so a change takes effect at once.
+
+    A consequence worth knowing: Ctrl+wheel zoom writes Font.Size directly
+    and is deliberately not persisted, so any later config change resets it.
+    medit's zoom is temporary in the same way. }
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontName, FontSize);
+  AView.Font.Name := FontName;
+  AView.Font.Size := FontSize;
+
   AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
   AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
 
