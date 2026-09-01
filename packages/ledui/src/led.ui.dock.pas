@@ -62,6 +62,8 @@ type
     FShowRails: Boolean;
     FRailsStale: Boolean;
     FRailsSettle: TTimer;
+    FDraggingWanted: Boolean;
+    procedure ApplyDockPolicy;
     procedure RailsSettled(Sender: TObject);
     procedure BuildRail(AEdge: TLedDockEdge);
     procedure RailButtonClick(Sender: TObject);
@@ -234,26 +236,9 @@ begin
 
   DockMaster.MakeDockPanel(FSite, admrpChild);
   DockMaster.OnCreateControl := @MasterCreateControl;
-  DockMaster.HideHeaderCaptionFloatingControl := False;
-  DockMaster.ShowHeaderCaption := True;
 
-  { The pane headers, left to themselves, are three bevels deep: the header
-    paint draws Frame3d(r,1,bvRaised) around everything unless HeaderFlatten
-    is set, and the default 'Frame3D' style then adds Frame3d(r,2,bvLowered)
-    and Frame3d(r,4,bvRaised) on top of that.  It is a Windows-95 grabber.
-
-    Flattened, with the 'Line' style, the affordance is a single hairline
-    down the middle of the header -- the same idea, one stroke instead of
-    six edges.  AnchorDocking draws it rotated on the left and right edges
-    without being asked. }
-  DockMaster.HeaderFlatten := True;
-  DockMaster.HeaderFilled := False;
-  DockMaster.HeaderStyle := 'Line';
-
-  { With flat headers there is otherwise nothing at all to say which pane has
-    focus, so the caption of the focused one is highlighted.  This is the cue
-    the bevels used to carry by accident. }
-  DockMaster.HeaderHighlightFocused := True;
+  FDraggingWanted := True;
+  ApplyDockPolicy;
 
   { No header on the editor, and that is the fix for a state the user could
     not get out of: dragging the editor's header tore the editor out into a
@@ -699,6 +684,39 @@ begin
   EdgeVisible[AEdge] := not EdgeVisible[AEdge];
 end;
 
+{ Everything led deliberately decides about the dock, in one place that can
+  be re-asserted.
+
+  It has to be re-assertable because layout.xml carries these very settings:
+  TAnchorDockSettings.LoadFromConfig restores AllowDragging, HeaderStyle,
+  HeaderFlatten, HeaderFilled and HeaderHighlightFocused among others, and
+  LoadLayout feeds them straight onto the master.  Setting them once in the
+  constructor therefore lasted until the saved layout was read, a few lines
+  later in FormCreate, and then silently reverted -- which is why locking the
+  panes appeared to do nothing at all, and why the flat headers would come
+  back beveled for anyone with an older layout file. }
+procedure TLedDockHost.ApplyDockPolicy;
+begin
+  DockMaster.HideHeaderCaptionFloatingControl := False;
+  DockMaster.ShowHeaderCaption := True;
+
+  { The pane headers, left to themselves, are three bevels deep: the header
+    paint draws Frame3d(r,1,bvRaised) around everything unless HeaderFlatten
+    is set, and the default 'Frame3D' style then adds Frame3d(r,2,bvLowered)
+    and Frame3d(r,4,bvRaised) on top.  Flattened, with the 'Line' style, the
+    affordance is a single hairline down the middle -- the same idea, one
+    stroke instead of six edges. }
+  DockMaster.HeaderFlatten := True;
+  DockMaster.HeaderFilled := False;
+  DockMaster.HeaderStyle := 'Line';
+
+  { With flat headers nothing else says which pane has focus, a cue the
+    bevels used to carry by accident. }
+  DockMaster.HeaderHighlightFocused := True;
+
+  DockMaster.AllowDragging := FDraggingWanted;
+end;
+
 function TLedDockHost.GetDragging: Boolean;
 begin
   Result := DockMaster.AllowDragging;
@@ -706,6 +724,7 @@ end;
 
 procedure TLedDockHost.SetDragging(AValue: Boolean);
 begin
+  FDraggingWanted := AValue;
   DockMaster.AllowDragging := AValue;
 end;
 
@@ -774,6 +793,10 @@ begin
       start over: fall back to the defaults. }
     Result := False;
   end;
+
+  { The saved layout has just overwritten every setting above, so put led's
+    own back.  This is the whole reason ApplyDockPolicy exists. }
+  ApplyDockPolicy;
 
   { A layout saved before the editor lost its header can have the editor
     floating, and there is now no header to drag it back by.  Put it back
