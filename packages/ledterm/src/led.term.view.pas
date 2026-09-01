@@ -32,6 +32,7 @@ type
     FPty: TLedPty;
     FScreen: TLedTermScreen;
     FTimer: TTimer;
+    FLastCols, FLastRows: Integer;
     FCharW, FCharH: Integer;
     FScheme: Integer;
     FScrollOffset: Integer;    // lines scrolled back; 0 is the live view
@@ -178,6 +179,8 @@ begin
   if R < 3 then R := 24;
 
   FScreen.Resize(C, R);
+  FLastCols := C;
+  FLastRows := R;
   Result := FPty.Spawn(ACommand, AWorkDir, C, R);
   FTimer.Enabled := Result;
   Invalidate;
@@ -220,9 +223,14 @@ begin
 
   if N < 0 then
   begin
+    { The shell has gone.  Everything this view needs to do to itself happens
+      before the callback, and nothing at all after it: OnExited closes the
+      pane, which frees this view, so touching a field here -- Invalidate was
+      here, and it is what crashed -- is a use-after-free from inside the
+      object's own timer handler. }
     FTimer.Enabled := False;
-    if Assigned(FOnExited) then FOnExited(Self);
     Invalidate;
+    if Assigned(FOnExited) then FOnExited(Self);
     Exit;
   end;
 
@@ -243,6 +251,16 @@ begin
   C := Width div FCharW;
   R := Height div FCharH;
   if (C < 1) or (R < 1) then Exit;
+
+  { Dragging a splitter delivers a resize per pixel, and most of those land
+    inside the same character cell.  Reallocating the cell grid and telling
+    the child its window changed on every one of them is what made resizing
+    the terminal feel like wading; the shell is told when the grid actually
+    changes, which is what it cares about anyway. }
+  if (C = FLastCols) and (R = FLastRows) then Exit;
+  FLastCols := C;
+  FLastRows := R;
+
   FScreen.Resize(C, R);
   FPty.SetSize(C, R);
   Invalidate;
