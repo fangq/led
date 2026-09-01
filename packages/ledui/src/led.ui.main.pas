@@ -1666,6 +1666,11 @@ begin
   if FRecovery = nil then Exit;
   if FRecoveryOffered then Exit;
   FRecoveryOffered := True;
+  { Silent is the scripted-run flag: no modal dialog may appear, because it
+    would block the harness and land on the screen of whoever is logged in.
+    The journal is left alone rather than cleared -- a self-test must not
+    destroy the user's pending recovery as a side effect of running. }
+  if Silent then Exit;
 
   Pending := FRecovery.Scan;
   if Length(Pending) = 0 then Exit;
