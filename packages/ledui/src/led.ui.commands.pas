@@ -14,7 +14,7 @@ unit Led.UI.Commands;
 interface
 
 uses
-  Classes, SysUtils, Controls, SynEdit, SynEditTypes,
+  Classes, SysUtils, Controls, Clipbrd, SynEdit, SynEditTypes,
   Led.Syn.Languages, Led.UI.Edit;
 
 { Moves the caret to ALine, clamped, and scrolls it into view. }
@@ -40,6 +40,22 @@ function LedCanComment(ALang: TLedLangInfo): Boolean;
 
 { Temporary zoom, clamped to a sane range and never written to preferences. }
 procedure LedZoomFont(AView: TLedEdit; ADelta: Integer);
+
+{ Pastes the clipboard as a rectangular block at the caret's column: each
+  clipboard line goes on a successive document line, at the same column,
+  padding short lines with spaces.
+
+  SynEdit already round-trips its own column selections through the clipboard,
+  and understands the MSDEV column format, so this is for the other case --
+  text copied from somewhere that does not mark it as a column at all.  With
+  a column selection active the rectangle is replaced rather than pushed
+  aside. }
+procedure LedPasteColumn(AView: TLedEdit);
+
+{ Escape: drop the selection but keep the caret. }
+procedure LedClearSelection(AView: TLedEdit);
+
+function LedHasColumnSelection(AView: TLedEdit): Boolean;
 
 const
   LedMinFontSize = 4;
@@ -269,6 +285,86 @@ begin
     AView.EndUndoBlock;
   end;
   ReselectLines(AView, First, Last);
+end;
+
+function LedHasColumnSelection(AView: TLedEdit): Boolean;
+begin
+  Result := (AView <> nil) and AView.SelAvail and
+    (AView.SelectionMode = smColumn);
+end;
+
+procedure LedClearSelection(AView: TLedEdit);
+var
+  P: TPoint;
+begin
+  if (AView = nil) or not AView.SelAvail then Exit;
+  P := AView.CaretXY;
+  AView.SelStart := AView.SelEnd;
+  AView.CaretXY := P;
+end;
+
+procedure LedPasteColumn(AView: TLedEdit);
+var
+  Lines: TStringList;
+  i, Col, Line, Deficit: Integer;
+  Text, Existing: string;
+begin
+  if (AView = nil) or AView.ReadOnly then Exit;
+  Text := Clipboard.AsText;
+  if Text = '' then Exit;
+
+  Lines := TStringList.Create;
+  try
+    Lines.TextLineBreakStyle := tlbsLF;
+    Lines.Text := Text;
+    { TStrings.Text adds a terminator, which would paste a stray blank line. }
+    while (Lines.Count > 0) and (Lines[Lines.Count - 1] = '') do
+      Lines.Delete(Lines.Count - 1);
+    if Lines.Count = 0 then Exit;
+
+    AView.BeginUndoBlock;
+    try
+      if LedHasColumnSelection(AView) then
+      begin
+        Col := AView.BlockBegin.X;
+        Line := AView.BlockBegin.Y;
+        AView.SelText := '';         { clears the rectangle, column-wise }
+        AView.CaretXY := Point(Col, Line);
+      end
+      else
+      begin
+        Col := AView.CaretX;
+        Line := AView.CaretY;
+      end;
+
+      for i := 0 to Lines.Count - 1 do
+      begin
+        { Past the last line, extend the document rather than losing text. }
+        while AView.Lines.Count < Line + i do
+          AView.TextBetweenPoints[
+            Point(Length(AView.Lines[AView.Lines.Count - 1]) + 1,
+                  AView.Lines.Count),
+            Point(Length(AView.Lines[AView.Lines.Count - 1]) + 1,
+                  AView.Lines.Count)] := LineEnding;
+
+        Existing := AView.Lines[Line + i - 1];
+        Deficit := Col - 1 - Length(Existing);
+        if Deficit > 0 then
+          AView.TextBetweenPoints[
+            Point(Length(Existing) + 1, Line + i),
+            Point(Length(Existing) + 1, Line + i)] := StringOfChar(' ', Deficit);
+
+        AView.TextBetweenPoints[Point(Col, Line + i), Point(Col, Line + i)] :=
+          Lines[i];
+      end;
+    finally
+      AView.EndUndoBlock;
+    end;
+
+    AView.CaretXY := Point(Col, Line + Lines.Count - 1);
+  finally
+    Lines.Free;
+  end;
 end;
 
 procedure LedZoomFont(AView: TLedEdit; ADelta: Integer);

@@ -22,7 +22,7 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
-  Led.UI.Commands, Led.UI.Find;
+  Led.UI.Commands, Led.UI.Find, Clipbrd, SynEditTypes;
 
 var
   Failures: Integer = 0;
@@ -619,6 +619,66 @@ begin
   DeleteFile(Path);
 end;
 
+procedure TestColumnSelection(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Doc: TLedDocument;
+begin
+  WriteLn('column selection');
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  V := F.ActiveTab.ActiveView;
+  V.Lines.Text := 'aaaa1111' + LineEnding + 'bbbb2222' + LineEnding +
+                  'cccc3333' + LineEnding + 'dd';
+  V.ClearUndo;
+  Pump;
+
+  { A rectangle covering columns 5..8 of the first three lines.  Note the
+    order: assigning BlockBegin resets the mode to DefaultSelectionMode, so
+    the mode has to be set after the block, not before. }
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+  Check('a column selection is recognised', LedHasColumnSelection(V));
+  CheckEq('the block is the rectangle, line by line',
+    '1111' + LineEnding + '2222' + LineEnding + '3333', V.SelText);
+
+  { Typing over a rectangle replaces every row of it. }
+  V.SelText := '';
+  Pump;
+  CheckEq('deleting a rectangle clears each row', 'aaaa', V.Lines[0]);
+  CheckEq('on every line', 'cccc', V.Lines[2]);
+  CheckEq('and leaves other lines alone', 'dd', V.Lines[3]);
+  V.Undo;
+  CheckEq('undone in one step', 'aaaa1111', V.Lines[0]);
+
+  { Paste-as-column puts each clipboard line at the caret column, padding
+    lines that are too short to reach it. }
+  Clipboard.AsText := 'XX' + LineEnding + 'YY' + LineEnding + 'ZZ';
+  V.SelectionMode := smNormal;
+  LedClearSelection(V);
+  V.CaretXY := Point(5, 2);
+  LedPasteColumn(V);
+  Pump;
+  CheckEq('pasted at the caret column', 'bbbbXX2222', V.Lines[1]);
+  CheckEq('and on the line below', 'ccccYY3333', V.Lines[2]);
+  CheckEq('padding a short line to reach the column', 'dd  ZZ', V.Lines[3]);
+  V.Undo;
+  CheckEq('one undo for the whole block paste', 'bbbb2222', V.Lines[1]);
+
+  { Escape drops the selection without moving the caret. }
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(4, 1);
+  V.CaretXY := Point(4, 1);
+  LedClearSelection(V);
+  Check('escape clears the selection', not V.SelAvail);
+  CheckEqInt('and leaves the caret', 4, V.CaretX);
+
+  if Doc = nil then ;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -652,6 +712,8 @@ begin
   TestEditingCommands(F);
   WriteLn;
   TestFindReplace(F);
+  WriteLn;
+  TestColumnSelection(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));
