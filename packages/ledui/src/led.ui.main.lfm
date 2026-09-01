@@ -5,8 +5,10 @@ object LedMainForm: TLedMainForm
   Width = 1000
   Caption = 'led'
   Menu = MainMenu1
+  OnActivate = FormActivate
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   Position = poScreenCenter
   LCLVersion = '4.2'
   object StatusBar1: TStatusBar
@@ -62,6 +64,11 @@ object LedMainForm: TLedMainForm
       ShortCut = 16471
       OnExecute = actCloseTabExecute
     end
+    object actReload: TAction
+      Caption = '&Reload from Disk'
+      ShortCut = 116
+      OnExecute = actReloadExecute
+    end
     object actQuit: TAction
       Caption = '&Quit'
       ShortCut = 16465
@@ -103,6 +110,13 @@ object LedMainForm: TLedMainForm
       end
       object miOpen: TMenuItem
         Action = actOpen
+      end
+      object miOpenRecent: TMenuItem
+        Caption = 'Open &Recent'
+        OnClick = miOpenRecentClick
+      end
+      object miReload: TMenuItem
+        Action = actReload
       end
       object miSep1: TMenuItem
         Caption = '-'

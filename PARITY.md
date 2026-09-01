@@ -25,8 +25,8 @@ checked off by the presence of a menu entry.
 | Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | | phase-1 |
-| Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | | phase-1 |
-| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | | phase-3 |
+| Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | partly | detection done; the try-encoding dialog is pending |
+| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
 | Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | | phase-3 |
 
 ## Actions (80)
@@ -74,7 +74,7 @@ checked off by the presence of a menu entry.
 | `NextTab` | yes | | |
 | `NoDocuments` | yes | | |
 | `Open` | yes | yes | done |
-| `OpenRecent` | yes | | |
+| `OpenRecent` | yes | yes | done |
 | `PageSetup` | yes | | |
 | `Paste` | yes | | |
 | `Preferences` | yes | | |
@@ -89,7 +89,7 @@ checked off by the presence of a menu entry.
 | `QuickSearch` | yes | | |
 | `Quit` | yes | yes | done |
 | `Redo` | yes | | |
-| `Reload` | yes | | |
+| `Reload` | yes | yes | done |
 | `ReopenWithEncoding` | yes | | |
 | `Replace` | yes | | |
 | `ReportBug` | yes | | |
