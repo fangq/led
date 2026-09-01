@@ -33,18 +33,18 @@ checked off by the presence of a menu entry.
 
 | Feature | medit | led | Decision |
 |---|---|---|---|
-| `About` | yes | | |
+| `About` | yes | yes | done |
 | `AddBookmark` | yes | | |
 | `BookmarksMenu` | yes | | |
 | `CaseSensitiveSort` | yes | | |
 | `Close` | yes | yes | done |
-| `CloseAll` | yes | | |
+| `CloseAll` | yes | yes | done |
 | `Comment` | yes | yes | done |
 | `ConfigureShortcuts` | yes | yes | done |
 | `Copy` | yes | yes | done |
 | `Cut` | yes | yes | done |
 | `CycleSplitViews` | yes | yes | done |
-| `Delete` | yes | | |
+| `Delete` | yes | yes | done |
 | `EditBookmarks` | yes | | |
 | `EncodingMenu` | yes | yes | done |
 | `Find` | yes | yes | done |
@@ -52,14 +52,14 @@ checked off by the presence of a menu entry.
 | `FindCurrentBack` | yes | yes | done |
 | `FindNext` | yes | yes | done |
 | `FindPrevious` | yes | yes | done |
-| `FocusDoc` | yes | | |
+| `FocusDoc` | yes | yes | done |
 | `GoBack` | yes | | |
 | `GoForward` | yes | | |
 | `GoHome` | yes | | |
 | `GoToLine` | yes | yes | done |
 | `GoUp` | yes | | |
 | `GotoMatchingBracket` | yes | yes | done |
-| `Help` | yes | | |
+| `Help` | yes | yes | done |
 | `Indent` | yes | yes | done |
 | `InputMethods` | yes | | |
 | `LanguageMenu` | yes | yes | done |
@@ -71,7 +71,7 @@ checked off by the presence of a menu entry.
 | `NewWindow` | yes | yes | done |
 | `NextBookmark` | yes | yes | done |
 | `NextPlaceholder` | yes | | |
-| `NextTab` | yes | | |
+| `NextTab` | yes | yes | done |
 | `NoDocuments` | yes | | |
 | `Open` | yes | yes | done |
 | `OpenRecent` | yes | yes | done |
@@ -80,10 +80,10 @@ checked off by the presence of a menu entry.
 | `Preferences` | yes | yes | done |
 | `PrevPlaceholder` | yes | | |
 | `PreviousBookmark` | yes | yes | done |
-| `PreviousTab` | yes | | |
+| `PreviousTab` | yes | yes | done |
 | `Print` | yes | yes | done |
 | `PrintOptions` | yes | | |
-| `PrintPdf` | yes | | |
+| `PrintPdf` | yes | yes | done |
 | `PrintPreview` | yes | | |
 | `Properties` | yes | | |
 | `QuickSearch` | yes | yes | done |
@@ -92,7 +92,7 @@ checked off by the presence of a menu entry.
 | `Reload` | yes | yes | done |
 | `ReopenWithEncoding` | yes | partly | prompted automatically on a failed decode; no explicit menu item yet |
 | `Replace` | yes | yes | done |
-| `ReportBug` | yes | | |
+| `ReportBug` | yes | yes | done |
 | `Save` | yes | yes | done |
 | `SaveAs` | yes | yes | done |
 | `SelectAll` | yes | yes | done |
@@ -210,6 +210,10 @@ An honest list, so nothing here is mistaken for an oversight.
 
 | Feature | Status |
 |---|---|
+| Spell checking | not started, and not previously listed: medit's SpellAddToDict, SpellIgnoreWord, spell_enabled and spell_scope have no counterpart here |
+| Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
+| Bookmark management | jumping between bookmarks and toggling them works; medit's AddBookmark, EditBookmarks and the Bookmarks menu do not exist |
+| File browser navigation history | no GoBack / GoForward / GoHome / GoUp, ShowHiddenFiles is a checkbox rather than an action, and SortFoldersFirst is fixed |
 | Multiple windows | File / New Window opens one; documents are not shared between them |
 | "Save these documents?" multi-document dialog | not started; each document is asked about separately |
 | Tab reordering | not started; the tab context menu is done |
