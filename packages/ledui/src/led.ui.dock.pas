@@ -274,10 +274,21 @@ begin
     Item := DockMaster.AddPopupMenuItem('LedHeaderStyle_' + StyleName,
       LedHeaderStyleCaption(StyleName), @StylePicked, Root);
     Item.Hint := StyleName;
-    Item.RadioItem := True;
-    Item.GroupIndex := 71;
-    Item.Checked := SameText(StyleName, DockMaster.HeaderStyle);
+    { Cleared here and marked in the second pass below.  These items are
+      found-or-created and so outlive the popup, and a radio item does not
+      reliably give up its mark when merely told Checked := False alongside
+      another being set true -- which is how several of them ended up
+      showing as chosen at once. }
+    Item.RadioItem := False;
+    Item.Checked := False;
   end;
+
+  for i := 0 to Root.Count - 1 do
+    if SameText(Root.Items[i].Hint, DockMaster.HeaderStyle) then
+    begin
+      Root.Items[i].Checked := True;
+      Break;
+    end;
 end;
 
 constructor TLedDockHeader.Create(TheOwner: TComponent);
@@ -401,7 +412,7 @@ begin
   DockMaster.HeaderClass := TLedDockHeader;
 
   FDraggingWanted := True;
-  FHeaderStyleWanted := 'Line';
+  FHeaderStyleWanted := 'Points';
   ApplyDockPolicy;
 
   { No header on the editor, and that is the fix for a state the user could
@@ -976,6 +987,7 @@ end;
 function TLedDockHost.LoadLayout(const AFileName: string): Boolean;
 var
   Cfg: TXMLConfigStorage;
+  i: Integer;
 begin
   Result := False;
   if not FileExists(AFileName) then Exit;
@@ -996,6 +1008,15 @@ begin
   { The saved layout has just overwritten every setting above, so put led's
     own back.  This is the whole reason ApplyDockPolicy exists. }
   ApplyDockPolicy;
+
+  { A pane restored by the layout was never shown through ShowPane, so
+    OnPaneShown never fired for it and nothing started what sits behind it --
+    a terminal open when led was last closed came back as an empty rectangle
+    with no prompt.  Restoring a pane is showing it. }
+  if Assigned(FOnPaneShown) then
+    for i := 0 to FPanes.Count - 1 do
+      if PaneVisible(TLedPaneForm(FPanes[i]).PaneId) then
+        FOnPaneShown(TLedPaneForm(FPanes[i]).PaneId);
 
   { A layout saved before the editor lost its header can have the editor
     floating, and there is now no header to drag it back by.  Put it back
