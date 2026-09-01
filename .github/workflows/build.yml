@@ -1,0 +1,53 @@
+name: build
+
+# Cross-platform from the first commit, not bolted on later: the whole point
+# of the Lazarus rewrite is that one source tree compiles everywhere, and that
+# only stays true if every push proves it.
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  widgetset: gtk2 }
+          - { os: ubuntu-latest,  widgetset: qt5 }
+          - { os: windows-latest, widgetset: win32 }
+          - { os: macos-latest,   widgetset: cocoa }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: stable
+      - name: Build app
+        run: lazbuild --widgetset=${{ matrix.widgetset }} app/led.lpi
+
+  core-tests:
+    # ledcore must stay free of any visual dependency; building the runner
+    # with the nogui widgetset is what enforces that.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: stable
+      - name: Build headless tests
+        run: lazbuild --widgetset=nogui test/ledcoretest.lpi
+      - name: Run headless tests
+        run: ./bin/ledcoretest --all --format=plain
+
+  gui-self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: stable
+      - name: Build app
+        run: lazbuild --widgetset=gtk2 app/led.lpi
+      - name: Run scripted GUI self-test
+        run: xvfb-run -a ./bin/led --self-test
