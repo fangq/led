@@ -251,6 +251,13 @@ begin
   AView.Gutter.LineNumberPart.Visible := FConfig.GetBool(LedSetShowLineNumbers);
   LedApplyThemeToEditor(LedCurrentTheme, AView);
 
+  { The block guides are a markup rather than an editor property, so the theme
+    applier cannot reach them: it lives in ledsyn, and the markup hangs off a
+    control in ledui.  It supplies the colour, this applies it. }
+  if (AView.FoldGuides <> nil) and (AView.FoldGuides.ColorCount > 0) then
+    AView.FoldGuides.LineColor[0].Color :=
+      LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
+
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
 end;

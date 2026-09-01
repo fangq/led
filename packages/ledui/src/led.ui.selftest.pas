@@ -1279,8 +1279,32 @@ begin
   { The fold column has to be sized explicitly or SynEdit leaves its pen at
     one pixel whatever the DPI, which is what made the fold markers and the
     rule joining a block to its end look absent.  See Led.UI.Edit. }
+  { The fold column is led's own painter, drawing medit's chevrons rather than
+    SynEdit's boxed [-]/[+].  Checked by class name, as the highlighter is. }
+  CheckEq('the fold column is led''s chevron painter',
+    'TLedGutterCodeFolding', Tab.ActiveView.Gutter.CodeFoldPart.ClassName);
+
+  { A gutter part's mouse actions start empty and are filled by
+    ResetMouseActions.  The first version of the chevron column was created
+    after the loop that does that for the stock parts, so it drew correctly
+    and ignored every click.  An empty list here means folding is dead again. }
+  Check('and it has mouse actions, so its markers respond',
+    Tab.ActiveView.Gutter.CodeFoldPart.MouseActions.Count > 0);
+
   Check('the fold column is sized, not left on AutoSize',
     not Tab.ActiveView.Gutter.CodeFoldPart.AutoSize);
+
+  { Vertical guides down an open block, drawn in the text area.  ColorCount
+    is what enables the markup at all -- RealEnabled is false while it is
+    zero, which is the default. }
+  Check('block guides are installed', Tab.ActiveView.FoldGuides <> nil);
+  if Tab.ActiveView.FoldGuides <> nil then
+  begin
+    CheckEqInt('and enabled, with one guide colour',
+      1, Tab.ActiveView.FoldGuides.ColorCount);
+    Check('and the theme has coloured them',
+      Tab.ActiveView.FoldGuides.LineColor[0].Color <> clNone);
+  end;
   Check('and is wide enough to draw a marker',
     Tab.ActiveView.Gutter.CodeFoldPart.Width >= 10);
 
