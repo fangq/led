@@ -10,7 +10,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
-  SynEditWrappedView;
+  SynEditMouseCmds, SynEditWrappedView;
 
 type
   TLedEdit = class(TSynEdit)
@@ -45,9 +45,12 @@ begin
 
   Options2 := Options2 + [eoEnhanceEndKey];   // smart End
 
-  { Column selection is reachable with Alt+drag out of the box.  medit used
-    Ctrl+drag; the keystroke is remapped in phase 2 once the shortcut layer
-    exists, rather than being hard-coded here. }
+  { medit selected a rectangle with Ctrl+drag; SynEdit ships Alt+drag.  Both
+    are bound, since Alt+drag is grabbed by the window manager on several
+    Linux desktops and would otherwise be unreachable. }
+  MouseOptions := MouseOptions + [emUseMouseActions];
+  MouseActions.AddCommand(emcStartColumnSelections, True, mbXLeft, ccSingle,
+    cdDown, [ssCtrl], [ssCtrl, ssAlt, ssShift]);
   DefaultSelectionMode := smNormal;
 
   Gutter.Visible := True;

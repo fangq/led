@@ -36,6 +36,8 @@ type
     actCopy: TAction;
     actPaste: TAction;
     actSelectAll: TAction;
+    actPasteColumn: TAction;
+    actClearSelection: TAction;
     actIndent: TAction;
     actUnindent: TAction;
     actIndentSpace: TAction;
@@ -82,6 +84,8 @@ type
     mi_Paste: TMenuItem;
     miSep4: TMenuItem;
     mi_SelectAll: TMenuItem;
+    mi_PasteColumn: TMenuItem;
+    mi_ClearSelection: TMenuItem;
     miSep5: TMenuItem;
     mi_Indent: TMenuItem;
     mi_Unindent: TMenuItem;
@@ -173,6 +177,8 @@ type
     procedure actFindPrevExecute(Sender: TObject);
     procedure actQuickFindExecute(Sender: TObject);
     procedure actReplaceExecute(Sender: TObject);
+    procedure actClearSelectionExecute(Sender: TObject);
+    procedure actPasteColumnExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -460,6 +466,16 @@ end;
 procedure TLedMainForm.actSelectAllExecute(Sender: TObject);
 begin
   if CurrentView <> nil then CurrentView.SelectAll;
+end;
+
+procedure TLedMainForm.actPasteColumnExecute(Sender: TObject);
+begin
+  LedPasteColumn(CurrentView);
+end;
+
+procedure TLedMainForm.actClearSelectionExecute(Sender: TObject);
+begin
+  LedClearSelection(CurrentView);
 end;
 
 procedure TLedMainForm.actIndentExecute(Sender: TObject);
@@ -1109,6 +1125,8 @@ begin
   actCopy.Enabled := actCut.Enabled;
   actPaste.Enabled := HasDoc and Tab.ActiveView.CanPaste;
   actSelectAll.Enabled := HasDoc;
+  actPasteColumn.Enabled := HasDoc and Tab.ActiveView.CanPaste;
+  actClearSelection.Enabled := HasDoc and Tab.ActiveView.SelAvail;
   actIndent.Enabled := HasDoc;
   actUnindent.Enabled := HasDoc;
   actIndentSpace.Enabled := HasDoc;

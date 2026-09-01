@@ -108,6 +108,15 @@ object LedMainForm: TLedMainForm
       ShortCut = 16449
       OnExecute = actSelectAllExecute
     end
+    object actPasteColumn: TAction
+      Caption = 'Paste as Col&umn'
+      ShortCut = 24662
+      OnExecute = actPasteColumnExecute
+    end
+    object actClearSelection: TAction
+      Caption = 'Clear Se&lection'
+      OnExecute = actClearSelectionExecute
+    end
     object actIndent: TAction
       Caption = '&Indent'
       OnExecute = actIndentExecute
@@ -287,6 +296,12 @@ object LedMainForm: TLedMainForm
       end
       object mi_SelectAll: TMenuItem
         Action = actSelectAll
+      end
+      object mi_PasteColumn: TMenuItem
+        Action = actPasteColumn
+      end
+      object mi_ClearSelection: TMenuItem
+        Action = actClearSelection
       end
       object miSep5: TMenuItem
         Caption = '-'

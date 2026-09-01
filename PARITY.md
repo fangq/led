@@ -11,7 +11,7 @@ checked off by the presence of a menu entry.
 
 | Feature | medit | led | Decision |
 |---|---|---|---|
-| Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | | phase-2 |
+| Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | yes | done |
 | Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | | phase-2 |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
