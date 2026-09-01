@@ -24,15 +24,20 @@ interface
 
 uses
   Classes, SysUtils, Graphics, SynEdit, SynEditHighlighter,
+  SynEditHighlighterFoldBase,
   Led.Syn.Theme, Led.Syn.Languages;
 
 { A shared highlighter for ALangId, or nil when nothing suitable exists.
   Instances are cached and shared between documents, which is safe because a
   highlighter holds no per-document state.
 
-  A bundled SynEdit highlighter is preferred where there is one: it is a
-  hand-written scanner and faster than any regex engine.  Otherwise a
-  converted grammar is loaded, which covers the rest of the 128. }
+  A bundled SynEdit highlighter is used only when it can fold.  Most of them
+  cannot -- TSynCppSyn and TSynPythonSyn descend from TSynCustomHighlighter,
+  not TSynCustomFoldHighlighter -- and they cover exactly the languages people
+  most want to fold.  Preferring them for their speed silently cost folding in
+  C, C++, Python and JavaScript, so the rule is now: fold-capable native
+  highlighter if there is one, otherwise the converted grammar, which always
+  folds and always speaks the same scope vocabulary as the themes. }
 function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 
 { True when led can highlight this language today. }
@@ -208,15 +213,19 @@ begin
   if i >= 0 then
     Exit(TSynCustomHighlighter(Cache.Objects[i]));
 
+  Grammar := LedGrammarFile(ALangId);
   Cls := ClassFor(ALangId);
-  if Cls <> nil then
+
+  { A native highlighter is taken only if it folds, or if there is no
+    converted grammar to fall back on. }
+  if (Cls <> nil) and
+     (Cls.InheritsFrom(TSynCustomFoldHighlighter) or not FileExists(Grammar)) then
   begin
     Result := Cls.Create(nil);
     Cache.AddObject(ALangId, Result);
     Exit;
   end;
 
-  Grammar := LedGrammarFile(ALangId);
   if not FileExists(Grammar) then Exit;
 
   TM := TSynTextMateSyn.Create(nil);

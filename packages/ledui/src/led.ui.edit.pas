@@ -10,7 +10,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
-  SynEditMouseCmds, SynEditWrappedView, SynCompletion;
+  SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView;
 
 type
   TLedEdit = class(TSynEdit)
@@ -33,6 +33,16 @@ type
     { Created on first use.  TSynCompletion builds a popup form, and building
       a form inside another form's constructor hangs. }
     function Completion: TSynCompletion;
+    { Lines actually on display.  Folding hides lines in the view, never in
+      the buffer, so Lines.Count does not move when something is folded and
+      is the wrong thing to look at.  TextView is protected on TSynEdit, so
+      a descendant is the only place this can be reached. }
+    function VisibleLineCount: Integer;
+    { The folded view, which SynEdit keeps private but exposes to descendants
+      through GetFoldedTextBuffer.  Its API is indexed by text line, unlike
+      CodeFoldAction, which works from screen rows and therefore does nothing
+      unless the display happens to be in the state it expects. }
+    function FoldedView: TSynEditFoldedView;
   end;
 
 implementation
@@ -145,6 +155,16 @@ destructor TLedEdit.Destroy;
 begin
   FreeAndNil(FCompletion);
   inherited Destroy;
+end;
+
+function TLedEdit.VisibleLineCount: Integer;
+begin
+  Result := TextView.Count;
+end;
+
+function TLedEdit.FoldedView: TSynEditFoldedView;
+begin
+  Result := TSynEditFoldedView(GetFoldedTextBuffer);
 end;
 
 function TLedEdit.GetWrapEnabled: Boolean;

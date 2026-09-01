@@ -956,6 +956,74 @@ begin
   Pump;
 end;
 
+{ Folding.
+
+  Two traps here, both of which made folding look broken when it was not.
+  Lines.Count never changes when something is folded -- folding hides lines in
+  the display, not in the buffer -- and neither does TextView.Count, which is
+  the unfolded view chain.  FoldState is what actually describes the folds. }
+procedure TestFolding(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Doc: TLedDocument;
+  Path: string;
+  L: TStringList;
+begin
+  Say('folding');
+  Path := TempName('fold.c');
+  L := TStringList.Create;
+  try
+    L.Add('int main(void)');
+    L.Add('{');
+    L.Add('    int x = 1;');
+    L.Add('    if (x) {');
+    L.Add('        return 2;');
+    L.Add('    }');
+    L.Add('    return 0;');
+    L.Add('}');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  V := F.ActiveTab.ActiveView;
+  F.Width := 900;
+  F.Height := 600;
+  F.Repaint;
+  Pump;
+
+  { A C file must get a fold-capable highlighter.  The bundled TSynCppSyn is
+    not one, and preferring it for its speed silently cost folding in exactly
+    the languages people fold most. }
+  CheckEq('C uses a fold-capable highlighter', 'TSynTextMateSyn',
+    V.Highlighter.ClassName);
+  Check('and the view reports it can fold', LedCanFold(V));
+  CheckEq('nothing is folded to begin with', '', Trim(V.FoldState));
+
+  V.CaretXY := Point(1, 2);
+  LedToggleFold(V);
+  Pump;
+  Check('toggling at the brace folds something', Trim(V.FoldState) <> '');
+
+  LedToggleFold(V);
+  Pump;
+  CheckEq('and toggling again unfolds it', '', Trim(V.FoldState));
+
+  LedFoldAll(V);
+  Pump;
+  Check('fold all folds something', Trim(V.FoldState) <> '');
+  LedUnfoldAll(V);
+  Pump;
+  CheckEq('unfold all clears it', '', Trim(V.FoldState));
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1001,6 +1069,8 @@ begin
   TestTerminal(F);
   WriteLn;
   TestCompletionAndSymbols(F);
+  WriteLn;
+  TestFolding(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

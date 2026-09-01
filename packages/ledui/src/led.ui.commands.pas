@@ -388,10 +388,29 @@ end;
   carry a deprecated marker but are the whole public surface for folding.
   Wrapping them here means one place to revisit if that changes. }
 {$PUSH}{$WARN SYMBOL_DEPRECATED OFF}
+{ Folds or unfolds the block the caret is in.
+
+  Not CodeFoldAction: that resolves the line to a screen row first and does
+  nothing at all unless the display happens to be in the state it expects --
+  measured, it never fired from a menu.  The folded view's own method works
+  from the text and is forgiving about where inside the block you point it.
+
+  Its index is 0-based, whatever its comment says; that was measured too. }
 procedure LedToggleFold(AView: TLedEdit);
+var
+  Idx: Integer;
+  Before: string;
 begin
   if not LedCanFold(AView) then Exit;
-  AView.CodeFoldAction(AView.CaretY - 1);
+  Idx := AView.CaretY - 1;
+  Before := AView.FoldState;
+
+  { Unfold first: if the caret is inside something folded, that is what the
+    reader means.  If nothing was folded there, this changes nothing and the
+    fold is applied instead. }
+  AView.FoldedView.UnFoldAtTextIndex(Idx);
+  if AView.FoldState <> Before then Exit;
+  AView.FoldedView.FoldAtTextIndex(Idx);
 end;
 
 procedure LedFoldAll(AView: TLedEdit);
