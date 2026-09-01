@@ -20,6 +20,7 @@ implementation
 uses
   Classes, SysUtils, Forms, ComCtrls,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
+  Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
@@ -1028,7 +1029,7 @@ end;
 procedure TestMenusAndDetection(F: TLedMainForm);
 var
   Doc: TLedDocument;
-  Path: string;
+  Path, MakeDir: string;
   L: TStringList;
 
   function CountLeaves(AItem: TMenuItem): Integer;
@@ -1071,29 +1072,52 @@ begin
     CheckEq('and it is C', 'c', Doc.LangInfo.Id);
   Check('and the highlighter follows', Doc.Master.Highlighter <> nil);
 
-  { A Makefile picks up its filename rule the same way. }
+  { A Makefile picks up its filename rule the same way.  It needs a directory
+    of its own: the rule matches the glob "Makefile*" against the base name,
+    and the usual led-selftest-<pid>- prefix would stop it matching -- which
+    it silently did, leaving this check passing on the default value rather
+    than on the rule it names. }
+  MakeDir := TempName('mk') + PathDelim;
+  ForceDirectories(MakeDir);
   L := TStringList.Create;
   try
     L.Add('all:');
-    L.SaveToFile(TempName('Makefile'));
+    L.SaveToFile(MakeDir + 'Makefile');
   finally
     L.Free;
   end;
   F.AddTab(F.Documents.NewDocument);
   Pump;
-  F.ActiveTab.Document.LoadFromFile(TempName('Makefile'));
+  F.ActiveTab.Document.LoadFromFile(MakeDir + 'Makefile');
   Pump;
   Check('a Makefile uses tabs, from the glob rule',
     F.ActiveTab.Document.Config.GetBool(LedSetIndentUseTabs));
+  Check('and a tab width of 8',
+    F.ActiveTab.Document.Config.GetInt(LedSetTabWidth) = 8);
 
   DeleteFile(Path);
-  DeleteFile(TempName('Makefile'));
+  DeleteFile(MakeDir + 'Makefile');
+  RemoveDir(MakeDir);
 end;
 
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
+  Sandbox: string;
 begin
+  { The self-test gets a configuration directory of its own.  Reading the
+    developer's real prefs.ini made the results depend on whoever ran it:
+    one machine had spaces_instead_of_tabs=1 set from ordinary use, which
+    silently flipped a check that had nothing to do with that setting.  A
+    test that reports the tester's preferences is not a test. }
+  if GetEnvironmentVariable(LedConfigDirEnv) = '' then
+  begin
+    Sandbox := IncludeTrailingPathDelimiter(GetTempDir) +
+      Format('led-selftest-%d-config', [GetProcessID]);
+    ForceDirectories(Sandbox);
+    LedForceConfigDir(Sandbox);
+  end;
+
   Say('led self-test');
   WriteLn;
 

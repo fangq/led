@@ -99,6 +99,11 @@
         <UnitName Value="Led.UI.Tab"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.icons.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Icons"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledui/src/led.ui.edit.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Edit"/>

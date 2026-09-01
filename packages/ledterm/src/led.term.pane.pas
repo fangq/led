@@ -60,6 +60,31 @@ type
 
 implementation
 
+{ A TPairSplitter leaves its divider wherever the default position puts it,
+  which is not the middle, so a fresh split looks lopsided.  The size is only
+  known once the layout has run, hence the InitialSize fallback for a splitter
+  that is not on screen yet. }
+procedure CentreSplitter(ASplitter: TPairSplitter);
+var
+  Extent: Integer;
+begin
+  ASplitter.HandleNeeded;
+  if ASplitter.SplitterType = pstHorizontal then
+    Extent := ASplitter.Width
+  else
+    Extent := ASplitter.Height;
+  if Extent < 40 then
+  begin
+    if ASplitter.SplitterType = pstHorizontal then
+      Extent := ASplitter.Parent.ClientWidth
+    else
+      Extent := ASplitter.Parent.ClientHeight;
+  end;
+  if Extent >= 40 then
+    ASplitter.Position := Extent div 2;
+end;
+
+
 constructor TLedTerminalPane.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -210,6 +235,7 @@ begin
   Old.Align := alClient;
 
   NewTerm := AddTerminal(Splitter.Sides[1]);
+  CentreSplitter(Splitter);
   NewTerm.Start('', FWorkDir);
   FActive := NewTerm;
   if NewTerm.CanFocus then NewTerm.SetFocus;

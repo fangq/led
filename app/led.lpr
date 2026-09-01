@@ -8,11 +8,8 @@ uses
   cthreads,
   {$ENDIF}
   Interfaces, Forms, Classes, SysUtils,
-  Led.Core.CLI, Led.Core.Instance,
+  Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
   Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench;
-
-const
-  LedVersion = '2.0.0-dev';
 
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every

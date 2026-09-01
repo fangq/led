@@ -40,85 +40,102 @@ object LedMainForm: TLedMainForm
     SimplePanel = False
   end
   object ActionList1: TActionList
+    Images = ImageList1
     OnUpdate = ActionList1Update
     Left = 48
     Top = 48
     object actNew: TAction
       Caption = '&New'
       ShortCut = 16462
+      ImageIndex = 0
       OnExecute = actNewExecute
     end
     object actOpen: TAction
       Caption = '&Open...'
       ShortCut = 16463
+      ImageIndex = 1
       OnExecute = actOpenExecute
     end
     object actSave: TAction
       Caption = '&Save'
       ShortCut = 16467
+      ImageIndex = 2
       OnExecute = actSaveExecute
     end
     object actSaveAs: TAction
       Caption = 'Save &As...'
       ShortCut = 24659
+      ImageIndex = 3
       OnExecute = actSaveAsExecute
     end
     object actReload: TAction
       Caption = '&Reload from Disk'
       ShortCut = 116
+      ImageIndex = 5
       OnExecute = actReloadExecute
     end
     object actCloseTab: TAction
       Caption = '&Close'
       ShortCut = 16471
+      ImageIndex = 4
       OnExecute = actCloseTabExecute
     end
     object actPrint: TAction
       Caption = '&Print...'
       ShortCut = 16464
+      ImageIndex = 6
       OnExecute = actPrintExecute
     end
     object actPreferences: TAction
       Caption = '&Preferences...'
+      ImageIndex = 25
       OnExecute = actPreferencesExecute
     end
     object actShortcuts: TAction
       Caption = 'Configure &Shortcuts...'
+      ImageIndex = 26
       OnExecute = actShortcutsExecute
     end
     object actQuit: TAction
       Caption = '&Quit'
       ShortCut = 16465
+      ImageIndex = 7
       OnExecute = actQuitExecute
     end
     object actUndo: TAction
       Caption = '&Undo'
       ShortCut = 16474
+      ImageIndex = 8
       OnExecute = actUndoExecute
     end
     object actRedo: TAction
       Caption = '&Redo'
       ShortCut = 24666
+      ImageIndex = 9
       OnExecute = actRedoExecute
     end
     object actCut: TAction
       Caption = 'Cu&t'
       ShortCut = 16472
+      ImageIndex = 10
       OnExecute = actCutExecute
     end
     object actCopy: TAction
       Caption = '&Copy'
       ShortCut = 16451
+      ImageIndex = 11
       OnExecute = actCopyExecute
     end
     object actPaste: TAction
       Caption = '&Paste'
       ShortCut = 16470
+      ImageIndex = 12
       OnExecute = actPasteExecute
     end
     object actSelectAll: TAction
       Caption = 'Select &All'
       ShortCut = 16449
+      ImageIndex = 14
       OnExecute = actSelectAllExecute
     end
     object actPasteColumn: TAction
@@ -132,10 +149,12 @@ object LedMainForm: TLedMainForm
     end
     object actIndent: TAction
       Caption = '&Indent'
+      ImageIndex = 15
       OnExecute = actIndentExecute
     end
     object actUnindent: TAction
       Caption = '&Unindent'
+      ImageIndex = 16
       OnExecute = actUnindentExecute
     end
     object actIndentSpace: TAction
@@ -151,31 +170,37 @@ object LedMainForm: TLedMainForm
     object actComment: TAction
       Caption = 'Co&mment'
       ShortCut = 16575
+      ImageIndex = 17
       OnExecute = actCommentExecute
     end
     object actUncomment: TAction
       Caption = 'Uncomm&ent'
       ShortCut = 24767
+      ImageIndex = 18
       OnExecute = actUncommentExecute
     end
     object actFind: TAction
       Caption = '&Find...'
       ShortCut = 16454
+      ImageIndex = 19
       OnExecute = actFindExecute
     end
     object actReplace: TAction
       Caption = '&Replace...'
       ShortCut = 16466
+      ImageIndex = 22
       OnExecute = actReplaceExecute
     end
     object actFindNext: TAction
       Caption = 'Find &Next'
       ShortCut = 114
+      ImageIndex = 20
       OnExecute = actFindNextExecute
     end
     object actFindPrev: TAction
       Caption = 'Find &Previous'
       ShortCut = 8306
+      ImageIndex = 21
       OnExecute = actFindPrevExecute
     end
     object actQuickFind: TAction
@@ -191,6 +216,7 @@ object LedMainForm: TLedMainForm
     object actGotoLine: TAction
       Caption = '&Go to Line...'
       ShortCut = 16455
+      ImageIndex = 23
       OnExecute = actGotoLineExecute
     end
     object actToggleBracket: TAction
@@ -206,6 +232,7 @@ object LedMainForm: TLedMainForm
     object actToggleBookmark: TAction
       Caption = 'Toggle &Bookmark'
       ShortCut = 16450
+      ImageIndex = 24
       OnExecute = actToggleBookmarkExecute
     end
     object actNextBookmark: TAction
@@ -220,10 +247,12 @@ object LedMainForm: TLedMainForm
     end
     object actSplitSideBySide: TAction
       Caption = 'Split &Side by Side'
+      ImageIndex = 32
       OnExecute = actSplitSideBySideExecute
     end
     object actSplitStacked: TAction
       Caption = 'Split S&tacked'
+      ImageIndex = 33
       OnExecute = actSplitStackedExecute
     end
     object actUnsplit: TAction
@@ -250,14 +279,17 @@ object LedMainForm: TLedMainForm
     end
     object actWrapText: TAction
       Caption = '&Wrap Text'
+      ImageIndex = 34
       OnExecute = actWrapTextExecute
     end
     object actLineNumbers: TAction
       Caption = 'Line &Numbers'
+      ImageIndex = 35
       OnExecute = actLineNumbersExecute
     end
     object actStopTool: TAction
       Caption = '&Stop Running Tool'
+      ImageIndex = 27
       OnExecute = actStopToolExecute
     end
     object actToggleOutput: TAction
@@ -266,10 +298,12 @@ object LedMainForm: TLedMainForm
     end
     object actToggleTerminal: TAction
       Caption = '&Terminal'
+      ImageIndex = 29
       OnExecute = actToggleTerminalExecute
     end
     object actToggleSymbols: TAction
       Caption = '&Symbols'
+      ImageIndex = 31
       OnExecute = actToggleSymbolsExecute
     end
     object actTogglePreview: TAction
@@ -288,14 +322,116 @@ object LedMainForm: TLedMainForm
       Caption = '&Bottom Pane'
       OnExecute = actToggleBottomPaneExecute
     end
+    object actNewWindow: TAction
+      Caption = 'New &Window'
+      ShortCut = 24654
+      OnExecute = actNewWindowExecute
+    end
+    object actCloseAll: TAction
+      Caption = 'Close A&ll'
+      OnExecute = actCloseAllExecute
+    end
+    object actReopenEncoding: TAction
+      Caption = 'Reopen &with Encoding'
+      OnExecute = actReopenEncodingExecute
+    end
+    object actPageSetup: TAction
+      Caption = 'Page Set&up...'
+      OnExecute = actPageSetupExecute
+    end
+    object actPrintPdf: TAction
+      Caption = 'Export as P&DF...'
+      OnExecute = actPrintPdfExecute
+    end
+    object actExportHtml: TAction
+      Caption = 'Export as &HTML...'
+      OnExecute = actExportHtmlExecute
+    end
+    object actDelete: TAction
+      Caption = '&Delete'
+      ShortCut = 46
+      OnExecute = actDeleteExecute
+    end
+    object actFindCurrent: TAction
+      Caption = 'Find Word at &Cursor'
+      ShortCut = 24614
+      OnExecute = actFindCurrentExecute
+    end
+    object actFindCurrentBack: TAction
+      Caption = 'Find Word at Cursor &Backwards'
+      ShortCut = 24616
+      OnExecute = actFindCurrentBackExecute
+    end
+    object actPrevTab: TAction
+      Caption = '&Previous Tab'
+      ShortCut = 16417
+      OnExecute = actPrevTabExecute
+    end
+    object actNextTab: TAction
+      Caption = '&Next Tab'
+      ShortCut = 16418
+      OnExecute = actNextTabExecute
+    end
+    object actFocusDoc: TAction
+      Caption = '&Focus Document'
+      ShortCut = 32803
+      OnExecute = actFocusDocExecute
+    end
+    object actMoveToSplit: TAction
+      Caption = '&Move to Split View'
+      OnExecute = actMoveToSplitExecute
+    end
+    object actShowToolbar: TAction
+      Caption = 'Show &Toolbar'
+      OnExecute = actShowToolbarExecute
+    end
+    object actStripTrailing: TAction
+      Caption = 'Strip &Trailing Space'
+      OnExecute = actStripTrailingExecute
+    end
+    object actToggleBrowser: TAction
+      Caption = 'File &Browser'
+      ImageIndex = 30
+      OnExecute = actToggleBrowserExecute
+    end
+    object actSplitTermH: TAction
+      Caption = 'Split Terminal S&ide by Side'
+      OnExecute = actSplitTermHExecute
+    end
+    object actSplitTermV: TAction
+      Caption = 'Split Terminal St&acked'
+      OnExecute = actSplitTermVExecute
+    end
+    object actHelp: TAction
+      Caption = '&Contents'
+      ShortCut = 112
+      ImageIndex = 36
+      OnExecute = actHelpExecute
+    end
+    object actReportBug: TAction
+      Caption = '&Report a Bug'
+      OnExecute = actReportBugExecute
+    end
+    object actAbout: TAction
+      Caption = '&About led'
+      ImageIndex = 37
+      OnExecute = actAboutExecute
+    end
   end
   object MainMenu1: TMainMenu
+    Images = ImageList1
     Left = 48
     Top = 112
     object mnuFile: TMenuItem
       Caption = '&File'
       object mi_New: TMenuItem
         Action = actNew
+      end
+      object mi_NewWindow: TMenuItem
+        Action = actNewWindow
+      end
+      object miSep1: TMenuItem
+        Caption = '-'
       end
       object mi_Open: TMenuItem
         Action = actOpen
@@ -304,10 +440,14 @@ object LedMainForm: TLedMainForm
         Caption = 'Open &Recent'
         OnClick = miOpenRecentClick
       end
+      object miReopenEncoding: TMenuItem
+        Caption = 'Reopen &with Encoding'
+        OnClick = miReopenEncodingClick
+      end
       object mi_Reload: TMenuItem
         Action = actReload
       end
-      object miSep1: TMenuItem
+      object miSep2: TMenuItem
         Caption = '-'
       end
       object mi_Save: TMenuItem
@@ -316,17 +456,32 @@ object LedMainForm: TLedMainForm
       object mi_SaveAs: TMenuItem
         Action = actSaveAs
       end
-      object miSep2: TMenuItem
+      object miSep3: TMenuItem
         Caption = '-'
+      end
+      object mi_PageSetup: TMenuItem
+        Action = actPageSetup
       end
       object mi_Print: TMenuItem
         Action = actPrint
       end
-      object miSep3: TMenuItem
+      object mi_PrintPdf: TMenuItem
+        Action = actPrintPdf
+      end
+      object mi_ExportHtml: TMenuItem
+        Action = actExportHtml
+      end
+      object miSep4: TMenuItem
         Caption = '-'
       end
       object mi_CloseTab: TMenuItem
         Action = actCloseTab
+      end
+      object mi_CloseAll: TMenuItem
+        Action = actCloseAll
+      end
+      object miSep5: TMenuItem
+        Caption = '-'
       end
       object mi_Quit: TMenuItem
         Action = actQuit
@@ -340,7 +495,7 @@ object LedMainForm: TLedMainForm
       object mi_Redo: TMenuItem
         Action = actRedo
       end
-      object miSep4: TMenuItem
+      object miSep6: TMenuItem
         Caption = '-'
       end
       object mi_Cut: TMenuItem
@@ -352,7 +507,10 @@ object LedMainForm: TLedMainForm
       object mi_Paste: TMenuItem
         Action = actPaste
       end
-      object miSep5: TMenuItem
+      object mi_Delete: TMenuItem
+        Action = actDelete
+      end
+      object miSep7: TMenuItem
         Caption = '-'
       end
       object mi_SelectAll: TMenuItem
@@ -364,7 +522,7 @@ object LedMainForm: TLedMainForm
       object mi_ClearSelection: TMenuItem
         Action = actClearSelection
       end
-      object miSep6: TMenuItem
+      object miSep8: TMenuItem
         Caption = '-'
       end
       object mi_Indent: TMenuItem
@@ -379,7 +537,7 @@ object LedMainForm: TLedMainForm
       object mi_UnindentSpace: TMenuItem
         Action = actUnindentSpace
       end
-      object miSep7: TMenuItem
+      object miSep9: TMenuItem
         Caption = '-'
       end
       object mi_Comment: TMenuItem
@@ -388,10 +546,13 @@ object LedMainForm: TLedMainForm
       object mi_Uncomment: TMenuItem
         Action = actUncomment
       end
+      object mi_StripTrailing: TMenuItem
+        Action = actStripTrailing
+      end
       object mi_Complete: TMenuItem
         Action = actComplete
       end
-      object miSep8: TMenuItem
+      object miSep10: TMenuItem
         Caption = '-'
       end
       object mi_Shortcuts: TMenuItem
@@ -421,13 +582,22 @@ object LedMainForm: TLedMainForm
       object mi_FindInFiles: TMenuItem
         Action = actFindInFiles
       end
-      object miSep9: TMenuItem
+      object miSep11: TMenuItem
+        Caption = '-'
+      end
+      object mi_FindCurrent: TMenuItem
+        Action = actFindCurrent
+      end
+      object mi_FindCurrentBack: TMenuItem
+        Action = actFindCurrentBack
+      end
+      object miSep12: TMenuItem
         Caption = '-'
       end
       object mi_GotoLine: TMenuItem
         Action = actGotoLine
       end
-      object miSep10: TMenuItem
+      object miSep13: TMenuItem
         Caption = '-'
       end
       object mi_ToggleBracket: TMenuItem
@@ -451,7 +621,7 @@ object LedMainForm: TLedMainForm
         Caption = 'Line &Endings'
         OnClick = miLineEndClick
       end
-      object miSep11: TMenuItem
+      object miSep14: TMenuItem
         Caption = '-'
       end
       object mi_ToggleBookmark: TMenuItem
@@ -470,7 +640,16 @@ object LedMainForm: TLedMainForm
         Caption = '(no tools)'
         OnClick = miToolListClick
       end
-      object miSep12: TMenuItem
+      object miSep15: TMenuItem
+        Caption = '-'
+      end
+      object mi_SplitTermH: TMenuItem
+        Action = actSplitTermH
+      end
+      object mi_SplitTermV: TMenuItem
+        Action = actSplitTermV
+      end
+      object miSep16: TMenuItem
         Caption = '-'
       end
       object mi_StopTool: TMenuItem
@@ -479,13 +658,28 @@ object LedMainForm: TLedMainForm
     end
     object mnuView: TMenuItem
       Caption = '&View'
+      object mi_ShowToolbar: TMenuItem
+        Action = actShowToolbar
+      end
+      object miSep17: TMenuItem
+        Caption = '-'
+      end
       object mi_WrapText: TMenuItem
         Action = actWrapText
       end
       object mi_LineNumbers: TMenuItem
         Action = actLineNumbers
       end
-      object miSep13: TMenuItem
+      object miSep18: TMenuItem
+        Caption = '-'
+      end
+      object mi_FocusDoc: TMenuItem
+        Action = actFocusDoc
+      end
+      object mi_MoveToSplit: TMenuItem
+        Action = actMoveToSplit
+      end
+      object miSep19: TMenuItem
         Caption = '-'
       end
       object mi_ToggleFold: TMenuItem
@@ -497,7 +691,7 @@ object LedMainForm: TLedMainForm
       object mi_UnfoldAll: TMenuItem
         Action = actUnfoldAll
       end
-      object miSep14: TMenuItem
+      object miSep20: TMenuItem
         Caption = '-'
       end
       object mi_SplitSideBySide: TMenuItem
@@ -512,14 +706,14 @@ object LedMainForm: TLedMainForm
       object mi_CycleViews: TMenuItem
         Action = actCycleViews
       end
-      object miSep15: TMenuItem
+      object miSep21: TMenuItem
         Caption = '-'
       end
       object miTheme: TMenuItem
         Caption = 'Colour &Theme'
         OnClick = miThemeClick
       end
-      object miSep16: TMenuItem
+      object miSep22: TMenuItem
         Caption = '-'
       end
       object mi_ToggleLeftPane: TMenuItem
@@ -527,6 +721,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleBottomPane: TMenuItem
         Action = actToggleBottomPane
+      end
+      object mi_ToggleBrowser: TMenuItem
+        Action = actToggleBrowser
       end
       object mi_ToggleOutput: TMenuItem
         Action = actToggleOutput
@@ -540,6 +737,274 @@ object LedMainForm: TLedMainForm
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview
       end
+    end
+    object mnuWindow: TMenuItem
+      Caption = '&Window'
+      object mi_PrevTab: TMenuItem
+        Action = actPrevTab
+      end
+      object mi_NextTab: TMenuItem
+        Action = actNextTab
+      end
+      object miSep23: TMenuItem
+        Caption = '-'
+      end
+      object miDocList: TMenuItem
+        Caption = '(no documents)'
+        OnClick = miDocListClick
+      end
+    end
+    object mnuHelp: TMenuItem
+      Caption = '&Help'
+      object mi_Help: TMenuItem
+        Action = actHelp
+      end
+      object mi_ReportBug: TMenuItem
+        Action = actReportBug
+      end
+      object miSep24: TMenuItem
+        Caption = '-'
+      end
+      object mi_About: TMenuItem
+        Action = actAbout
+      end
+    end
+  end
+  object ImageList1: TImageList
+    Height = 16
+    Width = 16
+    Left = 48
+    Top = 304
+  end
+  object ToolBar1: TToolBar
+    Left = 0
+    Height = 26
+    Top = 0
+    Width = 1000
+    AutoSize = True
+    ButtonHeight = 24
+    ButtonWidth = 24
+    Caption = 'ToolBar1'
+    EdgeBorders = [ebBottom]
+    Images = ImageList1
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 1
+    object tbNew: TToolButton
+      Left = 1
+      Top = 2
+      Action = actNew
+    end
+    object tbSep1: TToolButton
+      Left = 25
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbOpen: TToolButton
+      Left = 49
+      Top = 2
+      Action = actOpen
+    end
+    object tbSave: TToolButton
+      Left = 73
+      Top = 2
+      Action = actSave
+    end
+    object tbSaveAs: TToolButton
+      Left = 97
+      Top = 2
+      Action = actSaveAs
+    end
+    object tbSep2: TToolButton
+      Left = 121
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbUndo: TToolButton
+      Left = 145
+      Top = 2
+      Action = actUndo
+    end
+    object tbRedo: TToolButton
+      Left = 169
+      Top = 2
+      Action = actRedo
+    end
+    object tbSep3: TToolButton
+      Left = 193
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbCut: TToolButton
+      Left = 217
+      Top = 2
+      Action = actCut
+    end
+    object tbCopy: TToolButton
+      Left = 241
+      Top = 2
+      Action = actCopy
+    end
+    object tbPaste: TToolButton
+      Left = 265
+      Top = 2
+      Action = actPaste
+    end
+    object tbSep4: TToolButton
+      Left = 289
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbFind: TToolButton
+      Left = 313
+      Top = 2
+      Action = actFind
+    end
+    object tbReplace: TToolButton
+      Left = 337
+      Top = 2
+      Action = actReplace
+    end
+    object tbSep5: TToolButton
+      Left = 361
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbStopTool: TToolButton
+      Left = 385
+      Top = 2
+      Action = actStopTool
+    end
+  end
+  object PopupEditor: TPopupMenu
+    Images = ImageList1
+    OnPopup = PopupEditorPopup
+    Left = 48
+    Top = 368
+    object mcUndo: TMenuItem
+      Action = actUndo
+    end
+    object mcRedo: TMenuItem
+      Action = actRedo
+    end
+    object mcSep1: TMenuItem
+      Caption = '-'
+    end
+    object mcCut: TMenuItem
+      Action = actCut
+    end
+    object mcCopy: TMenuItem
+      Action = actCopy
+    end
+    object mcPaste: TMenuItem
+      Action = actPaste
+    end
+    object mcDelete: TMenuItem
+      Action = actDelete
+    end
+    object mcSep2: TMenuItem
+      Caption = '-'
+    end
+    object mcSelectAll: TMenuItem
+      Action = actSelectAll
+    end
+    object mcSep3: TMenuItem
+      Caption = '-'
+    end
+    object mcComment: TMenuItem
+      Action = actComment
+    end
+    object mcUncomment: TMenuItem
+      Action = actUncomment
+    end
+    object mcIndent: TMenuItem
+      Action = actIndent
+    end
+    object mcUnindent: TMenuItem
+      Action = actUnindent
+    end
+    object mcSep4: TMenuItem
+      Caption = '-'
+    end
+    object mcToggleBookmark: TMenuItem
+      Action = actToggleBookmark
+    end
+    object mcToggleFold: TMenuItem
+      Action = actToggleFold
+    end
+    object mcSep5: TMenuItem
+      Caption = '-'
+    end
+    object miCtxTools: TMenuItem
+      Caption = '(no tools)'
+      OnClick = miToolListClick
+    end
+    object mcSep6: TMenuItem
+      Caption = '-'
+    end
+    object mcGotoLine: TMenuItem
+      Action = actGotoLine
+    end
+    object mcFindCurrent: TMenuItem
+      Action = actFindCurrent
+    end
+  end
+  object PopupTab: TPopupMenu
+    Images = ImageList1
+    OnPopup = PopupTabPopup
+    Left = 48
+    Top = 432
+    object mtSave: TMenuItem
+      Action = actSave
+    end
+    object mtSaveAs: TMenuItem
+      Action = actSaveAs
+    end
+    object mtReload: TMenuItem
+      Action = actReload
+    end
+    object mtSep1: TMenuItem
+      Caption = '-'
+    end
+    object mtCloseTab: TMenuItem
+      Action = actCloseTab
+    end
+    object mtCloseAll: TMenuItem
+      Action = actCloseAll
+    end
+    object mtSep2: TMenuItem
+      Caption = '-'
+    end
+    object miTabCloseOthers: TMenuItem
+      Caption = 'Close &Other Tabs'
+      OnClick = miTabCloseOthersClick
+    end
+    object miTabCopyPath: TMenuItem
+      Caption = 'Cop&y Full Path'
+      OnClick = miTabCopyPathClick
+    end
+    object miTabOpenFolder: TMenuItem
+      Caption = 'Open Containing &Folder'
+      OnClick = miTabOpenFolderClick
+    end
+    object mtSep3: TMenuItem
+      Caption = '-'
+    end
+    object mtSplitSideBySide: TMenuItem
+      Action = actSplitSideBySide
+    end
+    object mtSplitStacked: TMenuItem
+      Action = actSplitStacked
     end
   end
   object OpenDialog1: TOpenDialog
