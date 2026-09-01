@@ -123,8 +123,15 @@ type
     procedure RebuildRails;
     procedure RefreshRails;
 
+    { Whether a pane can be torn off by dragging its header or its tab.  Those
+      are the only two things AnchorDocking gates on this -- splitters, and so
+      resizing a pane, are untouched. }
+    function GetDragging: Boolean;
+    procedure SetDragging(AValue: Boolean);
+
     property Center: TPanel read FCenter;
     property Images: TCustomImageList read FImages write SetImages;
+    property DraggingAllowed: Boolean read GetDragging write SetDragging;
     property ShowRails: Boolean read FShowRails write SetShowRails;
     property EdgeVisible[AEdge: TLedDockEdge]: Boolean
       read GetEdgeVisible write SetEdgeVisible;
@@ -690,6 +697,16 @@ end;
 procedure TLedDockHost.ToggleEdge(AEdge: TLedDockEdge);
 begin
   EdgeVisible[AEdge] := not EdgeVisible[AEdge];
+end;
+
+function TLedDockHost.GetDragging: Boolean;
+begin
+  Result := DockMaster.AllowDragging;
+end;
+
+procedure TLedDockHost.SetDragging(AValue: Boolean);
+begin
+  DockMaster.AllowDragging := AValue;
 end;
 
 procedure TLedDockHost.ResetLayout(const AFileName: string);

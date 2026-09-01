@@ -80,6 +80,7 @@ const
     which mean something different: those write the user's actual file behind
     their back, this keeps a private journal and never touches it. }
   LedPrefShowPaneButtons  = 'Editor/show_pane_buttons';
+  LedPrefLockPanes        = 'Editor/lock_pane_layout';
   LedPrefRecoveryEnabled  = 'Editor/recovery_enabled';
   LedPrefRecoveryInterval = 'Editor/recovery_interval';
 

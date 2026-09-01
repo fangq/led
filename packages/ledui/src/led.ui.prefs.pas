@@ -115,7 +115,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..44] of TLedPrefItem = (
+  PrefItems: array[0..45] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -152,6 +152,9 @@ const
     (Category: 'General'; Kind: pkBool; Key: 'Editor/show_toolbar';
      Caption: 'Show the toolbar'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkBool; Key: 'Editor/lock_pane_layout';
+     Caption: 'Lock the pane layout (no dragging panes by their header)';
+     DefStr: ''; DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/show_pane_buttons';
      Caption: 'Show pane buttons on the window edges'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),

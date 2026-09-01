@@ -1369,6 +1369,20 @@ begin
   Check('and the right one', not F.Dock.PaneVisible('symbols'));
   Check('and leaves the editor docked', not F.Dock.PaneFloating('editor'));
 
+  { Locking must stop the drag without stopping anything else -- the two
+    places AnchorDocking consults AllowDragging are the header's and the tab's
+    MouseDown, so panes still open, close and resize while it is off. }
+  F.Dock.DraggingAllowed := False;
+  Check('panes can be locked against dragging', not F.Dock.DraggingAllowed);
+  F.Dock.ShowPane('files');
+  Pump;
+  Check('and still open while locked', F.Dock.PaneVisible('files'));
+  F.Dock.HidePane('files');
+  Pump;
+  Check('and still close', not F.Dock.PaneVisible('files'));
+  F.Dock.DraggingAllowed := True;
+  Check('and can be unlocked again', F.Dock.DraggingAllowed);
+
   F.Dock.ShowRails := False;
   Pump;
   Check('the rail can be turned off', True);
