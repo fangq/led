@@ -29,6 +29,10 @@ or a shebang line.
 
 **Panes.** File browser with a breadcrumb bar, ctags symbol browser, command
 output with clickable `file:line`, Markdown preview, and a real terminal.
+Each window edge carries a strip of buttons, one per pane registered there and
+pressed while that pane is open, so a pane closed from its own header can be
+brought back with one click instead of only through the View menu. Turn the
+strips off with `Editor/show_pane_buttons`.
 
 **Tools.** User-defined commands with medit's option, input, output and
 environment-variable contract, and named regex output filters including

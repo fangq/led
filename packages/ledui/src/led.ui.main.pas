@@ -588,6 +588,9 @@ begin
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
   FDock.Align := alClient;
+  { The edge rails draw the same icons the toolbar and menus use. }
+  FDock.Images := ImageList1;
+  FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
 
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
@@ -604,13 +607,13 @@ begin
   FBrowser := TLedFileBrowser.Create(Self);
   FBrowser.OnOpenFile := @BrowserOpenFile;
 
-  FDock.AddPane(ledLeft, 'files', 'Files', FBrowser);
+  FDock.AddPane(ledLeft, 'files', 'Files', FBrowser, 'browser');
 
   FSymbols := TLedSymbolPane.Create(Self);
   FSymbols.OnJump := @SymbolJump;
-  FDock.AddPane(ledRight, 'symbols', 'Symbols', FSymbols);
+  FDock.AddPane(ledRight, 'symbols', 'Symbols', FSymbols, 'symbols');
   FDock.EdgeVisible[ledRight] := False;
-  FDock.AddPane(ledBottom, 'output', 'Output', FOutput);
+  FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'run');
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
@@ -777,7 +780,7 @@ begin
   if FPreview = nil then
   begin
     FPreview := TLedPreviewPane.Create(Self);
-    FDock.AddPane(ledRight, 'preview', 'Preview', FPreview);
+    FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
   end;
   FDock.ShowPane('preview');
   FDock.EdgeVisible[ledRight] := True;
@@ -829,7 +832,7 @@ begin
   if FTerminal = nil then
   begin
     FTerminal := TLedTerminalPane.Create(Self);
-    FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal);
+    FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal, 'terminal');
   end;
   FDock.ShowPane('terminal');
   FDock.EdgeVisible[ledBottom] := True;
@@ -882,6 +885,7 @@ begin
     may have changed too, so both are rebuilt and pushed to every view. }
   LedReloadUserConfig;
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
+  FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   for i := 0 to FBook.PageCount - 1 do
     for j := 0 to FBook.Pages[i].ControlCount - 1 do
       if FBook.Pages[i].Controls[j] is TLedTab then
@@ -1647,6 +1651,12 @@ end;
 
 procedure TLedMainForm.RecoveryTick(Sender: TObject);
 begin
+  { Not during a scripted run.  Pump calls ProcessMessages, so this timer
+    would fire at arbitrary points between a test's steps, reading every
+    document's text and writing files while the test is mid-way through
+    changing them.  A harness that races a background task is a harness that
+    fails for reasons nobody can reproduce. }
+  if Silent then Exit;
   ReconcileRecovery;
 end;
 
@@ -2125,6 +2135,11 @@ begin
   actWrapText.Enabled := HasDoc;
   actWrapText.Checked := HasDoc and
     (LowerCase(Tab.Document.Config.GetStr(LedSetWrapMode)) <> 'none');
+  { A pane closed with the header's own close button never comes through
+    TogglePane, so the rail is reconciled here rather than trusted to be
+    told. }
+  FDock.RefreshRails;
+
   actLineNumbers.Enabled := HasDoc;
   actLineNumbers.Checked := HasDoc and
     Tab.Document.Config.GetBool(LedSetShowLineNumbers);

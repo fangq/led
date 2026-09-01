@@ -1290,6 +1290,54 @@ begin
   Check('and a positive size', Tab.ActiveView.Font.Size > 0);
 end;
 
+{ The edge rails.  A pane closed from its own header used to be reachable
+  only through the View menu, because AnchorDocking removes it rather than
+  collapsing it to something clickable. }
+procedure TestPaneRail(F: TLedMainForm);
+begin
+  Say('pane buttons on the edges');
+
+  F.Dock.ShowRails := True;
+  Pump;
+
+  { Every registered pane must be reachable from a button, or the rail is
+    decoration.  These are the panes registered at startup. }
+  Check('the files pane is registered', F.Dock.FindPane('files') <> nil);
+  Check('the symbols pane is registered', F.Dock.FindPane('symbols') <> nil);
+  Check('the output pane is registered', F.Dock.FindPane('output') <> nil);
+
+  { Toggling through the rail's own path must move the pane and leave the
+    button agreeing with it -- a button that lies about the state is worse
+    than no button. }
+  F.Dock.ShowPane('files');
+  Pump;
+  Check('a pane can be opened', F.Dock.PaneVisible('files'));
+
+  F.Dock.TogglePane('files');
+  Pump;
+  Check('and toggled shut again', not F.Dock.PaneVisible('files'));
+
+  F.Dock.TogglePane('files');
+  Pump;
+  Check('and back open', F.Dock.PaneVisible('files'));
+
+  { RefreshRails is called on idle for panes closed by their header button;
+    it must survive being called when nothing has changed. }
+  F.Dock.RefreshRails;
+  F.Dock.RefreshRails;
+  Check('refreshing the rail twice is harmless',
+    F.Dock.PaneVisible('files'));
+
+  F.Dock.HidePane('files');
+  Pump;
+
+  F.Dock.ShowRails := False;
+  Pump;
+  Check('the rail can be turned off', True);
+  F.Dock.ShowRails := True;
+  Pump;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1349,6 +1397,8 @@ begin
   TestPrefsAndShortcuts(F);
   WriteLn;
   TestTools(F);
+  WriteLn;
+  TestPaneRail(F);
   WriteLn;
   TestFileBrowser(F);
   WriteLn;
