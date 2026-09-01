@@ -3,6 +3,12 @@ program led;
 
 {$mode objfpc}{$H+}
 
+{ The application icon and the Windows manifest.  Generated from
+  packaging/windows/led.rc by `make res`, and committed as led.res so a fresh
+  clone builds without fpcres; only Windows reads it, but the directive is
+  unconditional because FPC needs the file to exist on every target. }
+{$R led.res}
+
 uses
   {$IFDEF UNIX}
   cthreads,

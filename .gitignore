@@ -5,4 +5,12 @@ lib/
 *.o
 *.ppu
 *.res
+# ...except the application resource: app/led.lpr references it
+# unconditionally, so a fresh clone has to have it without running fpcres.
+!app/led.res
 backup/
+dist/
+build/
+led-*-linux-*/
+led-*-win64/
+led.app/

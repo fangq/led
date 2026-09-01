@@ -224,4 +224,5 @@ An honest list, so nothing here is mistaken for an oversight.
 | Wiki markup preview | dropped deliberately |
 | Text selection with the mouse inside the terminal | not started; the context menu copies the whole screen |
 | Translations | not started |
-| macOS bundle and Windows installer | not started; install.sh covers Unix prefixes |
+| Code signing and notarization | not started; the macOS bundle is ad-hoc signed and the Windows installer is unsigned |
+| RPM, AppImage and Flatpak | not started; .deb, a portable tarball, an Inno Setup .exe and a .dmg are built |

@@ -40,17 +40,64 @@ single-instance file hand-off, and the medit command line including
 
 ## Building
 
-Needs FPC 3.2.2+ and Lazarus 3.0+.
+Needs FPC 3.2.2+ and Lazarus 3.0+.  `lazbuild` must be on `PATH`.
 
 ```sh
-./build.sh            # Linux, gtk2
-./build.sh qt5        # Linux, Qt5
-build.bat             # Windows
-./install.sh /usr/local
+make                  # the editor, optimized and stripped -> bin/led
+make debug            # with symbols and range checks
+make WIDGETSET=qt5    # Qt5 instead of gtk2
+make help             # every target
 ```
 
-`build.sh` produces `bin/led`, the headless test runner `bin/ledcoretest` and
-`bin/langcheck`.
+`make` produces `bin/led`; `make tests` and `make grammars` produce
+`bin/ledcoretest` and `bin/langcheck`.  `make check` runs all three suites.
+
+If `lazbuild`'s saved configuration points at the wrong Lazarus — a shared
+home written by another machine, say — override it:
+
+```sh
+make LAZARUSDIR=/usr/lib/lazarus/2.2.0
+```
+
+### Installing
+
+```sh
+make && make install                       # into ~/.local, no sudo
+make && sudo make install PREFIX=/usr/local
+make uninstall
+```
+
+`install` copies the already-built files and never recompiles, so it is safe
+under `sudo`.  led reads its grammars, themes and shipped tools at run time
+and finds them relative to its own binary — `<prefix>/share/led` after an
+install, `data/` next to `bin/` in a build tree — so `LED_DATA_DIR` is only
+needed if you move them apart.
+
+### Packages
+
+| Platform | Artifact | Built by |
+|---|---|---|
+| Linux | `.deb`, portable `.tar.gz` | `make deb` (`packaging/linux/build-deb.sh`) |
+| Windows | Inno Setup `.exe`, portable `.zip` | `packaging/windows/led.iss` |
+| macOS | `.dmg` holding `led.app` | `packaging/macos/build-app.sh` |
+
+Each carries `data/` as well as the binary; a package with only the executable
+produces an editor that opens every file as plain text.
+
+The Windows installer is unsigned and the macOS bundle is ad-hoc signed, so
+both will draw a warning on a machine that did not build them.  Code signing
+and notarization are not done.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` builds gtk2, qt5, win32 and cocoa, runs the
+headless core suite under the `nogui` widgetset (which is what keeps `ledcore`
+free of any visual dependency), regenerates and loads all 128 grammars, runs
+the scripted GUI self-test under `xvfb`, and checks the committed icons still
+match `tools/make-icon.py`.
+
+`.github/workflows/package.yml` builds the three installers on every push to
+`main`, and attaches them to a GitHub Release on a `v*` tag.
 
 ## Running
 

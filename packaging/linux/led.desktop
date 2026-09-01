@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=led
+GenericName=Text Editor
+Comment=A light programmer's text editor
+Exec=led %F
+Icon=led
+Terminal=false
+Categories=Development;Utility;TextEditor;IDE;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-c++src;text/x-pascal;text/x-python;text/markdown;text/x-makefile;text/x-shellscript;text/x-java;text/x-lua;text/x-perl;text/x-php;text/x-sql;text/x-tex;text/html;text/css;text/xml;application/json;application/javascript;
+StartupNotify=true
+StartupWMClass=led
+Keywords=text;editor;code;programming;source;
