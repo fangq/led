@@ -10,7 +10,8 @@ interface
 
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
-  SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView;
+  SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
+  Led.UI.Dpi;
 
 type
   TLedEdit = class(TSynEdit)
@@ -96,12 +97,25 @@ begin
   Gutter.LineNumberPart.DigitCount := 2;
   Gutter.LineNumberPart.LeadingZeros := False;
   Gutter.MarksPart.AutoSize := False;
-  Gutter.MarksPart.Width := 12;
-  Gutter.SeparatorPart.Width := 2;
-  Gutter.ChangesPart.Width := 3;
+  Gutter.MarksPart.Width := LedScale96(12);
+  Gutter.SeparatorPart.Width := LedScale96(2);
+  Gutter.ChangesPart.Width := LedScale96(3);
 
-  Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
-  Font.Size := 10;
+  { The fold column must be sized explicitly, and this is not cosmetic
+    fiddling.  TSynGutterCodeFolding derives its box from
+      HalfBoxSize := Min(Width, LineHeight - 2) div 2
+    and its pen from
+      Pen.Width := Min(..., FPpiPenWidth)
+    where FPpiPenWidth is only ever recomputed inside SetWidth -- and SetWidth
+    returns immediately while AutoSize is on.  Left on AutoSize the markers
+    therefore stay small *and* keep a one-pixel pen at any DPI, which is why
+    the fold boxes and the vertical rule joining a block to its end looked
+    faint.  Sizing the column to the line height gives both room to grow. }
+  Gutter.CodeFoldPart.AutoSize := False;
+  Gutter.CodeFoldPart.Width := LedScale96(14);
+
+  Font.Name := LedDefaultFontName;
+  Font.Size := LedDefaultFontSize;
 
   BorderStyle := bsNone;
   ScrollBars := ssAutoBoth;

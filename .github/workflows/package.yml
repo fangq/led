@@ -30,16 +30,16 @@ jobs:
   # ------------------------------------------------------------- Linux .deb
   linux-deb:
     name: linux (.deb + tar.gz)
-    runs-on: ubuntu-latest
+    # Ubuntu 22.04 with the distribution's Lazarus, for the same reason CI
+    # uses it: setup-lazarus downloads from SourceForge, which stalls, and a
+    # release build should not fail because a mirror was slow.  It also means
+    # the .deb is built against the oldest toolchain led supports rather than
+    # the newest, which is the safer direction for something people install.
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install Lazarus + FPC
-        uses: gcarreno/setup-lazarus@v3.4.1
-        timeout-minutes: 15
-        with:
-          lazarus-version: stable
+      - uses: ./.github/actions/lazarus-apt
 
       - name: Build editor (Release)
         run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi

@@ -3,6 +3,16 @@ name: CI
 # Cross-platform from the first commit, not bolted on later: the whole point
 # of the Lazarus rewrite is that one source tree compiles everywhere, and that
 # only stays true if every push proves it.
+#
+# The Linux jobs install Lazarus from apt rather than through
+# gcarreno/setup-lazarus.  That action downloads the Lazarus .deb from
+# SourceForge, which stalls often enough to matter: on run 33530475795 it sat
+# there for fifteen minutes and failed a required job on a push whose code was
+# fine, and before the timeouts existed it held a runner for an hour and a half
+# and blocked `gh run view --log` for every other job in the same workflow.
+# apt has no such dependency and finishes in seconds.  Windows and macOS have
+# no apt, so they still use the action -- with a timeout, so a stall fails fast
+# and names the step that did it.
 
 on:
   push:
@@ -16,9 +26,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-test:
-    name: build & test (${{ matrix.os }} / ${{ matrix.widgetset }})
-    runs-on: ${{ matrix.os }}
+  # Ubuntu 22.04 is pinned deliberately: it is what fixes the Lazarus version
+  # at 2.2, which is both the oldest release led supports and the only one
+  # that exercises packages/ledsyn/vendor -- the TextMate engine ships with
+  # Lazarus 3 and later, so on anything newer the vendored copy and its
+  # version shims are never compiled at all.
+  linux:
+    name: build & test (ubuntu 22.04 / ${{ matrix.widgetset }})
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
     # qt5 needs libqt5pas, which is not in every distro's default set.  A
     # missing binding library should read as "not available here", not as
@@ -28,8 +43,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  widgetset: gtk2 }
-          - { os: ubuntu-latest,  widgetset: qt5, optional: true }
+          - { widgetset: gtk2 }
+          - { widgetset: qt5, optional: true }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/lazarus-apt
+
+      - name: Install libqt5pas (qt5 only)
+        if: matrix.widgetset == 'qt5'
+        run: sudo apt-get install -y libqt5pas-dev
+
+      - name: Build editor (Release)
+        run: lazbuild --widgetset=${{ matrix.widgetset }} --build-mode=Release app/led.lpi
+
+  # Windows and macOS have no distribution package, so these two are the only
+  # jobs left depending on the download.  The step timeout is what turns a
+  # stall into a failure that names itself rather than a six-hour hang.
+  desktop:
+    name: build & test (${{ matrix.os }} / ${{ matrix.widgetset }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - { os: windows-latest, widgetset: win32 }
           # Pinned to macOS 14 (Sonoma): setup-lazarus' prebuilt Lazarus .pkg
           # installs there, but macos-latest (15 / Sequoia) rejects it as
@@ -50,11 +87,6 @@ jobs:
           fpc -iV
           lazbuild --version
 
-      # qt5 needs the bindings library; the LCL qt5 interface links against it.
-      - name: Install libqt5pas (qt5 only)
-        if: matrix.widgetset == 'qt5'
-        run: sudo apt-get update && sudo apt-get install -y libqt5pas-dev
-
       - name: Build editor (Release)
         shell: bash
         run: lazbuild --widgetset=${{ matrix.widgetset }} --build-mode=Release app/led.lpi
@@ -63,14 +95,11 @@ jobs:
     name: headless core tests (nogui)
     # ledcore must stay free of any visual dependency; building the runner
     # with the nogui widgetset is what enforces that.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - uses: gcarreno/setup-lazarus@v3.4.1
-        timeout-minutes: 15
-        with:
-          lazarus-version: stable
+      - uses: ./.github/actions/lazarus-apt
       - name: Build headless tests
         run: lazbuild --widgetset=nogui test/ledcoretest.lpi
       - name: Run headless tests
@@ -80,15 +109,13 @@ jobs:
     name: grammar gate
     # Every converted grammar must load in the engine the editor uses.  A
     # converter that emits plausible JSON the engine then rejects is worse
-    # than one that fails loudly.
-    runs-on: ubuntu-latest
+    # than one that fails loudly.  On 2.2 this runs through the vendored
+    # engine, which is the only place that code is exercised.
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - uses: gcarreno/setup-lazarus@v3.4.1
-        timeout-minutes: 15
-        with:
-          lazarus-version: stable
+      - uses: ./.github/actions/lazarus-apt
       - name: Regenerate grammars from the .lang sources
         run: python3 tools/lang2tm.py data/langs data/grammars
       - name: Build the checker
@@ -98,14 +125,11 @@ jobs:
 
   gui-self-test:
     name: scripted GUI self-test (xvfb)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: gcarreno/setup-lazarus@v3.4.1
-        timeout-minutes: 15
-        with:
-          lazarus-version: stable
+      - uses: ./.github/actions/lazarus-apt
       - name: Build editor
         run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
       # The self-test uses a configuration directory of its own, so this
@@ -113,53 +137,41 @@ jobs:
       - name: Run scripted GUI self-test
         run: xvfb-run -a ./bin/led --self-test
 
-  compat-lazarus2:
-    name: compat (ubuntu 22.04 / lazarus 2.2, apt)
-    # Two jobs in one.  It proves led still builds on the older Lazarus that
-    # distributions actually ship -- jammy's 2.2, which is what apt offers and
-    # therefore what a user without a hand-built Lazarus has -- and it is the
-    # only job that exercises packages/ledsyn/vendor, whose whole reason for
-    # existing is that the TextMate engine ships with Lazarus 3 and later.
-    # Without this the version shims in there would rot silently.
-    #
-    # It also does not depend on setup-lazarus, so a flake in that action
-    # cannot take out the entire workflow: run 33520581532 sat in it for over
-    # an hour on a push that was otherwise fine.
-    runs-on: ubuntu-22.04
+  # The newest Lazarus, which is where the *other* half of the vendored
+  # engine's shims compile: the branch taken when the base class already has
+  # GetInstanceLanguageName and CurrentLineText.  Allowed to fail, because it
+  # is now the only Linux job that depends on the SourceForge download, and a
+  # stall there says nothing about led.
+  newest-lazarus:
+    name: newest Lazarus (optional)
+    runs-on: ubuntu-latest
     timeout-minutes: 40
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install Lazarus 2.2 + FPC (jammy apt)
+      - name: Install Lazarus + FPC
+        uses: gcarreno/setup-lazarus@v3.4.1
+        timeout-minutes: 15
+        with:
+          lazarus-version: stable
+      - name: Tool versions
         run: |
-          sudo apt-get update
-          # Full install, not --no-install-recommends: the recommends pull the
-          # FCL unit packages LCL needs.  apt ships LCL as source, so lazbuild
-          # has to compile it and needs to be able to write there.
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y lazarus
-          sudo chown -R "$(id -u):$(id -g)" /usr/lib/lazarus
           fpc -iV
           lazbuild --version | tail -1
-
-      # Default build mode, not Release: this job asks whether the sources
-      # still compile on Lazarus 2.x, which the Release matrix covers already.
       - name: Build editor
-        run: lazbuild --widgetset=gtk2 app/led.lpi
-
+        run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
       - name: Headless core tests
         run: |
           lazbuild --widgetset=nogui test/ledcoretest.lpi
           ./bin/ledcoretest --all --format=plain
-
-      # The grammar gate is the check that actually runs the vendored engine.
-      - name: Every grammar loads through the vendored engine
+      # On a Lazarus that ships the TextMate engine itself, this is also the
+      # check that the vendored copy on the unit path does not shadow the
+      # package's own in a way that breaks the grammars.
+      - name: Every grammar loads
         run: |
           python3 tools/lang2tm.py data/langs data/grammars
           lazbuild --widgetset=nogui tools/langcheck/langcheck.lpi
           ./bin/langcheck data/grammars
-
-      - name: Scripted GUI self-test
-        run: xvfb-run -a ./bin/led --self-test
 
   icons:
     name: icons are in step with their generator

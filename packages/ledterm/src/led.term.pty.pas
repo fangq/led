@@ -22,10 +22,23 @@ uses
   {$IFDEF UNIX}, BaseUnix, termio, Unix{$ENDIF};
 
 type
+  { A file descriptor and a process id are cint and TPid, which come from
+    BaseUnix and so do not exist on Windows.  The class deliberately keeps one
+    shape on every platform -- see the {$ELSE} implementations below, which
+    report unavailable rather than pretending -- so the two fields need a type
+    that is declared everywhere.  Same width either way. }
+  {$IFDEF UNIX}
+  TLedPtyHandle = cint;
+  TLedPtyPid    = TPid;
+  {$ELSE}
+  TLedPtyHandle = LongInt;
+  TLedPtyPid    = LongInt;
+  {$ENDIF}
+
   TLedPty = class
   private
-    FMaster: cint;
-    FChildPid: TPid;
+    FMaster: TLedPtyHandle;
+    FChildPid: TLedPtyPid;
     FRunning: Boolean;
     FSlaveName: string;
     FCols, FRows: Integer;
@@ -107,9 +120,7 @@ end;
 constructor TLedPty.Create;
 begin
   inherited Create;
-  {$IFDEF UNIX}
   FMaster := -1;
-  {$ENDIF}
   FCols := 80;
   FRows := 24;
 end;
