@@ -15,10 +15,11 @@ uses
   ExtCtrls, Math, SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
-  Led.Core.Config, Led.Core.Encodings,
+  Led.Core.Config, Led.Core.Encodings, Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
-  Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts;
+  Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
+  Led.UI.ToolRunner, Led.Core.Tools;
 
 type
   TLedMainForm = class(TForm)
@@ -66,6 +67,8 @@ type
     actUnfoldAll: TAction;
     actWrapText: TAction;
     actLineNumbers: TAction;
+    actStopTool: TAction;
+    actToggleOutput: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
     MainMenu1: TMainMenu;
@@ -121,23 +124,28 @@ type
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
+    mnuTools: TMenuItem;
+    miToolList: TMenuItem;
+    miSep11: TMenuItem;
+    mi_StopTool: TMenuItem;
     mnuView: TMenuItem;
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
-    miSep11: TMenuItem;
+    miSep12: TMenuItem;
     mi_ToggleFold: TMenuItem;
     mi_FoldAll: TMenuItem;
     mi_UnfoldAll: TMenuItem;
-    miSep12: TMenuItem;
+    miSep13: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep13: TMenuItem;
-    miTheme: TMenuItem;
     miSep14: TMenuItem;
+    miTheme: TMenuItem;
+    miSep15: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
+    mi_ToggleOutput: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
@@ -196,6 +204,9 @@ type
     procedure actUnfoldAllExecute(Sender: TObject);
     procedure actPreferencesExecute(Sender: TObject);
     procedure actShortcutsExecute(Sender: TObject);
+    procedure actStopToolExecute(Sender: TObject);
+    procedure actToggleOutputExecute(Sender: TObject);
+    procedure miToolListClick(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -207,7 +218,13 @@ type
     FFindForm: TLedFindForm;
     FFindBar: TLedFindBar;
     FShortcuts: TLedShortcuts;
+    FTools: TLedTools;
+    FRunner: TLedToolRunner;
+    FOutput: TLedOutputPane;
     FCheckingDisk: Boolean;
+    procedure PopulateToolMenu;
+    procedure ToolItemClick(Sender: TObject);
+    procedure OutputJump(const AFileName: string; ALine, AColumn: Integer);
     procedure PrefsApplied(Sender: TObject);
     procedure InstancePoll(Sender: TObject);
     procedure InstanceOpenRequest(const APayload: string);
@@ -344,6 +361,13 @@ begin
   FShortcuts.CaptureDefaults;
   FShortcuts.Load;
 
+  FTools := TLedTools.Create;
+  { Shipped tools first, then the user's, so a user tool with the same id
+    replaces rather than duplicates the one that came with led. }
+  FTools.LoadDirectory(LedConfigFile('tools'));
+  FTools.LoadDirectory(LedDataFile('tools'));
+  FRunner := TLedToolRunner.Create(Self);
+
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
   FDock.Align := alClient;
@@ -355,8 +379,11 @@ begin
 
   { Phase 0 placeholders so the dock edges can be exercised; real panes arrive
     in phases 3 and 5. }
+  FOutput := TLedOutputPane.Create(Self);
+  FOutput.OnJump := @OutputJump;
+
   FDock.AddPane(ledLeft, 'files', 'Files', nil);
-  FDock.AddPane(ledBottom, 'output', 'Output', nil);
+  FDock.AddPane(ledBottom, 'output', 'Output', FOutput);
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
@@ -369,7 +396,142 @@ begin
   FRecent.Free;
   FSearch.Free;
   FShortcuts.Free;
+  FTools.Free;
   FInstance.Free;
+end;
+
+{ --- user tools ------------------------------------------------------------ }
+
+procedure TLedMainForm.miToolListClick(Sender: TObject);
+begin
+  PopulateToolMenu;
+end;
+
+procedure TLedMainForm.PopulateToolMenu;
+var
+  i, Shown: Integer;
+  Item: TMenuItem;
+  Tool: TLedTool;
+  Doc: TLedDocument;
+  LangId, FileName: string;
+begin
+  miToolList.Clear;
+  Doc := nil;
+  if ActiveTab <> nil then Doc := ActiveTab.Document;
+  LangId := '';
+  FileName := '';
+  if Doc <> nil then
+  begin
+    LangId := Doc.Config.GetStr(LedSetLang);
+    FileName := Doc.FileName;
+  end;
+
+  Shown := 0;
+  for i := 0 to FTools.Count - 1 do
+  begin
+    Tool := FTools[i];
+    if Tool.Place <> ltpMenu then Continue;
+    { A tool that does not apply to this document is left out entirely rather
+      than shown greyed: the Tools menu is long enough already. }
+    if not Tool.AppliesTo(LangId, FileName) then Continue;
+
+    Item := TMenuItem.Create(miToolList);
+    Item.Caption := Tool.Name;
+    Item.Hint := Tool.Id;
+    Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
+    Item.OnClick := @ToolItemClick;
+    miToolList.Add(Item);
+    Inc(Shown);
+  end;
+
+  miToolList.Caption := 'Run';
+  miToolList.Enabled := Shown > 0;
+  if Shown = 0 then
+    miToolList.Caption := 'Run  (no tools apply here)';
+end;
+
+procedure TLedMainForm.ToolItemClick(Sender: TObject);
+var
+  Tool: TLedTool;
+  Doc: TLedDocument;
+  i: Integer;
+begin
+  Tool := FTools.FindById(TMenuItem(Sender).Hint);
+  if Tool = nil then Exit;
+  if FRunner.Running then
+  begin
+    ReportError('Another tool is still running.');
+    Exit;
+  end;
+
+  Doc := nil;
+  if ActiveTab <> nil then Doc := ActiveTab.Document;
+
+  { Saving first is part of the contract, so a build sees what is on screen. }
+  if (ltoNeedSaveAll in Tool.Options) then
+  begin
+    for i := 0 to FDocs.Count - 1 do
+      if FDocs[i].Modified and not FDocs[i].IsUntitled then
+        FDocs[i].Save;
+  end
+  else if (ltoNeedSave in Tool.Options) and (Doc <> nil) and Doc.Modified then
+  begin
+    if Doc.IsUntitled then
+      actSaveAsExecute(nil)
+    else
+      Doc.Save;
+  end;
+
+  if Tool.Kind <> ltkExe then
+  begin
+    ReportError(Format('"%s" is a %s tool; only shell tools run so far.',
+      [Tool.Name, LedToolKindToString(Tool.Kind)]));
+    Exit;
+  end;
+
+  if Tool.Output = ltoPane then
+  begin
+    FDock.ShowPane('output');
+    FDock.EdgeVisible[ledBottom] := True;
+  end;
+
+  FRunner.Run(Tool, Doc, ActiveView, FOutput);
+end;
+
+procedure TLedMainForm.actStopToolExecute(Sender: TObject);
+begin
+  FRunner.Stop;
+end;
+
+procedure TLedMainForm.actToggleOutputExecute(Sender: TObject);
+begin
+  FDock.ToggleEdge(ledBottom);
+end;
+
+procedure TLedMainForm.OutputJump(const AFileName: string;
+  ALine, AColumn: Integer);
+var
+  L: TStringList;
+  Tab: TLedTab;
+  Doc: TLedDocument;
+begin
+  L := TStringList.Create;
+  try
+    L.Add(AFileName);
+    OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Doc := FDocs.FindByFileName(AFileName);
+  if Doc = nil then Exit;
+  Tab := FindTabFor(Doc);
+  if Tab = nil then Exit;
+  FBook.ActivePage := Tab.Sheet;
+  if ALine > 0 then
+    LedGotoLine(Tab.ActiveView, ALine);
+  if (AColumn > 0) and (Tab.ActiveView <> nil) then
+    Tab.ActiveView.CaretX := AColumn;
+  if Tab.ActiveView.CanFocus then Tab.ActiveView.SetFocus;
 end;
 
 { --- preferences and shortcuts --------------------------------------------- }
@@ -1339,6 +1501,8 @@ begin
   actUncomment.Enabled := actComment.Enabled;
   actGotoLine.Enabled := HasDoc;
   actPreferences.Enabled := True;
+  actStopTool.Enabled := FRunner.Running;
+  actToggleOutput.Checked := FDock.EdgeVisible[ledBottom];
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actReplace.Enabled := HasDoc;

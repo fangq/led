@@ -123,6 +123,26 @@
         <UnitName Value="Led.Core.Instance"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.tools.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Tools"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.outputfilter.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.OutputFilter"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.output.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Output"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.toolrunner.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.ToolRunner"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>

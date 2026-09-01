@@ -246,6 +246,14 @@ object LedMainForm: TLedMainForm
       Caption = 'Line &Numbers'
       OnExecute = actLineNumbersExecute
     end
+    object actStopTool: TAction
+      Caption = '&Stop Running Tool'
+      OnExecute = actStopToolExecute
+    end
+    object actToggleOutput: TAction
+      Caption = '&Output Pane'
+      OnExecute = actToggleOutputExecute
+    end
     object actToggleLeftPane: TAction
       Caption = '&Left Pane'
       OnExecute = actToggleLeftPaneExecute
@@ -418,6 +426,19 @@ object LedMainForm: TLedMainForm
         Action = actPrevBookmark
       end
     end
+    object mnuTools: TMenuItem
+      Caption = '&Tools'
+      object miToolList: TMenuItem
+        Caption = '(no tools)'
+        OnClick = miToolListClick
+      end
+      object miSep11: TMenuItem
+        Caption = '-'
+      end
+      object mi_StopTool: TMenuItem
+        Action = actStopTool
+      end
+    end
     object mnuView: TMenuItem
       Caption = '&View'
       object mi_WrapText: TMenuItem
@@ -426,7 +447,7 @@ object LedMainForm: TLedMainForm
       object mi_LineNumbers: TMenuItem
         Action = actLineNumbers
       end
-      object miSep11: TMenuItem
+      object miSep12: TMenuItem
         Caption = '-'
       end
       object mi_ToggleFold: TMenuItem
@@ -438,7 +459,7 @@ object LedMainForm: TLedMainForm
       object mi_UnfoldAll: TMenuItem
         Action = actUnfoldAll
       end
-      object miSep12: TMenuItem
+      object miSep13: TMenuItem
         Caption = '-'
       end
       object mi_SplitSideBySide: TMenuItem
@@ -453,14 +474,14 @@ object LedMainForm: TLedMainForm
       object mi_CycleViews: TMenuItem
         Action = actCycleViews
       end
-      object miSep13: TMenuItem
+      object miSep14: TMenuItem
         Caption = '-'
       end
       object miTheme: TMenuItem
         Caption = 'Colour &Theme'
         OnClick = miThemeClick
       end
-      object miSep14: TMenuItem
+      object miSep15: TMenuItem
         Caption = '-'
       end
       object mi_ToggleLeftPane: TMenuItem
@@ -468,6 +489,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleBottomPane: TMenuItem
         Action = actToggleBottomPane
+      end
+      object mi_ToggleOutput: TMenuItem
+        Action = actToggleOutput
       end
     end
   end

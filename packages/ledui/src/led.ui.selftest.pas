@@ -23,6 +23,7 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
+  Led.UI.ToolRunner, Led.UI.Output, Led.Core.Tools, Led.Core.OutputFilter,
   Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
 var
@@ -730,6 +731,94 @@ begin
   end;
 end;
 
+var
+  GToolExit: Integer;
+  GToolText: string;
+
+type
+  TToolProbe = class
+    procedure Finished(ATool: TLedTool; AExitCode: Integer;
+      const ACollected: string);
+  end;
+
+procedure TToolProbe.Finished(ATool: TLedTool; AExitCode: Integer;
+  const ACollected: string);
+begin
+  GToolExit := AExitCode;
+  GToolText := ACollected;
+end;
+
+procedure TestTools(F: TLedMainForm);
+var
+  Probe: TToolProbe;
+  Tool: TLedTool;
+  Runner: TLedToolRunner;
+  Pane: TLedOutputPane;
+  V: TLedEdit;
+  Waited: Integer;
+begin
+  WriteLn('user tools');
+  {$IFDEF WINDOWS}
+  WriteLn('  (skipped: the shell tools used here are POSIX)');
+  Exit;
+  {$ENDIF}
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  V := F.ActiveTab.ActiveView;
+  V.Lines.Text := 'pear' + LineEnding + 'apple' + LineEnding + 'fig';
+  V.ClearUndo;
+  V.SelectAll;
+  Pump;
+
+  Tool := TLedTool.Create;
+  Pane := TLedOutputPane.Create(F);
+  Runner := TLedToolRunner.Create(F);
+  Probe := TToolProbe.Create;
+  GToolExit := -999;
+  GToolText := '';
+  Runner.OnFinished := @Probe.Finished;
+  try
+    Tool.Id := 'test-sort';
+    Tool.Name := 'Sort';
+    Tool.Kind := ltkExe;
+    Tool.Input := ltiLines;
+    Tool.Output := ltoInsert;
+    Tool.Filter := 'none';
+    Tool.Code := 'sort';
+
+    Check('the tool can run', LedToolCanRun(Tool, F.ActiveTab.Document));
+    Check('it started', Runner.Run(Tool, F.ActiveTab.Document, V, Pane));
+
+    { The process is asynchronous, so wait for it rather than assuming. }
+    Waited := 0;
+    while Runner.Running and (Waited < 100) do
+    begin
+      Application.ProcessMessages;
+      Sleep(50);
+      Inc(Waited);
+    end;
+    Check('it finished', not Runner.Running);
+    Pump;
+    CheckEqInt('it exited cleanly', 0, GToolExit);
+    CheckEq('and produced sorted output',
+      'apple' + LineEnding + 'fig' + LineEnding + 'pear' + LineEnding,
+      GToolText);
+
+    CheckEq('output replaced the input lines', 'apple', V.Lines[0]);
+    CheckEq('in sorted order', 'fig', V.Lines[1]);
+    CheckEq('all of them', 'pear', V.Lines[2]);
+
+    V.Undo;
+    CheckEq('and it is one undo step', 'pear', V.Lines[0]);
+  finally
+    Runner.Free;
+    Pane.Free;
+    Tool.Free;
+    Probe.Free;
+  end;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -767,6 +856,8 @@ begin
   TestColumnSelection(F);
   WriteLn;
   TestPrefsAndShortcuts(F);
+  WriteLn;
+  TestTools(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

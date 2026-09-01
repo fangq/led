@@ -106,7 +106,7 @@ checked off by the presence of a menu entry.
 | `SpellIgnoreWord` | yes | | |
 | `SplitViewHorizontal` | yes | yes | done |
 | `SplitViewVertical` | yes | yes | done |
-| `StopJob` | yes | | |
+| `StopJob` | yes | yes | done |
 | `ToggleBookmark` | yes | yes | done |
 | `ToolbarStyle` | yes | | |
 | `Uncomment` | yes | yes | done |
@@ -168,9 +168,9 @@ checked off by the presence of a menu entry.
 
 | Feature | medit | led | Decision |
 |---|---|---|---|
-| Sort Lines | yes | | phase-4 |
-| Sort | Uniq | yes | | phase-4 |
-| Diff to Disk | yes | | phase-4 |
+| Sort Lines | yes | yes | done |
+| Sort | Uniq | yes | yes | done |
+| Diff to Disk | yes | yes | done |
 | Bison | yes | | phase-4 |
 | LaTeX | yes | | phase-4 |
 | Make PDF | yes | | phase-4 |
@@ -179,7 +179,7 @@ checked off by the presence of a menu entry.
 | View DVI | yes | | phase-4 |
 | View PDF | yes | | phase-4 |
 | Math | yes | | phase-4 |
-| Insert Date and Time | yes | | phase-4 |
+| Insert Date and Time | yes | yes | done |
 | Switch _Header and Implementation | yes | | phase-4 |
 | DVI Forward Search | yes | | phase-4 |
 
