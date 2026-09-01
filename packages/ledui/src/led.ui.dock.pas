@@ -103,6 +103,12 @@ type
     function RedockPane(const AId: string): Boolean;
     function PaneFloating(const AId: string): Boolean;
 
+    { Puts every pane back where it started: all closed, the editor filling
+      the window, and the saved layout discarded so a restart agrees.  This is
+      the way out of a layout that dragging has made unusable, which
+      AnchorDocking offers no other route back from. }
+    procedure ResetLayout(const AFileName: string = '');
+
     { The layout, including floating windows and every splitter position. }
     procedure SaveLayout(const AFileName: string);
     function LoadLayout(const AFileName: string): Boolean;
@@ -684,6 +690,37 @@ end;
 procedure TLedDockHost.ToggleEdge(AEdge: TLedDockEdge);
 begin
   EdgeVisible[AEdge] := not EdgeVisible[AEdge];
+end;
+
+procedure TLedDockHost.ResetLayout(const AFileName: string);
+var
+  i: Integer;
+  Pane: TLedPaneForm;
+begin
+  { Close every pane.  The defaults this restores are the ones FormCreate
+    sets up: nothing open but the editor, which is also what a first run
+    looks like. }
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    try
+      HidePane(Pane.PaneId);
+    except
+      { One pane that will not close must not stop the rest going back. }
+    end;
+  end;
+
+  { The editor may have been floated by an older layout, or left somewhere
+    unhelpful.  It has no header to drag back by, so put it back here. }
+  if PaneFloating('editor') then
+    RedockPane('editor');
+
+  { Discard the saved layout too.  Resetting the window and then restoring
+    the old arrangement on the next start would be a reset that did not. }
+  if (AFileName <> '') and FileExists(AFileName) then
+    DeleteFile(AFileName);
+
+  RebuildRails;
 end;
 
 procedure TLedDockHost.SaveLayout(const AFileName: string);

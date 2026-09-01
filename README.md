@@ -34,6 +34,12 @@ pressed while that pane is open, so a pane closed from its own header can be
 brought back with one click instead of only through the View menu. Turn the
 strips off with `Editor/show_pane_buttons`.
 
+Panes can be dragged between edges, floated and redocked, and the arrangement
+persists in `layout.xml`. **View ▸ Reset Pane Layout** closes every pane,
+redocks the editor and discards that file — the way back from an arrangement
+dragging has made unusable, which the docking package offers no other route
+out of.
+
 **Tools.** User-defined commands with medit's option, input, output and
 environment-variable contract, and named regex output filters including
 `make`'s directory stack.
