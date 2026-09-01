@@ -4,11 +4,16 @@ program ledcoretest;
 {$mode objfpc}{$H+}
 
 uses
+  {$IFDEF UNIX}
+  { The grep tests start a worker thread, which needs the threading driver
+    pulled in before anything else. }
+  cthreads,
+  {$ENDIF}
   Classes, consoletestrunner,
   Led.Core.Tests.FileIO, Led.Core.Tests.Encodings, Led.Core.Tests.Config,
   Led.Core.Tests.Settings, Led.Core.Tests.Filters, Led.Syn.Tests.Languages,
   Led.Syn.Tests.Theme,
-  Led.Core.Tests.CLI, Led.Core.Tests.Tools;
+  Led.Core.Tests.CLI, Led.Core.Tests.Tools, Led.Core.Tests.Grep;
 
 type
   TLedTestRunner = class(TTestRunner)

@@ -178,6 +178,11 @@ object LedMainForm: TLedMainForm
       ShortCut = 24646
       OnExecute = actQuickFindExecute
     end
+    object actFindInFiles: TAction
+      Caption = 'Find in &Files...'
+      ShortCut = 24647
+      OnExecute = actFindInFilesExecute
+    end
     object actGotoLine: TAction
       Caption = '&Go to Line...'
       ShortCut = 16455
@@ -382,6 +387,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_QuickFind: TMenuItem
         Action = actQuickFind
+      end
+      object mi_FindInFiles: TMenuItem
+        Action = actFindInFiles
       end
       object miSep8: TMenuItem
         Caption = '-'
