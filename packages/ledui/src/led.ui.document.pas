@@ -133,16 +133,13 @@ var
   FUserConfig: TLedDocConfig = nil;
   FTheme: TLedTheme = nil;
   FThemeResolved: Boolean = False;
-  FFilters: TLedFilterSettings = nil;
 
 function LedFilterSettings: TLedFilterSettings;
 begin
-  if FFilters = nil then
-  begin
-    FFilters := TLedFilterSettings.Create;
-    FFilters.LoadFromPrefs;
-  end;
-  Result := FFilters;
+  { Kept as a name of its own because the call sites read better, but the
+    settings themselves belong to Led.Core.Filters, so the preferences page
+    can edit them without depending on the document layer. }
+  Result := LedFilters;
 end;
 
 function LedCurrentTheme: TLedTheme;
@@ -645,7 +642,6 @@ begin
 end;
 
 finalization
-  FFilters.Free;
   FUserConfig.Free;
 
 end.

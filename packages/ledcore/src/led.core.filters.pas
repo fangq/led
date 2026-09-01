@@ -50,11 +50,15 @@ type
   private
     FFilter: TLedEditFilter;
     FConfig: string;
+    FDefinition: string;
   public
     constructor Create(const AFilter, AConfig: string);
     destructor Destroy; override;
     property Filter: TLedEditFilter read FFilter;
     property Config: string read FConfig;
+    { Exactly the text the rule was written as, so the preferences page can
+      show it back rather than reconstructing it from the parsed form. }
+    property Definition: string read FDefinition;
   end;
 
   TLedFilterSettings = class
@@ -87,8 +91,15 @@ type
       const AFileName, ALangId: string): Integer;
 
     property Count: Integer read GetCount;
+    { The rule written exactly as ADefinition, or nil. }
+    function FindByDefinition(const ADefinition: string): TLedFilterRule;
     property Rules[AIndex: Integer]: TLedFilterRule read GetRule; default;
   end;
+
+{ The process-wide filter settings, loaded from prefs on first use.  It lives
+  here rather than beside the documents so that the preferences page can edit
+  it without depending on the document layer. }
+function LedFilters: TLedFilterSettings;
 
 implementation
 
@@ -202,6 +213,7 @@ begin
   inherited Create;
   FFilter := TLedEditFilter.Create(AFilter);
   FConfig := AConfig;
+  FDefinition := AFilter;
 end;
 
 destructor TLedFilterRule.Destroy;
@@ -326,5 +338,31 @@ begin
     end;
   end;
 end;
+
+var
+  FFilters: TLedFilterSettings = nil;
+
+function TLedFilterSettings.FindByDefinition(
+  const ADefinition: string): TLedFilterRule;
+var
+  i: Integer;
+begin
+  for i := 0 to Count - 1 do
+    if Rules[i].Definition = ADefinition then Exit(Rules[i]);
+  Result := nil;
+end;
+
+function LedFilters: TLedFilterSettings;
+begin
+  if FFilters = nil then
+  begin
+    FFilters := TLedFilterSettings.Create;
+    FFilters.LoadFromPrefs;
+  end;
+  Result := FFilters;
+end;
+
+finalization
+  FFilters.Free;
 
 end.

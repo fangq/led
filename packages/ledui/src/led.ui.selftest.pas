@@ -27,7 +27,7 @@ uses
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.UI.Symbols,
   Led.Core.Ctags,
-  Led.Core.Tools, Led.Core.OutputFilter,
+  Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
 var
@@ -737,6 +737,20 @@ begin
     Check('a bool setting round-trips', LedPrefs.GetBool('Editor/make_backups', False));
     CheckEq('a choice setting round-trips', 'oblivion',
       LedPrefs.GetStr('Editor/color_scheme', 'medit'));
+
+    { medit had eight preference pages and led had three, which is the gap
+      this counts.  Plugins are not one of them: led has no dynamic plugin
+      loading to configure. }
+    CheckEqInt('every preference page is present', 6, Dlg.PageCount);
+    Check('and the list pages built their contents', Dlg.ListPagesReady);
+
+    { A filter edited on the page has to survive the trip through prefs.ini,
+      because that is the whole point of the page. }
+    Dlg.AddFilterRow('globs:*.selftest', 'indent-width: 7');
+    Dlg.ApplyToPrefs;
+    LedFilters.LoadFromPrefs;
+    Check('a filter added on the page is saved',
+      LedFilters.FindByDefinition('globs:*.selftest') <> nil);
   finally
     Dlg.Free;
   end;
