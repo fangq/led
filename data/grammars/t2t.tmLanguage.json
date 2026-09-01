@@ -1,0 +1,132 @@
+{
+ "name": "txt2tags",
+ "scopeName": "source.t2t",
+ "patterns": [
+  {
+   "match": ".+",
+   "name": "def.keyword"
+  },
+  {
+   "patterns": [
+    {
+     "match": "^(=(?!=).*(?<!=)=)(?!=)(\\[.*\\])?",
+     "captures": {
+      "1": {
+       "name": "t2t.section"
+      },
+      "2": {
+       "name": "t2t.section"
+      }
+     }
+    },
+    {
+     "match": "^(==(?!=).*(?<!=)==)(?!=)(\\[.*\\])?",
+     "captures": {
+      "1": {
+       "name": "t2t.section"
+      },
+      "2": {
+       "name": "t2t.section"
+      }
+     }
+    },
+    {
+     "match": "^(===(?!=).*(?<!=)===)(?!=)(\\[.*\\])?",
+     "captures": {
+      "1": {
+       "name": "t2t.section"
+      },
+      "2": {
+       "name": "t2t.section"
+      }
+     }
+    },
+    {
+     "match": "^(====(?!=).*(?<!=)====)(?!=)(\\[.*\\])?",
+     "captures": {
+      "1": {
+       "name": "t2t.section"
+      },
+      "2": {
+       "name": "t2t.section"
+      }
+     }
+    },
+    {
+     "match": "^(=====(?!=).*(?<!=)=====)(?!=)(\\[.*\\])?",
+     "captures": {
+      "1": {
+       "name": "t2t.section"
+      },
+      "2": {
+       "name": "t2t.section"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "patterns": [
+    {
+     "match": "^(%!\\s*(?:[Tt]arget|[Ee]ncoding|[Oo]ptions|[Pp](?:ost|re)proc|[Ii]nclude(?:conf)?|[Ss]tyle|[Gg]uicolors)(?:\\(\\S+\\))?)\\s*:.*",
+     "name": "t2t.option",
+     "captures": {
+      "1": {
+       "name": "def.keyword"
+      }
+     }
+    },
+    {
+     "match": "^%!.*",
+     "name": "def.error"
+    }
+   ]
+  },
+  {
+   "begin": "^%",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "t2t.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "t2t.comment"
+    }
+   }
+  },
+  {
+   "match": "//(.*?)//",
+   "captures": {
+    "1": {
+     "name": "t2t.italic"
+    }
+   }
+  },
+  {
+   "match": "\\*\\*(.*?)\\*\\*",
+   "captures": {
+    "1": {
+     "name": "t2t.bold"
+    }
+   }
+  },
+  {
+   "match": "``(.*?)``",
+   "captures": {
+    "1": {
+     "name": "t2t.verbatim"
+    }
+   }
+  },
+  {
+   "begin": "^```$",
+   "end": "^```$",
+   "name": "t2t.verbatim-block"
+  }
+ ],
+ "fileTypes": [
+  "t2t"
+ ]
+}

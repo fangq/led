@@ -1,0 +1,53 @@
+{
+ "name": "gtk-doc",
+ "scopeName": "source.gtk-doc",
+ "patterns": [
+  {
+   "match": "^\\s*\\*(?!/)\\s*"
+  },
+  {
+   "patterns": [
+    {
+     "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+     "name": "def.underlined"
+    },
+    {
+     "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+     "name": "def.underlined"
+    },
+    {
+     "match": "\\b(FIXME|TODO|XXX)\\b",
+     "name": "def.note"
+    }
+   ]
+  },
+  {
+   "match": "\\@[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "%[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "\\#[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "[[A-Za-z0-9_\\x80-\\xFF]_]+\\(\\s*\\)",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "(Returns|Return value)\\:",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "Since\\:",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "Deprecated\\:",
+   "name": "def.doc-comment-element"
+  }
+ ]
+}

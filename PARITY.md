@@ -16,7 +16,7 @@ checked off by the presence of a menu entry.
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
-| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | partly | UI and commands done; C/C++ needs a fold-capable highlighter, which arrives with the grammar converter |
+| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | partly | the converted grammars are fold-capable; fold markers are not emitted yet |
 | Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | partly | works for Pascal today; Matlab/Octave await the converter |
 | Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-6 |
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |

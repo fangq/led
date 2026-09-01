@@ -1,0 +1,75 @@
+{
+ "name": "Diff",
+ "scopeName": "source.diff",
+ "patterns": [
+  {
+   "begin": "(?:^(diff |\\+\\+\\+ |Index: |==== |\\*\\*\\* |--- ))",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "diff.diff-file"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "diff.diff-file"
+    }
+   }
+  },
+  {
+   "match": "^(<|-).*$",
+   "name": "diff.removed-line"
+  },
+  {
+   "match": "^(\\+|>).*$",
+   "name": "diff.added-line"
+  },
+  {
+   "match": "^\\! .*$",
+   "name": "diff.changed-line"
+  },
+  {
+   "begin": "^((@@)|[0-9]|\\*\\*\\*\\*)",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "diff.location"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "diff.location"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "^(?:Only\\ in\\ \\.\\*|Files\\ \\.\\*\\ and\\ \\.\\*\\ are\\ identical\\$|Files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|Binary\\ files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|File\\ \\.\\*\\ is\\ a\\ \\.\\*\\ while\\ file\\ \\.\\*\\ is\\ a\\ \\.\\*|No\\ newline\\ at\\ end\\ of\\ file\\ \\.\\*)\\b",
+   "name": "diff.special-case"
+  },
+  {
+   "begin": "^\\S",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  }
+ ],
+ "fileTypes": [
+  "diff",
+  "patch",
+  "rej"
+ ]
+}

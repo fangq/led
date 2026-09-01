@@ -1,0 +1,405 @@
+{
+ "name": "ANS-Forth94",
+ "scopeName": "source.ansforth94",
+ "patterns": [
+  {
+   "begin": "\\b\\(\\b",
+   "end": "\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\\b\\\\\\b",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(CHAR|\\[CHAR\\])\\s+(.)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "4": {
+     "name": "def.character"
+    }
+   }
+  },
+  {
+   "match": "\\b(:|[']|CREATE|POSTPONE)\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "4": {
+     "name": "def.function"
+    }
+   }
+  },
+  {
+   "begin": "\\b([.]\"|ABORT\"|S\")\\b",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "match": "\\bWORD\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "\\bCONSTANT\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.constant"
+    }
+   }
+  },
+  {
+   "match": "\\bVARIABLE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.type"
+    }
+   }
+  },
+  {
+   "begin": "\\b\\\\\\b",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(MARKER|\\[COMPILE\\])\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "4": {
+     "name": "def.function"
+    }
+   }
+  },
+  {
+   "begin": "\\bC\"\\b",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "match": "\\bPARSE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "\\b[.]\\(\\b",
+   "end": "\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "match": "\\b(TO|VALUE)\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "4": {
+     "name": "def.type"
+    }
+   }
+  },
+  {
+   "match": "\\b2CONSTANT\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.constant"
+    }
+   }
+  },
+  {
+   "match": "\\b2VARIABLE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.type"
+    }
+   }
+  },
+  {
+   "match": "\\bFCONSTANT\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.constant"
+    }
+   }
+  },
+  {
+   "match": "\\bFVARIABLE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.type"
+    }
+   }
+  },
+  {
+   "begin": "\\bLOCALS\\|\\b",
+   "end": "\\|",
+   "beginCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.keyword"
+    }
+   }
+  },
+  {
+   "match": "\\bSEE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.function"
+    }
+   }
+  },
+  {
+   "match": "\\bCODE\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.function"
+    }
+   }
+  },
+  {
+   "match": "\\bFORGET\\s+(\\S*)\\b",
+   "name": "def.keyword",
+   "captures": {
+    "3": {
+     "name": "def.function"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:!|\\#|\\#>|\\#S|'|\\\\\\(|\\\\\\*|\\\\\\*/|\\\\\\*/MOD|\\\\\\+|\\\\\\+!|\\\\\\+LOOP|,|\\-|\\\\\\.|\\\\\\.\"|/|/MOD|0<|0=|1\\\\\\+|1\\-|2!|2\\\\\\*|2/|2@|2DROP|2DUP|2OVER|2SWAP|:|;|<|<\\#|=|>|>BODY|>IN|>NUMBER|>R|\\\\\\?DUP|@|ABORT|ABORT\"|ABS|ACCEPT|ALIGN|ALIGNED|ALLOT|AND|BASE|BEGIN|BL|C!|C,|C@|CELL\\\\\\+|CELLS|CHAR|CHAR\\\\\\+|CHARS|CONSTANT|COUNT|CR|CREATE|DECIMAL|DEPTH|DO|DOES>|DROP|DUP|ELSE|EMIT|ENVIRONMENT\\\\\\?|EVALUATE|EXECUTE|EXIT|FILL|FIND|FM/MOD|HERE|HOLD|I|IF|IMMEDIATE|INVERT|J|KEY|LEAVE|LITERAL|LOOP|LSHIFT|M\\\\\\*|MAX|MIN|MOD|MOVE|NEGATE|OR|OVER|POSTPONE|QUIT|R>|R@|RECURSE|REPEAT|ROT|RSHIFT|S\"|S>D|SIGN|SM/REM|SOURCE|SPACE|SPACES|STATE|SWAP|THEN|TYPE|U\\\\\\.|U<|UM\\\\\\*|UM/MOD|UNLOOP|UNTIL|VARIABLE|WHILE|WORD|XOR|\\\\\\[|\\\\\\['\\\\\\]|\\\\\\[CHAR\\\\\\]|\\\\\\])\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\\\\\.\\\\\\(|\\\\\\.R|0<>|0>|2>R|2R>|2R@|:NONAME|<>|\\\\\\?DO|AGAIN|C\"|CASE|COMPILE,|ENDCASE|ENDOF|ERASE|FALSE|HEX|MARKER|NIP|OF|PAD|PARSE|PICK|REFILL|RESTORE\\-INPUT|ROLL|SAVE\\-INPUT|SOURCE\\-ID|TO|TRUE|TUCK|U\\\\\\.R|U>|UNUSED|VALUE|WITHIN|\\\\\\[COMPILE\\\\\\]|\\\\\\\\)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\#TIB|CONVERT|EXPECT|QUERY|SPAN|TIB)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:BLK|BLOCK|BUFFER|EVALUATE|FLUSH|LOAD|SAVE\\-BUFFERS|UPDATE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:EMPTY\\-BUFFERS|LIST|REFILL|SCR|THRU|\\\\\\\\)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:2CONSTANT|2LITERAL|2VARIABLE|D\\\\\\+|D\\-|D\\\\\\.|D\\\\\\.R|D0<|D0=|D2\\\\\\*|D2/|D<|D=|D>S|DABS|DMAX|DMIN|DNEGATE|M\\\\\\*/|M\\\\\\+)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:2ROT|DU<)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:CATCH|THROW)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ABORT|ABORT\")\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:AT\\-XY|KEY\\\\\\?|PAGE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:EKEY|EKEY>CHAR|EKEY\\\\\\?|EMIT\\\\\\?|MS|TIME\\&DATE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\\\\\(|BIN|CLOSE\\-FILE|CREATE\\-FILE|DELETE\\-FILE|FILE\\-POSITION|FILE\\-SIZE|INCLUDE\\-FILE|INCLUDED|OPEN\\-FILE|R/O|R/W|READ\\-FILE|READ\\-LINE|REPOSITION\\-FILE|RESIZE\\-FILE|S\"|SOURCE\\-ID|W/O|WRITE\\-FILE|WRITE\\-LINE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:FILE\\-STATUS|FLUSH\\-FILE|REFILL|RENAME\\-FILE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:>FLOAT|D>F|F!|F\\\\\\*|F\\\\\\+|F\\-|F/|F0<|F0=|F<|F>D|F@|FALIGN|FALIGNED|FCONSTANT|FDEPTH|FDROP|FDUP|FLITERAL|FLOAT\\\\\\+|FLOATS|FLOOR|FMAX|FMIN|FNEGATE|FOVER|FROT|FROUND|FSWAP|FVARIABLE|REPRESENT)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:DF!|DF@|DFALIGN|DFALIGNED|DFLOAT\\\\\\+|DFLOATS|F\\\\\\*\\\\\\*|F\\\\\\.|FABS|FACOS|FACOSH|FALOG|FASIN|FASINH|FATAN|FATAN2|FATANH|FCOS|FCOSH|FE\\\\\\.|FEXP|FEXPM1|FLN|FLNP1|FLOG|FS\\\\\\.|FSIN|FSINCOS|FSINH|FSQRT|FTAN|FTANH|F\\~|PRECISION|SET\\-PRECISION|SF!|SF@|SFALIGN|SFALIGNED|SFLOAT\\\\\\+|SFLOATS)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\\\\\(LOCAL\\\\\\)|TO)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:LOCALS\\\\\\|)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ALLOCATE|FREE|RESIZE)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\\\\\.S|\\\\\\?|DUMP|SEE|WORDS)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:;CODE|AHEAD|ASSEMBLER|BYE|CODE|CS\\-PICK|CS\\-ROLL|EDITOR|STATE|\\\\\\[ELSE\\\\\\]|\\\\\\[IF\\\\\\]|\\\\\\[THEN\\\\\\])\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:FORGET)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:DEFINITIONS|FIND|FORTH\\-WORDLIST|GET\\-CURRENT|GET\\-ORDER|SEARCH\\-WORDLIST|SET\\-CURRENT|SET\\-ORDER|WORDLIST)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ALSO|FORTH|ONLY|ORDER|PREVIOUS)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:\\-TRAILING|/STRING|BLANK|CMOVE|CMOVE>|COMPARE|SEARCH|SLITERAL)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b[-]?[0-9]+\\b",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "\\b[-]?[0-9]+[.][0-9]*\\b",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "\\b([+]|[-])?([0-9]+[.]?[0-9]*)(E|e)([+]|[-])?([0-9]*)\\b",
+   "name": "def.floating-point"
+  }
+ ],
+ "fileTypes": [
+  "4th",
+  "forth"
+ ]
+}

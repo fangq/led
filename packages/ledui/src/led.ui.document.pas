@@ -268,13 +268,16 @@ end;
 procedure TLedDocument.ApplyLanguage;
 var
   HL: TSynCustomHighlighter;
+  i: Integer;
 begin
   HL := LedHighlighterFor(FConfig.GetStr(LedSetLang));
   if HL <> nil then
     LedApplyThemeToHighlighter(LedCurrentTheme, HL);
-  { The highlighter belongs to the shared buffer, so setting it on the master
-    reaches every view. }
+  { The highlighter is a property of each editor, not of the shared buffer:
+    setting it on the master alone leaves every visible view unhighlighted. }
   FMaster.Highlighter := HL;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).Highlighter := HL;
 end;
 
 procedure TLedDocument.SetLanguage(const ALangId: string);
@@ -315,6 +318,9 @@ begin
   Result.ShareTextBufferFrom(FMaster);
   FViews.Add(Result);
   ApplyConfigToView(Result);
+  { A view created after the language was decided -- a split, or a session
+    restore -- must pick the highlighter up too. }
+  Result.Highlighter := FMaster.Highlighter;
 end;
 
 procedure TLedDocument.RemoveView(AView: TLedEdit);

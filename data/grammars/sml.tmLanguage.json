@@ -1,0 +1,118 @@
+{
+ "name": "Standard ML",
+ "scopeName": "source.sml",
+ "patterns": [
+  {
+   "begin": "\\(\\*",
+   "end": "\\*\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "#\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.character"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.character"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "(?:\\b([~]?[0-9]+))",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?:\\b(0x[~]?[0-9A-Fa-f]+))",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?:\\b(0w[0-9]+))",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?:\\b(0wx[0-9A-Fa-f]+))",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?:\\b([~]?[0-9]+).([0-9]+)([Ee]?([~]?[0-9]+)?))",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "\\b(?:true|false)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?:\\b[A-Z][0-9A-Za-z_']*\\b)",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:and|abstype|as|case|datatype|else|end|eqtype|exception|do|fn|fun|functor|funsig|handle|if|in|include|infix|infixr|lazy|let|local|nonfix|of|op|open|overload|raise|rec|sharing|sig|signature|struct|structure|then|type|val|where|while|with|withtype|orelse|andalso)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:unit|int|word|real|char|string|substring|exn|array|vector|ref|bool|option|order|list)\\b",
+   "name": "def.type"
+  }
+ ],
+ "fileTypes": [
+  "sml",
+  "sig"
+ ]
+}

@@ -1,0 +1,146 @@
+{
+ "name": "Eiffel",
+ "scopeName": "source.eiffel",
+ "patterns": [
+  {
+   "begin": "'",
+   "end": "'",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "\"\\[",
+   "end": "\\]\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "(\\%\\\"|\\%N|\\%\\%)",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "begin": "--",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "(^|\\s)debug(\\s|$)",
+   "end": "(^|\\s)end(\\s|$)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "begin": "(^|\\s)check(\\s|$)",
+   "end": "(^|\\s)end(\\s|$)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:indexing|deferred|expanded|class|obsolete|inherit|insert|rename|as|export|all|undefine|redefine|select|end|\\(create\\|creation\\)|feature|frozen|prefix|infix|is|obsolete|require\\\\s\\*\\(else\\)\\?|local|deferred|do|once|external|alias|ensure\\\\s\\*\\(then\\)\\?|rescue|end|unique|invariant|end|and\\\\s\\*\\(then\\)\\?|or\\\\s\\*\\(else\\)\\?|xor|implies|not|retry|if|then|elseif|else|end|inspect|when|end|from|invariant|variant|until|loop|do|end|strip|old|separate|expanded|like)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:Current|Precursor|Result)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "[A-Z_][A-Z0-9_]+",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:Void)\\b",
+   "name": "def.special-constant"
+  },
+  {
+   "match": "\\b(?:False|True)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(([0-9]+)|([0-9]+\\.[0-9]+([Ee][-]?[0-9]+)?))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])\\$[0-9a-fA-F]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  }
+ ],
+ "fileTypes": [
+  "e",
+  "eif"
+ ]
+}

@@ -1,0 +1,48 @@
+{
+ "name": "ChangeLog",
+ "scopeName": "source.changelog",
+ "patterns": [
+  {
+   "match": "^(?P<date_9>(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+\\d{1,2}\\s+(\\d{1,2}:\\d{1,2}:\\d{1,2}\\s+)?([aApP][mM]\\s+)?([A-Za-z0-9_\\x80-\\xFF]{3}\\s+)?\\d{4}|\\d{4}-\\d{2}-\\d{2}))\\s+(?P<name_10>.*)\\s*(?P<email_11>\\<[^\\<]+\\>)\\s*$",
+   "captures": {
+    "date": {
+     "name": "def.number"
+    },
+    "name": {
+     "name": "def.statement"
+    },
+    "email": {
+     "name": "def.identifier"
+    }
+   }
+  },
+  {
+   "match": "^\\s*\\=.*\\=\\s*$",
+   "name": "def.statement"
+  },
+  {
+   "begin": "^\\s+(\\*)",
+   "end": "\\:|^(?!\\S)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    },
+    "1": {
+     "name": "def.type"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "match": "\\(\\s*(?:[A-Za-z_][A-Za-z0-9_]*)\\s*\\)",
+   "name": "def.function"
+  }
+ ],
+ "fileTypes": [
+  "ChangeLog*"
+ ]
+}

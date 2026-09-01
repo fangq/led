@@ -1,0 +1,2265 @@
+[
+ {
+  "id": "abnf",
+  "name": "ABNF",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.abnf"
+  ],
+  "mimetypes": [],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.abnf",
+  "grammar": "abnf.tmLanguage.json"
+ },
+ {
+  "id": "actionscript",
+  "name": "ActionScript",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.as"
+  ],
+  "mimetypes": [
+   "text/x-actionscript"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.actionscript",
+  "grammar": "actionscript.tmLanguage.json"
+ },
+ {
+  "id": "ada",
+  "name": "Ada",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.adb",
+   "*.ads"
+  ],
+  "mimetypes": [
+   "text/x-ada",
+   "text/x-adasrc"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.ada",
+  "grammar": "ada.tmLanguage.json"
+ },
+ {
+  "id": "ansforth94",
+  "name": "ANS-Forth94",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.4th",
+   "*.forth"
+  ],
+  "mimetypes": [
+   "text/x-forth"
+  ],
+  "lineComment": "\\\\",
+  "blockCommentStart": "\\(",
+  "blockCommentEnd": "\\)",
+  "scopeName": "source.ansforth94",
+  "grammar": "ansforth94.tmLanguage.json"
+ },
+ {
+  "id": "asp",
+  "name": "ASP",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.asp"
+  ],
+  "mimetypes": [
+   "text/x-asp",
+   "application/x-asp",
+   "application/x-asap"
+  ],
+  "lineComment": "'",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.asp",
+  "grammar": "asp.tmLanguage.json"
+ },
+ {
+  "id": "automake",
+  "name": "Automake",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "Makefile.am",
+   "GNUmakefile.am"
+  ],
+  "mimetypes": [],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.automake",
+  "grammar": "automake.tmLanguage.json"
+ },
+ {
+  "id": "awk",
+  "name": "awk",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.awk"
+  ],
+  "mimetypes": [
+   "application/x-awk"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.awk",
+  "grammar": "awk.tmLanguage.json"
+ },
+ {
+  "id": "bennugd",
+  "name": "BennuGD",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.prg"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.bennugd",
+  "grammar": "bennugd.tmLanguage.json"
+ },
+ {
+  "id": "bibtex",
+  "name": "BibTeX",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.bib"
+  ],
+  "mimetypes": [
+   "text/x-bibtex"
+  ],
+  "lineComment": "%",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.bibtex",
+  "grammar": "bibtex.tmLanguage.json"
+ },
+ {
+  "id": "bluespec",
+  "name": "Bluespec SystemVerilog",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.bsv"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.bluespec",
+  "grammar": "bluespec.tmLanguage.json"
+ },
+ {
+  "id": "boo",
+  "name": "Boo",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.boo"
+  ],
+  "mimetypes": [
+   "text/x-boo"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.boo",
+  "grammar": "boo.tmLanguage.json"
+ },
+ {
+  "id": "c",
+  "name": "C",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.c"
+  ],
+  "mimetypes": [
+   "text/x-c",
+   "text/x-csrc",
+   "image/x-xpixmap"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.c",
+  "grammar": "c.tmLanguage.json"
+ },
+ {
+  "id": "c-sharp",
+  "name": "C#",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cs"
+  ],
+  "mimetypes": [
+   "text/x-csharpsrc",
+   "text/x-csharp"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.c-sharp",
+  "grammar": "c-sharp.tmLanguage.json"
+ },
+ {
+  "id": "cg",
+  "name": "CG Shader Language",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cg"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.cg",
+  "grammar": "cg.tmLanguage.json"
+ },
+ {
+  "id": "changelog",
+  "name": "ChangeLog",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "ChangeLog*"
+  ],
+  "mimetypes": [
+   "text/x-changelog"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.changelog",
+  "grammar": "changelog.tmLanguage.json"
+ },
+ {
+  "id": "chdr",
+  "name": "C/ObjC Header",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.h"
+  ],
+  "mimetypes": [
+   "text/x-chdr"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.chdr",
+  "grammar": "chdr.tmLanguage.json"
+ },
+ {
+  "id": "cmake",
+  "name": "CMake",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "CMakeLists.txt",
+   "*.cmake",
+   "*.cmake.in",
+   "*.ctest",
+   "*.ctest.in"
+  ],
+  "mimetypes": [],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.cmake",
+  "grammar": "cmake.tmLanguage.json"
+ },
+ {
+  "id": "cobol",
+  "name": "COBOL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cbl",
+   "*.cob",
+   "*.cbd",
+   "*.cdb",
+   "*.cdc"
+  ],
+  "mimetypes": [
+   "text/x-cobol"
+  ],
+  "lineComment": "*",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.cobol",
+  "grammar": "cobol.tmLanguage.json"
+ },
+ {
+  "id": "cpp",
+  "name": "C++",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cpp",
+   "*.cxx",
+   "*.cc",
+   "*.C",
+   "*.c++"
+  ],
+  "mimetypes": [
+   "text/x-c++",
+   "text/x-cpp",
+   "text/x-c++src"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.cpp",
+  "grammar": "cpp.tmLanguage.json"
+ },
+ {
+  "id": "cpphdr",
+  "name": "C++ Header",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.hh",
+   "*.hp",
+   "*.hpp",
+   "*.h++"
+  ],
+  "mimetypes": [
+   "text/x-c++hdr"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.cpphdr",
+  "grammar": "cpphdr.tmLanguage.json"
+ },
+ {
+  "id": "css",
+  "name": "CSS",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.css",
+   "*.CSSL"
+  ],
+  "mimetypes": [
+   "text/css"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.css",
+  "grammar": "css.tmLanguage.json"
+ },
+ {
+  "id": "csv",
+  "name": "CSV",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.csv"
+  ],
+  "mimetypes": [
+   "text/csv"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.csv",
+  "grammar": "csv.tmLanguage.json"
+ },
+ {
+  "id": "cuda",
+  "name": "CUDA",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cu",
+   "*.cuh"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.cuda",
+  "grammar": "cuda.tmLanguage.json"
+ },
+ {
+  "id": "d",
+  "name": "D",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.d"
+  ],
+  "mimetypes": [
+   "text/x-dsrc"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.d",
+  "grammar": "d.tmLanguage.json"
+ },
+ {
+  "id": "def",
+  "name": "Defaults",
+  "section": "Other",
+  "hidden": true,
+  "globs": [],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.def",
+  "grammar": ""
+ },
+ {
+  "id": "desktop",
+  "name": ".desktop",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.desktop",
+   "*.kdelnk"
+  ],
+  "mimetypes": [
+   "application/x-gnome-app-info",
+   "application/x-desktop"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.desktop",
+  "grammar": "desktop.tmLanguage.json"
+ },
+ {
+  "id": "diff",
+  "name": "Diff",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.diff",
+   "*.patch",
+   "*.rej"
+  ],
+  "mimetypes": [
+   "text/x-diff",
+   "text/x-patch",
+   "text/x-reject"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.diff",
+  "grammar": "diff.tmLanguage.json"
+ },
+ {
+  "id": "docbook",
+  "name": "DocBook",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.docbook"
+  ],
+  "mimetypes": [
+   "application/docbook+xml"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.docbook",
+  "grammar": "docbook.tmLanguage.json"
+ },
+ {
+  "id": "dosbatch",
+  "name": "DOS Batch",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.bat",
+   "*.cmd",
+   "*.sys"
+  ],
+  "mimetypes": [],
+  "lineComment": "rem",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.dosbatch",
+  "grammar": "dosbatch.tmLanguage.json"
+ },
+ {
+  "id": "dot",
+  "name": "Graphviz Dot",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.dot",
+   "*.gv"
+  ],
+  "mimetypes": [
+   "text/vnd.graphviz"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.dot",
+  "grammar": "dot.tmLanguage.json"
+ },
+ {
+  "id": "dpatch",
+  "name": "DPatch",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.dpatch"
+  ],
+  "mimetypes": [
+   "text/x-dpatch"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.dpatch",
+  "grammar": "dpatch.tmLanguage.json"
+ },
+ {
+  "id": "dtd",
+  "name": "DTD",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.dtd"
+  ],
+  "mimetypes": [
+   "text/x-dtd"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.dtd",
+  "grammar": "dtd.tmLanguage.json"
+ },
+ {
+  "id": "dtl",
+  "name": "Django Template",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.dtl"
+  ],
+  "mimetypes": [],
+  "lineComment": "**",
+  "blockCommentStart": "**",
+  "blockCommentEnd": "**",
+  "scopeName": "source.dtl",
+  "grammar": "dtl.tmLanguage.json"
+ },
+ {
+  "id": "eiffel",
+  "name": "Eiffel",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.e",
+   "*.eif"
+  ],
+  "mimetypes": [
+   "text/x-eiffel"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.eiffel",
+  "grammar": "eiffel.tmLanguage.json"
+ },
+ {
+  "id": "erlang",
+  "name": "Erlang",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.erl",
+   "*.hrl"
+  ],
+  "mimetypes": [
+   "text/x-erlang"
+  ],
+  "lineComment": "%",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.erlang",
+  "grammar": "erlang.tmLanguage.json"
+ },
+ {
+  "id": "fcl",
+  "name": "FCL",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.fcl"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.fcl",
+  "grammar": "fcl.tmLanguage.json"
+ },
+ {
+  "id": "forth",
+  "name": "Forth",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.frt",
+   "*.fs"
+  ],
+  "mimetypes": [
+   "text/x-forth"
+  ],
+  "lineComment": "\\",
+  "blockCommentStart": "(*",
+  "blockCommentEnd": "*)",
+  "scopeName": "source.forth",
+  "grammar": "forth.tmLanguage.json"
+ },
+ {
+  "id": "fortran",
+  "name": "Fortran 95",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.f",
+   "*.f90",
+   "*.f95",
+   "*.for",
+   "*.F",
+   "*.F90"
+  ],
+  "mimetypes": [
+   "text/x-fortran"
+  ],
+  "lineComment": "!",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.fortran",
+  "grammar": "fortran.tmLanguage.json"
+ },
+ {
+  "id": "fsharp",
+  "name": "F#",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.fs"
+  ],
+  "mimetypes": [
+   "text/x-fsharp"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "(*",
+  "blockCommentEnd": "*)",
+  "scopeName": "source.fsharp",
+  "grammar": "fsharp.tmLanguage.json"
+ },
+ {
+  "id": "gap",
+  "name": "GAP",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.g",
+   "*.gd",
+   "*.gi",
+   "*.gap"
+  ],
+  "mimetypes": [
+   "text/x-gap"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.gap",
+  "grammar": "gap.tmLanguage.json"
+ },
+ {
+  "id": "gdb-log",
+  "name": "GDB Log",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.gdb"
+  ],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.gdb-log",
+  "grammar": "gdb-log.tmLanguage.json"
+ },
+ {
+  "id": "genie",
+  "name": "Genie",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.gs"
+  ],
+  "mimetypes": [
+   "text/x-genie"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.genie",
+  "grammar": "genie.tmLanguage.json"
+ },
+ {
+  "id": "gettext-translation",
+  "name": "gettext translation",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.po",
+   "*.pot"
+  ],
+  "mimetypes": [
+   "text/x-po",
+   "text/x-pot",
+   "text/x-pox",
+   "text/x-gettext-translation",
+   "text/x-gettext-translation-template"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.gettext-translation",
+  "grammar": "gettext-translation.tmLanguage.json"
+ },
+ {
+  "id": "glsl",
+  "name": "OpenGL Shading Language",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.glslv",
+   "*.glslf"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.glsl",
+  "grammar": "glsl.tmLanguage.json"
+ },
+ {
+  "id": "go",
+  "name": "Go",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.go"
+  ],
+  "mimetypes": [
+   "text/x-go"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.go",
+  "grammar": "go.tmLanguage.json"
+ },
+ {
+  "id": "gtk-doc",
+  "name": "gtk-doc",
+  "section": "Markup",
+  "hidden": true,
+  "globs": [],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.gtk-doc",
+  "grammar": "gtk-doc.tmLanguage.json"
+ },
+ {
+  "id": "gtkrc",
+  "name": "GtkRC",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "gtkrc",
+   ".gtkrc",
+   "gtkrc-*",
+   ".gtkrc-*"
+  ],
+  "mimetypes": [
+   "text/x-gtkrc"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.gtkrc",
+  "grammar": "gtkrc.tmLanguage.json"
+ },
+ {
+  "id": "haddock",
+  "name": "Haddock",
+  "section": "Markup",
+  "hidden": true,
+  "globs": [],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.haddock",
+  "grammar": "haddock.tmLanguage.json"
+ },
+ {
+  "id": "haskell",
+  "name": "Haskell",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.hs"
+  ],
+  "mimetypes": [
+   "text/x-haskell"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.haskell",
+  "grammar": "haskell.tmLanguage.json"
+ },
+ {
+  "id": "haskell-literate",
+  "name": "Literate Haskell",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.lhs"
+  ],
+  "mimetypes": [
+   "text/x-literate-haskell"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.haskell-literate",
+  "grammar": "haskell-literate.tmLanguage.json"
+ },
+ {
+  "id": "haxe",
+  "name": "Haxe",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.hx"
+  ],
+  "mimetypes": [
+   "text/x-haxe"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.haxe",
+  "grammar": "haxe.tmLanguage.json"
+ },
+ {
+  "id": "html",
+  "name": "HTML",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.html",
+   "*.htm"
+  ],
+  "mimetypes": [
+   "text/html"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.html",
+  "grammar": "html.tmLanguage.json"
+ },
+ {
+  "id": "idl",
+  "name": "IDL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.idl"
+  ],
+  "mimetypes": [
+   "text/x-idl"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.idl",
+  "grammar": "idl.tmLanguage.json"
+ },
+ {
+  "id": "idl-exelis",
+  "name": "IDL-Exelis",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.pro"
+  ],
+  "mimetypes": [],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.idl-exelis",
+  "grammar": "idl-exelis.tmLanguage.json"
+ },
+ {
+  "id": "imagej",
+  "name": "ImageJ",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.ijm"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.imagej",
+  "grammar": "imagej.tmLanguage.json"
+ },
+ {
+  "id": "ini",
+  "name": ".ini",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.ini"
+  ],
+  "mimetypes": [
+   "text/x-ini-file",
+   "application/x-ini-file",
+   "text/x-systemd-unit",
+   "text/x-dbus-service"
+  ],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.ini",
+  "grammar": "ini.tmLanguage.json"
+ },
+ {
+  "id": "j",
+  "name": "J",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.ijs"
+  ],
+  "mimetypes": [],
+  "lineComment": "NB\\.",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.j",
+  "grammar": "j.tmLanguage.json"
+ },
+ {
+  "id": "jade",
+  "name": "Jade",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.jade",
+   "*.pug"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.jade",
+  "grammar": "jade.tmLanguage.json"
+ },
+ {
+  "id": "java",
+  "name": "Java",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.java"
+  ],
+  "mimetypes": [
+   "text/x-java"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.java",
+  "grammar": "java.tmLanguage.json"
+ },
+ {
+  "id": "js",
+  "name": "JavaScript",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.js",
+   "*.node"
+  ],
+  "mimetypes": [
+   "application/javascript",
+   "application/x-javascript",
+   "text/x-javascript",
+   "text/javascript",
+   "text/x-js"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.js",
+  "grammar": "js.tmLanguage.json"
+ },
+ {
+  "id": "json",
+  "name": "JSON",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.json",
+   "*.geojson",
+   "*.topojson",
+   "*.jnii",
+   "*.jnirs",
+   "*.jmsh",
+   "*.jdt",
+   "*.jdat",
+   "*.jgii",
+   "*.jbids"
+  ],
+  "mimetypes": [
+   "application/json"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.json",
+  "grammar": "json.tmLanguage.json"
+ },
+ {
+  "id": "julia",
+  "name": "Julia",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.jl"
+  ],
+  "mimetypes": [],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.julia",
+  "grammar": "julia.tmLanguage.json"
+ },
+ {
+  "id": "kotlin",
+  "name": "Kotlin",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.kt"
+  ],
+  "mimetypes": [
+   "text/x-kotlin"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.kotlin",
+  "grammar": "kotlin.tmLanguage.json"
+ },
+ {
+  "id": "latex",
+  "name": "LaTeX",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.tex",
+   "*.ltx",
+   "*.sty",
+   "*.cls",
+   "*.dtx",
+   "*.ins",
+   "*.bbl"
+  ],
+  "mimetypes": [
+   "text/x-tex"
+  ],
+  "lineComment": "%",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.latex",
+  "grammar": "latex.tmLanguage.json"
+ },
+ {
+  "id": "lex",
+  "name": "Lex",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.l",
+   "*.lex",
+   "*.flex"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.lex",
+  "grammar": "lex.tmLanguage.json"
+ },
+ {
+  "id": "libtool",
+  "name": "libtool",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.la",
+   "*.lai",
+   "*.lo"
+  ],
+  "mimetypes": [
+   "text/x-libtool"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.libtool",
+  "grammar": "libtool.tmLanguage.json"
+ },
+ {
+  "id": "llvm",
+  "name": "LLVM IR",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.ll"
+  ],
+  "mimetypes": [],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.llvm",
+  "grammar": "llvm.tmLanguage.json"
+ },
+ {
+  "id": "logcat",
+  "name": "logcat",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.logcat"
+  ],
+  "mimetypes": [
+   "text/x-logcat"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.logcat",
+  "grammar": "logcat.tmLanguage.json"
+ },
+ {
+  "id": "lua",
+  "name": "Lua",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.lua"
+  ],
+  "mimetypes": [
+   "text/x-lua"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "--[[",
+  "blockCommentEnd": "]]",
+  "scopeName": "source.lua",
+  "grammar": "lua.tmLanguage.json"
+ },
+ {
+  "id": "m4",
+  "name": "m4",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.m4",
+   "configure.ac",
+   "configure.in"
+  ],
+  "mimetypes": [
+   "application/x-m4"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.m4",
+  "grammar": "m4.tmLanguage.json"
+ },
+ {
+  "id": "makefile",
+  "name": "Makefile",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "[Mm]akefile",
+   "GNUmakefile",
+   "*.make",
+   "*.mak",
+   "*.mk"
+  ],
+  "mimetypes": [
+   "text/x-makefile"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.makefile",
+  "grammar": "makefile.tmLanguage.json"
+ },
+ {
+  "id": "mallard",
+  "name": "Mallard",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.page"
+  ],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.mallard",
+  "grammar": "mallard.tmLanguage.json"
+ },
+ {
+  "id": "markdown",
+  "name": "Markdown",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.markdown",
+   "*.md",
+   "*.mkd"
+  ],
+  "mimetypes": [
+   "text/x-markdown"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.markdown",
+  "grammar": "markdown.tmLanguage.json"
+ },
+ {
+  "id": "matlab",
+  "name": "Matlab",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.m"
+  ],
+  "mimetypes": [
+   "text/x-matlab"
+  ],
+  "lineComment": "%",
+  "blockCommentStart": "%{",
+  "blockCommentEnd": "%}",
+  "scopeName": "source.matlab",
+  "grammar": "matlab.tmLanguage.json"
+ },
+ {
+  "id": "maxima",
+  "name": "Maxima",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.mac",
+   "*.MAC",
+   "*.dem",
+   "*.DEM",
+   "*.wxm",
+   "*.WXM"
+  ],
+  "mimetypes": [
+   "text/mxm"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.maxima",
+  "grammar": "maxima.tmLanguage.json"
+ },
+ {
+  "id": "mediawiki",
+  "name": "MediaWiki",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.mediawiki",
+  "grammar": "mediawiki.tmLanguage.json"
+ },
+ {
+  "id": "meson",
+  "name": "Meson",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "meson.build",
+   "meson_options.txt"
+  ],
+  "mimetypes": [
+   "text/x-meson"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.meson",
+  "grammar": "meson.tmLanguage.json"
+ },
+ {
+  "id": "modelica",
+  "name": "Modelica",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.mo",
+   "*.mop"
+  ],
+  "mimetypes": [
+   "text/x-modelica"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.modelica",
+  "grammar": "modelica.tmLanguage.json"
+ },
+ {
+  "id": "mxml",
+  "name": "MXML",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.mxml"
+  ],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.mxml",
+  "grammar": "mxml.tmLanguage.json"
+ },
+ {
+  "id": "nemerle",
+  "name": "Nemerle",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.n"
+  ],
+  "mimetypes": [
+   "text/x-nemerle"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.nemerle",
+  "grammar": "nemerle.tmLanguage.json"
+ },
+ {
+  "id": "netrexx",
+  "name": "NetRexx",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.nrx"
+  ],
+  "mimetypes": [
+   "text/x-netrexx"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.netrexx",
+  "grammar": "netrexx.tmLanguage.json"
+ },
+ {
+  "id": "nsis",
+  "name": "NSIS",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.nsi",
+   "*.nsh"
+  ],
+  "mimetypes": [],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.nsis",
+  "grammar": "nsis.tmLanguage.json"
+ },
+ {
+  "id": "objc",
+  "name": "Objective-C",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.m"
+  ],
+  "mimetypes": [
+   "text/x-objcsrc"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.objc",
+  "grammar": "objc.tmLanguage.json"
+ },
+ {
+  "id": "objj",
+  "name": "Objective-J",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.j"
+  ],
+  "mimetypes": [
+   "text/x-objective-j"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.objj",
+  "grammar": "objj.tmLanguage.json"
+ },
+ {
+  "id": "ocaml",
+  "name": "OCaml",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.ml",
+   "*.mli",
+   "*.mll",
+   "*.mly"
+  ],
+  "mimetypes": [
+   "text/x-ocaml"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "(*",
+  "blockCommentEnd": "*)",
+  "scopeName": "source.ocaml",
+  "grammar": "ocaml.tmLanguage.json"
+ },
+ {
+  "id": "ocl",
+  "name": "OCL",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.ocl"
+  ],
+  "mimetypes": [
+   "text/x-ocl"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.ocl",
+  "grammar": "ocl.tmLanguage.json"
+ },
+ {
+  "id": "octave",
+  "name": "Octave",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.m"
+  ],
+  "mimetypes": [
+   "text/x-octave"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "#{",
+  "blockCommentEnd": "}#",
+  "scopeName": "source.octave",
+  "grammar": "octave.tmLanguage.json"
+ },
+ {
+  "id": "ooc",
+  "name": "OOC",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.ooc"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.ooc",
+  "grammar": "ooc.tmLanguage.json"
+ },
+ {
+  "id": "opal",
+  "name": "Opal",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.sign",
+   "*.impl"
+  ],
+  "mimetypes": [],
+  "lineComment": "--",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.opal",
+  "grammar": "opal.tmLanguage.json"
+ },
+ {
+  "id": "opencl",
+  "name": "OpenCL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.cl"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.opencl",
+  "grammar": "opencl.tmLanguage.json"
+ },
+ {
+  "id": "pascal",
+  "name": "Pascal",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.p",
+   "*.pas"
+  ],
+  "mimetypes": [
+   "text/x-pascal"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.pascal",
+  "grammar": "pascal.tmLanguage.json"
+ },
+ {
+  "id": "perl",
+  "name": "Perl",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.pl",
+   "*.pm",
+   "*.al",
+   "*.perl",
+   "*.t"
+  ],
+  "mimetypes": [
+   "text/x-perl",
+   "application/x-perl"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.perl",
+  "grammar": "perl.tmLanguage.json"
+ },
+ {
+  "id": "php",
+  "name": "PHP",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.php",
+   "*.php3",
+   "*.php4",
+   "*.phtml"
+  ],
+  "mimetypes": [
+   "text/x-php",
+   "application/x-php",
+   "text/x-php-source",
+   "application/x-php-source"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.php",
+  "grammar": "php.tmLanguage.json"
+ },
+ {
+  "id": "pig",
+  "name": "Pig",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.pig"
+  ],
+  "mimetypes": [],
+  "lineComment": "--",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.pig",
+  "grammar": "pig.tmLanguage.json"
+ },
+ {
+  "id": "pkgconfig",
+  "name": "pkg-config",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.pc"
+  ],
+  "mimetypes": [
+   "text/x-pkg-config"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.pkgconfig",
+  "grammar": "pkgconfig.tmLanguage.json"
+ },
+ {
+  "id": "prolog",
+  "name": "Prolog",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.prolog"
+  ],
+  "mimetypes": [
+   "text/x-prolog"
+  ],
+  "lineComment": "%",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.prolog",
+  "grammar": "prolog.tmLanguage.json"
+ },
+ {
+  "id": "proto",
+  "name": "Protobuf",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.proto"
+  ],
+  "mimetypes": [
+   "text/x-protobuf"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.proto",
+  "grammar": "proto.tmLanguage.json"
+ },
+ {
+  "id": "puppet",
+  "name": "Puppet",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.pp"
+  ],
+  "mimetypes": [],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.puppet",
+  "grammar": "puppet.tmLanguage.json"
+ },
+ {
+  "id": "python",
+  "name": "Python",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.py"
+  ],
+  "mimetypes": [
+   "text/x-python",
+   "application/x-python"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.python",
+  "grammar": "python.tmLanguage.json"
+ },
+ {
+  "id": "python-console",
+  "name": "python-console",
+  "section": "Other",
+  "hidden": true,
+  "globs": [],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.python-console",
+  "grammar": "python-console.tmLanguage.json"
+ },
+ {
+  "id": "python3",
+  "name": "Python 3",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.py3"
+  ],
+  "mimetypes": [
+   "text/x-python3"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.python3",
+  "grammar": "python3.tmLanguage.json"
+ },
+ {
+  "id": "r",
+  "name": "R",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.R",
+   "*.Rout",
+   "*.r",
+   "*.Rhistory",
+   "*.Rt",
+   "*.Rout.save",
+   "*.Rout.fail"
+  ],
+  "mimetypes": [
+   "text/x-R"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.r",
+  "grammar": "r.tmLanguage.json"
+ },
+ {
+  "id": "rpmspec",
+  "name": "RPM spec",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.spec"
+  ],
+  "mimetypes": [
+   "text/x-rpm-spec"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.rpmspec",
+  "grammar": "rpmspec.tmLanguage.json"
+ },
+ {
+  "id": "rst",
+  "name": "reStructuredText",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.rst"
+  ],
+  "mimetypes": [
+   "text/x-rst"
+  ],
+  "lineComment": "..\\u0020",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.rst",
+  "grammar": "rst.tmLanguage.json"
+ },
+ {
+  "id": "ruby",
+  "name": "Ruby",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.rb",
+   "*.rake",
+   "*.gemspec",
+   "Rakefile",
+   "Capfile",
+   "Gemfile"
+  ],
+  "mimetypes": [
+   "application/x-ruby",
+   "text/x-ruby"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.ruby",
+  "grammar": "ruby.tmLanguage.json"
+ },
+ {
+  "id": "rust",
+  "name": "Rust",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.rs"
+  ],
+  "mimetypes": [
+   "text/rust"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.rust",
+  "grammar": "rust.tmLanguage.json"
+ },
+ {
+  "id": "scala",
+  "name": "Scala",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.scala"
+  ],
+  "mimetypes": [
+   "text/x-scala"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.scala",
+  "grammar": "scala.tmLanguage.json"
+ },
+ {
+  "id": "scheme",
+  "name": "Scheme",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.scm"
+  ],
+  "mimetypes": [
+   "text/x-scheme"
+  ],
+  "lineComment": ";",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.scheme",
+  "grammar": "scheme.tmLanguage.json"
+ },
+ {
+  "id": "scilab",
+  "name": "Scilab",
+  "section": "Scientific",
+  "hidden": false,
+  "globs": [
+   "*.sce",
+   "*.sci"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.scilab",
+  "grammar": "scilab.tmLanguage.json"
+ },
+ {
+  "id": "sh",
+  "name": "sh",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.sh",
+   "*bashrc",
+   ".profile",
+   ".bash_profile"
+  ],
+  "mimetypes": [
+   "text/x-shellscript",
+   "application/x-shellscript",
+   "text/x-sh"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.sh",
+  "grammar": "sh.tmLanguage.json"
+ },
+ {
+  "id": "sml",
+  "name": "Standard ML",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.sml",
+   "*.sig"
+  ],
+  "mimetypes": [],
+  "lineComment": "",
+  "blockCommentStart": "(*",
+  "blockCommentEnd": "*)",
+  "scopeName": "source.sml",
+  "grammar": "sml.tmLanguage.json"
+ },
+ {
+  "id": "sparql",
+  "name": "SPARQL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.rq"
+  ],
+  "mimetypes": [
+   "application/sparql-query"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.sparql",
+  "grammar": "sparql.tmLanguage.json"
+ },
+ {
+  "id": "sql",
+  "name": "SQL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.sql"
+  ],
+  "mimetypes": [
+   "text/x-sql"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.sql",
+  "grammar": "sql.tmLanguage.json"
+ },
+ {
+  "id": "sweave",
+  "name": "Sweave",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.rnw",
+   "*.Rnw",
+   "*.snw",
+   "*.Snw"
+  ],
+  "mimetypes": [],
+  "lineComment": "%",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.sweave",
+  "grammar": "sweave.tmLanguage.json"
+ },
+ {
+  "id": "swift",
+  "name": "Swift",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.swift"
+  ],
+  "mimetypes": [
+   "text/x-swift"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.swift",
+  "grammar": "swift.tmLanguage.json"
+ },
+ {
+  "id": "systemverilog",
+  "name": "SystemVerilog",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.sv",
+   "*.svh"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.systemverilog",
+  "grammar": "systemverilog.tmLanguage.json"
+ },
+ {
+  "id": "t2t",
+  "name": "txt2tags",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.t2t"
+  ],
+  "mimetypes": [],
+  "lineComment": "%",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.t2t",
+  "grammar": "t2t.tmLanguage.json"
+ },
+ {
+  "id": "tcl",
+  "name": "Tcl",
+  "section": "Script",
+  "hidden": false,
+  "globs": [
+   "*.tcl",
+   "*.tk"
+  ],
+  "mimetypes": [
+   "text/x-tcl",
+   "application/x-tcl"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.tcl",
+  "grammar": "tcl.tmLanguage.json"
+ },
+ {
+  "id": "texinfo",
+  "name": "Texinfo",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.texi",
+   "*.texinfo"
+  ],
+  "mimetypes": [
+   "text/x-texinfo"
+  ],
+  "lineComment": "@c",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.texinfo",
+  "grammar": "texinfo.tmLanguage.json"
+ },
+ {
+  "id": "thrift",
+  "name": "Thrift",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.thrift"
+  ],
+  "mimetypes": [],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.thrift",
+  "grammar": "thrift.tmLanguage.json"
+ },
+ {
+  "id": "vala",
+  "name": "Vala",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.vala",
+   "*.vapi"
+  ],
+  "mimetypes": [
+   "text/x-vala"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.vala",
+  "grammar": "vala.tmLanguage.json"
+ },
+ {
+  "id": "vbnet",
+  "name": "VB.NET",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.vb"
+  ],
+  "mimetypes": [
+   "text/x-vbnet",
+   "text/x-vb"
+  ],
+  "lineComment": "'",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.vbnet",
+  "grammar": "vbnet.tmLanguage.json"
+ },
+ {
+  "id": "verilog",
+  "name": "Verilog",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.v"
+  ],
+  "mimetypes": [
+   "text/x-verilog-src"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.verilog",
+  "grammar": "verilog.tmLanguage.json"
+ },
+ {
+  "id": "vhdl",
+  "name": "VHDL",
+  "section": "Source",
+  "hidden": false,
+  "globs": [
+   "*.vhd"
+  ],
+  "mimetypes": [
+   "text/x-vhdl"
+  ],
+  "lineComment": "--",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.vhdl",
+  "grammar": "vhdl.tmLanguage.json"
+ },
+ {
+  "id": "xml",
+  "name": "XML",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.xml",
+   "*.xspf",
+   "*.siv",
+   "*.smil",
+   "*.smi",
+   "*.sml",
+   "*.kino",
+   "*.xul",
+   "*.xbel",
+   "*.abw",
+   "*.zabw",
+   "*.glade",
+   "*.jnlp",
+   "*.xhtml",
+   "*.svg",
+   "*.mml",
+   "*.rdf",
+   "*.rss",
+   "*.wml",
+   "*.xmi",
+   "*.fo",
+   "*.xslfo"
+  ],
+  "mimetypes": [
+   "application/xml",
+   "text/xml"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.xml",
+  "grammar": "xml.tmLanguage.json"
+ },
+ {
+  "id": "xslt",
+  "name": "XSLT",
+  "section": "Markup",
+  "hidden": false,
+  "globs": [
+   "*.xslt",
+   "*.xsl"
+  ],
+  "mimetypes": [
+   "application/xslt+xml"
+  ],
+  "lineComment": "",
+  "blockCommentStart": "<!--",
+  "blockCommentEnd": "-->",
+  "scopeName": "source.xslt",
+  "grammar": "xslt.tmLanguage.json"
+ },
+ {
+  "id": "yacc",
+  "name": "Yacc",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.y",
+   "*.yacc"
+  ],
+  "mimetypes": [
+   "text/x-yacc",
+   "text/x-bison"
+  ],
+  "lineComment": "//",
+  "blockCommentStart": "/*",
+  "blockCommentEnd": "*/",
+  "scopeName": "source.yacc",
+  "grammar": "yacc.tmLanguage.json"
+ },
+ {
+  "id": "yaml",
+  "name": "YAML",
+  "section": "Other",
+  "hidden": false,
+  "globs": [
+   "*.yaml",
+   "*.yml"
+  ],
+  "mimetypes": [
+   "application/x-yaml"
+  ],
+  "lineComment": "#",
+  "blockCommentStart": "",
+  "blockCommentEnd": "",
+  "scopeName": "source.yaml",
+  "grammar": "yaml.tmLanguage.json"
+ }
+]

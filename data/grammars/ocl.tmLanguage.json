@@ -1,0 +1,97 @@
+{
+ "name": "OCL",
+ "scopeName": "source.ocl",
+ "patterns": [
+  {
+   "begin": "--",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+   "name": "def.number"
+  },
+  {
+   "match": "(?:\\b([0-9]+e[-+]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)(e[-+]?[0-9]+)?)[fl]?\\b)",
+   "name": "def.number"
+  },
+  {
+   "match": "\\b(?:and|attr|body|context|derive|def|endpackage|false|in|init|inv|let|oper|package|post|pre|self|true)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:abs|and|concat|if|implies|else|endif|floor|then|or|not|size|substring|xor)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:select|exists|forAll|notEmpty|reject)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:Boolean|boolean|Integer|int|Real|real|String|string)\\b",
+   "name": "def.type"
+  }
+ ],
+ "fileTypes": [
+  "ocl"
+ ]
+}

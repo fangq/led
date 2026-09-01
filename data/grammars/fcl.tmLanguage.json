@@ -1,0 +1,57 @@
+{
+ "name": "FCL",
+ "scopeName": "source.fcl",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:ACCU|ACT|AND|ASUM|BDIF|BSUM|COA|COG|COGS|DEFAULT|IF|IS|LM|MAX|METHOD|MIN|NC|NOT|NSUM|OR|PROD|RANGE|RM|RULE|TERM|THEN|WITH)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:DEFUZZIFY|END_DEFUZZIFY|END_FUNCTION_BLOCK|END_FUZZIFY|END_OPTIONS|END_RULEBLOCK|END_VAR|FUNCTION_BLOCK|FUZZIFY|OPTIONS|RULEBLOCK|VAR|VAR_INPUT|VAR_OUTPUT)\\b",
+   "name": "def.function"
+  },
+  {
+   "match": "\\b([1-9][0-9]*|0)([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?\\b",
+   "name": "def.decimal"
+  },
+  {
+   "match": "\\b([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFlL]?",
+   "name": "def.floating-point"
+  }
+ ],
+ "fileTypes": [
+  "fcl"
+ ]
+}

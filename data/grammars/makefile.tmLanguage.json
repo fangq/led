@@ -1,0 +1,185 @@
+{
+ "name": "Makefile",
+ "scopeName": "source.makefile",
+ "patterns": [
+  {
+   "begin": "^#!",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "^((?:[a-zA-Z_][a-zA-Z0-9_]*))\\s*[\\+\\?:]?=",
+   "end": "$",
+   "beginCaptures": {
+    "1": {
+     "name": "makefile.assignment-lhs"
+    }
+   }
+  },
+  {
+   "begin": "^([^\\t\\:][^\\:]*)\\:",
+   "end": "^(?!\\t)",
+   "beginCaptures": {
+    "1": {
+     "name": "def.function"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "#",
+     "end": "$",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "match": "\\b(?:define|else|endef|endif|if|ifdef|ifeq|ifndef|ifneq|include|override|unexport)\\b",
+     "name": "def.keyword"
+    },
+    {
+     "begin": "(?<=:)(?=.)",
+     "end": "(?:;)|$",
+     "beginCaptures": {
+      "0": {
+       "name": "makefile.prereq"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "makefile.prereq"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\.",
+       "name": "def.special-char"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "\\$\\(((?:[a-zA-Z_][a-zA-Z0-9_]*))\\)",
+         "captures": {
+          "1": {
+           "name": "def.type"
+          }
+         }
+        },
+        {
+         "match": "\\$\\{((?:[a-zA-Z_][a-zA-Z0-9_]*))\\}",
+         "captures": {
+          "1": {
+           "name": "def.type"
+          }
+         }
+        }
+       ]
+      },
+      {
+       "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|filter\\-out|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
+       "name": "def.function"
+      }
+     ]
+    },
+    {
+     "match": "^\\t+$",
+     "name": "makefile.trailing-tab"
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:define|else|endef|endif|if|ifdef|ifeq|ifndef|ifneq|include|override|unexport)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|filter\\-out|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
+   "name": "def.function"
+  }
+ ],
+ "fileTypes": [
+  "[Mm]akefile",
+  "GNUmakefile",
+  "make",
+  "mak",
+  "mk"
+ ]
+}

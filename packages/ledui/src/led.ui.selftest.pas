@@ -356,6 +356,18 @@ begin
   Pump;
   CheckEq('language can be overridden', 'python', Doc.LangInfo.Id);
 
+  { A language with no bundled SynEdit highlighter has to come from a
+    converted grammar, which is what makes the other hundred work. }
+  Check('a converted grammar exists for ruby',
+    LedHasHighlighter('ruby'));
+  Doc.SetLanguage('ruby');
+  Pump;
+  Check('and it loads', Doc.Master.Highlighter <> nil);
+  Check('as a TextMate grammar',
+    Doc.Master.Highlighter.ClassName = 'TSynTextMateSyn');
+  Check('which can fold, unlike the built-in C highlighter',
+    LedCanFold(Doc.Views[0]));
+
   { Switching themes must not lose the highlighter or crash the views. }
   LedSetCurrentTheme('oblivion');
   Doc.ApplyConfigToViews;

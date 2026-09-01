@@ -1,0 +1,132 @@
+{
+ "name": "Tcl",
+ "scopeName": "source.tcl",
+ "patterns": [
+  {
+   "begin": "^#!",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "'",
+   "end": "(?:')|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "[$@%][$]?[a-zA-Z_][a-zA-Z0-9_]*",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:string|subst|regexp|regsub|scan|format|binary|list|split|join|concat|llength|lrange|lsearch|lreplace|lindex|lsort|linsert|lrepeat|dict|if|else|elseif|then|for|foreach|switch|case|while|continue|return|break|catch|error|eval|uplevel|after|update|vwait|proc|rename|set|lset|lassign|unset|namespace|variable|upvar|global|trace|array|incr|append|lappend|expr|file|open|close|socket|fconfigure|puts|gets|read|seek|tell|eof|flush|fblocked|fcopy|fileevent|source|load|unload|package|info|interp|history|bgerror|unknown|memory|cd|pwd|clock|time|exec|glob|pid|exit)\\b",
+   "name": "def.keyword"
+  }
+ ],
+ "fileTypes": [
+  "tcl",
+  "tk"
+ ]
+}

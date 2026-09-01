@@ -1,0 +1,65 @@
+{
+ "name": "DOS Batch",
+ "scopeName": "source.dosbatch",
+ "patterns": [
+  {
+   "begin": "^\\s*(rem\\b|:\\s*:)",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:do|else|exist|exit|for|goto|if|not|return|say|select|then|when)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:ansi|append|assign|assoc|attrib|at|autofail|backup|basedev|boot|break|buffers|cache|call|cacls|cd|chcp|chdir|chkdsk|chkntfs|cls|cmd|codepage|color|command|compact|comp|convert|copy|date|del|dir|diskcomp|diskcopy|doskey|echo|endlocal|erase|fc|find|findstr|format|ftype|graftabl|help|keyb|label|md|mkdir|mode|more|move|path|pause|popd|print|prompt|pushd|rd|recover|rename|ren|replace|restore|rmdir|run|set|setboot|setlocal|shift|sort|start|subst|time|title|trapdump|tree|type|undelete|unpack|use|verify|ver|vol|xcopy)\\b",
+   "name": "def.keyword"
+  }
+ ],
+ "fileTypes": [
+  "bat",
+  "cmd",
+  "sys"
+ ]
+}

@@ -1,0 +1,318 @@
+{
+ "name": "Haddock",
+ "scopeName": "source.haddock",
+ "patterns": [
+  {
+   "match": "\\\\[/'`\"@#<*-]",
+   "name": "def.special-char"
+  },
+  {
+   "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+   "name": "def.special-char"
+  },
+  {
+   "match": "'[a-zA-Z_][0-9a-zA-Z._'#]*'",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "match": "\"[A-Z][0-9a-zA-Z._']*\"",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "begin": "/",
+   "end": "/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.doc-comment-element"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.doc-comment-element"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\[/'`\"@#<*-]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "begin": "@",
+   "end": "@",
+   "beginCaptures": {
+    "0": {
+     "name": "haddock.monospace"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "haddock.monospace"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\[/'`\"@#<*-]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.special-char"
+    }
+   ]
+  },
+  {
+   "match": "^\\s*--+\\s+>.*$",
+   "name": "haddock.codeblock"
+  },
+  {
+   "match": "^\\s*--+\\s+([A-Z][a-zA-Z0-9'_]*)\\s*:.*$",
+   "captures": {
+    "1": {
+     "name": "def.doc-comment-element"
+    }
+   }
+  },
+  {
+   "match": "^(\\s*--+)?\\s+(\\*(?=\\s)|-(?=\\s)|\\([0-9]\\)|[0-9]\\.|\\[@[a-zA-Z0-9._'\\#]*@\\])",
+   "captures": {
+    "2": {
+     "name": "def.doc-comment-element"
+    }
+   }
+  },
+  {
+   "match": "<.*>",
+   "name": "def.underlined"
+  },
+  {
+   "match": "#[a-z][0-9a-zA-Z_']*#|[A-Z][0-9a-zA-Z._']*#[a-z][0-9a-zA-Z_']*",
+   "name": "def.doc-comment-element"
+  },
+  {
+   "begin": "\\s+([|^*$]+)",
+   "end": "^(?!\\s*--+)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.doc-comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.doc-comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\[/'`\"@#<*-]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.special-char"
+    },
+    {
+     "match": "'[a-zA-Z_][0-9a-zA-Z._'#]*'",
+     "name": "def.doc-comment-element"
+    },
+    {
+     "match": "\"[A-Z][0-9a-zA-Z._']*\"",
+     "name": "def.doc-comment-element"
+    },
+    {
+     "begin": "/",
+     "end": "/",
+     "beginCaptures": {
+      "0": {
+       "name": "def.doc-comment-element"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.doc-comment-element"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\[/'`\"@#<*-]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.special-char"
+      }
+     ]
+    },
+    {
+     "begin": "@",
+     "end": "@",
+     "beginCaptures": {
+      "0": {
+       "name": "haddock.monospace"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "haddock.monospace"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\[/'`\"@#<*-]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.special-char"
+      }
+     ]
+    },
+    {
+     "match": "^\\s*--+\\s+>.*$",
+     "name": "haddock.codeblock"
+    },
+    {
+     "match": "^\\s*--+\\s+([A-Z][a-zA-Z0-9'_]*)\\s*:.*$",
+     "captures": {
+      "1": {
+       "name": "def.doc-comment-element"
+      }
+     }
+    },
+    {
+     "match": "^(\\s*--+)?\\s+(\\*(?=\\s)|-(?=\\s)|\\([0-9]\\)|[0-9]\\.|\\[@[a-zA-Z0-9._'\\#]*@\\])",
+     "captures": {
+      "2": {
+       "name": "def.doc-comment-element"
+      }
+     }
+    },
+    {
+     "match": "<.*>",
+     "name": "def.underlined"
+    },
+    {
+     "match": "#[a-z][0-9a-zA-Z_']*#|[A-Z][0-9a-zA-Z._']*#[a-z][0-9a-zA-Z_']*",
+     "name": "def.doc-comment-element"
+    }
+   ]
+  },
+  {
+   "begin": "(?<={-)\\s?[|^*$]",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.doc-comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.doc-comment"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\[/'`\"@#<*-]",
+     "name": "def.special-char"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.special-char"
+    },
+    {
+     "match": "'[a-zA-Z_][0-9a-zA-Z._'#]*'",
+     "name": "def.doc-comment-element"
+    },
+    {
+     "match": "\"[A-Z][0-9a-zA-Z._']*\"",
+     "name": "def.doc-comment-element"
+    },
+    {
+     "begin": "/",
+     "end": "/",
+     "beginCaptures": {
+      "0": {
+       "name": "def.doc-comment-element"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.doc-comment-element"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\[/'`\"@#<*-]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.special-char"
+      }
+     ]
+    },
+    {
+     "begin": "@",
+     "end": "@",
+     "beginCaptures": {
+      "0": {
+       "name": "haddock.monospace"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "haddock.monospace"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\[/'`\"@#<*-]",
+       "name": "def.special-char"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.special-char"
+      }
+     ]
+    },
+    {
+     "match": "^\\s*--+\\s+>.*$",
+     "name": "haddock.codeblock"
+    },
+    {
+     "match": "^\\s*--+\\s+([A-Z][a-zA-Z0-9'_]*)\\s*:.*$",
+     "captures": {
+      "1": {
+       "name": "def.doc-comment-element"
+      }
+     }
+    },
+    {
+     "match": "^(\\s*--+)?\\s+(\\*(?=\\s)|-(?=\\s)|\\([0-9]\\)|[0-9]\\.|\\[@[a-zA-Z0-9._'\\#]*@\\])",
+     "captures": {
+      "2": {
+       "name": "def.doc-comment-element"
+      }
+     }
+    },
+    {
+     "match": "<.*>",
+     "name": "def.underlined"
+    },
+    {
+     "match": "#[a-z][0-9a-zA-Z_']*#|[A-Z][0-9a-zA-Z._']*#[a-z][0-9a-zA-Z_']*",
+     "name": "def.doc-comment-element"
+    }
+   ]
+  },
+  {
+   "match": "#(?:hide|prune|ignore\\-exports)\\b",
+   "name": "def.doc-comment-element"
+  }
+ ]
+}

@@ -1,0 +1,787 @@
+{
+ "name": "MXML",
+ "scopeName": "source.mxml",
+ "patterns": [
+  {
+   "begin": "<(fx:Script|mx:Script)>",
+   "end": "</\\1>",
+   "beginCaptures": {
+    "0": {
+     "name": "xml.cdata-delim"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "xml.cdata-delim"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\b(?:[[:alpha:]_][[:alnum:].:_-]*)\\b(?!\\s*=)",
+     "name": "def.identifier"
+    },
+    {
+     "begin": "<!\\[CDATA\\[",
+     "end": "\\]\\]>",
+     "beginCaptures": {
+      "0": {
+       "name": "xml.cdata-delim"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "xml.cdata-delim"
+      }
+     },
+     "patterns": [
+      {
+       "patterns": [
+        {
+         "begin": "\"",
+         "end": "(?:\")|$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        },
+        {
+         "begin": "'",
+         "end": "(?:')|$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.string"
+          }
+         }
+        },
+        {
+         "begin": "//",
+         "end": "$",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "begin": "\\\\$",
+             "end": "^",
+             "beginCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "def.preprocessor"
+              }
+             }
+            },
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "begin": "/\\*",
+         "end": "\\*/",
+         "beginCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "endCaptures": {
+          "0": {
+           "name": "def.comment"
+          }
+         },
+         "patterns": [
+          {
+           "patterns": [
+            {
+             "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+             "name": "def.underlined"
+            },
+            {
+             "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+             "name": "def.underlined"
+            },
+            {
+             "match": "\\b(FIXME|TODO|XXX)\\b",
+             "name": "def.note"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "match": "\\*/(?!\\*)",
+         "name": "def.error"
+        },
+        {
+         "match": "\\b(?:import|include|package)\\b",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "\\b(?:class|extends|function|implements|instanceof|interface|is|namespace|throws|var|const)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "\\b(?:arguments|Array|Boolean|Class|Bitmap|BitmapData|BitmapDataChannel|ByteArray|Camera|Capabilities|CapsStyle|ColorTransform|ContextMenu|Dictionary|DisplayObject|DisplayObjectContainer|Endian|Error|Event|EventDispatcher|ExternalInterface|FileFilter|FileReference|FileReferenceList|Function|Graphics|int|IBitmapDrawable|IEventDispatcher|IOError|Keyboard|KeyboardEvent|KeyLocation|Loader|LocalConnection|Math|Matrix|Microphone|Mouse|MovieClip|Namespace|NetConnection|NetStream|Number|Object|Point|PrintJob|Proxy|QName|Rectangle|RegExp|Responder|Scene|Security|Shape|SharedObject|Socket|Sound|SoundChannel|SoundTransform|Sprite|Stage|String|StyleSheet|SWFVersion|System|TextField|TextFormat|Timer|uint|Video|XML|XMLDocument|XMLList|XMLNode|XMLNodeType|XMLSocket)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "\\b(?:dynamic|internal|final|static)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "\\b(?:flash_proxy|internal|override|private|protected|public|set|get)\\b",
+         "name": "def.type"
+        },
+        {
+         "match": "\\b(?:break|case|catch|continue|default|do|else|for|if|is|return|throw|switch|try|while)\\b",
+         "name": "def.keyword"
+        },
+        {
+         "match": "\\b(?:new|super|this|void)\\b",
+         "name": "def.keyword"
+        },
+        {
+         "match": "\\b(?:goto)\\b",
+         "name": "def.error"
+        },
+        {
+         "match": "\\b(?:null)\\b",
+         "name": "def.special-constant"
+        },
+        {
+         "match": "\\b(?:false|true)\\b",
+         "name": "def.boolean"
+        },
+        {
+         "match": "(\\b([0-9]+|0[xX][0-9a-fA-F]+)[Ll]?\\b|\\b(([0-9]+[Ee][-]?[0-9]+|([0-9]*\\.[0-9]+|[0-9]+\\.)([Ee][-]?[0-9]+)?)[fFdD]?|[0-9]+[FfDd]))",
+         "name": "def.decimal"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "patterns": [
+    {
+     "begin": "<!--",
+     "end": "-->",
+     "beginCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.comment"
+      }
+     },
+     "patterns": [
+      {
+       "match": "--+",
+       "name": "def.error"
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "(<!DOCTYPE)\\s+((?:[[:alpha:]_][[:alnum:].:_-]*))",
+     "end": ">",
+     "beginCaptures": {
+      "1": {
+       "name": "def.preprocessor"
+      },
+      "2": {
+       "name": "def.preprocessor"
+      },
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "patterns": [
+      {
+       "match": "(SYSTEM)\\s+(\\\"[^\\\"]*\\\")",
+       "captures": {
+        "1": {
+         "name": "def.preprocessor"
+        },
+        "2": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "match": "(PUBLIC)\\s+(\\\"[^\\\"]*\\\")\\s+(\\\"[^\\\"]*\\\")",
+       "captures": {
+        "1": {
+         "name": "def.preprocessor"
+        },
+        "2": {
+         "name": "def.string"
+        },
+        "3": {
+         "name": "def.string"
+        }
+       }
+      },
+      {
+       "begin": "\\[",
+       "end": "\\]",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "patterns": [
+        {
+         "patterns": [
+          {
+           "begin": "<!--",
+           "end": "-->",
+           "beginCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "def.comment"
+            }
+           },
+           "patterns": [
+            {
+             "match": "--+",
+             "name": "def.error"
+            },
+            {
+             "patterns": [
+              {
+               "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+               "name": "def.underlined"
+              },
+              {
+               "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+               "name": "def.underlined"
+              },
+              {
+               "match": "\\b(FIXME|TODO|XXX)\\b",
+               "name": "def.note"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!ELEMENT\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!ENTITY\\s+(%\\s+)?(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            },
+            {
+             "begin": "(SYSTEM|PUBLIC)(?=\\s|$)",
+             "end": "$",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.doctype"
+              }
+             },
+             "patterns": [
+              {
+               "begin": "\"",
+               "end": "\"",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "endCaptures": {
+                "0": {
+                 "name": "xml.attribute-value"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+                 "name": "xml.entity"
+                },
+                {
+                 "match": "[%&]\\S*",
+                 "name": "xml.error"
+                }
+               ]
+              },
+              {
+               "begin": "\\bNDATA\\b",
+               "end": "$",
+               "beginCaptures": {
+                "0": {
+                 "name": "xml.doctype"
+                }
+               },
+               "patterns": [
+                {
+                 "match": "(?:[a-zA-Z_][a-zA-Z0-9.:_-]*)"
+                },
+                {
+                 "match": "\\S+",
+                 "name": "xml.error"
+                }
+               ]
+              },
+              {
+               "match": "\\S+",
+               "name": "xml.error"
+              }
+             ]
+            },
+            {
+             "match": "\\S+",
+             "name": "xml.error"
+            }
+           ]
+          },
+          {
+           "begin": "<!ATTLIST\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "begin": "<!NOTATION\\b",
+           "end": ">",
+           "beginCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "endCaptures": {
+            "0": {
+             "name": "xml.doctype"
+            }
+           },
+           "patterns": [
+            {
+             "match": "%(?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+             "name": "xml.entity"
+            },
+            {
+             "begin": "\"",
+             "end": "\"",
+             "beginCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "endCaptures": {
+              "0": {
+               "name": "xml.attribute-value"
+              }
+             },
+             "patterns": [
+              {
+               "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
+               "name": "xml.entity"
+              },
+              {
+               "match": "[%&]\\S*",
+               "name": "xml.error"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "begin": "<!\\[CDATA\\[",
+     "end": "\\]\\]>",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "begin": "<\\?xml",
+     "end": "\\?>",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "[\"']",
+       "end": "\\0",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "[&<]",
+         "name": "def.error"
+        }
+       ]
+      },
+      {
+       "match": "\\b(?:[[:alpha:]_][[:alnum:].:_-]*)\\s*=",
+       "name": "def.type"
+      }
+     ]
+    },
+    {
+     "begin": "<\\?",
+     "end": "\\?>",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    },
+    {
+     "begin": "<(?!/)",
+     "end": "/?>",
+     "beginCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "patterns": [
+      {
+       "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "[&<]",
+       "name": "def.error"
+      },
+      {
+       "match": "(?<!:)(?:[[:alpha:]_][[:alnum:]._-]*):",
+       "name": "xml.element-name"
+      },
+      {
+       "match": "\\b(?:[[:alpha:]_][[:alnum:].:_-]*)\\s*=",
+       "name": "def.type"
+      },
+      {
+       "begin": "[\"']",
+       "end": "\\0",
+       "beginCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.string"
+        }
+       },
+       "patterns": [
+        {
+         "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+         "name": "def.preprocessor"
+        },
+        {
+         "match": "[&<]",
+         "name": "def.error"
+        }
+       ]
+      },
+      {
+       "match": "\\b(?:[[:alpha:]_][[:alnum:].:_-]*)\\b(?!\\s*=)",
+       "name": "def.identifier"
+      },
+      {
+       "match": "\\S",
+       "name": "def.error"
+      }
+     ]
+    },
+    {
+     "begin": "</",
+     "end": ">",
+     "beginCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.identifier"
+      }
+     },
+     "patterns": [
+      {
+       "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+       "name": "def.preprocessor"
+      },
+      {
+       "match": "[&<]",
+       "name": "def.error"
+      },
+      {
+       "match": "(?<!:)(?:[[:alpha:]_][[:alnum:]._-]*):",
+       "name": "xml.element-name"
+      },
+      {
+       "match": "\\b(?:[[:alpha:]_][[:alnum:].:_-]*)\\b(?!\\s*=)",
+       "name": "def.identifier"
+      },
+      {
+       "match": "\\S",
+       "name": "def.error"
+      }
+     ]
+    },
+    {
+     "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
+     "name": "def.preprocessor"
+    },
+    {
+     "match": "&#([0-9]+|x[a-fA-F0-9]+);",
+     "name": "def.preprocessor"
+    },
+    {
+     "match": "[&<]",
+     "name": "def.error"
+    },
+    {
+     "match": "/>",
+     "name": "def.error"
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "mxml"
+ ]
+}

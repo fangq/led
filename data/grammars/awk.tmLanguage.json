@@ -1,0 +1,113 @@
+{
+ "name": "awk",
+ "scopeName": "source.awk",
+ "patterns": [
+  {
+   "begin": "^#!",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "begin": "#",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.constant"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\.",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:break|continue|do|delete|else|exit|for|function|getline|if|next|nextfile|print|printf|return|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:BEGIN|END)\\b",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:ARGC|ARGV|FILENAME|FNR|FS|NF|NR|OFMT|OFS|ORS|RLENGTH|RS|RSTART|SUBSEP|ARGIND|BINMODE|CONVFMT|ENVIRON|ERRNO|FIELDWIDTHS|IGNORECASE|LINT|PROCINFO|RT|RLENGTH|TEXTDOMAIN)\\b",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\$\\d+",
+   "name": "def.identifier"
+  },
+  {
+   "match": "\\b(?:gsub|index|length|match|split|sprintf|sub|substr|tolower|toupper)\\b",
+   "name": "def.builtin"
+  },
+  {
+   "match": "\\b(?:atan2|cos|exp|int|log|rand|sin|sqrt|srand)\\b",
+   "name": "def.builtin"
+  }
+ ],
+ "fileTypes": [
+  "awk"
+ ]
+}

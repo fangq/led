@@ -1,0 +1,178 @@
+{
+ "name": "Pascal",
+ "scopeName": "source.pascal",
+ "patterns": [
+  {
+   "begin": "[uUrR]?'",
+   "end": "'",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\\{\\$",
+   "end": "(?:\\})|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   }
+  },
+  {
+   "begin": "\\(\\*",
+   "end": "\\*\\)",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\\{",
+   "end": "\\}",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "match": "\\b(?:Program|Library|Unit|Uses|Interface|Implementation|Initialization|Finalization|Begin|End|Var|Const)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:Function|Procedure|Overload|cdecl)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:if|then|else|is|and|and_then|not|or|or_else|xor|shr|shl|otherwise)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:div|mod)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:while|do|for|to|case|of|repeat|until|break|continue|try|except|finally|raise|downto|in)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:Type|Packed|Array|Record|Object|Class|Interface|Public|Private|Protected|Constructor|Destructor|Virtual|Abstract|Override|Property|ReadLn|Read|WriteLn|Write|default|With|As|self|Inherited|Forward|Implements|varargs|far|near|absolute|all|asm|attribute|bindable|export|exports|external|file|goto|import|interrupt|published|qualified|resident|restricted|segment|set|value)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:Char|String|Integer|Real|Boolean|Pointer|Byte|LongInt)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:chr|ord|succ|pred|abs|round|trunc|sqr|sqrt|arctan|cos|sin|exp|ln|odd|eof|eoln|pow)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:nil|False|True)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(([0-9]+)|([0-9]+\\.[0-9]+([Ee][-]?[0-9]+)?))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])\\$[0-9a-fA-F]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.decimal"
+  }
+ ],
+ "fileTypes": [
+  "p",
+  "pas"
+ ]
+}

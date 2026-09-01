@@ -1,0 +1,327 @@
+{
+ "name": "Rust",
+ "scopeName": "source.rust",
+ "patterns": [
+  {
+   "begin": "//",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "/\\*",
+   "end": "\\*/",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   }
+  },
+  {
+   "match": "\\b(?:fn)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:type)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:as|box|break|const|continue|crate|default|else|enum|extern|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|static|struct|super|trait|union|unsafe|use|where|while)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:bool|isize|usize|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|char|str)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:Self|self)\\b",
+   "name": "def.identifier"
+  },
+  {
+   "match": "(?:([^[:cntrl:][:space:][:punct:][:digit:]]|_)([^[:cntrl:][:punct:][:space:]]|_)*)!",
+   "name": "def.preprocessor"
+  },
+  {
+   "match": "\\b(?:true|false)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "((?<=\\.\\.)|(?<![[A-Za-z0-9_\\x80-\\xFF]\\.]))([0-9][0-9_]*(?:(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))|(?:((?:([eE][+-]?[0-9_]+))?(f32|f64)?)|(\\.[0-9][0-9_]*(?:([eE][+-]?[0-9_]+))?)?(f32|f64)?|\\.))?|0b((?:[01])|_)+(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?|0o((?:[0-7])|_)+(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?|0x((?:[0-9a-fA-F])|_)+(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?)((?![[A-Za-z0-9_\\x80-\\xFF]\\.].)|(?=\\.\\.))",
+   "name": "def.number"
+  },
+  {
+   "match": "((?<=\\.\\.)|(?<![[A-Za-z0-9_\\x80-\\xFF]\\.]))(0b((?:[01])|_)*(?!(?:[01])|_).[A-Za-z0-9_\\x80-\\xFF]*(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?|0o((?:[0-7])|_)*(?!(?:[0-7])|_).[A-Za-z0-9_\\x80-\\xFF]*(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?|0x((?:[0-9a-fA-F])|_)*(?!(?:[0-9a-fA-F])|_).[A-Za-z0-9_\\x80-\\xFF]*(?:(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize))?)((?![[A-Za-z0-9_\\x80-\\xFF]\\.].)|(?=\\.\\.))",
+   "name": "def.error"
+  },
+  {
+   "match": "(?:([^[:cntrl:][:space:][:punct:][:digit:]]|_)([^[:cntrl:][:punct:][:space:]]|_)*)::",
+   "name": "def.preprocessor"
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})|\\\\(?:u{(?:[0-9a-fA-F]){1,6}})",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "b\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})",
+     "name": "def.special-char"
+    },
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "begin": "b?r(#*)\"",
+   "end": "\"\\1",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "begin": "\\\\$",
+     "end": "^",
+     "beginCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.preprocessor"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "match": "'([^\\\\']|\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})|\\\\(?:u{(?:[0-9a-fA-F]){1,6}}))'",
+   "name": "def.character"
+  },
+  {
+   "match": "'([^\\\\']|\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})|\\\\(?:u{(?:[0-9a-fA-F]){1,6}})){2,}'(?!(?:([^[:cntrl:][:space:][:punct:][:digit:]]|_)([^[:cntrl:][:punct:][:space:]]|_)*))",
+   "name": "def.error"
+  },
+  {
+   "match": "b'([^\\\\']|\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2}))'",
+   "name": "def.character"
+  },
+  {
+   "match": "b'([^\\\\']|\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})){2,}'",
+   "name": "def.error"
+  },
+  {
+   "match": "'(?:([^[:cntrl:][:space:][:punct:][:digit:]]|_)([^[:cntrl:][:punct:][:space:]]|_)*)",
+   "name": "def.keyword"
+  },
+  {
+   "begin": "\\#!?\\[",
+   "end": "\\]",
+   "beginCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.preprocessor"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    },
+    {
+     "begin": "\"",
+     "end": "\"",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "match": "\\\\(?:'|\"|\\\\|n|r|t|0|x(?:[0-9a-fA-F]){2})|\\\\(?:u{(?:[0-9a-fA-F]){1,6}})",
+       "name": "def.special-char"
+      },
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "begin": "b?r(#*)\"",
+     "end": "\"\\1",
+     "beginCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "endCaptures": {
+      "0": {
+       "name": "def.string"
+      }
+     },
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "rs"
+ ]
+}

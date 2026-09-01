@@ -1,0 +1,81 @@
+{
+ "name": "NSIS",
+ "scopeName": "source.nsis",
+ "patterns": [
+  {
+   "match": "!(?:define|include|insertmacro|ifdef|endif)\\b",
+   "name": "def.operator"
+  },
+  {
+   "match": "\\$((?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)|\\{(?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)\\}|\\(\\^(?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)\\))",
+   "name": "makefile.variable"
+  },
+  {
+   "match": "^\\s*(!define)\\s+((?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*))",
+   "captures": {
+    "1": {
+     "name": "def.operator"
+    },
+    "2": {
+     "name": "makefile.variable"
+    }
+   }
+  },
+  {
+   "begin": ";",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+       "name": "def.underlined"
+      },
+      {
+       "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+       "name": "def.underlined"
+      },
+      {
+       "match": "\\b(FIXME|TODO|XXX)\\b",
+       "name": "def.note"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "\"",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "patterns": [
+    {
+     "match": "\\$((?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)|\\{(?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)\\}|\\(\\^(?:[[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)\\))",
+     "name": "makefile.variable"
+    }
+   ]
+  }
+ ],
+ "fileTypes": [
+  "nsi",
+  "nsh"
+ ]
+}

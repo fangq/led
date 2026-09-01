@@ -1,0 +1,101 @@
+{
+ "name": "VHDL",
+ "scopeName": "source.vhdl",
+ "patterns": [
+  {
+   "begin": "--",
+   "end": "$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.comment"
+    }
+   },
+   "patterns": [
+    {
+     "patterns": [
+      {
+       "begin": "\\\\$",
+       "end": "^",
+       "beginCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       },
+       "endCaptures": {
+        "0": {
+         "name": "def.preprocessor"
+        }
+       }
+      },
+      {
+       "patterns": [
+        {
+         "match": "(?:\\b                                         # separator\n      (https?|ftp|nntp|news|javascript|about):    # protocol\n      [^\\ \\\\]*[^\\ \\\\.:;,?><)](?![a-z0-9_.-]))",
+         "name": "def.underlined"
+        },
+        {
+         "match": "(?:\\b                 # separator\n      (mailto:)?          # optional \"mailto:\"\n      [a-z0-9_.+-]+@[a-z0-9_.+-]+\\b)",
+         "name": "def.underlined"
+        },
+        {
+         "match": "\\b(FIXME|TODO|XXX)\\b",
+         "name": "def.note"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "begin": "\"",
+   "end": "(?:\")|$",
+   "beginCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   },
+   "endCaptures": {
+    "0": {
+     "name": "def.string"
+    }
+   }
+  },
+  {
+   "match": "'.'",
+   "name": "def.string"
+  },
+  {
+   "match": "\\b(?:access|after|alias|all|architecture|array|assert|attribute|begin|block|body|buffer|bus|case|component|configuration|constant|disconnect|downto|else|elsif|end|entity|exit|file|for|function|generate|generic|group|guarded|if|impure|in|inertial|inout|is|label|library|linkage|literal|loop|map|new|next|null|of|on|open|others|out|package|port|postponed|procedure|process|pure|range|record|register|reject|report|return|select|severity|signal|shared|subtype|then|to|transport|type|unaffected|units|until|use|variable|wait|when|while|with|note|warning|error|failure|and|nand|or|nor|xor|xnor|rol|ror|sla|sll|sra|srl|mod|rem|abs|not)\\b",
+   "name": "def.keyword"
+  },
+  {
+   "match": "\\b(?:bit|bit_vector|character|boolean|integer|real|time|string|severity_level|positive|natural|signed|unsigned|line|text|std_logic|std_logic_vector|std_ulogic|std_ulogic_vector|qsim_state|qsim_state_vector|qsim_12state|qsim_12state_vector|qsim_strength|mux_bit|mux_vectory|reg_bit|reg_vector|wor_bit|wor_vector)\\b",
+   "name": "def.type"
+  },
+  {
+   "match": "\\b(?:false|true)\\b",
+   "name": "def.boolean"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9][0-9_]*\\#(?:[0-9a-f][0-9a-f_]*)(\\.(?:[0-9a-f][0-9a-f_]*))?\\#(?:[Ee][+-]?[0-9][0-9_]*)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.base-n-integer"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9][0-9_]*\\.[0-9][0-9_]*(?:[Ee][+-]?[0-9][0-9_]*)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.floating-point"
+  },
+  {
+   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9][0-9_]*(E[+]?[0-9][0-9_]*)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "name": "def.number"
+  }
+ ],
+ "fileTypes": [
+  "vhd"
+ ]
+}
