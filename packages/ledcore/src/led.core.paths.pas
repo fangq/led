@@ -30,6 +30,11 @@ function LedConfigFile(const AName: string): string;
 function LedDataDir: string;
 function LedDataFile(const AName: string): string;
 
+{ Points the configuration at ADirectory for the rest of the process.  Only
+  the self-test uses this, so it can run against a known-empty configuration
+  rather than against whatever the person running it happens to prefer. }
+procedure LedForceConfigDir(const ADirectory: string);
+
 { Writes AContent to APath without leaving a truncated file behind if the
   machine dies mid-write, keeping one generation of backup.  Used for every
   file led rewrites on a timer or at exit. }
@@ -40,6 +45,11 @@ implementation
 var
   FConfigDir: string = '';
   FDataDir: string = '';
+
+procedure LedForceConfigDir(const ADirectory: string);
+begin
+  FConfigDir := IncludeTrailingPathDelimiter(ADirectory);
+end;
 
 function LedConfigDir: string;
 var

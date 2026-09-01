@@ -36,6 +36,16 @@ const
 function LedLineEndName(ALineEnd: TLedLineEnd): string;
 function LedNativeLineEnd: TLedLineEnd;
 
+{ The version, in one place.  led.lpr prints it for --version, the About
+  box shows it and the bug-report text quotes it. }
+const
+  LedVersion = '2.0.0-dev';
+
+{ Which LCL backend this binary was built against -- gtk2, qt5, win32, cocoa.
+  Worth quoting in a bug report, because most of what goes wrong in a GUI
+  goes wrong in exactly one of them. }
+function LedWidgetSetName: string;
+
 implementation
 
 function LedLineEndName(ALineEnd: TLedLineEnd): string;
@@ -57,6 +67,19 @@ begin
   {$ELSE}
   Result := leUnix;
   {$ENDIF}
+end;
+
+function LedWidgetSetName: string;
+begin
+  {$IF DEFINED(LCLGTK2)}     Result := 'gtk2';
+  {$ELSEIF DEFINED(LCLGTK3)} Result := 'gtk3';
+  {$ELSEIF DEFINED(LCLQT5)}  Result := 'qt5';
+  {$ELSEIF DEFINED(LCLQT6)}  Result := 'qt6';
+  {$ELSEIF DEFINED(LCLWIN32)}Result := 'win32';
+  {$ELSEIF DEFINED(LCLCOCOA)}Result := 'cocoa';
+  {$ELSEIF DEFINED(LCLNOGUI)}Result := 'nogui';
+  {$ELSE}                    Result := 'unknown';
+  {$IFEND}
 end;
 
 end.

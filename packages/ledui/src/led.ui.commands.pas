@@ -72,6 +72,11 @@ const
   LedMinFontSize = 4;
   LedMaxFontSize = 72;
 
+{ Removes trailing spaces and tabs from every line, as one undo step.  medit
+  did this on save only; having it as a command as well is what people
+  actually reach for. }
+function LedStripTrailingSpace(AView: TLedEdit): Integer;
+
 implementation
 
 procedure LedGotoLine(AView: TLedEdit; ALine: Integer);
@@ -435,6 +440,29 @@ begin
   if Size < LedMinFontSize then Size := LedMinFontSize;
   if Size > LedMaxFontSize then Size := LedMaxFontSize;
   AView.Font.Size := Size;
+end;
+
+function LedStripTrailingSpace(AView: TLedEdit): Integer;
+var
+  i: Integer;
+  Line, Trimmed: string;
+begin
+  Result := 0;
+  AView.BeginUndoBlock;
+  try
+    for i := 0 to AView.Lines.Count - 1 do
+    begin
+      Line := AView.Lines[i];
+      Trimmed := TrimRight(Line);
+      if Trimmed = Line then Continue;
+      { TextBetweenPoints rather than Lines[i], so the change is undoable. }
+      AView.TextBetweenPoints[Point(Length(Trimmed) + 1, i + 1),
+                              Point(Length(Line) + 1, i + 1)] := '';
+      Inc(Result);
+    end;
+  finally
+    AView.EndUndoBlock;
+  end;
 end;
 
 end.

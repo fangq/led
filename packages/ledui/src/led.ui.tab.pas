@@ -10,7 +10,7 @@ unit Led.UI.Tab;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls,
+  Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
   Led.UI.Document, Led.UI.Edit;
 
 const
@@ -23,8 +23,10 @@ type
     FViews: TFPList;            // of TLedEdit, in creation order
     FActiveView: TLedEdit;
     FSheet: TTabSheet;          // the page this tab lives on
+    FViewPopupMenu: TPopupMenu;
     procedure ViewEnter(Sender: TObject);
     function AddView(AParent: TWinControl): TLedEdit;
+    procedure SetViewPopupMenu(AValue: TPopupMenu);
     function GetViewCount: Integer;
     function GetView(AIndex: Integer): TLedEdit;
   public
@@ -42,10 +44,38 @@ type
     property ActiveView: TLedEdit read FActiveView;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
+    { Applied to every view the tab creates, including the ones a later split
+      adds, so the context menu does not go missing after Split View. }
+    property ViewPopupMenu: TPopupMenu read FViewPopupMenu write SetViewPopupMenu;
     property Sheet: TTabSheet read FSheet write FSheet;
   end;
 
 implementation
+
+{ A TPairSplitter leaves its divider wherever the default position puts it,
+  which is not the middle, so a fresh split looks lopsided.  The size is only
+  known once the layout has run, hence the InitialSize fallback for a splitter
+  that is not on screen yet. }
+procedure CentreSplitter(ASplitter: TPairSplitter);
+var
+  Extent: Integer;
+begin
+  ASplitter.HandleNeeded;
+  if ASplitter.SplitterType = pstHorizontal then
+    Extent := ASplitter.Width
+  else
+    Extent := ASplitter.Height;
+  if Extent < 40 then
+  begin
+    if ASplitter.SplitterType = pstHorizontal then
+      Extent := ASplitter.Parent.ClientWidth
+    else
+      Extent := ASplitter.Parent.ClientHeight;
+  end;
+  if Extent >= 40 then
+    ASplitter.Position := Extent div 2;
+end;
+
 
 constructor TLedTab.CreateForDocument(AOwner: TComponent; ADoc: TLedDocument);
 begin
@@ -83,12 +113,22 @@ begin
   Result := TLedEdit(FViews[AIndex]);
 end;
 
+procedure TLedTab.SetViewPopupMenu(AValue: TPopupMenu);
+var
+  i: Integer;
+begin
+  FViewPopupMenu := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).PopupMenu := AValue;
+end;
+
 function TLedTab.AddView(AParent: TWinControl): TLedEdit;
 begin
   Result := FDocument.CreateView(Self);
   Result.Parent := AParent;
   Result.Align := alClient;
   Result.OnEnter := @ViewEnter;
+  Result.PopupMenu := FViewPopupMenu;
   FViews.Add(Result);
   if FActiveView = nil then
     FActiveView := Result;
@@ -135,6 +175,8 @@ begin
   { Start the new view where the old one is looking. }
   NewView.TopLine := Old.TopLine;
   NewView.CaretXY := Old.CaretXY;
+
+  CentreSplitter(Splitter);
 end;
 
 procedure TLedTab.Unsplit;

@@ -343,18 +343,31 @@ begin
   if ATheme.Find(LedStyleCurrentLine, S) and (lsfBackground in S.Flags) then
     AEdit.LineHighlightColor.Background := LedColourToTColor(S.Background);
 
-  if ATheme.Find(LedStyleLineNumbers, S) then
+  { Three of the eight shipped schemes -- classic, medit, tango -- say
+    nothing about line-numbers.  GtkSourceView then draws them in the
+    widget's ordinary text colours, whereas SynEdit falls back to a pale
+    grey that is barely legible on a light background.  So fall back the way
+    medit does, to the text style. }
+  if not ATheme.Find(LedStyleLineNumbers, S) then
+    if not ATheme.Find(LedStyleText, S) then
+      S := Default(TLedStyle);
+
+  if lsfForeground in S.Flags then
+    AEdit.Gutter.LineNumberPart.MarkupInfo.Foreground :=
+      LedColourToTColor(S.Foreground);
+  if lsfBackground in S.Flags then
   begin
-    if lsfForeground in S.Flags then
-      AEdit.Gutter.LineNumberPart.MarkupInfo.Foreground :=
-        LedColourToTColor(S.Foreground);
-    if lsfBackground in S.Flags then
-    begin
-      AEdit.Gutter.LineNumberPart.MarkupInfo.Background :=
-        LedColourToTColor(S.Background);
-      AEdit.Gutter.Color := LedColourToTColor(S.Background);
-    end;
+    AEdit.Gutter.LineNumberPart.MarkupInfo.Background :=
+      LedColourToTColor(S.Background);
+    AEdit.Gutter.Color := LedColourToTColor(S.Background);
+    AEdit.Gutter.MarksPart.MarkupInfo.Background := LedColourToTColor(S.Background);
+    AEdit.Gutter.CodeFoldPart.MarkupInfo.Background := LedColourToTColor(S.Background);
+    AEdit.Gutter.SeparatorPart.MarkupInfo.Background := LedColourToTColor(S.Background);
   end;
+  { The fold triangles are drawn in the gutter's own foreground and are
+    invisible against a dark scheme otherwise. }
+  if lsfForeground in S.Flags then
+    AEdit.Gutter.CodeFoldPart.MarkupInfo.Foreground := LedColourToTColor(S.Foreground);
 
   if ATheme.Find(LedStyleBracketMatch, S) then
   begin

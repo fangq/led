@@ -28,6 +28,7 @@ type
 
   TLedTermView = class(TCustomControl)
   private
+    FInFontChange: Boolean;
     FPty: TLedPty;
     FScreen: TLedTermScreen;
     FTimer: TTimer;
@@ -422,9 +423,20 @@ procedure TLedTermView.FontChanged(Sender: TObject);
 begin
   inherited FontChanged(Sender);
   { A different font means a different number of rows and columns, and the
-    child has to be told or it will keep drawing at the old size. }
-  MeasureFont;
-  Resize;
+    shell has to be told or it will keep wrapping at the old width.
+
+    The guard is not optional.  Measuring touches the Canvas, which on gtk2
+    realizes the control, which changes the font again -- so without it the
+    first Parent assignment recurses until the program stops responding.
+    Nothing can be measured before there is a handle anyway. }
+  if FInFontChange or not HandleAllocated then Exit;
+  FInFontChange := True;
+  try
+    MeasureFont;
+    Resize;
+  finally
+    FInFontChange := False;
+  end;
 end;
 
 procedure TLedTermView.Paste(const AText: string);

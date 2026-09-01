@@ -12,7 +12,8 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
-  ExtCtrls, Math, SynEdit, SynEditTypes,
+  ExtCtrls, Math, Graphics, ImgList, Clipbrd, LCLIntf, ToolWin,
+  SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths,
@@ -21,7 +22,7 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
-  Led.UI.Print;
+  Led.UI.Print, Led.UI.Icons;
 
 type
   TLedMainForm = class(TForm)
@@ -79,41 +80,72 @@ type
     actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
+    actNewWindow: TAction;
+    actCloseAll: TAction;
+    actReopenEncoding: TAction;
+    actPageSetup: TAction;
+    actPrintPdf: TAction;
+    actExportHtml: TAction;
+    actDelete: TAction;
+    actFindCurrent: TAction;
+    actFindCurrentBack: TAction;
+    actPrevTab: TAction;
+    actNextTab: TAction;
+    actFocusDoc: TAction;
+    actMoveToSplit: TAction;
+    actShowToolbar: TAction;
+    actStripTrailing: TAction;
+    actToggleBrowser: TAction;
+    actSplitTermH: TAction;
+    actSplitTermV: TAction;
+    actHelp: TAction;
+    actReportBug: TAction;
+    actAbout: TAction;
     MainMenu1: TMainMenu;
     mnuFile: TMenuItem;
     mi_New: TMenuItem;
+    mi_NewWindow: TMenuItem;
+    miSep1: TMenuItem;
     mi_Open: TMenuItem;
     miOpenRecent: TMenuItem;
+    miReopenEncoding: TMenuItem;
     mi_Reload: TMenuItem;
-    miSep1: TMenuItem;
+    miSep2: TMenuItem;
     mi_Save: TMenuItem;
     mi_SaveAs: TMenuItem;
-    miSep2: TMenuItem;
-    mi_Print: TMenuItem;
     miSep3: TMenuItem;
+    mi_PageSetup: TMenuItem;
+    mi_Print: TMenuItem;
+    mi_PrintPdf: TMenuItem;
+    mi_ExportHtml: TMenuItem;
+    miSep4: TMenuItem;
     mi_CloseTab: TMenuItem;
+    mi_CloseAll: TMenuItem;
+    miSep5: TMenuItem;
     mi_Quit: TMenuItem;
     mnuEdit: TMenuItem;
     mi_Undo: TMenuItem;
     mi_Redo: TMenuItem;
-    miSep4: TMenuItem;
+    miSep6: TMenuItem;
     mi_Cut: TMenuItem;
     mi_Copy: TMenuItem;
     mi_Paste: TMenuItem;
-    miSep5: TMenuItem;
+    mi_Delete: TMenuItem;
+    miSep7: TMenuItem;
     mi_SelectAll: TMenuItem;
     mi_PasteColumn: TMenuItem;
     mi_ClearSelection: TMenuItem;
-    miSep6: TMenuItem;
+    miSep8: TMenuItem;
     mi_Indent: TMenuItem;
     mi_Unindent: TMenuItem;
     mi_IndentSpace: TMenuItem;
     mi_UnindentSpace: TMenuItem;
-    miSep7: TMenuItem;
+    miSep9: TMenuItem;
     mi_Comment: TMenuItem;
     mi_Uncomment: TMenuItem;
+    mi_StripTrailing: TMenuItem;
     mi_Complete: TMenuItem;
-    miSep8: TMenuItem;
+    miSep10: TMenuItem;
     mi_Shortcuts: TMenuItem;
     mi_Preferences: TMenuItem;
     mnuSearch: TMenuItem;
@@ -123,47 +155,153 @@ type
     mi_FindPrev: TMenuItem;
     mi_QuickFind: TMenuItem;
     mi_FindInFiles: TMenuItem;
-    miSep9: TMenuItem;
+    miSep11: TMenuItem;
+    mi_FindCurrent: TMenuItem;
+    mi_FindCurrentBack: TMenuItem;
+    miSep12: TMenuItem;
     mi_GotoLine: TMenuItem;
-    miSep10: TMenuItem;
+    miSep13: TMenuItem;
     mi_ToggleBracket: TMenuItem;
     mi_SelectToBracket: TMenuItem;
     mnuDocument: TMenuItem;
     miLanguage: TMenuItem;
     miEncoding: TMenuItem;
     miLineEnd: TMenuItem;
-    miSep11: TMenuItem;
+    miSep14: TMenuItem;
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
     mnuTools: TMenuItem;
     miToolList: TMenuItem;
-    miSep12: TMenuItem;
+    miSep15: TMenuItem;
+    mi_SplitTermH: TMenuItem;
+    mi_SplitTermV: TMenuItem;
+    miSep16: TMenuItem;
     mi_StopTool: TMenuItem;
     mnuView: TMenuItem;
+    mi_ShowToolbar: TMenuItem;
+    miSep17: TMenuItem;
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
-    miSep13: TMenuItem;
+    miSep18: TMenuItem;
+    mi_FocusDoc: TMenuItem;
+    mi_MoveToSplit: TMenuItem;
+    miSep19: TMenuItem;
     mi_ToggleFold: TMenuItem;
     mi_FoldAll: TMenuItem;
     mi_UnfoldAll: TMenuItem;
-    miSep14: TMenuItem;
+    miSep20: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep15: TMenuItem;
+    miSep21: TMenuItem;
     miTheme: TMenuItem;
-    miSep16: TMenuItem;
+    miSep22: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
+    mi_ToggleBrowser: TMenuItem;
     mi_ToggleOutput: TMenuItem;
     mi_ToggleTerminal: TMenuItem;
     mi_ToggleSymbols: TMenuItem;
     mi_TogglePreview: TMenuItem;
+    mnuWindow: TMenuItem;
+    mi_PrevTab: TMenuItem;
+    mi_NextTab: TMenuItem;
+    miSep23: TMenuItem;
+    miDocList: TMenuItem;
+    mnuHelp: TMenuItem;
+    mi_Help: TMenuItem;
+    mi_ReportBug: TMenuItem;
+    miSep24: TMenuItem;
+    mi_About: TMenuItem;
+    ImageList1: TImageList;
+    ToolBar1: TToolBar;
+    tbNew: TToolButton;
+    tbSep1: TToolButton;
+    tbOpen: TToolButton;
+    tbSave: TToolButton;
+    tbSaveAs: TToolButton;
+    tbSep2: TToolButton;
+    tbUndo: TToolButton;
+    tbRedo: TToolButton;
+    tbSep3: TToolButton;
+    tbCut: TToolButton;
+    tbCopy: TToolButton;
+    tbPaste: TToolButton;
+    tbSep4: TToolButton;
+    tbFind: TToolButton;
+    tbReplace: TToolButton;
+    tbSep5: TToolButton;
+    tbStopTool: TToolButton;
+    PopupEditor: TPopupMenu;
+    mcUndo: TMenuItem;
+    mcRedo: TMenuItem;
+    mcSep1: TMenuItem;
+    mcCut: TMenuItem;
+    mcCopy: TMenuItem;
+    mcPaste: TMenuItem;
+    mcDelete: TMenuItem;
+    mcSep2: TMenuItem;
+    mcSelectAll: TMenuItem;
+    mcSep3: TMenuItem;
+    mcComment: TMenuItem;
+    mcUncomment: TMenuItem;
+    mcIndent: TMenuItem;
+    mcUnindent: TMenuItem;
+    mcSep4: TMenuItem;
+    mcToggleBookmark: TMenuItem;
+    mcToggleFold: TMenuItem;
+    mcSep5: TMenuItem;
+    miCtxTools: TMenuItem;
+    mcSep6: TMenuItem;
+    mcGotoLine: TMenuItem;
+    mcFindCurrent: TMenuItem;
+    PopupTab: TPopupMenu;
+    mtSave: TMenuItem;
+    mtSaveAs: TMenuItem;
+    mtReload: TMenuItem;
+    mtSep1: TMenuItem;
+    mtCloseTab: TMenuItem;
+    mtCloseAll: TMenuItem;
+    mtSep2: TMenuItem;
+    miTabCloseOthers: TMenuItem;
+    miTabCopyPath: TMenuItem;
+    miTabOpenFolder: TMenuItem;
+    mtSep3: TMenuItem;
+    mtSplitSideBySide: TMenuItem;
+    mtSplitStacked: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
+    procedure actAboutExecute(Sender: TObject);
+    procedure actCloseAllExecute(Sender: TObject);
+    procedure actDeleteExecute(Sender: TObject);
+    procedure actExportHtmlExecute(Sender: TObject);
+    procedure actFindCurrentBackExecute(Sender: TObject);
+    procedure actFindCurrentExecute(Sender: TObject);
+    procedure actFocusDocExecute(Sender: TObject);
+    procedure actHelpExecute(Sender: TObject);
+    procedure actMoveToSplitExecute(Sender: TObject);
+    procedure actNewWindowExecute(Sender: TObject);
+    procedure actNextTabExecute(Sender: TObject);
+    procedure actPageSetupExecute(Sender: TObject);
+    procedure actPrevTabExecute(Sender: TObject);
+    procedure actPrintPdfExecute(Sender: TObject);
+    procedure actReopenEncodingExecute(Sender: TObject);
+    procedure actReportBugExecute(Sender: TObject);
+    procedure actShowToolbarExecute(Sender: TObject);
+    procedure actSplitTermHExecute(Sender: TObject);
+    procedure actSplitTermVExecute(Sender: TObject);
+    procedure actStripTrailingExecute(Sender: TObject);
+    procedure actToggleBrowserExecute(Sender: TObject);
+    procedure miReopenEncodingClick(Sender: TObject);
+    procedure miDocListClick(Sender: TObject);
+    procedure miTabCloseOthersClick(Sender: TObject);
+    procedure miTabCopyPathClick(Sender: TObject);
+    procedure miTabOpenFolderClick(Sender: TObject);
+    procedure PopupEditorPopup(Sender: TObject);
+    procedure PopupTabPopup(Sender: TObject);
     procedure ActionList1Update(AAction: TBasicAction; var Handled: Boolean);
     procedure actCloseTabExecute(Sender: TObject);
     procedure actCycleViewsExecute(Sender: TObject);
@@ -289,6 +427,15 @@ type
     procedure UpdateStatusBar;
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
+    procedure CloseActiveTab(AReplace: Boolean);
+    procedure PopulateReopenMenu;
+    procedure ReopenEncodingItemClick(Sender: TObject);
+    procedure PopulateDocMenu;
+    procedure DocItemClick(Sender: TObject);
+    function TabOnPage(AIndex: Integer): TLedTab;
+    procedure FindWordAtCursor(ABackwards: Boolean);
+    procedure PopulateContextTools;
+    procedure BuildIcons;
   public
     { Every message the window shows goes through these two, so that
       --self-test and --script can run without a modal dialog stopping them
@@ -385,8 +532,19 @@ begin
   end;
 end;
 
+{ The image list ships empty and is drawn here, once, against the current
+  theme's menu-text colour, so the icons stay legible under a dark theme
+  instead of being black-on-black. }
+procedure TLedMainForm.BuildIcons;
+begin
+  ImageList1.Width := 16;
+  ImageList1.Height := 16;
+  LedBuildIconList(ImageList1, LedIconNames, clBtnText);
+end;
+
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
+  BuildIcons;
   FDocs := TLedDocuments.Create(Self);
   FRecent := TLedRecentFiles.Create;
   FRecent.Load;
@@ -412,6 +570,8 @@ begin
   FBook.Parent := FDock.Center;
   FBook.Align := alClient;
   FBook.OnChange := @BookChange;
+  FBook.Images := ImageList1;
+  FBook.PopupMenu := PopupTab;
 
   { Phase 0 placeholders so the dock edges can be exercised; real panes arrive
     in phases 3 and 5. }
@@ -431,6 +591,9 @@ begin
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
+  ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
+  actShowToolbar.Checked := ToolBar1.Visible;
+
   if not RestoreSession then
     actNewExecute(nil);
 
@@ -445,6 +608,8 @@ begin
   PopulateLineEndMenu;
   PopulateThemeMenu;
   PopulateToolMenu;
+  PopulateReopenMenu;
+  PopulateDocMenu;
 end;
 
 procedure TLedMainForm.FormDestroy(Sender: TObject);
@@ -1583,6 +1748,7 @@ begin
   ADoc.OnChanged := @DocChanged;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
+  Result.ViewPopupMenu := PopupEditor;
   RefreshTabCaption(Result);
   FBook.ActivePage := Sheet;
   if Result.ActiveView.CanFocus then
@@ -1597,7 +1763,12 @@ begin
   if (ATab = nil) or (ATab.Sheet = nil) then Exit;
   S := ATab.Document.DisplayName;
   if ATab.Document.Modified then
+  begin
     S := '*' + S;
+    ATab.Sheet.ImageIndex := LedIconIndex('docmodified');
+  end
+  else
+    ATab.Sheet.ImageIndex := LedIconIndex('doc');
   ATab.Sheet.Caption := S;
 end;
 
@@ -1861,6 +2032,16 @@ begin
 end;
 
 procedure TLedMainForm.actCloseTabExecute(Sender: TObject);
+begin
+  if ActiveTab = nil then Exit;
+  if not ConfirmClose(ActiveTab.Document) then Exit;
+  CloseActiveTab(True);
+end;
+
+{ Closes the current tab, having already agreed with the user that it may go.
+  AReplace opens a fresh untitled document when the last tab is closed, which
+  is right for File / Close but wrong in the middle of a Close All run. }
+procedure TLedMainForm.CloseActiveTab(AReplace: Boolean);
 var
   Tab: TLedTab;
   Sheet: TTabSheet;
@@ -1869,7 +2050,6 @@ begin
   Tab := ActiveTab;
   if Tab = nil then Exit;
   Doc := Tab.Document;
-  if not ConfirmClose(Doc) then Exit;
 
   Sheet := Tab.Sheet;
   Tab.Free;          // detaches its views from the document
@@ -1877,7 +2057,7 @@ begin
   if Doc.ViewCount = 0 then
     FDocs.CloseDocument(Doc);
 
-  if FBook.PageCount = 0 then
+  if AReplace and (FBook.PageCount = 0) then
     actNewExecute(nil)
   else
     UpdateStatusBar;
@@ -1950,6 +2130,457 @@ begin
   FRecent.Save;
   if LedPrefs.Dirty then
     LedPrefs.Save;
+end;
+
+
+{ ---- File ------------------------------------------------------------- }
+
+procedure TLedMainForm.actNewWindowExecute(Sender: TObject);
+var
+  W: TLedMainForm;
+begin
+  { Each window owns its own documents.  Sharing them across windows is what
+    medit did and it is the reason its document manager is a singleton; here
+    a second window is simply a second editor, which is easier to reason
+    about and covers what the menu item is actually used for. }
+  if Silent then Exit;
+  W := TLedMainForm.Create(Application);
+  W.Show;
+end;
+
+procedure TLedMainForm.actCloseAllExecute(Sender: TObject);
+begin
+  while FBook.PageCount > 0 do
+  begin
+    FBook.ActivePageIndex := FBook.PageCount - 1;
+    if ActiveTab = nil then Break;
+    { A cancelled save prompt stops the whole run, as it does in medit. }
+    if not ConfirmClose(ActiveTab.Document) then Exit;
+    CloseActiveTab(False);
+  end;
+  if FBook.PageCount = 0 then actNewExecute(nil);
+end;
+
+procedure TLedMainForm.miReopenEncodingClick(Sender: TObject);
+begin
+  PopulateReopenMenu;
+end;
+
+procedure TLedMainForm.PopulateReopenMenu;
+var
+  i: Integer;
+  Item: TMenuItem;
+  Names: TStringList;
+begin
+  miReopenEncoding.Clear;
+  Names := TStringList.Create;
+  try
+    GetSupportedEncodings(Names);
+    for i := 0 to Names.Count - 1 do
+    begin
+      Item := TMenuItem.Create(miReopenEncoding);
+      Item.Caption := Names[i];
+      Item.Hint := Names[i];
+      Item.OnClick := @ReopenEncodingItemClick;
+      miReopenEncoding.Add(Item);
+    end;
+  finally
+    Names.Free;
+  end;
+  miReopenEncoding.Enabled := (ActiveTab <> nil) and
+    (ActiveTab.Document.FileName <> '');
+end;
+
+procedure TLedMainForm.ReopenEncodingItemClick(Sender: TObject);
+var
+  Doc: TLedDocument;
+  Enc: string;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if Doc.FileName = '' then Exit;
+  if Doc.Modified and
+     not Confirm('Reopening discards unsaved changes.  Continue?', False) then
+    Exit;
+  Enc := LedNormaliseEncoding(TMenuItem(Sender).Hint);
+  try
+    Doc.Reload(Enc);
+  except
+    on E: Exception do ReportError('Could not reopen: ' + E.Message);
+  end;
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actReopenEncodingExecute(Sender: TObject);
+begin
+  { The action exists so the id matches medit's; the work is in the submenu. }
+  PopulateReopenMenu;
+end;
+
+procedure TLedMainForm.actPageSetupExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  LedPageSetup(Self);
+end;
+
+procedure TLedMainForm.actPrintPdfExecute(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+begin
+  if (Silent) or (ActiveTab = nil) then Exit;
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title := 'Export as PDF';
+    Dlg.Filter := 'PDF files|*.pdf|All files|*';
+    Dlg.DefaultExt := '.pdf';
+    Dlg.Options := Dlg.Options + [ofOverwritePrompt];
+    Dlg.FileName := ChangeFileExt(ExtractFileName(
+      ActiveTab.Document.DisplayName), '.pdf');
+    if not Dlg.Execute then Exit;
+    try
+      LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
+    except
+      on E: Exception do ReportError('Could not write the PDF: ' + E.Message);
+    end;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+procedure TLedMainForm.actExportHtmlExecute(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+begin
+  if (Silent) or (ActiveTab = nil) then Exit;
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title := 'Export as HTML';
+    Dlg.Filter := 'HTML files|*.html;*.htm|All files|*';
+    Dlg.DefaultExt := '.html';
+    Dlg.Options := Dlg.Options + [ofOverwritePrompt];
+    Dlg.FileName := ChangeFileExt(ExtractFileName(
+      ActiveTab.Document.DisplayName), '.html');
+    if not Dlg.Execute then Exit;
+    try
+      LedExportHtml(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
+    except
+      on E: Exception do ReportError('Could not write the HTML: ' + E.Message);
+    end;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+{ ---- Edit ------------------------------------------------------------- }
+
+procedure TLedMainForm.actDeleteExecute(Sender: TObject);
+begin
+  if CurrentView = nil then Exit;
+  if CurrentView.SelAvail then
+    CurrentView.ClearSelection
+  else
+    CurrentView.CommandProcessor(ecDeleteChar, #0, nil);
+end;
+
+procedure TLedMainForm.actStripTrailingExecute(Sender: TObject);
+begin
+  if CurrentView <> nil then LedStripTrailingSpace(CurrentView);
+end;
+
+{ ---- Search ----------------------------------------------------------- }
+
+procedure TLedMainForm.FindWordAtCursor(ABackwards: Boolean);
+var
+  V: TLedEdit;
+  Word: string;
+  Saved: Boolean;
+begin
+  V := SearchView;
+  if V = nil then Exit;
+  if V.SelAvail then
+    Word := V.SelText
+  else
+    Word := V.GetWordAtRowCol(V.LogicalCaretXY);
+  if Word = '' then Exit;
+
+  FSearch.SearchText := Word;
+  FSearch.RememberSearch(Word);
+  Saved := FSearch.Backwards;
+  FSearch.Backwards := ABackwards;
+  try
+    LedFindNext(V, FSearch, False);
+  finally
+    FSearch.Backwards := Saved;
+  end;
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actFindCurrentExecute(Sender: TObject);
+begin
+  FindWordAtCursor(False);
+end;
+
+procedure TLedMainForm.actFindCurrentBackExecute(Sender: TObject);
+begin
+  FindWordAtCursor(True);
+end;
+
+{ ---- Window ----------------------------------------------------------- }
+
+procedure TLedMainForm.actPrevTabExecute(Sender: TObject);
+begin
+  if FBook.PageCount < 2 then Exit;
+  if FBook.ActivePageIndex = 0 then
+    FBook.ActivePageIndex := FBook.PageCount - 1
+  else
+    FBook.ActivePageIndex := FBook.ActivePageIndex - 1;
+  BookChange(nil);
+end;
+
+procedure TLedMainForm.actNextTabExecute(Sender: TObject);
+begin
+  if FBook.PageCount < 2 then Exit;
+  if FBook.ActivePageIndex = FBook.PageCount - 1 then
+    FBook.ActivePageIndex := 0
+  else
+    FBook.ActivePageIndex := FBook.ActivePageIndex + 1;
+  BookChange(nil);
+end;
+
+procedure TLedMainForm.miDocListClick(Sender: TObject);
+begin
+  PopulateDocMenu;
+end;
+
+procedure TLedMainForm.PopulateDocMenu;
+var
+  i: Integer;
+  Item: TMenuItem;
+  Tab: TLedTab;
+begin
+  miDocList.Clear;
+  for i := 0 to FBook.PageCount - 1 do
+  begin
+    Tab := TabOnPage(i);
+    if Tab = nil then Continue;
+    Item := TMenuItem.Create(miDocList);
+    Item.Caption := Tab.Document.DisplayName;
+    if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
+    Item.Tag := i;
+    Item.RadioItem := True;
+    Item.Checked := i = FBook.ActivePageIndex;
+    Item.OnClick := @DocItemClick;
+    miDocList.Add(Item);
+  end;
+  miDocList.Enabled := miDocList.Count > 0;
+  if miDocList.Count = 0 then miDocList.Caption := '(no documents)';
+end;
+
+procedure TLedMainForm.DocItemClick(Sender: TObject);
+begin
+  FBook.ActivePageIndex := TMenuItem(Sender).Tag;
+  BookChange(nil);
+end;
+
+function TLedMainForm.TabOnPage(AIndex: Integer): TLedTab;
+var
+  j: Integer;
+begin
+  Result := nil;
+  if (AIndex < 0) or (AIndex >= FBook.PageCount) then Exit;
+  for j := 0 to FBook.Pages[AIndex].ControlCount - 1 do
+    if FBook.Pages[AIndex].Controls[j] is TLedTab then
+      Exit(TLedTab(FBook.Pages[AIndex].Controls[j]));
+end;
+
+{ ---- View ------------------------------------------------------------- }
+
+procedure TLedMainForm.actFocusDocExecute(Sender: TObject);
+begin
+  if (ActiveView <> nil) and ActiveView.CanFocus then ActiveView.SetFocus;
+end;
+
+procedure TLedMainForm.actMoveToSplitExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  { With one notebook there is no other notebook to move to, so this does
+    what the name promises within the tab: move the caret to the next view,
+    splitting first if there is only one. }
+  Tab := ActiveTab;
+  if Tab = nil then Exit;
+  if Tab.ViewCount < 2 then
+    Tab.SplitView(False);
+  Tab.CycleViews;
+end;
+
+procedure TLedMainForm.actShowToolbarExecute(Sender: TObject);
+begin
+  ToolBar1.Visible := not ToolBar1.Visible;
+  actShowToolbar.Checked := ToolBar1.Visible;
+  LedPrefs.SetBool('Editor/show_toolbar', ToolBar1.Visible);
+end;
+
+procedure TLedMainForm.actToggleBrowserExecute(Sender: TObject);
+begin
+  FDock.ShowPane('files');
+  FDock.EdgeVisible[ledLeft] := True;
+end;
+
+{ ---- Tools ------------------------------------------------------------ }
+
+procedure TLedMainForm.actSplitTermHExecute(Sender: TObject);
+begin
+  actToggleTerminalExecute(nil);
+  if FTerminal <> nil then FTerminal.Split(False);
+end;
+
+procedure TLedMainForm.actSplitTermVExecute(Sender: TObject);
+begin
+  actToggleTerminalExecute(nil);
+  if FTerminal <> nil then FTerminal.Split(True);
+end;
+
+{ ---- Help ------------------------------------------------------------- }
+
+procedure TLedMainForm.actHelpExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  ShowMessage(
+    'led ' + LedVersion + ' -- a light editor.' + LineEnding + LineEnding +
+    'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
+    LineEnding +
+    'and every one of them can be changed there.' + LineEnding + LineEnding +
+    'Documentation lives in README.md next to the program.');
+end;
+
+procedure TLedMainForm.actReportBugExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  ShowMessage(
+    'Please report bugs with:' + LineEnding + LineEnding +
+    '  led version:  ' + LedVersion + LineEnding +
+    '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
+      LineEnding +
+    '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +
+    'and the steps that reproduce it.');
+end;
+
+procedure TLedMainForm.actAboutExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  ShowMessage(
+    'led ' + LedVersion + LineEnding + LineEnding +
+    'A light editor, in the shape of medit.' + LineEnding +
+    'Free Pascal ' + {$I %FPCVERSION%} + ', Lazarus LCL, SynEdit.' +
+    LineEnding + LineEnding +
+    'Widgetset: ' + LedWidgetSetName);
+end;
+
+{ ---- The context menus ------------------------------------------------ }
+
+procedure TLedMainForm.PopupEditorPopup(Sender: TObject);
+var
+  V: TLedEdit;
+  HasSel: Boolean;
+begin
+  V := CurrentView;
+  HasSel := (V <> nil) and V.SelAvail;
+  mcUndo.Enabled := (V <> nil) and V.CanUndo;
+  mcRedo.Enabled := (V <> nil) and V.CanRedo;
+  mcCut.Enabled := HasSel;
+  mcCopy.Enabled := HasSel;
+  mcDelete.Enabled := HasSel;
+  mcPaste.Enabled := V <> nil;
+  mcSelectAll.Enabled := (V <> nil) and (V.Lines.Count > 0);
+  { Comment markers come from the grammar, so a language without them should
+    not offer the item at all. }
+  mcComment.Enabled := actComment.Enabled;
+  mcUncomment.Enabled := actUncomment.Enabled;
+  mcToggleFold.Enabled := actToggleFold.Enabled;
+  PopulateContextTools;
+end;
+
+procedure TLedMainForm.PopulateContextTools;
+var
+  i, Shown: Integer;
+  Item: TMenuItem;
+  Tool: TLedTool;
+  Doc: TLedDocument;
+  LangId, FileName: string;
+begin
+  miCtxTools.Clear;
+  Doc := nil;
+  if ActiveTab <> nil then Doc := ActiveTab.Document;
+  LangId := '';
+  FileName := '';
+  if Doc <> nil then
+  begin
+    LangId := Doc.Config.GetStr(LedSetLang);
+    FileName := Doc.FileName;
+  end;
+
+  Shown := 0;
+  for i := 0 to FTools.Count - 1 do
+  begin
+    Tool := FTools[i];
+    { Only the tools that asked to be here, and only where they apply. }
+    if Tool.Place <> ltpContext then Continue;
+    if not Tool.AppliesTo(LangId, FileName) then Continue;
+    Item := TMenuItem.Create(miCtxTools);
+    Item.Caption := Tool.Name;
+    Item.Hint := Tool.Id;
+    Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
+    Item.OnClick := @ToolItemClick;
+    miCtxTools.Add(Item);
+    Inc(Shown);
+  end;
+
+  miCtxTools.Caption := 'Tools';
+  miCtxTools.Enabled := Shown > 0;
+  if Shown = 0 then miCtxTools.Caption := 'Tools  (none apply here)';
+end;
+
+procedure TLedMainForm.PopupTabPopup(Sender: TObject);
+var
+  Doc: TLedDocument;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  miTabCloseOthers.Enabled := FBook.PageCount > 1;
+  miTabCopyPath.Enabled := Doc.FileName <> '';
+  miTabOpenFolder.Enabled := Doc.FileName <> '';
+  mtReload.Enabled := Doc.FileName <> '';
+end;
+
+procedure TLedMainForm.miTabCloseOthersClick(Sender: TObject);
+var
+  Keep: TLedTab;
+begin
+  Keep := ActiveTab;
+  if Keep = nil then Exit;
+  while FBook.PageCount > 1 do
+  begin
+    if TabOnPage(0) = Keep then
+      FBook.ActivePageIndex := 1
+    else
+      FBook.ActivePageIndex := 0;
+    if ActiveTab = nil then Break;
+    if not ConfirmClose(ActiveTab.Document) then Exit;
+    CloseActiveTab(False);
+  end;
+end;
+
+procedure TLedMainForm.miTabCopyPathClick(Sender: TObject);
+begin
+  if (ActiveTab <> nil) and (ActiveTab.Document.FileName <> '') then
+    Clipboard.AsText := ActiveTab.Document.FileName;
+end;
+
+procedure TLedMainForm.miTabOpenFolderClick(Sender: TObject);
+begin
+  if (ActiveTab <> nil) and (ActiveTab.Document.FileName <> '') then
+    OpenDocument(ExtractFilePath(ActiveTab.Document.FileName));
 end;
 
 end.
