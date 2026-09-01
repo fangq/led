@@ -217,6 +217,19 @@ object LedMainForm: TLedMainForm
       ShortCut = 117
       OnExecute = actCycleViewsExecute
     end
+    object actToggleFold: TAction
+      Caption = 'Toggle &Fold'
+      ShortCut = 24795
+      OnExecute = actToggleFoldExecute
+    end
+    object actFoldAll: TAction
+      Caption = 'Fold &All'
+      OnExecute = actFoldAllExecute
+    end
+    object actUnfoldAll: TAction
+      Caption = '&Unfold All'
+      OnExecute = actUnfoldAllExecute
+    end
     object actWrapText: TAction
       Caption = '&Wrap Text'
       OnExecute = actWrapTextExecute
@@ -399,6 +412,18 @@ object LedMainForm: TLedMainForm
       object miSep10: TMenuItem
         Caption = '-'
       end
+      object mi_ToggleFold: TMenuItem
+        Action = actToggleFold
+      end
+      object mi_FoldAll: TMenuItem
+        Action = actFoldAll
+      end
+      object mi_UnfoldAll: TMenuItem
+        Action = actUnfoldAll
+      end
+      object miSep11: TMenuItem
+        Caption = '-'
+      end
       object mi_SplitSideBySide: TMenuItem
         Action = actSplitSideBySide
       end
@@ -411,14 +436,14 @@ object LedMainForm: TLedMainForm
       object mi_CycleViews: TMenuItem
         Action = actCycleViews
       end
-      object miSep11: TMenuItem
+      object miSep12: TMenuItem
         Caption = '-'
       end
       object miTheme: TMenuItem
         Caption = 'Colour &Theme'
         OnClick = miThemeClick
       end
-      object miSep12: TMenuItem
+      object miSep13: TMenuItem
         Caption = '-'
       end
       object mi_ToggleLeftPane: TMenuItem

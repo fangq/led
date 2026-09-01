@@ -12,13 +12,13 @@ checked off by the presence of a menu entry.
 | Feature | medit | led | Decision |
 |---|---|---|---|
 | Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | yes | done |
-| Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | | phase-2 |
+| Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | not needed for speed | deferred: benchmarked at 88 ms for a 5 MB single line, so this is readability only, and a lines-view decorator risks text corruption. Revisit deliberately |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
-| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | | phase-2 |
-| Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | | phase-2 |
-| Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-2 |
+| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | partly | UI and commands done; C/C++ needs a fold-capable highlighter, which arrives with the grammar converter |
+| Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | partly | works for Pascal today; Matlab/Octave await the converter |
+| Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-6 |
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | | phase-5 |

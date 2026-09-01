@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Clipbrd, SynEdit, SynEditTypes,
+  SynEditHighlighter, SynEditHighlighterFoldBase,
   Led.Syn.Languages, Led.UI.Edit;
 
 { Moves the caret to ALine, clamped, and scrolls it into view. }
@@ -56,6 +57,16 @@ procedure LedPasteColumn(AView: TLedEdit);
 procedure LedClearSelection(AView: TLedEdit);
 
 function LedHasColumnSelection(AView: TLedEdit): Boolean;
+
+{ Folding.  SynEdit builds its fold tree from the highlighter, so these do
+  nothing unless the active highlighter provides fold information -- Pascal,
+  XML, HTML and LFM today, and every converted grammar once TextMate
+  highlighting lands.  LedCanFold reports which, so the menu can grey out
+  rather than appear broken. }
+function LedCanFold(AView: TLedEdit): Boolean;
+procedure LedToggleFold(AView: TLedEdit);
+procedure LedFoldAll(AView: TLedEdit);
+procedure LedUnfoldAll(AView: TLedEdit);
 
 const
   LedMinFontSize = 4;
@@ -366,6 +377,35 @@ begin
     Lines.Free;
   end;
 end;
+
+function LedCanFold(AView: TLedEdit): Boolean;
+begin
+  Result := (AView <> nil) and (AView.Highlighter <> nil) and
+    (AView.Highlighter is TSynCustomFoldHighlighter);
+end;
+
+{ TSynEdit keeps its fold view private and exposes only these three, which
+  carry a deprecated marker but are the whole public surface for folding.
+  Wrapping them here means one place to revisit if that changes. }
+{$PUSH}{$WARN SYMBOL_DEPRECATED OFF}
+procedure LedToggleFold(AView: TLedEdit);
+begin
+  if not LedCanFold(AView) then Exit;
+  AView.CodeFoldAction(AView.CaretY - 1);
+end;
+
+procedure LedFoldAll(AView: TLedEdit);
+begin
+  if not LedCanFold(AView) then Exit;
+  AView.FoldAll(0, True);
+end;
+
+procedure LedUnfoldAll(AView: TLedEdit);
+begin
+  if not LedCanFold(AView) then Exit;
+  AView.UnfoldAll;
+end;
+{$POP}
 
 procedure LedZoomFont(AView: TLedEdit; ADelta: Integer);
 var
