@@ -24,8 +24,8 @@
             <Filename Value="../bin/led"/>
           </Target>
       <SearchPaths>
-        <IncludeFiles Value="$(ProjOutDir)"/>
-        <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src;../packages/ledterm/src"/>
+        <IncludeFiles Value="$(ProjOutDir);../packages/ledsyn/vendor"/>
+        <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src;../packages/ledterm/src;../packages/ledsyn/vendor"/>
         <UnitOutputDirectory Value="../lib/$(TargetCPU)-$(TargetOS)-$(BuildMode)"/>
       </SearchPaths>
       <Parsing>
@@ -310,8 +310,8 @@
       <Filename Value="../bin/led"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src;../packages/ledterm/src"/>
+      <IncludeFiles Value="$(ProjOutDir);../packages/ledsyn/vendor"/>
+      <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src;../packages/ledterm/src;../packages/ledsyn/vendor"/>
       <UnitOutputDirectory Value="../lib/$(TargetCPU)-$(TargetOS)-$(BuildMode)"/>
     </SearchPaths>
     <Parsing>

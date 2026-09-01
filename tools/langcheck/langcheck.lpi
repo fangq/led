@@ -16,7 +16,7 @@
     </BuildModes>
     <RequiredPackages>
       <Item>
-        <PackageName Value="LazEdit"/>
+        <PackageName Value="LazUtils"/>
       </Item>
     </RequiredPackages>
     <Units>
@@ -32,6 +32,8 @@
       <Filename Value="../../bin/langcheck"/>
     </Target>
     <SearchPaths>
+      <IncludeFiles Value="../../packages/ledsyn/vendor"/>
+      <OtherUnitFiles Value="../../packages/ledsyn/vendor"/>
       <UnitOutputDirectory Value="../../lib/langcheck-$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
   </CompilerOptions>
