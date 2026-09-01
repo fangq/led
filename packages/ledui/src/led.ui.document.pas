@@ -18,8 +18,9 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, SynEdit, SynEditTypes, Led.Core.Types, Led.Core.FileIO,
-  Led.UI.Edit;
+  Classes, SysUtils, Contnrs, SynEdit, SynEditTypes, SynEditMiscClasses,
+  Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
+  Led.Core.Modeline, Led.Core.Prefs, Led.UI.Edit;
 
 type
   TLedDocument = class;
@@ -33,27 +34,48 @@ type
     FFileName: string;
     FInfo: TLedTextInfo;
     FUntitledNo: Integer;
+    FConfig: TLedDocConfig;
+    FDiskAge: LongInt;          // mtime as of the last load or save
+    FDiskSize: Int64;
     FOnChanged: TLedDocumentEvent;
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
     function GetViewCount: Integer;
     procedure MasterStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
+    procedure ConfigChanged(Sender: TObject; AId: Integer);
+    procedure NoteDiskState;
+    procedure ApplyConfigToView(AView: TLedEdit);
+    procedure ReadModelines;
+    function PreparedText: string;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
     function CreateView(AOwner: TComponent): TLedEdit;
     procedure RemoveView(AView: TLedEdit);
+    procedure ApplyConfigToViews;
 
-    procedure LoadFromFile(const AFileName: string);
+    { AForcedEncoding empty means "work it out": BOM, then the encoding this
+      document last used, then the user's candidate list. }
+    procedure LoadFromFile(const AFileName: string;
+      const AForcedEncoding: string = '');
+    procedure Reload(const AForcedEncoding: string = '');
     procedure SaveToFile(const AFileName: string);
     procedure Save;
+
+    { True when the file changed underneath us since the last load or save. }
+    function ChangedOnDisk: Boolean;
+    function DeletedFromDisk: Boolean;
+
+    procedure SetEncoding(const AEncoding: string);
+    procedure SetLineEnd(ALineEnd: TLedLineEnd);
 
     function DisplayName: string;
     function IsUntitled: Boolean;
 
     property FileName: string read FFileName;
     property Info: TLedTextInfo read FInfo;
+    property Config: TLedDocConfig read FConfig;
     property Modified: Boolean read GetModified;
     property Master: TSynEdit read FMaster;
     property Views[AIndex: Integer]: TLedEdit read GetView;
@@ -84,7 +106,31 @@ type
     property Items[AIndex: Integer]: TLedDocument read GetItem; default;
   end;
 
+{ The user's preferences expressed as a config, and the parent of every
+  document's config.  Rebuilt whenever preferences change. }
+function LedUserConfig: TLedDocConfig;
+procedure LedReloadUserConfig;
+
 implementation
+
+var
+  FUserConfig: TLedDocConfig = nil;
+
+function LedUserConfig: TLedDocConfig;
+begin
+  if FUserConfig = nil then
+  begin
+    FUserConfig := TLedDocConfig.Create;
+    LedPrefs.ApplyToConfig(FUserConfig);
+  end;
+  Result := FUserConfig;
+end;
+
+procedure LedReloadUserConfig;
+begin
+  LedUserConfig.UnsetBySource(lcsUser);
+  LedPrefs.ApplyToConfig(FUserConfig);
+end;
 
 { TLedDocument }
 
@@ -99,15 +145,48 @@ begin
   FMaster.Parent := nil;
   FMaster.OnStatusChange := @MasterStatusChange;
 
-  FInfo.Encoding := 'utf8';
-  FInfo.LineEnd := LedNativeLineEnd;
-  FInfo.TrailingEOL := True;
+  FConfig := TLedDocConfig.Create(LedUserConfig);
+  FConfig.OnChanged := @ConfigChanged;
+
+  FInfo := LedDefaultTextInfo;
 end;
 
 destructor TLedDocument.Destroy;
 begin
+  FConfig.Free;
   FViews.Free;
   inherited Destroy;
+end;
+
+procedure TLedDocument.ConfigChanged(Sender: TObject; AId: Integer);
+begin
+  ApplyConfigToViews;
+end;
+
+procedure TLedDocument.ApplyConfigToView(AView: TLedEdit);
+var
+  Wrap: string;
+begin
+  AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
+  AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
+
+  if FConfig.GetBool(LedSetIndentUseTabs) then
+    AView.Options := AView.Options - [eoTabsToSpaces]
+  else
+    AView.Options := AView.Options + [eoTabsToSpaces];
+
+  AView.Gutter.LineNumberPart.Visible := FConfig.GetBool(LedSetShowLineNumbers);
+
+  Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
+  AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
+end;
+
+procedure TLedDocument.ApplyConfigToViews;
+var
+  i: Integer;
+begin
+  for i := 0 to FViews.Count - 1 do
+    ApplyConfigToView(TLedEdit(FViews[i]));
 end;
 
 function TLedDocument.GetModified: Boolean;
@@ -140,6 +219,7 @@ begin
     itself -- caret, selection, scroll, folds -- stays independent. }
   Result.ShareTextBufferFrom(FMaster);
   FViews.Add(Result);
+  ApplyConfigToView(Result);
 end;
 
 procedure TLedDocument.RemoveView(AView: TLedEdit);
@@ -147,11 +227,90 @@ begin
   FViews.Remove(AView);
 end;
 
-procedure TLedDocument.LoadFromFile(const AFileName: string);
-var
-  Text: string;
+procedure TLedDocument.NoteDiskState;
 begin
-  LedLoadTextFile(AFileName, Text, FInfo);
+  FDiskAge := FileAge(FFileName);
+  FDiskSize := 0;
+  if FileExists(FFileName) then
+    with TFileStream.Create(FFileName, fmOpenRead or fmShareDenyNone) do
+      try
+        FDiskSize := Size;
+      finally
+        Free;
+      end;
+end;
+
+function TLedDocument.ChangedOnDisk: Boolean;
+var
+  Age: LongInt;
+  Sz: Int64;
+begin
+  Result := False;
+  if IsUntitled or not FileExists(FFileName) then Exit;
+  Age := FileAge(FFileName);
+  Sz := 0;
+  try
+    with TFileStream.Create(FFileName, fmOpenRead or fmShareDenyNone) do
+      try
+        Sz := Size;
+      finally
+        Free;
+      end;
+  except
+    Exit;
+  end;
+  Result := (Age <> FDiskAge) or (Sz <> FDiskSize);
+end;
+
+function TLedDocument.DeletedFromDisk: Boolean;
+begin
+  Result := (not IsUntitled) and (not FileExists(FFileName));
+end;
+
+{ Modelines are read after the text is in the buffer, at source lcsFile, so
+  they beat the user's preferences but still lose to a filename-glob rule. }
+procedure TLedDocument.ReadModelines;
+var
+  L: TStringList;
+  Count: Integer;
+begin
+  L := TStringList.Create;
+  try
+    if FMaster.Lines.Count > 0 then L.Add(FMaster.Lines[0]);
+    if FMaster.Lines.Count > 1 then L.Add(FMaster.Lines[1]);
+    Count := FMaster.Lines.Count;
+    if Count > 2 then
+    begin
+      { LedApplyModelines reads index 0, 1 and the last; give it a list whose
+        last entry really is the document's last line. }
+      L.Add('');
+      L[2] := FMaster.Lines[Count - 1];
+    end;
+    LedApplyModelines(L, FConfig);
+  finally
+    L.Free;
+  end;
+end;
+
+procedure TLedDocument.LoadFromFile(const AFileName: string;
+  const AForcedEncoding: string);
+var
+  Text, Cached: string;
+  Encodings: TStringList;
+begin
+  Encodings := TStringList.Create;
+  try
+    LedParseEncodingList(
+      LedPrefs.GetStr(LedPrefEncodings, LedDefaultEncodingList), Encodings);
+    { A document that already knows its own encoding keeps it across a
+      reload, so a file does not change its mind between openings. }
+    Cached := FInfo.Encoding;
+    if FFileName <> AFileName then Cached := '';
+    LedLoadTextFile(AFileName, AForcedEncoding, Cached, Encodings, Text, FInfo);
+  finally
+    Encodings.Free;
+  end;
+
   FMaster.BeginUpdate;
   try
     FMaster.Lines.Text := Text;
@@ -160,15 +319,113 @@ begin
   finally
     FMaster.EndUpdate;
   end;
+
   FFileName := AFileName;
+  NoteDiskState;
+
+  FConfig.UnsetBySource(lcsFile);
+  FConfig.UnsetBySource(lcsAuto);
+  FConfig.SetStr(LedSetEncoding, FInfo.Encoding, lcsAuto);
+  FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
+  ReadModelines;
+  ApplyConfigToViews;
+
   if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.Reload(const AForcedEncoding: string);
+var
+  Caret: TPoint;
+  Top: Integer;
+begin
+  if IsUntitled then Exit;
+  Caret := Point(1, 1);
+  Top := 1;
+  if FViews.Count > 0 then
+  begin
+    Caret := TLedEdit(FViews[0]).CaretXY;
+    Top := TLedEdit(FViews[0]).TopLine;
+  end;
+
+  LoadFromFile(FFileName, AForcedEncoding);
+
+  { Put the reader back where they were, as far as the new content allows. }
+  if FViews.Count > 0 then
+  begin
+    if Caret.Y > FMaster.Lines.Count then Caret.Y := FMaster.Lines.Count;
+    if Caret.Y < 1 then Caret.Y := 1;
+    TLedEdit(FViews[0]).CaretXY := Caret;
+    TLedEdit(FViews[0]).TopLine := Top;
+  end;
+end;
+
+{ Applies the on-save text policies -- strip trailing whitespace, ensure a
+  final newline -- without disturbing the buffer the user is looking at. }
+function TLedDocument.PreparedText: string;
+var
+  L: TStringList;
+  i: Integer;
+begin
+  Result := FMaster.Lines.Text;
+
+  if FConfig.GetBool(LedSetStripTrailing) then
+  begin
+    L := TStringList.Create;
+    try
+      L.TextLineBreakStyle := tlbsLF;
+      L.Text := Result;
+      for i := 0 to L.Count - 1 do
+        L[i] := TrimRight(L[i]);
+      Result := L.Text;
+    finally
+      L.Free;
+    end;
+  end;
+
+  if FConfig.GetBool(LedSetAddNewline) then
+  begin
+    if (Result <> '') and (Result[Length(Result)] <> #10) then
+      Result := Result + #10;
+  end
+  else if not FInfo.TrailingEOL then
+  begin
+    { TStrings.Text always terminates the last line; drop it again when the
+      file did not have one and the user has not asked for one. }
+    while (Result <> '') and (Result[Length(Result)] in [#10, #13]) do
+      SetLength(Result, Length(Result) - 1);
+  end;
 end;
 
 procedure TLedDocument.SaveToFile(const AFileName: string);
 begin
-  LedSaveTextFile(AFileName, FMaster.Lines.Text, FInfo);
+  LedSaveTextFile(AFileName, PreparedText, FInfo,
+    LedPrefs.GetBool(LedPrefMakeBackups, False));
   FFileName := AFileName;
   FMaster.Modified := False;
+  NoteDiskState;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.SetEncoding(const AEncoding: string);
+var
+  Enc: string;
+begin
+  Enc := LedNormaliseEncoding(AEncoding);
+  if Enc = '' then Exit;
+  FInfo.Encoding := Enc;
+  { Changing the encoding is a change to the file, even though the buffer is
+    untouched, so the user is offered a save. }
+  FMaster.Modified := True;
+  FConfig.SetStr(LedSetEncoding, Enc, lcsAuto);
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.SetLineEnd(ALineEnd: TLedLineEnd);
+begin
+  if FInfo.LineEnd = ALineEnd then Exit;
+  FInfo.LineEnd := ALineEnd;
+  FMaster.Modified := True;
+  FConfig.SetStr(LedSetLineEnd, LedLineEndName(ALineEnd), lcsAuto);
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
@@ -257,5 +514,8 @@ procedure TLedDocuments.CloseDocument(ADoc: TLedDocument);
 begin
   FItems.Remove(ADoc);   // owns the list, so this frees it
 end;
+
+finalization
+  FUserConfig.Free;
 
 end.

@@ -19,7 +19,7 @@ implementation
 
 uses
   Classes, SysUtils, Forms, ComCtrls,
-  Led.Core.Types, Led.Core.FileIO,
+  Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock;
 
 var
@@ -202,6 +202,117 @@ begin
   Check('none',  LedDetectLineEnd('abc') = leUnknown);
 end;
 
+{ --- phase 1: the document behaviours the file layer makes possible -------- }
+
+procedure TestDocumentBehaviour(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  L: TStringList;
+begin
+  WriteLn('document behaviour');
+
+  Path := TempName('doc.txt');
+  L := TStringList.Create;
+  try
+    L.TextLineBreakStyle := tlbsCRLF;
+    L.Add('first');
+    L.Add('second');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('CRLF was detected', Doc.Info.LineEnd = leWindows);
+  CheckEq('encoding recorded', 'utf8', Doc.Info.Encoding);
+  Check('not modified after load', not Doc.Modified);
+  Check('nothing changed on disk yet', not Doc.ChangedOnDisk);
+
+  { Config reaches the views. }
+  Doc.Config.SetInt(LedSetTabWidth, 3, lcsUser);
+  Pump;
+  CheckEqInt('tab width reaches the view', 3, Tab.ActiveView.TabWidth);
+
+  { A modeline outranks the preference. }
+  Doc.Config.SetInt(LedSetTabWidth, 7, lcsFile);
+  Doc.Config.SetInt(LedSetTabWidth, 2, lcsUser);
+  Pump;
+  CheckEqInt('modeline beats preferences in a live document', 7,
+    Tab.ActiveView.TabWidth);
+
+  { Changing the line ending marks the document dirty and re-serialises. }
+  Doc.SetLineEnd(leUnix);
+  Check('line-ending change marks it modified', Doc.Modified);
+  Doc.Save;
+  Pump;
+  Check('saved', not Doc.Modified);
+  L := TStringList.Create;
+  try
+    L.LoadFromFile(Path);
+    Check('file no longer holds CRLF', Pos(#13#10, L.Text) = 0);
+  finally
+    L.Free;
+  end;
+
+  { An outside edit is noticed. }
+  Sleep(1100);      { file mtime granularity is a second on some filesystems }
+  L := TStringList.Create;
+  try
+    L.Add('changed underneath');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+  Check('external change is detected', Doc.ChangedOnDisk);
+
+  Doc.Reload;
+  Pump;
+  CheckEq('reload picks up the new content', 'changed underneath',
+    Doc.Master.Lines[0]);
+  Check('reload clears the external-change flag', not Doc.ChangedOnDisk);
+
+  DeleteFile(Path);
+  Check('deletion is detected', Doc.DeletedFromDisk);
+end;
+
+procedure TestRecentFiles(F: TLedMainForm);
+var
+  Path: string;
+  L: TStringList;
+begin
+  WriteLn('recent files');
+  Path := TempName('recent.txt');
+  L := TStringList.Create;
+  try
+    L.Add('x');
+    L.SaveToFile(Path);
+    F.OpenFiles(L);           { not a file list -- should be ignored safely }
+  finally
+    L.Free;
+  end;
+
+  L := TStringList.Create;
+  try
+    L.Add(Path);
+    F.OpenFiles(L);
+    Pump;
+  finally
+    L.Free;
+  end;
+
+  Check('opening a file records it as recent',
+    (F.Recent.Count > 0) and (F.Recent[0] = ExpandFileName(Path)));
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -220,6 +331,10 @@ begin
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
+  WriteLn;
+  TestDocumentBehaviour(F);
+  WriteLn;
+  TestRecentFiles(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

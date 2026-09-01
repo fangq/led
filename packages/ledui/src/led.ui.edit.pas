@@ -9,16 +9,23 @@ unit Led.UI.Edit;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes;
+  Classes, SysUtils, Controls, StdCtrls, Graphics, SynEdit, SynEditTypes,
+  SynEditWrappedView;
 
 type
   TLedEdit = class(TSynEdit)
   private
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
+    FWrapPlugin: TLazSynEditLineWrapPlugin;
+    function GetWrapEnabled: Boolean;
+    procedure SetWrapEnabled(AValue: Boolean);
   public
     constructor Create(AOwner: TComponent); override;
     property Document: TObject read FDocument write FDocument;
+    { SynEdit implements wrapping as a view plugin rather than a property;
+      attaching and detaching it is how the View menu toggles wrap. }
+    property WrapEnabled: Boolean read GetWrapEnabled write SetWrapEnabled;
   end;
 
 implementation
@@ -53,6 +60,20 @@ begin
 
   BorderStyle := bsNone;
   ScrollBars := ssAutoBoth;
+end;
+
+function TLedEdit.GetWrapEnabled: Boolean;
+begin
+  Result := FWrapPlugin <> nil;
+end;
+
+procedure TLedEdit.SetWrapEnabled(AValue: Boolean);
+begin
+  if AValue = GetWrapEnabled then Exit;
+  if AValue then
+    FWrapPlugin := TLazSynEditLineWrapPlugin.Create(Self)
+  else
+    FreeAndNil(FWrapPlugin);
 end;
 
 end.

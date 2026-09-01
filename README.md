@@ -14,8 +14,15 @@ tools system, and the editing features added in medit 1.8.
 
 ## Status
 
-**Phase 0 — walking skeleton.** Builds and runs; opens, edits, splits and
-saves files. Everything else is on the roadmap.
+**Phase 1 — the file layer.** Builds and runs on Linux and Windows. Opens,
+edits, splits and saves files with proper encoding detection, BOM handling and
+line-ending preservation; layered per-document settings with modeline support;
+INI preferences, JSON session and recent files; reload and external-change
+detection.
+
+Still to come in phase 1: the try-encoding dialog, filename-glob rules, the
+language registry built from medit's 128 grammars, and the eight colour
+themes.
 
 ## Building
 
@@ -74,6 +81,20 @@ GtkTextView's layout cache collapses on long lines. SynEdit does not have that
 problem: a 5 MB single-line file opens in 88 ms and edits in ~145 ms
 (`--bench-longline`). So `led` still ships truncate-and-reveal, but as a
 readability feature rather than a performance workaround.
+
+## Configuration
+
+`~/.config/led/` on Linux, `%APPDATA%\led` on Windows, `~/Library/Application
+Support/led` on macOS. Override with `$LED_CONFIG_DIR`.
+
+| File | Holds |
+|---|---|
+| `prefs.ini` | preferences; dotted keys become sections, so `Plugins/Terminal/font` is `[Plugins.Terminal] font=` |
+| `session.json` | windows, tabs, carets and dock layout (when `Editor/save_session` is on) |
+| `recent.json` | the Open Recent list |
+
+Session and recent files are written atomically with one `.bak` generation; a
+corrupt session file is ignored rather than allowed to stop startup.
 
 ## Parity
 

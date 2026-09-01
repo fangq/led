@@ -78,6 +78,21 @@
         <UnitName Value="Led.Core.Types"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Paths"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.prefs.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Prefs"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.session.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Session"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.config.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Config"/>

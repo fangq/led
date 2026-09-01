@@ -12,8 +12,9 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
-  ExtCtrls, SynEdit, SynEditTypes,
-  Led.Core.Types, Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
+  ExtCtrls, Math, SynEdit, SynEditTypes,
+  Led.Core.Types, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
+  Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
 
 type
   TLedMainForm = class(TForm)
@@ -30,6 +31,7 @@ type
     actCycleViews: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
+    actReload: TAction;
     MainMenu1: TMainMenu;
     mnuFile: TMenuItem;
     miNew: TMenuItem;
@@ -37,6 +39,8 @@ type
     miSep1: TMenuItem;
     miSave: TMenuItem;
     miSaveAs: TMenuItem;
+    miOpenRecent: TMenuItem;
+    miReload: TMenuItem;
     miSep2: TMenuItem;
     miCloseTab: TMenuItem;
     miQuit: TMenuItem;
@@ -64,12 +68,23 @@ type
     procedure actToggleBottomPaneExecute(Sender: TObject);
     procedure actToggleLeftPaneExecute(Sender: TObject);
     procedure actUnsplitExecute(Sender: TObject);
+    procedure actReloadExecute(Sender: TObject);
+    procedure FormActivate(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure miOpenRecentClick(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
+    FRecent: TLedRecentFiles;
+    FCheckingDisk: Boolean;
+    procedure PopulateRecentMenu;
+    procedure RecentItemClick(Sender: TObject);
+    procedure SaveSession;
+    function RestoreSession: Boolean;
+    procedure CheckExternalChanges;
     procedure BookChange(Sender: TObject);
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
@@ -87,6 +102,7 @@ type
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
     property Notebook: TPageControl read FBook;
+    property Recent: TLedRecentFiles read FRecent;
   end;
 
 var
@@ -99,6 +115,8 @@ implementation
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
   FDocs := TLedDocuments.Create(Self);
+  FRecent := TLedRecentFiles.Create;
+  FRecent.Load;
 
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
@@ -116,7 +134,218 @@ begin
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
-  actNewExecute(nil);
+  if not RestoreSession then
+    actNewExecute(nil);
+end;
+
+procedure TLedMainForm.FormDestroy(Sender: TObject);
+begin
+  FRecent.Free;
+end;
+
+{ --- recent files --------------------------------------------------------- }
+
+procedure TLedMainForm.miOpenRecentClick(Sender: TObject);
+begin
+  PopulateRecentMenu;
+end;
+
+procedure TLedMainForm.PopulateRecentMenu;
+var
+  i: Integer;
+  Item: TMenuItem;
+begin
+  miOpenRecent.Clear;
+  for i := 0 to FRecent.Count - 1 do
+  begin
+    Item := TMenuItem.Create(miOpenRecent);
+    { The path is the caption; ampersands in a file name would otherwise
+      become accelerators. }
+    Item.Caption := StringReplace(FRecent[i], '&', '&&', [rfReplaceAll]);
+    Item.Hint := FRecent[i];
+    Item.OnClick := @RecentItemClick;
+    miOpenRecent.Add(Item);
+  end;
+  miOpenRecent.Enabled := FRecent.Count > 0;
+end;
+
+procedure TLedMainForm.RecentItemClick(Sender: TObject);
+var
+  L: TStringList;
+begin
+  L := TStringList.Create;
+  try
+    L.Add(TMenuItem(Sender).Hint);
+    OpenFiles(L);
+  finally
+    L.Free;
+  end;
+end;
+
+{ --- session -------------------------------------------------------------- }
+
+procedure TLedMainForm.SaveSession;
+var
+  S: TLedSession;
+  W: TLedWindowState;
+  T: TLedTabState;
+  Tab: TLedTab;
+  i, j: Integer;
+  E: TLedDockEdge;
+begin
+  S := TLedSession.Create;
+  try
+    S.AddWindow;
+    W := S.Windows[0];
+    W.Left := Left; W.Top := Top; W.Width := Width; W.Height := Height;
+    W.Maximized := WindowState = wsMaximized;
+    W.ActiveTab := FBook.ActivePageIndex;
+    for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    begin
+      W.Docks[Ord(E)].Visible := FDock.EdgeVisible[E];
+      W.Docks[Ord(E)].Size := FDock.EdgeSize[E];
+    end;
+    S.SetWindow(0, W);
+
+    for i := 0 to FBook.PageCount - 1 do
+      for j := 0 to FBook.Pages[i].ControlCount - 1 do
+        if FBook.Pages[i].Controls[j] is TLedTab then
+        begin
+          Tab := TLedTab(FBook.Pages[i].Controls[j]);
+          if Tab.Document.IsUntitled then Continue;
+          T := Default(TLedTabState);
+          T.FileName := Tab.Document.FileName;
+          T.Encoding := Tab.Document.Info.Encoding;
+          T.Line := Tab.ActiveView.CaretY;
+          T.Column := Tab.ActiveView.CaretX;
+          T.TopLine := Tab.ActiveView.TopLine;
+          S.AddTab(0, T);
+        end;
+
+    S.Save;
+  finally
+    S.Free;
+  end;
+end;
+
+function TLedMainForm.RestoreSession: Boolean;
+var
+  S: TLedSession;
+  W: TLedWindowState;
+  i: Integer;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  E: TLedDockEdge;
+begin
+  Result := False;
+  if not LedPrefs.GetBool(LedPrefSaveSession, False) then Exit;
+
+  S := TLedSession.Create;
+  try
+    if not S.Load then Exit;
+    if S.WindowCount = 0 then Exit;
+    W := S.Windows[0];
+
+    if (W.Width > 100) and (W.Height > 100) then
+    begin
+      Left := W.Left; Top := W.Top; Width := W.Width; Height := W.Height;
+    end;
+    if W.Maximized then WindowState := wsMaximized;
+
+    for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    begin
+      if W.Docks[Ord(E)].Size > 0 then
+        FDock.EdgeSize[E] := W.Docks[Ord(E)].Size;
+      FDock.EdgeVisible[E] := W.Docks[Ord(E)].Visible;
+    end;
+
+    for i := 0 to High(W.Tabs) do
+    begin
+      { A file that has since been deleted is skipped rather than reported:
+        restoring a session should be quiet. }
+      if not FileExists(W.Tabs[i].FileName) then Continue;
+      try
+        Doc := FDocs.OpenFile(W.Tabs[i].FileName);
+      except
+        Continue;
+      end;
+      if Doc.ViewCount = 0 then
+      begin
+        Tab := AddTab(Doc);
+        if W.Tabs[i].Line > 0 then
+        begin
+          Tab.ActiveView.CaretXY := Point(Max(1, W.Tabs[i].Column),
+            Min(Max(1, W.Tabs[i].Line), Doc.Master.Lines.Count));
+          Tab.ActiveView.TopLine := Max(1, W.Tabs[i].TopLine);
+        end;
+        Result := True;
+      end;
+    end;
+
+    if Result and (W.ActiveTab >= 0) and (W.ActiveTab < FBook.PageCount) then
+      FBook.ActivePageIndex := W.ActiveTab;
+  finally
+    S.Free;
+  end;
+end;
+
+{ --- external changes ----------------------------------------------------- }
+
+procedure TLedMainForm.FormActivate(Sender: TObject);
+begin
+  CheckExternalChanges;
+end;
+
+procedure TLedMainForm.CheckExternalChanges;
+var
+  Tab: TLedTab;
+  Doc: TLedDocument;
+begin
+  { Only the visible document is checked, and only on focus: polling every
+    open file on a timer costs more than it is worth. }
+  if FCheckingDisk then Exit;
+  Tab := ActiveTab;
+  if Tab = nil then Exit;
+  Doc := Tab.Document;
+  if not Doc.ChangedOnDisk then Exit;
+
+  FCheckingDisk := True;
+  try
+    if Doc.Modified then
+    begin
+      if MessageDlg('led', Format(
+        '%s changed on disk, and you have unsaved changes.'#10 +
+        'Reload and lose your changes?', [Doc.DisplayName]),
+        mtWarning, [mbYes, mbNo], 0) = mrYes then
+        Doc.Reload;
+    end
+    else
+      Doc.Reload;
+    UpdateStatusBar;
+  finally
+    FCheckingDisk := False;
+  end;
+end;
+
+procedure TLedMainForm.actReloadExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or Tab.Document.IsUntitled then Exit;
+  if Tab.Document.Modified then
+    if MessageDlg('led',
+      Format('Discard your changes to %s and reload from disk?',
+        [Tab.Document.DisplayName]),
+      mtConfirmation, [mbYes, mbNo], 0) <> mrYes then
+      Exit;
+  try
+    Tab.Document.Reload;
+  except
+    on E: ELedFileError do
+      MessageDlg('led', E.Message, mtError, [mbOK], 0);
+  end;
+  UpdateStatusBar;
 end;
 
 function TLedMainForm.ActiveTab: TLedTab;
@@ -245,6 +474,7 @@ begin
   actSplitStacked.Enabled := HasDoc and Tab.CanSplit;
   actUnsplit.Enabled := HasDoc and (Tab.ViewCount > 1);
   actCycleViews.Enabled := HasDoc and (Tab.ViewCount > 1);
+  actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
   actToggleLeftPane.Checked := FDock.EdgeVisible[ledLeft];
   actToggleBottomPane.Checked := FDock.EdgeVisible[ledBottom];
 
@@ -272,6 +502,11 @@ begin
     try
       Doc := FDocs.OpenFile(AFiles[i]);
     except
+      on E: ELedFileError do
+      begin
+        MessageDlg('led', E.Message, mtError, [mbOK], 0);
+        Continue;
+      end;
       on E: Exception do
       begin
         MessageDlg('led', Format('Could not open %s:'#10'%s',
@@ -281,6 +516,7 @@ begin
     end;
     if Doc.ViewCount = 0 then
       AddTab(Doc);
+    FRecent.Add(Doc.FileName);
   end;
 end;
 
@@ -413,6 +649,13 @@ begin
       Exit;
     end;
   CanClose := True;
+
+  { Written before the windows come down, while the state still exists. }
+  if LedPrefs.GetBool(LedPrefSaveSession, False) then
+    SaveSession;
+  FRecent.Save;
+  if LedPrefs.Dirty then
+    LedPrefs.Save;
 end;
 
 end.
