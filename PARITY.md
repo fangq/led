@@ -27,7 +27,7 @@ checked off by the presence of a menu entry.
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
 | Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
-| Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | | phase-3 |
+| Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | yes | done |
 
 ## Actions (80)
 
