@@ -23,6 +23,12 @@
     </RunParams>
     <RequiredPackages>
       <Item>
+        <PackageName Value="TurboPowerIPro"/>
+      </Item>
+      <Item>
+        <PackageName Value="Printer4Lazarus"/>
+      </Item>
+      <Item>
         <PackageName Value="SynEdit"/>
       </Item>
       <Item>
@@ -181,6 +187,21 @@
         <Filename Value="../packages/ledui/src/led.ui.symbols.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Symbols"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.markdown.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Markdown"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.print.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Print"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.preview.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Preview"/>
       </Unit>
       <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>

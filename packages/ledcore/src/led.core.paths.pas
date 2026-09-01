@@ -97,7 +97,16 @@ begin
       FDataDir := IncludeTrailingPathDelimiter(
         ExtractFilePath(ExpandFileName(ParamStr(0)))) + 'data' + PathDelim;
       {$ELSE}
-      FDataDir := '/usr/share/led/';
+      { An install puts the data under <prefix>/share/led, which is one level
+        up from <prefix>/bin.  Checked before the system prefix so a local
+        install is found without setting anything. }
+      Candidate := IncludeTrailingPathDelimiter(
+        ExtractFilePath(ExpandFileName(ParamStr(0)))) +
+        '..' + PathDelim + 'share' + PathDelim + 'led';
+      if DirectoryExists(Candidate) then
+        FDataDir := IncludeTrailingPathDelimiter(ExpandFileName(Candidate))
+      else
+        FDataDir := '/usr/share/led/';
       {$ENDIF}
     end;
   end;

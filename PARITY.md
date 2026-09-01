@@ -13,7 +13,7 @@ checked off by the presence of a menu entry.
 |---|---|---|---|
 | Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | yes | done |
 | Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | not needed for speed | deferred: benchmarked at 88 ms for a 5 MB single line, so this is readability only, and a lines-view decorator risks text corruption. Revisit deliberately |
-| Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
+| Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
 | Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | yes | via the converted grammars' fold markers |
@@ -68,20 +68,20 @@ checked off by the presence of a menu entry.
 | `MoveToSplitView` | yes | | |
 | `NewDoc` | yes | yes | done |
 | `NewFolder` | yes | | |
-| `NewWindow` | yes | | |
+| `NewWindow` | yes | yes | done |
 | `NextBookmark` | yes | yes | done |
 | `NextPlaceholder` | yes | | |
 | `NextTab` | yes | | |
 | `NoDocuments` | yes | | |
 | `Open` | yes | yes | done |
 | `OpenRecent` | yes | yes | done |
-| `PageSetup` | yes | | |
+| `PageSetup` | yes | yes | done |
 | `Paste` | yes | yes | done |
 | `Preferences` | yes | yes | done |
 | `PrevPlaceholder` | yes | | |
 | `PreviousBookmark` | yes | yes | done |
 | `PreviousTab` | yes | | |
-| `Print` | yes | | |
+| `Print` | yes | yes | done |
 | `PrintOptions` | yes | | |
 | `PrintPdf` | yes | | |
 | `PrintPreview` | yes | | |
@@ -99,7 +99,7 @@ checked off by the presence of a menu entry.
 | `SelectToMatchingBracket` | yes | yes | done |
 | `ShowHiddenFiles` | yes | | |
 | `ShowParentFolder` | yes | | |
-| `ShowToolbar` | yes | | |
+| `ShowToolbar` | yes | yes | done |
 | `SortFoldersFirst` | yes | | |
 | `SpecialChars` | yes | | |
 | `SpellAddToDict` | yes | | |
