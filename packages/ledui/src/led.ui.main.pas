@@ -20,7 +20,7 @@ uses
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty;
+  Led.Term.View, Led.Term.Pty, Led.UI.Symbols;
 
 type
   TLedMainForm = class(TForm)
@@ -72,6 +72,8 @@ type
     actStopTool: TAction;
     actToggleOutput: TAction;
     actToggleTerminal: TAction;
+    actToggleSymbols: TAction;
+    actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
     MainMenu1: TMainMenu;
@@ -105,6 +107,7 @@ type
     miSep6: TMenuItem;
     mi_Comment: TMenuItem;
     mi_Uncomment: TMenuItem;
+    mi_Complete: TMenuItem;
     miSep7: TMenuItem;
     mi_Shortcuts: TMenuItem;
     mi_Preferences: TMenuItem;
@@ -151,6 +154,7 @@ type
     mi_ToggleBottomPane: TMenuItem;
     mi_ToggleOutput: TMenuItem;
     mi_ToggleTerminal: TMenuItem;
+    mi_ToggleSymbols: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
@@ -214,6 +218,8 @@ type
     procedure miToolListClick(Sender: TObject);
     procedure actFindInFilesExecute(Sender: TObject);
     procedure actToggleTerminalExecute(Sender: TObject);
+    procedure actCompleteExecute(Sender: TObject);
+    procedure actToggleSymbolsExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -231,7 +237,9 @@ type
     FGrepDialog: TLedGrepDialog;
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTermView;
+    FSymbols: TLedSymbolPane;
     FCheckingDisk: Boolean;
+    procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
     procedure PopulateToolMenu;
@@ -399,6 +407,11 @@ begin
   FBrowser.OnOpenFile := @BrowserOpenFile;
 
   FDock.AddPane(ledLeft, 'files', 'Files', FBrowser);
+
+  FSymbols := TLedSymbolPane.Create(Self);
+  FSymbols.OnJump := @SymbolJump;
+  FDock.AddPane(ledRight, 'symbols', 'Symbols', FSymbols);
+  FDock.EdgeVisible[ledRight] := False;
   FDock.AddPane(ledBottom, 'output', 'Output', FOutput);
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
@@ -523,6 +536,20 @@ procedure TLedMainForm.actToggleOutputExecute(Sender: TObject);
 begin
   FDock.ShowPane('output');
   FDock.EdgeVisible[ledBottom] := True;
+end;
+
+procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
+begin
+  FDock.ToggleEdge(ledRight);
+  if FDock.EdgeVisible[ledRight] and (ActiveTab <> nil) then
+    FSymbols.Reload(ActiveTab.Document.FileName);
+end;
+
+procedure TLedMainForm.actCompleteExecute(Sender: TObject);
+begin
+  if ActiveView <> nil then
+    ActiveView.Completion.Execute('', ActiveView.ClientToScreen(
+      Point(ActiveView.CaretXPix, ActiveView.CaretYPix + ActiveView.LineHeight)));
 end;
 
 procedure TLedMainForm.actToggleTerminalExecute(Sender: TObject);
@@ -905,6 +932,13 @@ procedure TLedMainForm.actUncommentExecute(Sender: TObject);
 begin
   if ActiveTab <> nil then
     LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
+end;
+
+procedure TLedMainForm.SymbolJump(ALine: Integer);
+begin
+  if ActiveView <> nil then
+    LedGotoLine(ActiveView, ALine);
+  if (ActiveView <> nil) and ActiveView.CanFocus then ActiveView.SetFocus;
 end;
 
 procedure TLedMainForm.BrowserOpenFile(const AFileName: string);
@@ -1511,6 +1545,11 @@ end;
 procedure TLedMainForm.BookChange(Sender: TObject);
 begin
   UpdateStatusBar;
+  { Only refreshed when the pane is actually on screen: running ctags for a
+    pane nobody is looking at is pure cost. }
+  if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
+     (ActiveTab <> nil) then
+    FSymbols.Reload(ActiveTab.Document.FileName);
 end;
 
 procedure TLedMainForm.ViewStatusChange(Sender: TObject;
@@ -1595,6 +1634,8 @@ begin
   actStopTool.Enabled := FRunner.Running;
   actToggleOutput.Checked := FDock.EdgeVisible[ledBottom];
   actToggleTerminal.Enabled := LedPtyAvailable;
+  actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
+  actComplete.Enabled := HasDoc;
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actFindInFiles.Enabled := True;

@@ -263,6 +263,14 @@ object LedMainForm: TLedMainForm
       Caption = '&Terminal'
       OnExecute = actToggleTerminalExecute
     end
+    object actToggleSymbols: TAction
+      Caption = '&Symbols'
+      OnExecute = actToggleSymbolsExecute
+    end
+    object actComplete: TAction
+      Caption = 'Complete &Word'
+      OnExecute = actCompleteExecute
+    end
     object actToggleLeftPane: TAction
       Caption = '&Left Pane'
       OnExecute = actToggleLeftPaneExecute
@@ -364,6 +372,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_Uncomment: TMenuItem
         Action = actUncomment
+      end
+      object mi_Complete: TMenuItem
+        Action = actComplete
       end
       object miSep7: TMenuItem
         Caption = '-'
@@ -507,6 +518,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleTerminal: TMenuItem
         Action = actToggleTerminal
+      end
+      object mi_ToggleSymbols: TMenuItem
+        Action = actToggleSymbols
       end
     end
   end

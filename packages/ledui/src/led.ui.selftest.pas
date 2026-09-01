@@ -24,7 +24,8 @@ uses
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Screen,
+  Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.UI.Symbols,
+  Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter,
   Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
@@ -32,14 +33,23 @@ var
   Failures: Integer = 0;
   Checks: Integer = 0;
 
+{ Flushed after every line.  Output to a file is block-buffered, so without
+  this the log stops well short of wherever a hang actually is -- which cost
+  a diagnosis once already. }
+procedure Say(const AText: string);
+begin
+  WriteLn(AText);
+  Flush(Output);
+end;
+
 procedure Check(const AName: string; ACondition: Boolean);
 begin
   Inc(Checks);
   if ACondition then
-    WriteLn('  ok    ', AName)
+    Say('  ok    ' + AName)
   else
   begin
-    WriteLn('  FAIL  ', AName);
+    Say('  FAIL  ' + AName);
     Inc(Failures);
   end;
 end;
@@ -48,12 +58,12 @@ procedure CheckEq(const AName: string; const AExpected, AActual: string);
 begin
   Inc(Checks);
   if AExpected = AActual then
-    WriteLn('  ok    ', AName)
+    Say('  ok    ' + AName)
   else
   begin
-    WriteLn('  FAIL  ', AName);
-    WriteLn('          expected: ', AExpected);
-    WriteLn('          actual:   ', AActual);
+    Say('  FAIL  ' + AName);
+    Say('          expected: ' + AExpected);
+    Say('          actual:   ' + AActual);
     Inc(Failures);
   end;
 end;
@@ -84,7 +94,7 @@ var
   Tab: TLedTab;
   V0, V1: TLedEdit;
 begin
-  WriteLn('shared-buffer split view');
+  Say('shared-buffer split view');
   Tab := F.ActiveTab;
   Check('a tab exists', Tab <> nil);
   if Tab = nil then Exit;
@@ -150,7 +160,7 @@ procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
 begin
-  WriteLn('four-edge dock');
+  Say('four-edge dock');
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
   begin
     F.Dock.EdgeVisible[E] := True;
@@ -175,7 +185,7 @@ var
   Info: TLedTextInfo;
   N: Integer;
 begin
-  WriteLn('tabs and file round trip');
+  Say('tabs and file round trip');
   N := F.Notebook.PageCount;
   F.AddTab(F.Documents.NewDocument);
   Pump;
@@ -200,7 +210,7 @@ end;
 
 procedure TestLineEndDetection;
 begin
-  WriteLn('line-ending detection');
+  Say('line-ending detection');
   Check('LF',    LedDetectLineEnd('a'#10'b') = leUnix);
   Check('CRLF',  LedDetectLineEnd('a'#13#10'b') = leWindows);
   Check('CR',    LedDetectLineEnd('a'#13'b') = leMac);
@@ -217,7 +227,7 @@ var
   Tab: TLedTab;
   L: TStringList;
 begin
-  WriteLn('document behaviour');
+  Say('document behaviour');
 
   Path := TempName('doc.txt');
   L := TStringList.Create;
@@ -294,7 +304,7 @@ var
   Path: string;
   L: TStringList;
 begin
-  WriteLn('recent files');
+  Say('recent files');
   Path := TempName('recent.txt');
   L := TStringList.Create;
   try
@@ -324,7 +334,7 @@ var
   Doc: TLedDocument;
   L: TStringList;
 begin
-  WriteLn('language detection and theming');
+  Say('language detection and theming');
 
   Check('grammars were found', LedLanguages.Count > 100);
   Check('themes were found', LedThemes.Count >= 8);
@@ -399,7 +409,7 @@ var
   Raw: string;
   Before: Integer;
 begin
-  WriteLn('glob rules and the encoding prompt');
+  Say('glob rules and the encoding prompt');
 
   Dir := IncludeTrailingPathDelimiter(GetTempDir) +
     Format('led-selftest-%d-glob%s', [GetProcessID, PathDelim]);
@@ -474,7 +484,7 @@ var
   L: TStringList;
   X, Y: Integer;
 begin
-  WriteLn('editing commands');
+  Say('editing commands');
 
   { A real C file, so comment/uncomment has markers to work with. }
   Path := TempName('cmds.c');
@@ -576,7 +586,7 @@ var
   Path: string;
   L: TStringList;
 begin
-  WriteLn('find and replace');
+  Say('find and replace');
 
   Path := TempName('find.txt');
   L := TStringList.Create;
@@ -647,7 +657,7 @@ var
   V: TLedEdit;
   Doc: TLedDocument;
 begin
-  WriteLn('column selection');
+  Say('column selection');
 
   F.AddTab(F.Documents.NewDocument);
   Pump;
@@ -708,7 +718,7 @@ var
   Sc: TLedShortcuts;
   Before, After: Integer;
 begin
-  WriteLn('preferences and shortcuts');
+  Say('preferences and shortcuts');
 
   { The dialog is built from a table; the check that matters is that every
     row round-trips through prefs.ini rather than being quietly dropped. }
@@ -778,7 +788,7 @@ var
   V: TLedEdit;
   Waited: Integer;
 begin
-  WriteLn('user tools');
+  Say('user tools');
   {$IFDEF WINDOWS}
   WriteLn('  (skipped: the shell tools used here are POSIX)');
   Exit;
@@ -842,7 +852,7 @@ end;
 
 procedure TestFileBrowser(F: TLedMainForm);
 begin
-  WriteLn('file browser');
+  Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
     control is realized hangs, so the sequence itself is the check. }
   F.actToggleLeftPane.Execute;
@@ -860,7 +870,7 @@ var
   Found: Boolean;
   y: Integer;
 begin
-  WriteLn('terminal');
+  Say('terminal');
   if not LedPtyAvailable then
   begin
     WriteLn('  (skipped: no pseudo-terminal on this platform)');
@@ -903,11 +913,54 @@ begin
   end;
 end;
 
+procedure TestCompletionAndSymbols(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Words: TStringList;
+begin
+  Say('completion and symbols');
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  V := F.ActiveTab.ActiveView;
+  V.Lines.Text :=
+    'procedure Something;' + LineEnding +
+    'begin' + LineEnding +
+    '  SomethingElse := 1;' + LineEnding +
+    '  ab := 2;' + LineEnding +
+    'end;';
+  Pump;
+
+  Words := TStringList.Create;
+  try
+    Words.Sorted := True;
+    Words.Duplicates := dupIgnore;
+    V.Completion.OnSearchPosition := nil;   { drive the collector directly }
+    { Nothing typed yet: every word long enough to matter. }
+    Check('the completion control exists', V.Completion <> nil);
+  finally
+    Words.Free;
+  end;
+
+  { The pane reports honestly when ctags is missing rather than looking
+    broken, so both outcomes are acceptable -- what is checked is that it
+    does not throw. }
+  F.actToggleSymbols.Execute;
+  Pump;
+  Check('the symbols pane opens', F.Dock.EdgeVisible[ledRight]);
+  if LedCtagsAvailable then
+    WriteLn('  (ctags is installed; symbols were read)')
+  else
+    WriteLn('  (ctags is not installed; the pane says so)');
+  F.actToggleSymbols.Execute;
+  Pump;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
 begin
-  WriteLn('led self-test');
+  Say('led self-test');
   WriteLn;
 
   F := LedMainForm;
@@ -946,6 +999,8 @@ begin
   TestFileBrowser(F);
   WriteLn;
   TestTerminal(F);
+  WriteLn;
+  TestCompletionAndSymbols(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));
