@@ -1,0 +1,30 @@
+name: Install Lazarus and FPC from apt
+description: >
+  Installs the distribution's Lazarus rather than downloading one.  This is
+  the reliable path: gcarreno/setup-lazarus fetches the Lazarus .deb from
+  SourceForge, which stalls often enough to matter -- run 33530475795 sat in
+  it for fifteen minutes and took out a required job on a push whose code was
+  fine.  apt has no such dependency and finishes in seconds.
+
+  The version is whatever the runner's release ships, so pin runs-on to
+  choose it: ubuntu-22.04 gives Lazarus 2.2.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Lazarus + FPC (apt)
+      shell: bash
+      run: |
+        sudo apt-get update
+        # Full install, not --no-install-recommends: the recommends pull the
+        # FCL unit packages LCL needs.
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y lazarus
+        # apt ships LCL as source, so lazbuild compiles it on first use and
+        # needs to be able to write into its own directory.
+        sudo chown -R "$(id -u):$(id -g)" /usr/lib/lazarus
+
+    - name: Tool versions
+      shell: bash
+      run: |
+        fpc -iV
+        lazbuild --version | tail -1

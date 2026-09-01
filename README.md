@@ -113,6 +113,21 @@ free of any visual dependency), regenerates and loads all 128 grammars, runs
 the scripted GUI self-test under `xvfb`, and checks the committed icons still
 match `tools/make-icon.py`.
 
+The Linux jobs pin `ubuntu-22.04` and install Lazarus from apt, through the
+composite action in `.github/actions/lazarus-apt`. Two reasons. It fixes the
+Lazarus version at 2.2, which is the only configuration that compiles
+`packages/ledsyn/vendor` — on Lazarus 3 and later the TextMate engine comes
+from the IDE's own packages and the vendored copy is never built. And it does
+not download anything: `gcarreno/setup-lazarus` fetches the Lazarus `.deb`
+from SourceForge, which stalls often enough to have failed a required job on a
+push whose code was fine, and once held a runner for an hour and a half.
+
+Windows and macOS have no distribution package, so those jobs still use the
+action, with a step timeout so a stall fails fast and names itself. One
+optional `newest Lazarus` job covers the current release — it is allowed to
+fail, because it is the remaining job that depends on that download and a slow
+mirror says nothing about led.
+
 `.github/workflows/package.yml` builds the three installers on every push to
 `main`, and attaches them to a GitHub Release on a `v*` tag.
 
