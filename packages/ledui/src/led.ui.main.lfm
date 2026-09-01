@@ -1041,6 +1041,18 @@ object LedMainForm: TLedMainForm
     object mtSplitStacked: TMenuItem
       Action = actSplitStacked
     end
+    object mtSepNotebook: TMenuItem
+      Caption = '-'
+    end
+    object mtMoveToNotebook: TMenuItem
+      Action = actMoveToNotebook
+    end
+    object mtSplitNotebook: TMenuItem
+      Action = actSplitNotebook
+    end
+    object mtFocusOtherNotebook: TMenuItem
+      Action = actFocusOtherNotebook
+    end
   end
   object OpenDialog1: TOpenDialog
     Options = [ofAllowMultiSelect, ofEnableSizing, ofViewDetail]
