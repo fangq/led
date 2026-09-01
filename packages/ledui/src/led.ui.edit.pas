@@ -48,6 +48,8 @@ type
 implementation
 
 constructor TLedEdit.Create(AOwner: TComponent);
+var
+  i: Integer;
 begin
   inherited Create(AOwner);
 
@@ -64,8 +66,16 @@ begin
 
   { medit selected a rectangle with Ctrl+drag; SynEdit ships Alt+drag.  Both
     are bound, since Alt+drag is grabbed by the window manager on several
-    Linux desktops and would otherwise be unreachable. }
+    Linux desktops and would otherwise be unreachable.
+
+    emUseMouseActions makes SynEdit take every mouse gesture from these
+    lists instead of its built-in handling, and the lists start EMPTY.  So
+    they have to be filled with the defaults first, or the only gesture the
+    editor understands is the one added below -- no caret placement, no
+    drag-select, no wheel, no context menu, and no clicking the fold boxes
+    in the gutter. }
   MouseOptions := MouseOptions + [emUseMouseActions];
+  ResetMouseActions;
   MouseActions.AddCommand(emcStartColumnSelections, True, mbXLeft, ccSingle,
     cdDown, [ssCtrl], [ssCtrl, ssAlt, ssShift]);
   DefaultSelectionMode := smNormal;
@@ -74,6 +84,21 @@ begin
   Gutter.LineNumberPart.Visible := True;
   Gutter.CodeFoldPart.Visible := True;
   Gutter.ChangesPart.Visible := True;
+  { The gutter parts keep their own action lists, and they are empty for the
+    same reason. }
+  for i := 0 to Gutter.Parts.Count - 1 do
+    Gutter.Parts[i].ResetMouseActions;
+
+  { medit sizes the line-number column to the digits actually needed.
+    AutoSize does that, but SynEdit's floor of 22 pixels of padding makes a
+    three-digit file look like a five-digit one. }
+  Gutter.LineNumberPart.AutoSize := True;
+  Gutter.LineNumberPart.DigitCount := 2;
+  Gutter.LineNumberPart.LeadingZeros := False;
+  Gutter.MarksPart.AutoSize := False;
+  Gutter.MarksPart.Width := 12;
+  Gutter.SeparatorPart.Width := 2;
+  Gutter.ChangesPart.Width := 3;
 
   Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
   Font.Size := 10;
