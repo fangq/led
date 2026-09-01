@@ -20,14 +20,25 @@ uses
   Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils;
 
 type
+  { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
+    is protected, so reaching it at all needs a descendant.  Worth the four
+    lines: the browser's splitter used to resize the filter row instead of
+    the file list, and asking the splitter directly is the only way to check
+    that without a mouse. }
+  TLedSplitter = class(TSplitter)
+  public
+    function Target: TControl;
+  end;
+
   TLedOpenFileEvent = procedure(const AFileName: string) of object;
 
   TLedFileBrowser = class(TPanel)
   private
     FCrumbs: TPanel;
+    FBottom: TPanel;
     FTree: TShellTreeView;
     FList: TShellListView;
-    FSplit: TSplitter;
+    FSplit: TLedSplitter;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
     FMenu: TPopupMenu;
@@ -56,6 +67,13 @@ type
       shown rather than at construction. }
     procedure EnsureRoot(const ADefault: string);
     property Root: string read FRoot;
+
+    { What dragging the splitter actually resizes.  Exposed because the answer
+      used to be the filter row rather than the file list, and nothing short
+      of asking the splitter itself would have caught that. }
+    function SplitterTarget: TControl;
+    { The list, so a check can confirm it is what grows. }
+    property FileList: TShellListView read FList;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
 
@@ -63,6 +81,16 @@ implementation
 
 uses
   Clipbrd;
+
+function TLedSplitter.Target: TControl;
+begin
+  Result := FindAlignControl;
+end;
+
+function TLedFileBrowser.SplitterTarget: TControl;
+begin
+  Result := FSplit.Target;
+end;
 
 constructor TLedFileBrowser.Create(AOwner: TComponent);
 var
@@ -94,8 +122,22 @@ begin
   FCrumbs.BevelOuter := bvNone;
   FCrumbs.Caption := '';
 
+  { The whole lower half is one container: the file list filling it and the
+    filter row pinned to its foot.  It was three siblings all asking for
+    alBottom, and which of them ended up next to the splitter came down to
+    creation order -- the filter row won, so TCustomSplitter.FindAlignControl
+    picked it as the nearest control below the splitter and dragging resized
+    the filter row while the table stayed put.  One container leaves the
+    splitter a single neighbour and nothing to choose between. }
+  FBottom := TPanel.Create(Self);
+  FBottom.Parent := Self;
+  FBottom.Align := alBottom;
+  FBottom.Height := 228;
+  FBottom.BevelOuter := bvNone;
+  FBottom.Caption := '';
+
   Bar := TPanel.Create(Self);
-  Bar.Parent := Self;
+  Bar.Parent := FBottom;
   Bar.Align := alBottom;
   Bar.Height := 28;
   Bar.BevelOuter := bvNone;
@@ -119,16 +161,18 @@ begin
   FShowHidden.Caption := 'Hidden';
   FShowHidden.OnChange := @HiddenChange;
 
-  { Files below, folders above, with a splitter between.  The list is created
-    first so alBottom stacking puts it under the tree. }
+  { The list takes whatever the container has left after the filter row, so
+    dragging the splitter grows the table, which is the thing anyone dragging
+    it is after. }
   FList := TShellListView.Create(Self);
-  FList.Parent := Self;
-  FList.Align := alBottom;
-  FList.Height := 200;
+  FList.Parent := FBottom;
+  FList.Align := alClient;
   FList.ReadOnly := True;
   FList.OnDblClick := @ListDblClick;
 
-  FSplit := TSplitter.Create(Self);
+  { Created after the container so it aligns above it, and with only one
+    alBottom sibling left there is no ambiguity about what it resizes. }
+  FSplit := TLedSplitter.Create(Self);
   FSplit.Parent := Self;
   FSplit.Align := alBottom;
   FSplit.ResizeStyle := rsUpdate;

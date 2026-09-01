@@ -1004,6 +1004,18 @@ begin
   Pump;
   Check('the left pane opened', F.Dock.EdgeVisible[ledLeft]);
   Check('and the browser took a root', F.Browser.Root <> '');
+
+  { Dragging the splitter used to grow the filter row instead of the table.
+    Three siblings all asked for alBottom, and TCustomSplitter.FindAlignControl
+    takes the nearest control below it -- which came down to creation order,
+    and the filter row won.  Asking the splitter what it would resize is the
+    only way to check this without a mouse. }
+  Check('the splitter has something to resize',
+    F.Browser.SplitterTarget <> nil);
+  Check('and it is the panel holding the file list, not the filter row',
+    (F.Browser.SplitterTarget <> nil) and
+    (F.Browser.FileList.Parent = F.Browser.SplitterTarget));
+
   F.actToggleLeftPane.Execute;
   Pump;
 end;
