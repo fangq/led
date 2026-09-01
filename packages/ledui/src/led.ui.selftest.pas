@@ -1316,17 +1316,9 @@ begin
   Check('the fold column is sized, not left on AutoSize',
     not Tab.ActiveView.Gutter.CodeFoldPart.AutoSize);
 
-  { Vertical guides down an open block, drawn in the text area.  ColorCount
-    is what enables the markup at all -- RealEnabled is false while it is
-    zero, which is the default. }
-  Check('block guides are installed', Tab.ActiveView.FoldGuides <> nil);
-  if Tab.ActiveView.FoldGuides <> nil then
-  begin
-    CheckEqInt('and enabled, with one guide colour',
-      1, Tab.ActiveView.FoldGuides.ColorCount);
-    Check('and the theme has coloured them',
-      Tab.ActiveView.FoldGuides.LineColor[0].Color <> clNone);
-  end;
+  { Vertical guides down an open block, drawn by led itself in Paint. }
+  Check('the block guides have a colour',
+    Tab.ActiveView.GuideColour <> clNone);
   Check('and is wide enough to draw a marker',
     Tab.ActiveView.Gutter.CodeFoldPart.Width >= 10);
 
@@ -1480,21 +1472,19 @@ begin
   Pump;
 end;
 
-{ Are the block guides actually drawing?
+{ Vertical guides down the body of each open block.
 
-  Everything checked so far -- that the markup is installed, enabled and
-  coloured -- was true while nothing appeared on screen, which is the same
-  trap as the fold column and the pane lock: a check that confirms a value was
-  assigned rather than that it has an effect.  This asks the markup for the
-  attribute it would paint on a row inside a fold, which is the question. }
+  ComputeBlockGuides is what Paint draws from, so checking it checks the
+  decision rather than the pixels: which lines carry a guide, and at which
+  column.  The version before this leaned on SynEdit's
+  TSynEditMarkupFoldColors, which satisfied every precondition it documents
+  and painted nothing, so this asserts the answer rather than the setup. }
 procedure TestFoldGuides(F: TLedMainForm);
 var
   Tab: TLedTab;
   V: TLedEdit;
-  Bound: TLazSynDisplayTokenBound;
-  Rtl: TLazSynDisplayRtlInfo;
-  Attr: TSynSelectedColor;
-  Row, Col, Found: Integer;
+  Runs: TLedGuideRuns;
+  i, Body, Opener, Closer, BodyCol: Integer;
 begin
   Say('block guides');
 
@@ -1504,60 +1494,49 @@ begin
   if Tab = nil then Exit;
   V := Tab.ActiveView;
 
+  {  0: void outer(void)
+     1: {
+     2:     if (x)
+     3:     {
+     4:         inner();
+     5:     }
+     6: }                                                 }
   Tab.Document.Master.Lines.Text :=
-    'int main(void)'#10 +
+    'void outer(void)'#10 +
     '{'#10 +
-    '    int a = 1;'#10 +
-    '    int b = 2;'#10 +
-    '    return a + b;'#10 +
+    '    if (x)'#10 +
+    '    {'#10 +
+    '        inner();'#10 +
+    '    }'#10 +
     '}'#10;
   Tab.Document.SetLanguage('c');
   Pump;
 
   Check('the document folds', LedCanFold(V));
-  Check('the guides are installed', V.FoldGuides <> nil);
-  if V.FoldGuides = nil then Exit;
+  Check('the theme coloured the guides', V.GuideColour <> clNone);
 
-  { A full scan first, as painting would do. }
-  V.FoldGuides.BeginMarkup;
-  Bound := Default(TLazSynDisplayTokenBound);
-  Rtl := Default(TLazSynDisplayRtlInfo);
+  Runs := V.ComputeBlockGuides(0, V.Lines.Count - 1);
+  CheckGt('guides were computed for the document', 0, Length(Runs));
 
-  { Every column, not just the first: the guide sits at the block's own
-    indent column, so asking only at column 1 could miss it and say the
-    feature is broken when the probe is. }
-  Found := 0;
-  for Row := 1 to V.Lines.Count do
+  Opener := -1; Body := -1; Closer := -1; BodyCol := 0;
+  for i := 0 to High(Runs) do
   begin
-    V.FoldGuides.PrepareMarkupForRow(Row);
-    for Col := 1 to 24 do
+    if Runs[i].TextIdx = 3 then Opener := Length(Runs[i].Cols);
+    if Runs[i].TextIdx = 5 then Closer := Length(Runs[i].Cols);
+    if Runs[i].TextIdx = 4 then
     begin
-      Bound.Physical := Col;
-      Bound.Logical := Col;
-      Attr := V.FoldGuides.GetMarkupAttributeAtRowCol(Row, Bound, Rtl);
-      if Attr <> nil then
-      begin
-        Inc(Found);
-        Say(Format('    diag: row %d col %d marked', [Row, Col]));
-        Break;
-      end;
+      Body := Length(Runs[i].Cols);
+      if Body > 0 then BodyCol := Runs[i].Cols[0];
     end;
   end;
 
-  { The body of the block is what a guide runs down, so at least the lines
-    between the brace and its match should carry one. }
-  { Recorded rather than asserted, because it is a known gap and a suite that
-    fails every run stops being read.  TSynEditMarkupFoldColors is installed,
-    enabled, coloured and holding a fold-capable highlighter -- every
-    precondition it documents -- and marks no column on any row.  Two attempts
-    to coax it, including refreshing the highlighter it captured at
-    construction, changed nothing.  The guides will have to be drawn in led,
-    the way the fold chevrons already are. }
-  Check('the guide markup is enabled and holding a fold highlighter',
-    V.FoldGuides.RealEnabled and
-    (V.Highlighter is TSynCustomFoldHighlighter));
-  if Found = 0 then
-    Say('    note: the markup paints no guides yet; see TestFoldGuides');
+  { The inner block runs from line 3 to line 5, so only line 4 is inside it.
+    The outer brace sits at column 1 and is skipped, as medit skips a guide
+    that would run down the very edge of the text. }
+  CheckGt('the body of a block carries a guide', 0, Body);
+  CheckEqInt('the line that opens it does not', 0, Opener);
+  CheckEqInt('nor the line that closes it', 0, Closer);
+  CheckEqInt('and it sits at the opening line''s indent column', 5, BodyCol);
 end;
 
 { Two independent tab groups in one window.
