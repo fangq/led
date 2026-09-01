@@ -76,6 +76,12 @@ const
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
 
+  { Crash recovery.  New keys rather than medit's auto_save/auto_save_interval,
+    which mean something different: those write the user's actual file behind
+    their back, this keeps a private journal and never touches it. }
+  LedPrefRecoveryEnabled  = 'Editor/recovery_enabled';
+  LedPrefRecoveryInterval = 'Editor/recovery_interval';
+
 implementation
 
 var

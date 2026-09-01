@@ -22,7 +22,7 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
-  Led.UI.Print, Led.UI.Icons, Led.UI.Focus;
+  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery;
 
 type
   TLedMainForm = class(TForm)
@@ -368,6 +368,9 @@ type
     procedure actTogglePreviewExecute(Sender: TObject);
   private
     FFocusedOnce: Boolean;
+    FRecovery: TLedRecovery;
+    FRecoveryTimer: TTimer;
+    FRecoveryOffered: Boolean;
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
@@ -417,6 +420,15 @@ type
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure SaveSession;
+
+    { Crash recovery.  The journal is reconciled wholesale on a timer rather
+      than hooked into every save and close path, because there are several of
+      each and missing one leaves a stale entry that offers the user work they
+      already saved. }
+    procedure RecoveryTick(Sender: TObject);
+    procedure ReconcileRecovery;
+    procedure OfferRecovery;
+    function RecoveryIdFor(ADoc: TLedDocument): string;
     function RestoreSession: Boolean;
     procedure CheckExternalChanges;
     function CurrentView: TLedEdit;
@@ -547,6 +559,16 @@ procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
   BuildIcons;
   FDocs := TLedDocuments.Create(Self);
+
+  { The journal is created before anything can be edited, but the directory
+    itself is only made on the first write, so an installation that never
+    crashes never grows one. }
+  FRecovery := TLedRecovery.Create;
+  FRecoveryTimer := TTimer.Create(Self);
+  FRecoveryTimer.Interval :=
+    Max(5, LedPrefs.GetInt(LedPrefRecoveryInterval, 20)) * 1000;
+  FRecoveryTimer.OnTimer := @RecoveryTick;
+  FRecoveryTimer.Enabled := LedPrefs.GetBool(LedPrefRecoveryEnabled, True);
   FRecent := TLedRecentFiles.Create;
   FRecent.Load;
   FSearch := TLedSearchState.Create;
@@ -619,6 +641,7 @@ end;
 
 procedure TLedMainForm.FormDestroy(Sender: TObject);
 begin
+  FRecovery.Free;
   FRecent.Free;
   FSearch.Free;
   FShortcuts.Free;
@@ -1559,6 +1582,175 @@ end;
 
 { --- session -------------------------------------------------------------- }
 
+{ ---- crash recovery ---------------------------------------------------- }
+
+function TLedMainForm.RecoveryIdFor(ADoc: TLedDocument): string;
+begin
+  if ADoc = nil then Exit('');
+  Result := LedRecoveryId(ADoc.FileName, ADoc.UntitledNo);
+end;
+
+{ Bring the journal into line with what is actually open and dirty.  Every
+  document is considered on every tick, so a save, a Save As or a close needs
+  no hook of its own: the next pass simply stops finding it dirty.  Entries
+  for documents that are gone are swept the same way. }
+procedure TLedMainForm.ReconcileRecovery;
+var
+  i: Integer;
+  Doc: TLedDocument;
+  E: TLedRecoveryEntry;
+  Live: TStringList;
+  Pending: TLedRecoveryEntries;
+begin
+  if FRecovery = nil then Exit;
+
+  Live := TStringList.Create;
+  try
+    Live.Sorted := True;
+    Live.Duplicates := dupIgnore;
+
+    for i := 0 to FDocs.Count - 1 do
+    begin
+      Doc := FDocs[i];
+      if Doc = nil then Continue;
+      if not Doc.Modified then Continue;
+
+      E := Default(TLedRecoveryEntry);
+      E.Id          := RecoveryIdFor(Doc);
+      E.FileName    := Doc.FileName;
+      E.DisplayName := Doc.DisplayName;
+      E.Encoding    := Doc.Info.Encoding;
+      E.Language    := Doc.LangInfo.Id;
+      E.Line        := Doc.Master.CaretY;
+      E.Column      := Doc.Master.CaretX;
+      E.SavedAt     := Now;
+      Live.Add(E.Id);
+      try
+        FRecovery.Store(E, Doc.Master.Lines.Text);
+      except
+        { A journal that cannot be written must not stop the editor.  The
+          alternative -- an exception every few seconds from a timer -- is
+          worse than no journal. }
+      end;
+    end;
+
+    { Anything journalled that is no longer a dirty open document has been
+      saved or closed, so it is no longer work at risk. }
+    Pending := FRecovery.Scan;
+    for i := 0 to High(Pending) do
+      if Live.IndexOf(Pending[i].Id) < 0 then
+        FRecovery.Discard(Pending[i].Id);
+  finally
+    Live.Free;
+  end;
+end;
+
+procedure TLedMainForm.RecoveryTick(Sender: TObject);
+begin
+  ReconcileRecovery;
+end;
+
+{ Anything left in the journal at startup is work from a run that never
+  reached its close handler.  A clean exit empties the directory, so its
+  contents are the whole signal -- there is no separate "was I running" flag
+  to fall out of step with reality. }
+procedure TLedMainForm.OfferRecovery;
+var
+  Pending: TLedRecoveryEntries;
+  i, Shown: Integer;
+  Names, Msg: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Restored: Integer;
+begin
+  if FRecovery = nil then Exit;
+  if FRecoveryOffered then Exit;
+  FRecoveryOffered := True;
+
+  Pending := FRecovery.Scan;
+  if Length(Pending) = 0 then Exit;
+
+  Names := '';
+  Shown := 0;
+  for i := 0 to High(Pending) do
+  begin
+    if Shown >= 10 then
+    begin
+      Names := Names + LineEnding + Format('  ... and %d more',
+        [Length(Pending) - Shown]);
+      Break;
+    end;
+    if Pending[i].DisplayName <> '' then
+      Names := Names + LineEnding + '  ' + Pending[i].DisplayName
+    else if Pending[i].FileName <> '' then
+      Names := Names + LineEnding + '  ' + ExtractFileName(Pending[i].FileName)
+    else
+      Names := Names + LineEnding + '  ' + Pending[i].Id;
+    Inc(Shown);
+  end;
+
+  if Length(Pending) = 1 then
+    Msg := 'led did not shut down cleanly, and one document had unsaved ' +
+      'changes:' + LineEnding + Names + LineEnding + LineEnding +
+      'Recover it?'
+  else
+    Msg := Format('led did not shut down cleanly, and %d documents had ' +
+      'unsaved changes:', [Length(Pending)]) + LineEnding + Names +
+      LineEnding + LineEnding + 'Recover them?';
+
+  if MessageDlg('Recover unsaved work', Msg, mtWarning, [mbYes, mbNo], 0)
+     <> mrYes then
+  begin
+    FRecovery.Clear;
+    Exit;
+  end;
+
+  Restored := 0;
+  for i := 0 to High(Pending) do
+  begin
+    Doc := nil;
+    try
+      { A recovered file opens from disk first, so its encoding, line ending
+        and language are the real ones, and only the text is replaced.  The
+        document is left modified on purpose: recovery hands back the work,
+        it does not decide to write it over the file. }
+      if (Pending[i].FileName <> '') and FileExists(Pending[i].FileName) then
+        Doc := FDocs.OpenFile(Pending[i].FileName)
+      else
+        Doc := FDocs.NewDocument;
+
+      if Doc = nil then Continue;
+
+      Doc.Master.BeginUpdate;
+      try
+        Doc.Master.Lines.Text := FRecovery.LoadText(Pending[i]);
+      finally
+        Doc.Master.EndUpdate;
+      end;
+      Doc.Master.Modified := True;
+
+      Tab := AddTab(Doc);
+      if Tab <> nil then
+      begin
+        if Pending[i].Line > 0 then
+          Tab.ActiveView.CaretY := Pending[i].Line;
+        if Pending[i].Column > 0 then
+          Tab.ActiveView.CaretX := Pending[i].Column;
+      end;
+      Inc(Restored);
+    except
+      { One unrecoverable entry must not abandon the rest. }
+    end;
+  end;
+
+  { The journal is rebuilt from the restored documents on the next tick, so
+    clearing here cannot lose anything -- and leaving the old entries would
+    make a second crash offer the same work twice. }
+  FRecovery.Clear;
+  if Restored > 0 then
+    ReconcileRecovery;
+end;
+
 procedure TLedMainForm.SaveSession;
 var
   S: TLedSession;
@@ -1674,6 +1866,9 @@ begin
   begin
     FFocusedOnce := True;
     LedTryFocus(ActiveView);
+    { Asked once the window is actually up, so the dialog has a parent and
+      the user can see what it is talking about. }
+    OfferRecovery;
   end;
   CheckExternalChanges;
 end;
@@ -2141,6 +2336,15 @@ begin
   { Written before the windows come down, while the state still exists. }
   if LedPrefs.GetBool(LedPrefSaveSession, False) then
     SaveSession;
+  { Reaching here is what "clean exit" means, so the journal goes: whatever
+    was unsaved has now been either saved or knowingly discarded by the user
+    through the close-confirmation above.  This is also what makes a
+    non-empty recovery directory at the next startup unambiguous. }
+  if FRecovery <> nil then
+    FRecovery.Clear;
+  if FRecoveryTimer <> nil then
+    FRecoveryTimer.Enabled := False;
+
   { The pane layout is saved whatever the session setting says: where the
     panes sit is part of the window, not part of the documents in it. }
   FDock.SaveLayout(LedConfigFile('layout.xml'));

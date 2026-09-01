@@ -115,7 +115,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..41] of TLedPrefItem = (
+  PrefItems: array[0..43] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -152,6 +152,12 @@ const
     (Category: 'General'; Kind: pkBool; Key: 'Editor/show_toolbar';
      Caption: 'Show the toolbar'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkBool; Key: 'Editor/recovery_enabled';
+     Caption: 'Keep unsaved changes for recovery after a crash'; DefStr: '';
+     DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkInt; Key: 'Editor/recovery_interval';
+     Caption: 'Recovery snapshot interval (seconds)'; DefStr: '';
+     DefInt: 20; MinInt: 5; MaxInt: 600; Choices: ''),
     (Category: 'View'; Kind: pkHeading; Key: '';
      Caption: 'Appearance'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
