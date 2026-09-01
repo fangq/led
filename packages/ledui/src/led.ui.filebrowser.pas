@@ -1,12 +1,14 @@
 { led - a light editor.  The file browser pane.
 
-  medit hand-wrote a 22,000-line file view, including its own icon grid,
-  because GTK had nothing suitable.  LCL ships TShellTreeView, so this is a
-  path bar, a filter and a context menu around it.
+  medit hand-wrote 22,000 lines here, including its own icon grid, because GTK
+  had nothing suitable.  LCL ships the pair that does the job: TShellTreeView
+  for the folders and TShellListView for the files in the selected one, linked
+  to each other so selecting a folder fills the list.  This unit is the
+  breadcrumb bar, the filter and the context menu around them.
 
-  The breadcrumb bar is worth the hundred lines it costs: it is the fastest
-  way up a deep tree and it was one of the additions medit 1.8 was known
-  for. }
+  The two-pane arrangement is worth having over a single tree: a folder with
+  four hundred files does not push the rest of the tree off the screen, and
+  the list gives size and date columns for free. }
 unit Led.UI.FileBrowser;
 
 {$mode objfpc}{$H+}
@@ -15,7 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
-  Dialogs, Graphics, Forms, ShellCtrls, FileUtil, LazFileUtils;
+  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils;
 
 type
   TLedOpenFileEvent = procedure(const AFileName: string) of object;
@@ -24,6 +26,8 @@ type
   private
     FCrumbs: TPanel;
     FTree: TShellTreeView;
+    FList: TShellListView;
+    FSplit: TSplitter;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
     FMenu: TPopupMenu;
@@ -31,6 +35,7 @@ type
     FOnOpenFile: TLedOpenFileEvent;
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
+    procedure ListDblClick(Sender: TObject);
     procedure TreeDblClick(Sender: TObject);
     procedure FilterChange(Sender: TObject);
     procedure HiddenChange(Sender: TObject);
@@ -67,7 +72,8 @@ var
   procedure AddMenu(const ACaption: string; AHandler: TNotifyEvent);
   begin
     Item := TMenuItem.Create(FMenu);
-    if ACaption = '-' then Item.Caption := '-'
+    if ACaption = '-' then
+      Item.Caption := '-'
     else
     begin
       Item.Caption := ACaption;
@@ -97,7 +103,7 @@ begin
 
   FFilter := TComboBox.Create(Self);
   FFilter.Parent := Bar;
-  FFilter.Left := 2; FFilter.Top := 2; FFilter.Width := 130;
+  FFilter.Left := 2; FFilter.Top := 2; FFilter.Width := 140;
   FFilter.Items.Add('All files');
   FFilter.Items.Add('*.c;*.h;*.cpp;*.hpp');
   FFilter.Items.Add('*.pas;*.pp;*.inc;*.lfm');
@@ -109,17 +115,36 @@ begin
 
   FShowHidden := TCheckBox.Create(Self);
   FShowHidden.Parent := Bar;
-  FShowHidden.Left := 138; FShowHidden.Top := 5;
+  FShowHidden.Left := 148; FShowHidden.Top := 5;
   FShowHidden.Caption := 'Hidden';
   FShowHidden.OnChange := @HiddenChange;
+
+  { Files below, folders above, with a splitter between.  The list is created
+    first so alBottom stacking puts it under the tree. }
+  FList := TShellListView.Create(Self);
+  FList.Parent := Self;
+  FList.Align := alBottom;
+  FList.Height := 200;
+  FList.ReadOnly := True;
+  FList.OnDblClick := @ListDblClick;
+
+  FSplit := TSplitter.Create(Self);
+  FSplit.Parent := Self;
+  FSplit.Align := alBottom;
+  FSplit.ResizeStyle := rsUpdate;
+  FSplit.MinSize := 60;
 
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;
   FTree.Align := alClient;
-  FTree.ObjectTypes := [otFolders, otNonFolders];
+  FTree.ObjectTypes := [otFolders];
   FTree.FileSortType := fstFoldersFirst;
   FTree.ReadOnly := True;
   FTree.OnDblClick := @TreeDblClick;
+
+  { Selecting a folder in the tree fills the list.  This is the whole reason
+    the pair exists, and it is one assignment. }
+  FTree.ShellListView := FList;
 
   FMenu := TPopupMenu.Create(Self);
   AddMenu('Open', @MenuOpen);
@@ -133,9 +158,7 @@ begin
   AddMenu('-', nil);
   AddMenu('Copy Full Path', @MenuCopyPath);
   FTree.PopupMenu := FMenu;
-  { The root is deliberately not set here.  Populating a TShellTreeView before
-    the control has been parented and realized hangs; the owner calls SetRoot
-    once the pane is in place. }
+  FList.PopupMenu := FMenu;
 end;
 
 procedure TLedFileBrowser.EnsureRoot(const ADefault: string);
@@ -150,11 +173,12 @@ begin
   if not DirectoryExists(APath) then Exit;
   FRoot := ExcludeTrailingPathDelimiter(ExpandFileName(APath));
   FTree.Root := FRoot;
+  FList.Root := FRoot;
   BuildCrumbs;
 end;
 
 { One button per path component.  Clicking a component makes it the root,
-  which is the whole point: two clicks to get anywhere above you. }
+  which is the point: two clicks to get anywhere above you. }
 procedure TLedFileBrowser.BuildCrumbs;
 var
   Parts: TStringArray;
@@ -168,8 +192,7 @@ begin
   Btn := TSpeedButton.Create(FCrumbs);
   Btn.Parent := FCrumbs;
   Btn.Caption := {$IFDEF WINDOWS}'Drives'{$ELSE}'/'{$ENDIF};
-  Btn.Left := X; Btn.Top := 2; Btn.Height := 22;
-  Btn.Width := 30;
+  Btn.Left := X; Btn.Top := 2; Btn.Height := 22; Btn.Width := 34;
   Btn.Flat := True;
   Btn.Hint := {$IFDEF WINDOWS}''{$ELSE}'/'{$ENDIF};
   Btn.OnClick := @CrumbClick;
@@ -208,25 +231,38 @@ begin
   SetRoot(Target);
 end;
 
+{ Whatever the user last pointed at, in either pane. }
 function TLedFileBrowser.SelectedPath: string;
 begin
   Result := '';
-  if FTree.Selected <> nil then
+  if (FList.Focused or (FList.Selected <> nil)) and (FList.Selected <> nil) then
+    Result := FList.GetPathFromItem(FList.Selected);
+  if (Result = '') and (FTree.Selected <> nil) then
     Result := FTree.GetPathFromNode(FTree.Selected);
+end;
+
+procedure TLedFileBrowser.ListDblClick(Sender: TObject);
+var
+  Path: string;
+begin
+  if FList.Selected = nil then Exit;
+  Path := FList.GetPathFromItem(FList.Selected);
+  if Path = '' then Exit;
+  if DirectoryExists(Path) then
+    SetRoot(Path)
+  else if Assigned(FOnOpenFile) then
+    FOnOpenFile(Path);
 end;
 
 procedure TLedFileBrowser.TreeDblClick(Sender: TObject);
 var
   Path: string;
 begin
-  Path := SelectedPath;
-  if Path = '' then Exit;
-  { A folder becomes the new root; a file is opened.  Descending by
-    double-click rather than only by expanding keeps deep trees navigable. }
-  if DirectoryExists(Path) then
-    SetRoot(Path)
-  else if Assigned(FOnOpenFile) then
-    FOnOpenFile(Path);
+  if FTree.Selected = nil then Exit;
+  Path := FTree.GetPathFromNode(FTree.Selected);
+  { Descending by double-click, not only by expanding, keeps a deep tree
+    usable in a narrow pane. }
+  if DirectoryExists(Path) then SetRoot(Path);
 end;
 
 procedure TLedFileBrowser.Reload;
@@ -234,31 +270,45 @@ var
   Keep: string;
 begin
   Keep := FRoot;
+  FRoot := '';
   FTree.Root := '';
-  FTree.Root := Keep;
+  SetRoot(Keep);
 end;
 
 procedure TLedFileBrowser.FilterChange(Sender: TObject);
 begin
-  { TShellTreeView has no file mask, so the filter is applied by narrowing
-    what the tree is asked to show.  Index 0 is "everything". }
+  { The list has a real mask; index 0 is "everything". }
   if FFilter.ItemIndex <= 0 then
-    FTree.ObjectTypes := FTree.ObjectTypes + [otNonFolders];
-  Reload;
+    FList.Mask := ''
+  else
+    FList.Mask := FFilter.Text;
 end;
 
 procedure TLedFileBrowser.HiddenChange(Sender: TObject);
 begin
   if FShowHidden.Checked then
-    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden]
+  begin
+    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden];
+    FList.ObjectTypes := FList.ObjectTypes + [otHidden];
+  end
   else
+  begin
     FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
+    FList.ObjectTypes := FList.ObjectTypes - [otHidden];
+  end;
   Reload;
 end;
 
 procedure TLedFileBrowser.MenuOpen(Sender: TObject);
+var
+  Path: string;
 begin
-  TreeDblClick(nil);
+  Path := SelectedPath;
+  if Path = '' then Exit;
+  if DirectoryExists(Path) then
+    SetRoot(Path)
+  else if Assigned(FOnOpenFile) then
+    FOnOpenFile(Path);
 end;
 
 procedure TLedFileBrowser.MenuGoUp(Sender: TObject);
@@ -310,8 +360,8 @@ var
 begin
   Path := SelectedPath;
   if Path = '' then Exit;
-  { No trash: led deletes outright, so the question is asked plainly and
-    names what is about to go. }
+  { No trash: led deletes outright, so the question says so and names what
+    is about to go. }
   if MessageDlg('led',
     Format('Delete "%s" permanently?', [ExtractFileName(Path)]),
     mtWarning, [mbYes, mbNo], 0) <> mrYes then Exit;
