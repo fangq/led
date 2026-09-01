@@ -221,6 +221,8 @@
    "name": "glsl.future-use"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "glslv",
   "glslf"

@@ -185,6 +185,8 @@
    "name": "def.preprocessor"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "idl"
  ]

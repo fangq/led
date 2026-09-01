@@ -337,6 +337,8 @@
    "name": "def.base-n-integer"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "n"
  ]

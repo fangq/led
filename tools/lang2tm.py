@@ -542,9 +542,50 @@ class Converter:
             'scopeName': 'source.' + lang.id,
             'patterns': patterns,
         }
+        add_folding(grammar, lang.id)
         if lang.globs:
             grammar['fileTypes'] = [g.lstrip('*.') for g in lang.globs]
         return grammar, None
+
+
+# Folding.  medit chose a strategy per language id too (mootextview.c:1447),
+# so a table here is faithful rather than a shortcut.  TextMate expresses
+# folding as a pair of line regexes, which covers braces and end-keywords but
+# cannot express indentation folding -- Python and YAML get none, as noted in
+# PARITY.md.
+BRACE_FOLD = {
+    'c', 'chdr', 'cpp', 'cpphdr', 'objc', 'csharp', 'java', 'js', 'json',
+    'css', 'scss', 'less', 'php', 'perl', 'awk', 'go', 'rust', 'scala',
+    'swift', 'd', 'vala', 'opencl', 'cuda', 'glsl', 'cg', 'verilog',
+    'systemverilog', 'nemerle', 'haxe', 'groovy', 'kotlin', 'dart', 'idl',
+    'protobuf', 'yacc', 'lex', 'gap', 'genie', 'boo',
+}
+
+END_FOLD = {
+    # begin/end and if/end style blocks
+    'pascal': (r'\b(?i:begin|case|record|try)\s*$', r'^\s*(?i:end)\b'),
+    'matlab': (r'^\s*(?:function|if|for|while|switch|try|parfor)\b',
+               r'^\s*end\b'),
+    'octave': (r'^\s*(?:function|if|for|while|switch|try|do|unwind_protect)\b',
+               r'^\s*end(?:function|if|for|while|switch|_try_catch|_unwind_protect)?\b'),
+    'ruby':   (r'^\s*(?:def|class|module|if|unless|case|while|until|begin|do)\b',
+               r'^\s*end\b'),
+    'lua':    (r'\b(?:function|then|do)\s*$', r'^\s*end\b'),
+    'sh':     (r'\b(?:then|do|\{)\s*$', r'^\s*(?:fi|done|esac|\})\b'),
+}
+
+
+def add_folding(grammar, lang_id):
+    if lang_id in END_FOLD:
+        start, stop = END_FOLD[lang_id]
+        grammar['foldingStartMarker'] = start
+        grammar['foldingStopMarker'] = stop
+    elif lang_id in BRACE_FOLD:
+        # An opening brace that is not closed on the same line, and a line
+        # that starts with the closing one.  Deliberately conservative: a
+        # marker that fires too eagerly produces fold arrows in silly places.
+        grammar['foldingStartMarker'] = r'\{[^}"\x27]*$'
+        grammar['foldingStopMarker'] = r'^[^{"\x27]*\}'
 
 
 def main():

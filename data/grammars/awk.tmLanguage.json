@@ -107,6 +107,8 @@
    "name": "def.builtin"
   }
  ],
+ "foldingStartMarker": "\\{[^}\"\\x27]*$",
+ "foldingStopMarker": "^[^{\"\\x27]*\\}",
  "fileTypes": [
   "awk"
  ]

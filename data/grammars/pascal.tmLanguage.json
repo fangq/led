@@ -171,6 +171,8 @@
    "name": "def.decimal"
   }
  ],
+ "foldingStartMarker": "\\b(?i:begin|case|record|try)\\s*$",
+ "foldingStopMarker": "^\\s*(?i:end)\\b",
  "fileTypes": [
   "p",
   "pas"

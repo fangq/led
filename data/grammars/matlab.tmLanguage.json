@@ -127,6 +127,8 @@
    "name": "def.builtin"
   }
  ],
+ "foldingStartMarker": "^\\s*(?:function|if|for|while|switch|try|parfor)\\b",
+ "foldingStopMarker": "^\\s*end\\b",
  "fileTypes": [
   "m"
  ]

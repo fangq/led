@@ -368,6 +368,13 @@ begin
   Check('which can fold, unlike the built-in C highlighter',
     LedCanFold(Doc.Views[0]));
 
+  { Fold markers only reach languages served by a converted grammar; the
+    bundled C highlighter cannot fold at all, which is why the C grammar has
+    to be the converted one for folding to work. }
+  Doc.SetLanguage('matlab');
+  Pump;
+  Check('an end-keyword language folds', LedCanFold(Doc.Views[0]));
+
   { Switching themes must not lose the highlighter or crash the views. }
   LedSetCurrentTheme('oblivion');
   Doc.ApplyConfigToViews;

@@ -16,9 +16,9 @@ checked off by the presence of a menu entry.
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done (phase 0 spike) |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
-| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | partly | the converted grammars are fold-capable; fold markers are not emitted yet |
-| Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | partly | works for Pascal today; Matlab/Octave await the converter |
-| Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-6 |
+| Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | yes | via the converted grammars' fold markers |
+| Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | yes | Pascal, Matlab, Octave, Ruby, Lua and sh |
+| Code folding: indentation<br><sub>Python/YAML</sub> | yes | no | TextMate expresses folding as line regexes, which cannot describe indentation. Needs a TSynTextMateSyn descendant that overrides the fold levels |
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
