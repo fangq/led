@@ -609,7 +609,7 @@ begin
     than here.  The lock is in Preferences for anyone who would rather not,
     and View > Reset Pane Layout is the way back from a bad drop. }
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
-  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Line');
+  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   FDock.OnPaneShown := @PaneShown;
 
   FBook := TPageControl.Create(Self);
@@ -925,7 +925,7 @@ begin
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
-  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Line');
+  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   { The output pane is not a document, so the loop below never reaches it. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
   for i := 0 to FBook.PageCount - 1 do
@@ -1901,8 +1901,6 @@ begin
     { The real name travels in Hint, because the caption is now a label and
       no longer something the dock would recognise. }
     Item.Hint := Names[i];
-    Item.RadioItem := True;
-    Item.GroupIndex := 71;
     Item.Checked := SameText(Names[i], Current);
     Item.OnClick := @HeaderStylePicked;
     miHeaderStyle.Add(Item);
