@@ -21,7 +21,8 @@ uses
   Classes, SysUtils, Forms, ComCtrls,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
-  Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock;
+  Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
+  Led.UI.Commands;
 
 var
   Failures: Integer = 0;
@@ -441,6 +442,110 @@ begin
   RemoveDir(Dir);
 end;
 
+procedure TestEditingCommands(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  V: TLedEdit;
+  Doc: TLedDocument;
+  Path: string;
+  L: TStringList;
+  X, Y: Integer;
+begin
+  WriteLn('editing commands');
+
+  { A real C file, so comment/uncomment has markers to work with. }
+  Path := TempName('cmds.c');
+  L := TStringList.Create;
+  try
+    L.Add('int main(void)');
+    L.Add('{');
+    L.Add('    int x = 1;');
+    L.Add('    return x;');
+    L.Add('}');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  V := Tab.ActiveView;
+
+  { Goto line, including the clamp. }
+  LedGotoLine(V, 3);
+  CheckEqInt('goto line', 3, V.CaretY);
+  LedGotoLine(V, 9999);
+  CheckEqInt('goto line clamps to the end', 5, V.CaretY);
+
+  { Ctrl+] jumps to the partner brace and back. }
+  V.CaretXY := Point(1, 2);          { the opening brace }
+  LedToggleMatchingBracket(V);
+  CheckEqInt('bracket jump lands on the closing brace', 5, V.CaretY);
+  LedToggleMatchingBracket(V);
+  CheckEqInt('and back again', 2, V.CaretY);
+
+  { One-space shift, over a selection, as one undo step. }
+  V.BlockBegin := Point(1, 3);
+  V.BlockEnd := Point(1, 5);
+  LedShiftLinesBySpace(V, True);
+  CheckEq('one space added', '     int x = 1;', V.Lines[2]);
+  CheckEq('to every selected line', '     return x;', V.Lines[3]);
+  V.Undo;
+  CheckEq('and it undoes in one step', '    int x = 1;', V.Lines[2]);
+
+  V.BlockBegin := Point(1, 3);
+  V.BlockEnd := Point(1, 4);
+  LedShiftLinesBySpace(V, False);
+  CheckEq('one space removed', '   int x = 1;', V.Lines[2]);
+  V.Undo;
+
+  { Comment and uncomment, at the block's common indentation. }
+  Check('C can be commented', LedCanComment(Doc.LangInfo));
+  V.BlockBegin := Point(1, 3);
+  V.BlockEnd := Point(1, 5);
+  LedCommentLines(V, Doc.LangInfo);
+  CheckEq('comment goes at the common indent', '    // int x = 1;', V.Lines[2]);
+  LedUncommentLines(V, Doc.LangInfo);
+  CheckEq('and comes back off cleanly', '    int x = 1;', V.Lines[2]);
+
+  { Commenting a block must be one undo step, not one per line. }
+  V.BlockBegin := Point(1, 3);
+  V.BlockEnd := Point(1, 5);
+  LedCommentLines(V, Doc.LangInfo);
+  CheckEq('commented again', '    // int x = 1;', V.Lines[2]);
+  V.Undo;
+  CheckEq('one undo removes the whole comment block',
+    '    int x = 1;', V.Lines[2]);
+  CheckEq('every line of it', '    return x;', V.Lines[3]);
+
+  { Bookmarks. }
+  V.CaretXY := Point(1, 4);
+  F.actToggleBookmark.Execute;
+  Check('bookmark set', V.GetBookMark(0, X, Y) and (Y = 4));
+  V.CaretXY := Point(1, 1);
+  F.actNextBookmark.Execute;
+  CheckEqInt('next bookmark jumps to it', 4, V.CaretY);
+  V.CaretXY := Point(1, 4);
+  F.actToggleBookmark.Execute;
+  Check('toggling again clears it', not V.GetBookMark(0, X, Y));
+
+  { Font zoom is clamped and does not touch preferences. }
+  V.Font.Size := 10;
+  LedZoomFont(V, 2);
+  CheckEqInt('zoom in', 12, V.Font.Size);
+  LedZoomFont(V, -100);
+  CheckEqInt('zoom clamps at the bottom', LedMinFontSize, V.Font.Size);
+  LedZoomFont(V, 1000);
+  CheckEqInt('and at the top', LedMaxFontSize, V.Font.Size);
+  V.Font.Size := 10;
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -470,6 +575,8 @@ begin
   TestLanguageAndTheme(F);
   WriteLn;
   TestGlobRulesAndEncodingPrompt(F);
+  WriteLn;
+  TestEditingCommands(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));
