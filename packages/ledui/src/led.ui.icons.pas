@@ -349,9 +349,10 @@ begin
       end;
     'run':
       begin
-        P.Colour(clGreen);
+        { Drawn in the same ink as everything else.  It was green, which made
+          it the one coloured mark on an otherwise monochrome toolbar and
+          drew the eye to Run for no reason anyone chose. }
         P.Poly([3.5, 1.5, 14, 8, 3.5, 14.5], True);
-        P.Colour(AColour);
       end;
     'terminal':
       begin

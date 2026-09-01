@@ -22,7 +22,8 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
-  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery;
+  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery, Led.UI.Dpi,
+  LCLProc;
 
 type
   TLedMainForm = class(TForm)
@@ -427,6 +428,10 @@ type
     procedure PaneShown(const AId: string);
     procedure StartTerminalDeferred(Data: PtrInt);
     procedure StartTerminal;
+    { Tells the editor which keys the menus have claimed, so it stops
+      handling them itself.  Called after the shortcuts are set up and again
+      whenever the user changes them. }
+    procedure ReserveActionShortcuts;
     procedure PopulateHeaderStyleMenu;
     procedure SaveSession;
 
@@ -487,6 +492,10 @@ type
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
     property Notebook: TPageControl read FBook;
+    { For the self-test: the shortcut New Tab actually carries, so a check can
+      prove the accelerator survived rather than only that the editor let go
+      of the key. }
+    function NewDocShortCut: TShortCut;
     property Recent: TLedRecentFiles read FRecent;
     property Browser: TLedFileBrowser read FBrowser;
 
@@ -562,9 +571,16 @@ end;
   theme's menu-text colour, so the icons stay legible under a dark theme
   instead of being black-on-black. }
 procedure TLedMainForm.BuildIcons;
+var
+  Size: Integer;
 begin
-  ImageList1.Width := 16;
-  ImageList1.Height := 16;
+  { The icons are drawn by code rather than loaded, so they can be generated
+    at whatever size the display calls for instead of being scaled up from
+    sixteen pixels and going soft.  Sixteen is the size they were designed
+    at, which is what LedScale96 takes. }
+  Size := LedScale96(16);
+  ImageList1.Width := Size;
+  ImageList1.Height := Size;
   LedBuildIconList(ImageList1, LedIconNames, clBtnText);
 end;
 
@@ -589,6 +605,9 @@ begin
     told from a default and Reset has something to go back to. }
   FShortcuts := TLedShortcuts.Create(ActionList1);
   FShortcuts.CaptureDefaults;
+  { Before the first document, so the first editor is built already knowing
+    which keys are not its to handle. }
+  ReserveActionShortcuts;
   FShortcuts.Load;
 
   FTools := TLedTools.Create;
@@ -961,6 +980,9 @@ begin
   finally
     Dlg.Free;
   end;
+  { A shortcut just added to an action has to be taken away from the editor,
+    or the editor keeps handling it and the new binding appears not to work. }
+  ReserveActionShortcuts;
 end;
 
 { --- hand-off from a second invocation ------------------------------------- }
@@ -1883,6 +1905,35 @@ begin
     RefreshPreview;
 end;
 
+
+function TLedMainForm.NewDocShortCut: TShortCut;
+begin
+  Result := actNew.ShortCut;
+end;
+
+procedure TLedMainForm.ReserveActionShortcuts;
+var
+  i, j: Integer;
+  Act: TContainedAction;
+begin
+  for i := 0 to ActionList1.ActionCount - 1 do
+  begin
+    Act := ActionList1.Actions[i];
+    if not (Act is TCustomAction) then Continue;
+    LedReserveShortcut(TCustomAction(Act).ShortCut);
+    { Secondary shortcuts count too: a menu that offers two ways in should not
+      have one of them swallowed. }
+    for j := 0 to TCustomAction(Act).SecondaryShortCuts.Count - 1 do
+      LedReserveShortcut(
+        TextToShortCut(TCustomAction(Act).SecondaryShortCuts[j]));
+  end;
+
+  { Existing views were built before this ran, or before the user last
+    changed a shortcut, so they are brought into line too. }
+  for i := 0 to FDocs.Count - 1 do
+    for j := 0 to FDocs[i].ViewCount - 1 do
+      LedStripReservedKeystrokes(FDocs[i].Views[j]);
+end;
 
 procedure TLedMainForm.PopulateHeaderStyleMenu;
 var
