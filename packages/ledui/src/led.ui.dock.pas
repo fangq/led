@@ -94,6 +94,7 @@ type
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
     procedure ApplyDockPolicy;
+    procedure GuardCentreHeader;
     function GetHeaderStyle: THeaderStyleName;
     procedure SetHeaderStyle(const AValue: THeaderStyleName);
     procedure RailsSettled(Sender: TObject);
@@ -154,6 +155,10 @@ type
       anything clickable -- which is what medit's collapsed pane titles were
       for.  Rebuilt when panes are added, refreshed when one opens or
       closes. }
+    { For the self-test: whether the editor still offers a close button.  It
+      must not -- closing the editor area leaves an empty window. }
+    function CentreCanBeClosed: Boolean;
+
     procedure RebuildRails;
     procedure RefreshRails;
 
@@ -433,11 +438,16 @@ begin
   FHeaderStyleWanted := 'Points';
   ApplyDockPolicy;
 
-  { No header on the editor, and that is the fix for a state the user could
-    not get out of: dragging the editor's header tore the editor out into a
-    window of its own, and once out it could not be dropped back -- the site
-    it came from is a TAnchorDockPanel, and with its only child gone there is
-    nothing left on screen to aim at.  The editor area is not a pane the user
+  { Asking for no header on the editor.  AnchorDocking does not honour it
+    past the next statement -- see GuardCentreHeader -- but the request is
+    left in place because it costs nothing and states the intent.
+
+    The state this was meant to prevent: dragging the editor's header tore the
+    editor out into a window of its own, and once out it could not be dropped
+    back -- the site it came from is a TAnchorDockPanel, and with its only
+    child gone there is nothing left on screen to aim at.  That is now covered
+    from the other end instead, by LoadLayout redocking a floating editor and
+    by View > Reset Pane Layout.  The editor area is not a pane the user
     can usefully float anyway; medit's was not detachable either.
 
     The fourth argument is AddDockHeader.  Without a header there is nothing
@@ -446,6 +456,11 @@ begin
     around it, because they dock to the site rather than to the header. }
   DockMaster.MakeDockable(FCenterForm, True, True, False);
   DockMaster.ManualDock(DockMaster.GetAnchorSite(FCenterForm), FSite, alClient);
+
+  { Only now does the centre have a site with a header on it -- ApplyDockPolicy
+    ran before this and found nothing to guard. }
+  GuardCentreHeader;
+
   FReady := True;
 end;
 
@@ -737,6 +752,13 @@ begin
   end;
   FRailsStale := False;
 
+  { Re-asserted here rather than once at startup.  A rebuilt site gets a fresh
+    header, and a fresh header brings back the close button that would shut
+    the editor area -- the third thing in this dock that has to be put back
+    after AnchorDocking rebuilds something.  This pass already runs on idle
+    and already stands down during a drag, so it is the right place. }
+  GuardCentreHeader;
+
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
   begin
     if FRails[E] = nil then Continue;
@@ -918,6 +940,44 @@ begin
   DockMaster.HeaderHighlightFocused := True;
 
   DockMaster.AllowDragging := FDraggingWanted;
+
+  GuardCentreHeader;
+end;
+
+{ The editor keeps its header, and that cannot be helped from here.
+
+  MakeDockable is told not to give it one and does detach it --
+  "if not AddDockHeader then Site.Header.Parent := nil" -- and then the very
+  next statement calls UpdateHeaderShowing, which puts it straight back:
+  HeaderNeedsShowing consults the global DockMaster.ShowHeader and nothing
+  per-site, and neither routine is virtual, so a TAnchorDockHostSite
+  descendant installed through SiteClass cannot override either.  The flag
+  survives one statement.
+
+  What can be done is take away the close button, which UpdateHeaderShowing
+  never touches.  That was the point of asking for no header in the first
+  place: closing the editor area leaves a window with nothing in it. }
+function TLedDockHost.CentreCanBeClosed: Boolean;
+var
+  Site: TAnchorDockHostSite;
+begin
+  Result := False;
+  if FCenterForm = nil then Exit;
+  Site := DockMaster.GetAnchorSite(FCenterForm);
+  if (Site = nil) or (Site.Header = nil) then Exit;
+  Result := (Site.Header.CloseButton <> nil) and
+            Site.Header.CloseButton.Visible;
+end;
+
+procedure TLedDockHost.GuardCentreHeader;
+var
+  Site: TAnchorDockHostSite;
+begin
+  if FCenterForm = nil then Exit;
+  Site := DockMaster.GetAnchorSite(FCenterForm);
+  if (Site = nil) or (Site.Header = nil) then Exit;
+  if Site.Header.CloseButton <> nil then
+    Site.Header.CloseButton.Visible := False;
 end;
 
 function TLedDockHost.GetHeaderStyle: THeaderStyleName;

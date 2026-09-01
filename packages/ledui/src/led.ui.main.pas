@@ -23,7 +23,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery, Led.UI.Dpi,
-  Led.UI.Splitter, LCLProc;
+  Led.UI.Splitter, LCLProc, LazFileUtils;
 
 type
   TLedMainForm = class(TForm)
@@ -1093,9 +1093,14 @@ begin
   begin
     Arg := ACmd.Files[i];
     if Arg.Path = '' then Continue;
-    { Relative paths belong to the directory the user typed them in, which
-      for a hand-off is not this process's directory. }
-    if ACwd <> '' then
+    { Relative paths belong to the directory the user typed them in, which for
+      a hand-off is not this process's directory.  Absolute ones belong
+      nowhere else and must be left alone: joining a directory to a path that
+      already starts at the root produced /cwd//abs/path, and
+      "led /some/where/file.pas" answered that the file did not exist. }
+    if FilenameIsAbsolute(Arg.Path) then
+      Path := ExpandFileName(Arg.Path)
+    else if ACwd <> '' then
       Path := ExpandFileName(IncludeTrailingPathDelimiter(ACwd) + Arg.Path)
     else
       Path := ExpandFileName(Arg.Path);
