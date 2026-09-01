@@ -167,6 +167,87 @@ begin
     ((AColour shr 16) and $FF));
 end;
 
+const
+  { Minimum luminance separation, 0..255, between a gutter element and the
+    gutter background.  Line numbers are glyphs and read at less separation
+    than the fold marks, which are one- or two-pixel strokes. }
+  LedMinGutterContrast = 70;
+  LedMinFoldContrast   = 90;
+
+{ Perceived luminance, 0..255, on the usual Rec.601 weights.  Good enough to
+  decide "is this readable on that", which is all it is used for. }
+function Luma(AColour: TColor): Integer;
+var
+  R, G, B: Integer;
+begin
+  R := AColour and $FF;
+  G := (AColour shr 8) and $FF;
+  B := (AColour shr 16) and $FF;
+  Result := (R * 299 + G * 587 + B * 114) div 1000;
+end;
+
+{ Push AFore away from ABack until the two differ by at least AMinDelta in
+  luminance, keeping the hue.  Returns AFore unchanged when it is already
+  legible, so a scheme that made a deliberate choice keeps it.
+
+  This exists because several of the eight schemes set a gutter colour barely
+  distinguishable from the gutter background -- readable in medit, which drew
+  line numbers in the widget's text colour, but not once the scheme's own
+  value is honoured.  Rather than override the schemes wholesale, only the
+  unreadable cases are moved, and only far enough to be read. }
+function EnsureContrast(AFore, ABack: TColor; AMinDelta: Integer): TColor;
+var
+  LF, LB, Want, i: Integer;
+  R, G, B: Integer;
+  Up: Boolean;
+begin
+  Result := AFore;
+  if (AFore = clNone) or (ABack = clNone) then
+    Exit;
+  LF := Luma(AFore);
+  LB := Luma(ABack);
+  if Abs(LF - LB) >= AMinDelta then
+    Exit;
+
+  { Move away from the background: lighten on a dark gutter, darken on a
+    light one.  Picking the direction from the background rather than from
+    the foreground keeps the result on the readable side when the two start
+    out nearly equal. }
+  Up := LB < 128;
+  if Up then
+    Want := LB + AMinDelta
+  else
+    Want := LB - AMinDelta;
+  if Want < 0 then Want := 0;
+  if Want > 255 then Want := 255;
+
+  R := AFore and $FF;
+  G := (AFore shr 8) and $FF;
+  B := (AFore shr 16) and $FF;
+
+  { Walk the channels toward white or black until the luminance target is
+    met.  A proportional scale would wash a saturated colour out to grey. }
+  for i := 1 to 255 do
+  begin
+    if (Up and (Luma(TColor(R or (G shl 8) or (B shl 16))) >= Want)) or
+       ((not Up) and (Luma(TColor(R or (G shl 8) or (B shl 16))) <= Want)) then
+      Break;
+    if Up then
+    begin
+      if R < 255 then Inc(R);
+      if G < 255 then Inc(G);
+      if B < 255 then Inc(B);
+    end
+    else
+    begin
+      if R > 0 then Dec(R);
+      if G > 0 then Dec(G);
+      if B > 0 then Dec(B);
+    end;
+  end;
+  Result := TColor(R or (G shl 8) or (B shl 16));
+end;
+
 function ClassFor(const ALangId: string): TSynCustomHighlighterClass;
 var
   i: Integer;
@@ -341,6 +422,7 @@ end;
 procedure LedApplyThemeToEditor(ATheme: TLedTheme; AEdit: TSynEdit);
 var
   S: TLedStyle;
+  GutterBack: TColor;
 begin
   if (ATheme = nil) or (AEdit = nil) then Exit;
 
@@ -370,9 +452,16 @@ begin
     if not ATheme.Find(LedStyleText, S) then
       S := Default(TLedStyle);
 
+  GutterBack := clNone;
+  if lsfBackground in S.Flags then
+    GutterBack := LedColourToTColor(S.Background)
+  else if AEdit.Color <> clNone then
+    GutterBack := AEdit.Color;
+
   if lsfForeground in S.Flags then
     AEdit.Gutter.LineNumberPart.MarkupInfo.Foreground :=
-      LedColourToTColor(S.Foreground);
+      EnsureContrast(LedColourToTColor(S.Foreground), GutterBack,
+        LedMinGutterContrast);
   if lsfBackground in S.Flags then
   begin
     AEdit.Gutter.LineNumberPart.MarkupInfo.Background :=
@@ -382,10 +471,14 @@ begin
     AEdit.Gutter.CodeFoldPart.MarkupInfo.Background := LedColourToTColor(S.Background);
     AEdit.Gutter.SeparatorPart.MarkupInfo.Background := LedColourToTColor(S.Background);
   end;
-  { The fold triangles are drawn in the gutter's own foreground and are
-    invisible against a dark scheme otherwise. }
+  { The fold boxes and the vertical rule joining a block to its end are drawn
+    in the gutter's own foreground, so they inherit the same legibility
+    problem as the line numbers -- and they are thin strokes rather than
+    glyphs, so they need more separation, not less. }
   if lsfForeground in S.Flags then
-    AEdit.Gutter.CodeFoldPart.MarkupInfo.Foreground := LedColourToTColor(S.Foreground);
+    AEdit.Gutter.CodeFoldPart.MarkupInfo.Foreground :=
+      EnsureContrast(LedColourToTColor(S.Foreground), GutterBack,
+        LedMinFoldContrast);
 
   if ATheme.Find(LedStyleBracketMatch, S) then
   begin
