@@ -53,6 +53,16 @@
         <UnitName Value="Led.UI.SelfTest"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.prefs.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Prefs"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.shortcuts.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Shortcuts"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledui/src/led.ui.find.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Find"/>
