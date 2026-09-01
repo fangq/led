@@ -688,6 +688,11 @@ begin
   PopulateToolMenu;
   PopulateReopenMenu;
   PopulateDocMenu;
+  { Every other dynamic submenu is filled here as well as on its own click,
+    which is why they have contents the first time the menu is opened.  This
+    one was only filled on click, so it came up empty until it had been
+    clicked once. }
+  PopulateHeaderStyleMenu;
 end;
 
 procedure TLedMainForm.FormDestroy(Sender: TObject);
@@ -1878,21 +1883,6 @@ begin
     RefreshPreview;
 end;
 
-{ AnchorDocking stores its style names upper-cased -- RegisterHeaderStyle
-  does AddOrSetData(uppercase(StyleName)) -- so the registry hands back
-  FRAME3D and THEMEDCAPTION, which is no way to label a menu.  These say what
-  the style actually draws. }
-function HeaderStyleCaption(const AName: string): string;
-begin
-  if SameText(AName, 'Frame3D') then Result := 'Raised frame'
-  else if SameText(AName, 'Line') then Result := 'Hairline grip'
-  else if SameText(AName, 'Lines') then Result := 'Ridged grip'
-  else if SameText(AName, 'Points') then Result := 'Dotted grip'
-  else if SameText(AName, 'ThemedCaption') then Result := 'Desktop title bar'
-  else if SameText(AName, 'ThemedButton') then Result := 'Desktop button'
-  else if SameText(AName, 'LedPlain') then Result := 'Plain band'
-  else Result := AName;
-end;
 
 procedure TLedMainForm.PopulateHeaderStyleMenu;
 var
@@ -1907,7 +1897,7 @@ begin
   for i := 0 to High(Names) do
   begin
     Item := TMenuItem.Create(miHeaderStyle);
-    Item.Caption := HeaderStyleCaption(Names[i]);
+    Item.Caption := LedHeaderStyleCaption(Names[i]);
     { The real name travels in Hint, because the caption is now a label and
       no longer something the dock would recognise. }
     Item.Hint := Names[i];

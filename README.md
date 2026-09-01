@@ -39,7 +39,9 @@ persists in `layout.xml`. `Editor/lock_pane_layout` disables dragging if you
 would rather panes stayed put; it gates only the two places AnchorDocking
 starts a drag — a header and a tab — so panes still open, close and resize.
 **View ▸ Pane Header Style** picks how the header's drag handle is drawn,
-from the six the docking package ships plus led's own plain band. **View ▸ Reset Pane Layout** closes every pane,
+from the six the docking package ships plus led's own plain band; the same
+list is on a pane header's right-click menu, beside the docking options it
+belongs with. **View ▸ Reset Pane Layout** closes every pane,
 redocks the editor and discards that file — the way back from an arrangement
 dragging has made unusable, which the docking package offers no other route
 out of.

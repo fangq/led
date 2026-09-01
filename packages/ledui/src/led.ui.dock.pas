@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Controls, ExtCtrls, ComCtrls, Buttons, Forms,
-  Graphics, ImgList,
+  Graphics, ImgList, Menus,
   AnchorDocking, AnchorDockPanel, AnchorDockStorage, XMLPropStorage;
 
 type
@@ -56,8 +56,15 @@ type
     hook that reaches every header without chasing sites as they are created
     and destroyed. }
   TLedDockHeader = class(TAnchorDockHeader)
+  private
+    procedure StylePicked(Sender: TObject);
   public
     constructor Create(TheOwner: TComponent); override;
+    { The dock's own right-click menu is where the docking options already
+      live -- undock, merge, header position, and AnchorDocking's lock -- so
+      the header's appearance belongs there too, next to them and reachable
+      from the thing it describes. }
+    procedure PopupMenuPopup(Sender: TObject); override;
   end;
 
   TLedPaneNotify = procedure(const AId: string) of object;
@@ -175,10 +182,28 @@ const
   LedDockEdgeName: array[TLedDockEdge] of string =
     ('left', 'right', 'top', 'bottom');
 
+{ AnchorDocking stores style names upper-cased -- RegisterHeaderStyle does
+  AddOrSetData(uppercase(StyleName)) -- so the registry hands back FRAME3D and
+  THEMEDCAPTION, which is no way to label a menu.  These say what each style
+  actually draws. }
+function LedHeaderStyleCaption(const AName: string): string;
+
 implementation
 
 uses
-  Led.UI.Icons;
+  Led.UI.Icons, Led.Core.Prefs;
+
+function LedHeaderStyleCaption(const AName: string): string;
+begin
+  if SameText(AName, 'Frame3D') then Result := 'Raised frame'
+  else if SameText(AName, 'Line') then Result := 'Hairline grip'
+  else if SameText(AName, 'Lines') then Result := 'Ridged grip'
+  else if SameText(AName, 'Points') then Result := 'Dotted grip'
+  else if SameText(AName, 'ThemedCaption') then Result := 'Desktop title bar'
+  else if SameText(AName, 'ThemedButton') then Result := 'Desktop button'
+  else if SameText(AName, 'LedPlain') then Result := 'Plain band'
+  else Result := AName;
+end;
 
 const
   LedHeaderStyleName = 'LedPlain';
@@ -223,6 +248,37 @@ begin
 end;
 
 { TLedDockHeader }
+
+procedure TLedDockHeader.StylePicked(Sender: TObject);
+begin
+  if not (Sender is TMenuItem) then Exit;
+  DockMaster.HeaderStyle := TMenuItem(Sender).Hint;
+  LedPrefs.SetStr(LedPrefHeaderStyle, TMenuItem(Sender).Hint);
+end;
+
+procedure TLedDockHeader.PopupMenuPopup(Sender: TObject);
+var
+  Root, Item: TMenuItem;
+  i: Integer;
+  StyleName: string;
+begin
+  inherited PopupMenuPopup(Sender);
+
+  { AddPopupMenuItem finds-or-creates by name, so rebuilding the same items
+    on every popup is what it is for and costs nothing. }
+  Root := DockMaster.AddPopupMenuItem('LedHeaderStyleMenu',
+    'Header style', nil, nil);
+  for i := 0 to DockMaster.HeaderStyleName2ADHeaderStyle.Count - 1 do
+  begin
+    StyleName := DockMaster.HeaderStyleName2ADHeaderStyle.Keys[i];
+    Item := DockMaster.AddPopupMenuItem('LedHeaderStyle_' + StyleName,
+      LedHeaderStyleCaption(StyleName), @StylePicked, Root);
+    Item.Hint := StyleName;
+    Item.RadioItem := True;
+    Item.GroupIndex := 71;
+    Item.Checked := SameText(StyleName, DockMaster.HeaderStyle);
+  end;
+end;
 
 constructor TLedDockHeader.Create(TheOwner: TComponent);
 begin
@@ -445,6 +501,14 @@ begin
   Pane := PaneById(AId);
   if Pane = nil then Exit;
   DockPane(Pane);
+  { An edge whose panes are all hidden is itself hidden, so docking a pane
+    into one is not enough to put it on screen.  The View actions each did
+    this themselves and the edge buttons did not, which is why clicking
+    Output showed nothing until the terminal -- also a bottom pane -- was
+    opened and revealed the edge for it.  Doing it here means every route to
+    a pane behaves the same. }
+  if not GetEdgeVisible(Pane.Edge) then
+    SetEdgeVisible(Pane.Edge, True);
   if Assigned(FOnPaneShown) then
     FOnPaneShown(AId);
 end;
