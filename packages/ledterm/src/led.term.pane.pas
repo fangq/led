@@ -15,6 +15,9 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, Menus, Clipbrd, PairSplitter, Forms,
+  { LCL-only, and carries no led dependency of its own, so using it here does
+    not compromise ledterm being buildable on its own. }
+  Led.UI.Splitter,
   Led.Term.View, Led.Term.Pty;
 
 const
@@ -223,7 +226,7 @@ begin
   if Old = nil then Exit;
 
   Host := Old.Parent;
-  Splitter := TPairSplitter.Create(Self);
+  Splitter := TLedPairSplitter.Create(Self);
   Splitter.Parent := Host;
   Splitter.Align := alClient;
   if AVertical then

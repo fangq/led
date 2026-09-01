@@ -23,7 +23,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery, Led.UI.Dpi,
-  LCLProc;
+  Led.UI.Splitter, LCLProc;
 
 type
   TLedMainForm = class(TForm)
@@ -396,7 +396,7 @@ type
       window, as medit's get_notebook(window, 0/1) offered.  The pair splitter
       exists only while it does. }
     FBook2: TPageControl;
-    FBookSplit: TPairSplitter;
+    FBookSplit: TLedPairSplitter;
     FActiveBookIdx: Integer;
     FRecent: TLedRecentFiles;
     FSearch: TLedSearchState;
@@ -2163,7 +2163,7 @@ begin
   if AEnable then
   begin
     { A pair splitter holding the two groups, in place of the single one. }
-    FBookSplit := TPairSplitter.Create(Self);
+    FBookSplit := TLedPairSplitter.Create(Self);
     FBookSplit.Parent := FDock.Center;
     FBookSplit.Align := alClient;
     if AVertical then
