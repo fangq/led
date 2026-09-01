@@ -19,7 +19,7 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
-  Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep;
+  Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser;
 
 type
   TLedMainForm = class(TForm)
@@ -225,7 +225,9 @@ type
     FRunner: TLedToolRunner;
     FOutput: TLedOutputPane;
     FGrepDialog: TLedGrepDialog;
+    FBrowser: TLedFileBrowser;
     FCheckingDisk: Boolean;
+    procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
     procedure PopulateToolMenu;
     procedure ToolItemClick(Sender: TObject);
@@ -285,6 +287,7 @@ type
     property Dock: TLedDockHost read FDock;
     property Notebook: TPageControl read FBook;
     property Recent: TLedRecentFiles read FRecent;
+    property Browser: TLedFileBrowser read FBrowser;
 
     { Takes ownership of the single-instance server and starts listening for
       hand-offs from later invocations. }
@@ -387,7 +390,10 @@ begin
   FOutput := TLedOutputPane.Create(Self);
   FOutput.OnJump := @OutputJump;
 
-  FDock.AddPane(ledLeft, 'files', 'Files', nil);
+  FBrowser := TLedFileBrowser.Create(Self);
+  FBrowser.OnOpenFile := @BrowserOpenFile;
+
+  FDock.AddPane(ledLeft, 'files', 'Files', FBrowser);
   FDock.AddPane(ledBottom, 'output', 'Output', FOutput);
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
@@ -862,6 +868,19 @@ procedure TLedMainForm.actUncommentExecute(Sender: TObject);
 begin
   if ActiveTab <> nil then
     LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
+end;
+
+procedure TLedMainForm.BrowserOpenFile(const AFileName: string);
+var
+  L: TStringList;
+begin
+  L := TStringList.Create;
+  try
+    L.Add(AFileName);
+    OpenFiles(L);
+  finally
+    L.Free;
+  end;
 end;
 
 procedure TLedMainForm.GrepStarted;
@@ -1730,6 +1749,8 @@ end;
 procedure TLedMainForm.actToggleLeftPaneExecute(Sender: TObject);
 begin
   FDock.ToggleEdge(ledLeft);
+  if FDock.EdgeVisible[ledLeft] then
+    FBrowser.EnsureRoot(GetCurrentDir);
 end;
 
 procedure TLedMainForm.actToggleBottomPaneExecute(Sender: TObject);

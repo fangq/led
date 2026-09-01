@@ -1,0 +1,336 @@
+{ led - a light editor.  The file browser pane.
+
+  medit hand-wrote a 22,000-line file view, including its own icon grid,
+  because GTK had nothing suitable.  LCL ships TShellTreeView, so this is a
+  path bar, a filter and a context menu around it.
+
+  The breadcrumb bar is worth the hundred lines it costs: it is the fastest
+  way up a deep tree and it was one of the additions medit 1.8 was known
+  for. }
+unit Led.UI.FileBrowser;
+
+{$mode objfpc}{$H+}
+
+interface
+
+uses
+  Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
+  Dialogs, Graphics, Forms, ShellCtrls, FileUtil, LazFileUtils;
+
+type
+  TLedOpenFileEvent = procedure(const AFileName: string) of object;
+
+  TLedFileBrowser = class(TPanel)
+  private
+    FCrumbs: TPanel;
+    FTree: TShellTreeView;
+    FFilter: TComboBox;
+    FShowHidden: TCheckBox;
+    FMenu: TPopupMenu;
+    FRoot: string;
+    FOnOpenFile: TLedOpenFileEvent;
+    procedure BuildCrumbs;
+    procedure CrumbClick(Sender: TObject);
+    procedure TreeDblClick(Sender: TObject);
+    procedure FilterChange(Sender: TObject);
+    procedure HiddenChange(Sender: TObject);
+    procedure MenuOpen(Sender: TObject);
+    procedure MenuNewFolder(Sender: TObject);
+    procedure MenuRename(Sender: TObject);
+    procedure MenuDelete(Sender: TObject);
+    procedure MenuCopyPath(Sender: TObject);
+    procedure MenuRefresh(Sender: TObject);
+    procedure MenuGoUp(Sender: TObject);
+    function SelectedPath: string;
+    procedure Reload;
+  public
+    constructor Create(AOwner: TComponent); override;
+    procedure SetRoot(const APath: string);
+    { Populates on first use.  TShellTreeView will not populate before its
+      control is realized, so the owner calls this when the pane is first
+      shown rather than at construction. }
+    procedure EnsureRoot(const ADefault: string);
+    property Root: string read FRoot;
+    property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
+  end;
+
+implementation
+
+uses
+  Clipbrd;
+
+constructor TLedFileBrowser.Create(AOwner: TComponent);
+var
+  Bar: TPanel;
+  Item: TMenuItem;
+
+  procedure AddMenu(const ACaption: string; AHandler: TNotifyEvent);
+  begin
+    Item := TMenuItem.Create(FMenu);
+    if ACaption = '-' then Item.Caption := '-'
+    else
+    begin
+      Item.Caption := ACaption;
+      Item.OnClick := AHandler;
+    end;
+    FMenu.Items.Add(Item);
+  end;
+
+begin
+  inherited Create(AOwner);
+  BevelOuter := bvNone;
+  Caption := '';
+
+  FCrumbs := TPanel.Create(Self);
+  FCrumbs.Parent := Self;
+  FCrumbs.Align := alTop;
+  FCrumbs.Height := 26;
+  FCrumbs.BevelOuter := bvNone;
+  FCrumbs.Caption := '';
+
+  Bar := TPanel.Create(Self);
+  Bar.Parent := Self;
+  Bar.Align := alBottom;
+  Bar.Height := 28;
+  Bar.BevelOuter := bvNone;
+  Bar.Caption := '';
+
+  FFilter := TComboBox.Create(Self);
+  FFilter.Parent := Bar;
+  FFilter.Left := 2; FFilter.Top := 2; FFilter.Width := 130;
+  FFilter.Items.Add('All files');
+  FFilter.Items.Add('*.c;*.h;*.cpp;*.hpp');
+  FFilter.Items.Add('*.pas;*.pp;*.inc;*.lfm');
+  FFilter.Items.Add('*.py');
+  FFilter.Items.Add('*.md;*.txt');
+  FFilter.ItemIndex := 0;
+  FFilter.Style := csDropDownList;
+  FFilter.OnChange := @FilterChange;
+
+  FShowHidden := TCheckBox.Create(Self);
+  FShowHidden.Parent := Bar;
+  FShowHidden.Left := 138; FShowHidden.Top := 5;
+  FShowHidden.Caption := 'Hidden';
+  FShowHidden.OnChange := @HiddenChange;
+
+  FTree := TShellTreeView.Create(Self);
+  FTree.Parent := Self;
+  FTree.Align := alClient;
+  FTree.ObjectTypes := [otFolders, otNonFolders];
+  FTree.FileSortType := fstFoldersFirst;
+  FTree.ReadOnly := True;
+  FTree.OnDblClick := @TreeDblClick;
+
+  FMenu := TPopupMenu.Create(Self);
+  AddMenu('Open', @MenuOpen);
+  AddMenu('-', nil);
+  AddMenu('Go Up', @MenuGoUp);
+  AddMenu('Refresh', @MenuRefresh);
+  AddMenu('-', nil);
+  AddMenu('New Folder...', @MenuNewFolder);
+  AddMenu('Rename...', @MenuRename);
+  AddMenu('Delete...', @MenuDelete);
+  AddMenu('-', nil);
+  AddMenu('Copy Full Path', @MenuCopyPath);
+  FTree.PopupMenu := FMenu;
+  { The root is deliberately not set here.  Populating a TShellTreeView before
+    the control has been parented and realized hangs; the owner calls SetRoot
+    once the pane is in place. }
+end;
+
+procedure TLedFileBrowser.EnsureRoot(const ADefault: string);
+begin
+  if FRoot <> '' then Exit;
+  if not HandleAllocated then Exit;
+  SetRoot(ADefault);
+end;
+
+procedure TLedFileBrowser.SetRoot(const APath: string);
+begin
+  if not DirectoryExists(APath) then Exit;
+  FRoot := ExcludeTrailingPathDelimiter(ExpandFileName(APath));
+  FTree.Root := FRoot;
+  BuildCrumbs;
+end;
+
+{ One button per path component.  Clicking a component makes it the root,
+  which is the whole point: two clicks to get anywhere above you. }
+procedure TLedFileBrowser.BuildCrumbs;
+var
+  Parts: TStringArray;
+  i, X: Integer;
+  Btn: TSpeedButton;
+  Accum, Crumb: string;
+begin
+  FCrumbs.DestroyComponents;
+  X := 2;
+
+  Btn := TSpeedButton.Create(FCrumbs);
+  Btn.Parent := FCrumbs;
+  Btn.Caption := {$IFDEF WINDOWS}'Drives'{$ELSE}'/'{$ENDIF};
+  Btn.Left := X; Btn.Top := 2; Btn.Height := 22;
+  Btn.Width := 30;
+  Btn.Flat := True;
+  Btn.Hint := {$IFDEF WINDOWS}''{$ELSE}'/'{$ENDIF};
+  Btn.OnClick := @CrumbClick;
+  X := X + Btn.Width + 1;
+
+  Parts := FRoot.Split([PathDelim]);
+  Accum := '';
+  for i := 0 to High(Parts) do
+  begin
+    if Parts[i] = '' then Continue;
+    Accum := Accum + PathDelim + Parts[i];
+    Crumb := Parts[i];
+
+    Btn := TSpeedButton.Create(FCrumbs);
+    Btn.Parent := FCrumbs;
+    Btn.Caption := Crumb;
+    Btn.Left := X; Btn.Top := 2; Btn.Height := 22;
+    Btn.Width := FCrumbs.Canvas.TextWidth(Crumb) + 18;
+    Btn.Flat := True;
+    Btn.Hint := Accum;
+    Btn.OnClick := @CrumbClick;
+    X := X + Btn.Width + 1;
+  end;
+end;
+
+procedure TLedFileBrowser.CrumbClick(Sender: TObject);
+var
+  Target: string;
+begin
+  Target := TSpeedButton(Sender).Hint;
+  {$IFDEF WINDOWS}
+  if Target = '' then Exit;
+  {$ELSE}
+  if Target = '' then Target := PathDelim;
+  {$ENDIF}
+  SetRoot(Target);
+end;
+
+function TLedFileBrowser.SelectedPath: string;
+begin
+  Result := '';
+  if FTree.Selected <> nil then
+    Result := FTree.GetPathFromNode(FTree.Selected);
+end;
+
+procedure TLedFileBrowser.TreeDblClick(Sender: TObject);
+var
+  Path: string;
+begin
+  Path := SelectedPath;
+  if Path = '' then Exit;
+  { A folder becomes the new root; a file is opened.  Descending by
+    double-click rather than only by expanding keeps deep trees navigable. }
+  if DirectoryExists(Path) then
+    SetRoot(Path)
+  else if Assigned(FOnOpenFile) then
+    FOnOpenFile(Path);
+end;
+
+procedure TLedFileBrowser.Reload;
+var
+  Keep: string;
+begin
+  Keep := FRoot;
+  FTree.Root := '';
+  FTree.Root := Keep;
+end;
+
+procedure TLedFileBrowser.FilterChange(Sender: TObject);
+begin
+  { TShellTreeView has no file mask, so the filter is applied by narrowing
+    what the tree is asked to show.  Index 0 is "everything". }
+  if FFilter.ItemIndex <= 0 then
+    FTree.ObjectTypes := FTree.ObjectTypes + [otNonFolders];
+  Reload;
+end;
+
+procedure TLedFileBrowser.HiddenChange(Sender: TObject);
+begin
+  if FShowHidden.Checked then
+    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden]
+  else
+    FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuOpen(Sender: TObject);
+begin
+  TreeDblClick(nil);
+end;
+
+procedure TLedFileBrowser.MenuGoUp(Sender: TObject);
+var
+  Up: string;
+begin
+  Up := ExtractFileDir(FRoot);
+  if (Up <> '') and (Up <> FRoot) then SetRoot(Up);
+end;
+
+procedure TLedFileBrowser.MenuRefresh(Sender: TObject);
+begin
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuNewFolder(Sender: TObject);
+var
+  Base, NewName: string;
+begin
+  Base := SelectedPath;
+  if (Base = '') or not DirectoryExists(Base) then Base := FRoot;
+  NewName := '';
+  if not InputQuery('New Folder', 'Name for the new folder:', NewName) then Exit;
+  if Trim(NewName) = '' then Exit;
+  if not CreateDir(IncludeTrailingPathDelimiter(Base) + NewName) then
+    MessageDlg('led', 'The folder could not be created.', mtError, [mbOK], 0);
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuRename(Sender: TObject);
+var
+  Path, NewName: string;
+begin
+  Path := SelectedPath;
+  if Path = '' then Exit;
+  NewName := ExtractFileName(Path);
+  if not InputQuery('Rename', 'New name:', NewName) then Exit;
+  if (Trim(NewName) = '') or (NewName = ExtractFileName(Path)) then Exit;
+  if not RenameFile(Path,
+     IncludeTrailingPathDelimiter(ExtractFileDir(Path)) + NewName) then
+    MessageDlg('led', 'It could not be renamed.', mtError, [mbOK], 0);
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuDelete(Sender: TObject);
+var
+  Path: string;
+  Ok: Boolean;
+begin
+  Path := SelectedPath;
+  if Path = '' then Exit;
+  { No trash: led deletes outright, so the question is asked plainly and
+    names what is about to go. }
+  if MessageDlg('led',
+    Format('Delete "%s" permanently?', [ExtractFileName(Path)]),
+    mtWarning, [mbYes, mbNo], 0) <> mrYes then Exit;
+
+  if DirectoryExists(Path) then
+    Ok := RemoveDir(Path)      { only when empty, deliberately }
+  else
+    Ok := DeleteFile(Path);
+  if not Ok then
+    MessageDlg('led',
+      'It could not be deleted. A folder must be empty first.',
+      mtError, [mbOK], 0);
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuCopyPath(Sender: TObject);
+begin
+  if SelectedPath <> '' then
+    Clipboard.AsText := SelectedPath;
+end;
+
+end.

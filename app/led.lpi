@@ -63,6 +63,11 @@
         <UnitName Value="Led.UI.Shortcuts"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.filebrowser.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.FileBrowser"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledui/src/led.ui.find.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Find"/>

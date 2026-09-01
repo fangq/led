@@ -21,7 +21,7 @@ checked off by the presence of a menu entry.
 | Code folding: indentation<br><sub>Python/YAML</sub> | yes | | phase-6 |
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
-| Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | | phase-5 |
+| Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
 | Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |

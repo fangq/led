@@ -23,7 +23,8 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
-  Led.UI.ToolRunner, Led.UI.Output, Led.Core.Tools, Led.Core.OutputFilter,
+  Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
+  Led.Core.Tools, Led.Core.OutputFilter,
   Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
 var
@@ -819,6 +820,19 @@ begin
   end;
 end;
 
+procedure TestFileBrowser(F: TLedMainForm);
+begin
+  WriteLn('file browser');
+  { Showing the pane is what makes the tree populate; doing it before the
+    control is realized hangs, so the sequence itself is the check. }
+  F.actToggleLeftPane.Execute;
+  Pump;
+  Check('the left pane opened', F.Dock.EdgeVisible[ledLeft]);
+  Check('and the browser took a root', F.Browser.Root <> '');
+  F.actToggleLeftPane.Execute;
+  Pump;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -858,6 +872,8 @@ begin
   TestPrefsAndShortcuts(F);
   WriteLn;
   TestTools(F);
+  WriteLn;
+  TestFileBrowser(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));
