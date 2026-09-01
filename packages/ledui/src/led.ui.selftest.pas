@@ -24,6 +24,7 @@ uses
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
+  Led.Term.View, Led.Term.Pty, Led.Term.Screen,
   Led.Core.Tools, Led.Core.OutputFilter,
   Clipbrd, SynEditTypes, ActnList, Menus, LCLProc;
 
@@ -852,6 +853,56 @@ begin
   Pump;
 end;
 
+procedure TestTerminal(F: TLedMainForm);
+var
+  Term: TLedTermView;
+  Waited: Integer;
+  Found: Boolean;
+  y: Integer;
+begin
+  WriteLn('terminal');
+  if not LedPtyAvailable then
+  begin
+    WriteLn('  (skipped: no pseudo-terminal on this platform)');
+    Exit;
+  end;
+
+  Term := TLedTermView.Create(F);
+  try
+    Term.Parent := F;
+    Term.Width := 480;
+    Term.Height := 240;
+    Term.Visible := False;
+    Pump;
+
+    { A real shell on a real pseudo-terminal, asked to print something. }
+    Check('a shell starts on a pty', Term.Start('/bin/sh', GetTempDir));
+    Check('and it is running', Term.Running);
+
+    Term.Screen.Feed('');
+    Term.Paste('echo led-terminal-works' + LineEnding);
+
+    Found := False;
+    Waited := 0;
+    while (not Found) and (Waited < 100) do
+    begin
+      Application.ProcessMessages;
+      Sleep(50);
+      Inc(Waited);
+      for y := 0 to Term.Screen.Rows - 1 do
+        if Pos('led-terminal-works', Term.Screen.RowText(y)) > 0 then
+          Found := True;
+    end;
+    Check('the shell ran a command and echoed the result', Found);
+
+    Term.Stop;
+    Pump;
+    Check('and it stops', not Term.Running);
+  finally
+    Term.Free;
+  end;
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -893,6 +944,8 @@ begin
   TestTools(F);
   WriteLn;
   TestFileBrowser(F);
+  WriteLn;
+  TestTerminal(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

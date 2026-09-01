@@ -158,6 +158,21 @@
         <UnitName Value="Led.UI.Grep"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledterm/src/led.term.pty.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Term.Pty"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledterm/src/led.term.screen.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Term.Screen"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledterm/src/led.term.view.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Term.View"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>
@@ -206,7 +221,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src"/>
+      <OtherUnitFiles Value="../packages/ledcore/src;../packages/ledui/src;../packages/ledsyn/src;../packages/ledterm/src"/>
       <UnitOutputDirectory Value="../lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>
