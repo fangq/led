@@ -212,7 +212,6 @@ An honest list, so nothing here is mistaken for an oversight.
 |---|---|
 | Multiple windows | File / New Window opens one; documents are not shared between them |
 | "Save these documents?" multi-document dialog | not started; each document is asked about separately |
-| Dragging files from the desktop onto the window | not started |
 | Tab reordering | not started; the tab context menu is done |
 | Project file list pane (medit's File List) | not started |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |

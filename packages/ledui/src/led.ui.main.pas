@@ -329,6 +329,7 @@ type
     procedure actUnsplitExecute(Sender: TObject);
     procedure actReloadExecute(Sender: TObject);
     procedure FormActivate(Sender: TObject);
+    procedure FormDropFiles(Sender: TObject; const FileNames: array of string);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -666,6 +667,12 @@ begin
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   FDock.OnPaneShown := @PaneShown;
+
+  { Dropping files on the window opens them.  Set here rather than in the
+    designer because the handler has to exist first, and because this is
+    where the rest of the window's wiring lives. }
+  AllowDropFiles := True;
+  OnDropFiles := @FormDropFiles;
 
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
@@ -2358,6 +2365,56 @@ begin
 end;
 
 { --- external changes ----------------------------------------------------- }
+
+{ Files dropped on the window.
+
+  A directory is not opened as a document -- it points the file browser at
+  itself instead, which is what dropping a folder on an editor is asking for
+  and what medit's browser did with one.
+
+  Everything else goes through OpenFiles, the same path the Open dialog and
+  the command line use, so a dropped file gets the encoding try-list, the
+  prompt on a failed decode and the recent-files entry rather than a second,
+  thinner way in. }
+procedure TLedMainForm.FormDropFiles(Sender: TObject;
+  const FileNames: array of string);
+var
+  i: Integer;
+  Files: TStringList;
+  Dir: string;
+begin
+  Files := TStringList.Create;
+  try
+    Dir := '';
+    for i := 0 to High(FileNames) do
+    begin
+      if FileNames[i] = '' then Continue;
+      if DirectoryExists(FileNames[i]) then
+      begin
+        if Dir = '' then Dir := FileNames[i];
+        Continue;
+      end;
+      Files.Add(FileNames[i]);
+    end;
+
+    if Files.Count > 0 then
+      OpenFiles(Files);
+
+    if Dir <> '' then
+    begin
+      FDock.ShowPane('files');
+      if FBrowser <> nil then
+        FBrowser.SetRoot(Dir);
+    end;
+  finally
+    Files.Free;
+  end;
+
+  { The drop came from another window, so this one is not in front. }
+  if WindowState = wsMinimized then WindowState := wsNormal;
+  BringToFront;
+  LedTryFocus(ActiveView);
+end;
 
 procedure TLedMainForm.FormActivate(Sender: TObject);
 begin
