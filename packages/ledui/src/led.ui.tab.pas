@@ -11,7 +11,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
-  Led.UI.Document, Led.UI.Edit;
+  Led.UI.Document, Led.UI.Edit, Led.UI.Focus;
 
 const
   LedMaxViewsPerTab = 4;
@@ -214,8 +214,7 @@ begin
 
   if FViews.Count > 0 then
     FActiveView := TLedEdit(FViews[0]);
-  if (FActiveView <> nil) and FActiveView.CanFocus then
-    FActiveView.SetFocus;
+  LedTryFocus(FActiveView);
 end;
 
 procedure TLedTab.CycleViews;
@@ -225,8 +224,8 @@ begin
   if FViews.Count < 2 then Exit;
   i := FViews.IndexOf(FActiveView);
   i := (i + 1) mod FViews.Count;
-  if TLedEdit(FViews[i]).CanFocus then
-    TLedEdit(FViews[i]).SetFocus;
+  FActiveView := TLedEdit(FViews[i]);
+  LedTryFocus(FActiveView);
 end;
 
 end.

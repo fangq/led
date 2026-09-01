@@ -17,7 +17,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Graphics, Dialogs,
   SynEdit, SynEditTypes, SynEditMarkupHighAll,
-  Led.UI.Edit;
+  Led.UI.Edit, Led.UI.Focus;
 
 type
   { Supplies the view to act on.  The dialog outlives any one document, so it
@@ -427,7 +427,7 @@ begin
   FCboReplace.Enabled := AReplace;
   FLblStatus.Caption := '';
   Show;
-  FCboFind.SetFocus;
+  LedTryFocus(FCboFind);
 end;
 
 { --- the incremental bar --------------------------------------------------- }
@@ -481,7 +481,7 @@ begin
   if V <> nil then FStartPos := V.CaretXY;
   Visible := True;
   FEdit.SelectAll;
-  FEdit.SetFocus;
+  LedTryFocus(FEdit);
 end;
 
 { Incremental: every keystroke restarts from where the search began, so
@@ -546,7 +546,7 @@ begin
     FState.SearchText := '';
     LedUpdateHighlightAll(V, FState);
     FState.SearchText := FEdit.Text;
-    if V.CanFocus then V.SetFocus;
+    LedTryFocus(V);
   end;
 end;
 

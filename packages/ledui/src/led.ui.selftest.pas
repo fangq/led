@@ -24,6 +24,7 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
+  Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.UI.Symbols,
   Led.Core.Ctags,
@@ -168,6 +169,93 @@ begin
   Tab.Unsplit;
   Pump;
   CheckEqInt('one view again', 1, Tab.ViewCount);
+end;
+
+procedure TestIconsAndFocus(F: TLedMainForm);
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, Clear, Opaque, Purple, i, Blank: Integer;
+  C: TFPColor;
+  Hidden: TForm;
+  Ed: TEdit;
+begin
+  Say('icons and focus');
+
+  CheckEqInt('every icon was built', Length(LedIconNames), F.ImageList1.Count);
+
+  { The icons are drawn on a mask colour that has to disappear.  Getting this
+    wrong is not subtle -- it puts a purple square behind every toolbar
+    button -- and it is invisible to any check that only counts images. }
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(F.ImageList1.Width, F.ImageList1.Height);
+    F.ImageList1.GetBitmap(LedIconIndex('save'), Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      Clear := 0; Opaque := 0; Purple := 0;
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if C.Alpha < $4000 then Inc(Clear) else Inc(Opaque);
+          if (C.Alpha >= $4000) and (C.Red > $C000) and (C.Blue > $C000) and
+             (C.Green < $4000) then Inc(Purple);
+        end;
+    finally
+      Img.Free;
+    end;
+    Check('an icon has a transparent background', Clear > 0);
+    Check('and it still has an icon on it', Opaque > 0);
+    CheckEqInt('and no mask colour survives', 0, Purple);
+  finally
+    Bmp.Free;
+  end;
+
+  { An icon that draws nothing is a missing case branch, which is easy to
+    introduce and impossible to see in a menu. }
+  Blank := 0;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(F.ImageList1.Width, F.ImageList1.Height);
+    for i := 0 to F.ImageList1.Count - 1 do
+    begin
+      F.ImageList1.GetBitmap(i, Bmp);
+      Img := Bmp.CreateIntfImage;
+      try
+        Opaque := 0;
+        for y := 0 to Img.Height - 1 do
+          for x := 0 to Img.Width - 1 do
+            if Img.Colors[x, y].Alpha >= $4000 then Inc(Opaque);
+        if Opaque = 0 then Inc(Blank);
+      finally
+        Img.Free;
+      end;
+    end;
+  finally
+    Bmp.Free;
+  end;
+  CheckEqInt('no icon is blank', 0, Blank);
+
+  { The state that raises is a form that is neither active nor visible-and-
+    enabled: during FormCreate, and for as long as a modal dialog holds the
+    main window disabled.  Disabling the main window here is not enough to
+    reproduce it -- it stays the active form, and FocusControl only calls
+    Form.SetFocus when the form was not already active -- so the check uses
+    a window that was never shown, which is the startup case exactly. }
+  Hidden := TForm.CreateNew(nil);
+  try
+    Hidden.Name := 'LedFocusProbe';
+    Ed := TEdit.Create(Hidden);
+    Ed.Parent := Hidden;
+    Check('focus is declined on a window that is not showing',
+      not LedTryFocus(Ed));
+    Check('and the editor can still be focused', LedTryFocus(F.ActiveView));
+  finally
+    Hidden.Free;
+  end;
 end;
 
 procedure TestDockEdges(F: TLedMainForm);
@@ -1186,6 +1274,7 @@ begin
   WriteLn;
   TestSharedBufferSplitView(F);
   WriteLn;
+  TestIconsAndFocus(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);

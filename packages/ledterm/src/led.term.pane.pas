@@ -238,7 +238,6 @@ begin
   CentreSplitter(Splitter);
   NewTerm.Start('', FWorkDir);
   FActive := NewTerm;
-  if NewTerm.CanFocus then NewTerm.SetFocus;
 end;
 
 procedure TLedTerminalPane.CloseActive;
@@ -275,7 +274,6 @@ begin
 
   if FTerminals.Count > 0 then
     FActive := TLedTermView(FTerminals[0]);
-  FocusActive;
 end;
 
 function TLedTerminalPane.Running: Boolean;
@@ -289,7 +287,9 @@ end;
 
 procedure TLedTerminalPane.FocusActive;
 begin
-  if (FActive <> nil) and FActive.CanFocus then FActive.SetFocus;
+  { Deliberately empty of any SetFocus.  Whether a control can be focused
+    depends on the state of the window that owns it, which this pane cannot
+    see; Led.UI.Focus answers that question and the caller asks it. }
 end;
 
 procedure TLedTerminalPane.DoSplitH(Sender: TObject);
