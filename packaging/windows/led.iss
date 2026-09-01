@@ -1,0 +1,154 @@
+; Inno Setup script for led.
+;
+; Built in CI with:
+;   ISCC /DAppVersion=<ver> /DAppVerNumeric=<a.b.c.d> /DSrcDir=<repo root> \
+;        packaging\windows\led.iss
+; SrcDir is the folder holding bin\led.exe, data\ and README.md; the installer
+; is written to <SrcDir>\dist.  All defines fall back to sensible values for a
+; local run.  AppVersion is the display/filename version (keep it clean -- no
+; '~', which is an odd character on Windows); AppVerNumeric is the a.b.c.d form
+; the PE VersionInfo requires.  Embedding VersionInfo makes the installer a
+; named, attributed binary rather than an anonymous one, which SmartScreen and
+; Defender reputation heuristics treat far more kindly.
+
+#ifndef AppVersion
+  #define AppVersion "2.0.0"
+#endif
+#ifndef AppVerNumeric
+  #define AppVerNumeric "2.0.0.0"
+#endif
+#ifndef SrcDir
+  #define SrcDir SourcePath + "..\.."
+#endif
+
+#define AppName "led"
+#define AppLongName "led - a light editor"
+#define AppExe "led.exe"
+
+[Setup]
+AppId={{4E1C9A6F-8B23-4D57-9E10-3A7C5F2B8D41}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher=Qianqian Fang
+AppPublisherURL=https://github.com/fangq/led
+DefaultDirName={autopf}\led
+DefaultGroupName=led
+DisableProgramGroupPage=yes
+; per-user install, no administrator rights required
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+ArchitecturesInstallIn64BitMode=x64compatible
+OutputDir={#SrcDir}\dist
+OutputBaseFilename=led-setup-{#AppVersion}
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+UninstallDisplayName={#AppLongName}
+UninstallDisplayIcon={app}\{#AppExe}
+VersionInfoVersion={#AppVerNumeric}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductName={#AppName}
+VersionInfoCompany=Qianqian Fang
+VersionInfoDescription=led Setup
+VersionInfoCopyright=(C) 2026 Qianqian Fang. GPLv3-or-later.
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
+; An editor earns its keep from the shell, so "Open with led" on every file is
+; on by default; taking over the double-click for source files is not.
+Name: "contextmenu"; Description: "Add ""Open with led"" to the Explorer context menu"; GroupDescription: "Shell integration:"
+Name: "associate"; Description: "Open .txt, .md and common source files with led"; GroupDescription: "Shell integration:"; Flags: unchecked
+
+[Files]
+Source: "{#SrcDir}\bin\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SrcDir}\README.md";     DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "{#SrcDir}\PARITY.md";     DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; The grammars, themes and shipped tools are read at run time.  led looks for
+; data\ next to the executable on Windows, so the layout here is not optional.
+Source: "{#SrcDir}\data\grammars\*"; DestDir: "{app}\data\grammars"; Flags: ignoreversion recursesubdirs
+Source: "{#SrcDir}\data\themes\*";   DestDir: "{app}\data\themes";   Flags: ignoreversion recursesubdirs
+Source: "{#SrcDir}\data\tools\*";    DestDir: "{app}\data\tools";    Flags: ignoreversion recursesubdirs
+Source: "{#SrcDir}\data\langs\*";    DestDir: "{app}\data\langs";    Flags: ignoreversion recursesubdirs
+
+[Icons]
+Name: "{group}\led";           Filename: "{app}\{#AppExe}"
+Name: "{group}\Uninstall led"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\led";     Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+
+[Registry]
+; "Open with led" on any file.  Written under HKCU so the per-user install
+; needs no elevation.
+Root: HKCU; Subkey: "Software\Classes\*\shell\OpenWithLed"; ValueType: string; ValueName: ""; ValueData: "Open with led"; Tasks: contextmenu; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\OpenWithLed"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#AppExe},0"; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\*\shell\OpenWithLed\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: contextmenu; Flags: uninsdeletekey
+; "Open folder with led" -- led takes a directory and opens its file browser there.
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\OpenWithLed"; ValueType: string; ValueName: ""; ValueData: "Open folder with led"; Tasks: contextmenu; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\OpenWithLed"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#AppExe},0"; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\OpenWithLed\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%V"""; Tasks: contextmenu; Flags: uninsdeletekey
+
+; The ProgId the file associations point at.
+Root: HKCU; Subkey: "Software\Classes\led.Document"; ValueType: string; ValueName: ""; ValueData: "Text Document"; Tasks: associate; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\led.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: associate
+Root: HKCU; Subkey: "Software\Classes\led.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: associate
+
+[Code]
+const
+  { The extensions the "associate" task claims.  Kept short on purpose: these
+    are the ones people actually want an editor to own, and every entry here
+    is one the user has to undo by hand if they change their mind. }
+  ExtCount = 24;
+var
+  Exts: array[0..ExtCount - 1] of string;
+
+procedure InitExts;
+begin
+  Exts[0]  := '.txt';  Exts[1]  := '.md';   Exts[2]  := '.log';
+  Exts[3]  := '.ini';  Exts[4]  := '.cfg';  Exts[5]  := '.conf';
+  Exts[6]  := '.c';    Exts[7]  := '.h';    Exts[8]  := '.cpp';
+  Exts[9]  := '.hpp';  Exts[10] := '.cc';   Exts[11] := '.cs';
+  Exts[12] := '.pas';  Exts[13] := '.py';   Exts[14] := '.sh';
+  Exts[15] := '.js';   Exts[16] := '.ts';   Exts[17] := '.json';
+  Exts[18] := '.xml';  Exts[19] := '.html'; Exts[20] := '.css';
+  Exts[21] := '.sql';  Exts[22] := '.lua';  Exts[23] := '.m';
+end;
+
+procedure RegisterExtensions;
+var
+  i: Integer;
+begin
+  InitExts;
+  for i := 0 to ExtCount - 1 do
+    RegWriteStringValue(HKEY_CURRENT_USER,
+      'Software\Classes\' + Exts[i], '', 'led.Document');
+end;
+
+procedure UnregisterExtensions;
+var
+  i: Integer;
+  Cur: string;
+begin
+  InitExts;
+  for i := 0 to ExtCount - 1 do
+    { Only give an extension back if led is still the one holding it; another
+      editor may have claimed it since, and stealing it back on uninstall
+      would be worse than leaving it. }
+    if RegQueryStringValue(HKEY_CURRENT_USER,
+         'Software\Classes\' + Exts[i], '', Cur) and (Cur = 'led.Document') then
+      RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER,
+        'Software\Classes\' + Exts[i]);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('associate') then
+    RegisterExtensions;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    UnregisterExtensions;
+end;
+
+[Run]
+Filename: "{app}\{#AppExe}"; Description: "Launch led now"; Flags: nowait postinstall skipifsilent

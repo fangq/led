@@ -96,6 +96,21 @@ begin
     FDataDir := IncludeTrailingPathDelimiter(Candidate)
   else
   begin
+    {$IFDEF DARWIN}
+    { Inside an application bundle the executable is at
+      led.app/Contents/MacOS/led and everything it ships with belongs in
+      Contents/Resources.  Checked first, because the generic rule below
+      would otherwise resolve to Contents/data. }
+    Candidate := IncludeTrailingPathDelimiter(
+      ExtractFilePath(ExpandFileName(ParamStr(0)))) +
+      '..' + PathDelim + 'Resources' + PathDelim + 'data';
+    if DirectoryExists(Candidate) then
+    begin
+      FDataDir := IncludeTrailingPathDelimiter(ExpandFileName(Candidate));
+      Exit(FDataDir);
+    end;
+    {$ENDIF}
+
     { A build tree keeps data/ one level up from bin/. }
     Candidate := IncludeTrailingPathDelimiter(
       ExtractFilePath(ExpandFileName(ParamStr(0)))) + '..' + PathDelim + 'data';

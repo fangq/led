@@ -1,0 +1,127 @@
+name: CI
+
+# Cross-platform from the first commit, not bolted on later: the whole point
+# of the Lazarus rewrite is that one source tree compiles everywhere, and that
+# only stays true if every push proves it.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }} / ${{ matrix.widgetset }})
+    runs-on: ${{ matrix.os }}
+    # qt5 needs libqt5pas, which is not in every distro's default set.  A
+    # missing binding library should read as "not available here", not as
+    # "led is broken", so that one entry is allowed to fail.
+    continue-on-error: ${{ matrix.optional || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  widgetset: gtk2 }
+          - { os: ubuntu-latest,  widgetset: qt5, optional: true }
+          - { os: windows-latest, widgetset: win32 }
+          # Pinned to macOS 14 (Sonoma): setup-lazarus' prebuilt Lazarus .pkg
+          # installs there, but macos-latest (15 / Sequoia) rejects it as
+          # "incompatible with this version of macOS".
+          - { os: macos-14,       widgetset: cocoa }
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lazarus + FPC
+        uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+
+      - name: Tool versions
+        shell: bash
+        run: |
+          fpc -iV
+          lazbuild --version
+
+      # qt5 needs the bindings library; the LCL qt5 interface links against it.
+      - name: Install libqt5pas (qt5 only)
+        if: matrix.widgetset == 'qt5'
+        run: sudo apt-get update && sudo apt-get install -y libqt5pas-dev
+
+      - name: Build editor (Release)
+        shell: bash
+        run: lazbuild --widgetset=${{ matrix.widgetset }} --build-mode=Release app/led.lpi
+
+  core-tests:
+    name: headless core tests (nogui)
+    # ledcore must stay free of any visual dependency; building the runner
+    # with the nogui widgetset is what enforces that.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+      - name: Build headless tests
+        run: lazbuild --widgetset=nogui test/ledcoretest.lpi
+      - name: Run headless tests
+        run: ./bin/ledcoretest --all --format=plain
+
+  grammars:
+    name: grammar gate
+    # Every converted grammar must load in the engine the editor uses.  A
+    # converter that emits plausible JSON the engine then rejects is worse
+    # than one that fails loudly.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+      - name: Regenerate grammars from the .lang sources
+        run: python3 tools/lang2tm.py data/langs data/grammars
+      - name: Build the checker
+        run: lazbuild --widgetset=nogui tools/langcheck/langcheck.lpi
+      - name: Check every grammar loads
+        run: ./bin/langcheck data/grammars
+
+  gui-self-test:
+    name: scripted GUI self-test (xvfb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+      - name: Build editor
+        run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
+      # The self-test uses a configuration directory of its own, so this
+      # reports led's behaviour and not the runner's leftovers.
+      - name: Run scripted GUI self-test
+        run: xvfb-run -a ./bin/led --self-test
+
+  icons:
+    name: icons are in step with their generator
+    # The icon files are committed so a fresh clone builds without Pillow.
+    # This proves they still match tools/make-icon.py, which is the only place
+    # the design is written down.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Pillow
+        run: python3 -m pip install --break-system-packages pillow
+      - name: Regenerate into a scratch copy
+        run: |
+          cp -r packaging/icons /tmp/icons-before
+          python3 tools/make-icon.py
+      # The SVG is text and byte-stable, so it is compared exactly.  The
+      # rasters are compared by pixel content instead of by bytes, because a
+      # different Pillow version re-encodes the same image differently and a
+      # byte diff would fail for no reason anyone can act on.
+      - name: Compare against what is committed
+        run: python3 tools/check-icons.py /tmp/icons-before

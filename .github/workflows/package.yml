@@ -1,0 +1,208 @@
+name: Package
+
+# Builds the desktop installers and uploads them as workflow artifacts:
+#   Linux   -> .deb + a portable .tar.gz
+#   Windows -> Inno Setup .exe (unsigned) + a portable .zip
+#   macOS   -> .dmg holding led.app
+# Runs on main and on version tags; also on demand.  Tag pushes (v*)
+# additionally attach the installers to a GitHub Release.
+#
+# led reads its grammars, themes and shipped tools from a data directory at
+# run time, so every package here has to carry data/ as well as the binary --
+# a packager that ships only the executable produces an editor that opens
+# every file as plain text.
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+# needed for the tag-only "attach to release" steps
+permissions:
+  contents: write
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------- Linux .deb
+  linux-deb:
+    name: linux (.deb + tar.gz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lazarus + FPC
+        uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+
+      - name: Build editor (Release)
+        run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
+
+      - name: Compute version
+        run: |
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF#refs/tags/v}"
+          else
+            ver="2.0.0~git$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+          echo "building version $ver"
+
+      - name: Build .deb and portable tar.gz
+        # The same script `make deb` runs, so this path is exercised on a
+        # laptop and not only in CI.
+        run: packaging/linux/build-deb.sh "$PWD" "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      # upload-artifact always wraps its contents in a zip, so uploading the
+      # tarball directly would nest archives.  The loose staged tree is what
+      # produces one usable download.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-linux-portable
+          path: led-*-linux-x86_64/**
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.tar.gz
+
+  # ---------------------------------------------------------- Windows (Inno)
+  windows-inno:
+    name: windows (Inno Setup .exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lazarus + FPC
+        uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+
+      - name: Build editor (Release)
+        shell: bash
+        run: lazbuild --widgetset=win32 --build-mode=Release app/led.lpi
+
+      - name: Compute version
+        shell: bash
+        run: |
+          # Keep the Windows installer version CLEAN (no '~', no per-commit
+          # hash).  A stable "led-setup-<ver>.exe" name lets the file accrue
+          # SmartScreen reputation across downloads instead of looking brand
+          # new every commit.
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF#refs/tags/v}"
+          else
+            ver="2.0.0"
+          fi
+          vernum="$(printf '%s' "$ver" | grep -oE '^[0-9]+(\.[0-9]+)*')"
+          [ -z "$vernum" ] && vernum="2.0.0"
+          IFS='.' read -r a b c d <<< "$vernum"
+          d="${d%%.*}"    # PE VersionInfo allows four components
+          vernum="${a:-2}.${b:-0}.${c:-0}.${d:-0}"
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+          echo "VERNUM=$vernum" >> "$GITHUB_ENV"
+          echo "building version $ver (VersionInfo $vernum)"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:VERSION" "/DAppVerNumeric=$env:VERNUM" `
+                  "/DSrcDir=$($PWD.Path)" "packaging\windows\led.iss"
+          Get-ChildItem dist
+
+      - name: Stage portable files
+        shell: pwsh
+        run: |
+          $stage = "led-$env:VERSION-win64"
+          New-Item -ItemType Directory -Force -Path "$stage\bin" | Out-Null
+          Copy-Item bin\led.exe "$stage\bin\"
+          # data\ must sit next to the executable's folder; led looks for
+          # <exe>\data on Windows.
+          Copy-Item -Recurse data\grammars, data\themes, data\tools, data\langs `
+                    -Destination (New-Item -ItemType Directory -Force -Path "$stage\bin\data")
+          Copy-Item README.md, PARITY.md $stage -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$stage\*" `
+            -DestinationPath "dist\led-$env:VERSION-win64.zip" -Force
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-windows-setup
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-windows-portable
+          path: led-*-win64/**
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.zip
+
+  # -------------------------------------------------------------- macOS .dmg
+  macos-dmg:
+    name: macos (.dmg)
+    # Pinned to macOS 14 for the same reason as CI: setup-lazarus' .pkg does
+    # not install on macos-latest.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Lazarus + FPC
+        uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+
+      - name: Build editor (Release)
+        run: lazbuild --widgetset=cocoa --build-mode=Release app/led.lpi
+
+      - name: Compute version
+        run: |
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF#refs/tags/v}"
+          else
+            ver="2.0.0~git$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+          echo "building version $ver"
+
+      - name: Build led.app + .dmg
+        run: packaging/macos/build-app.sh "$PWD" "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-macos-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
