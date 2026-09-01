@@ -35,7 +35,12 @@ brought back with one click instead of only through the View menu. Turn the
 strips off with `Editor/show_pane_buttons`.
 
 Panes can be dragged between edges, floated and redocked, and the arrangement
-persists in `layout.xml`. **View ▸ Reset Pane Layout** closes every pane,
+persists in `layout.xml`. Dragging is **off by default** —
+`Editor/lock_pane_layout` — because a dropped pane lands somewhere hard to
+predict and the drag path has produced use-after-free crashes inside the
+docking package's gtk2 handling. Locking gates only the two places
+AnchorDocking starts a drag, a header and a tab, so panes still open, close
+and resize. **View ▸ Reset Pane Layout** closes every pane,
 redocks the editor and discards that file — the way back from an arrangement
 dragging has made unusable, which the docking package offers no other route
 out of.

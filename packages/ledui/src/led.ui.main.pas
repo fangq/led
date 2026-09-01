@@ -597,6 +597,12 @@ begin
   { The edge rails draw the same icons the toolbar and menus use. }
   FDock.Images := ImageList1;
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
+  { Locked by default while the docking instability is being lived with: a
+    dropped pane lands somewhere hard to predict, and dragging is the path
+    that was producing use-after-free crashes inside AnchorDocking's gtk2
+    handling.  Panes still open, close and resize; only tearing them off by
+    the header or the tab is off. }
+  FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, True);
 
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
@@ -915,6 +921,7 @@ begin
   LedReloadUserConfig;
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
+  FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, True);
   { The output pane is not a document, so the loop below never reaches it. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
   for i := 0 to FBook.PageCount - 1 do
