@@ -183,11 +183,18 @@ checked off by the presence of a menu entry.
 | Switch _Header and Implementation | yes | | phase-4 |
 | DVI Forward Search | yes | | phase-4 |
 
+## Reversed
+
+One decision taken up front turned out to be wrong and has been undone.
+
+| Feature | What changed |
+|---|---|
+| Detachable floating panes | dropped as "a large share of the original complexity", then asked for from real use.  AnchorDocking supplies drag-between-edges, tear-off, redock and a persisted layout, so the cost is a package reference rather than 7,200 lines |
+
 ## Dropped, agreed up front
 
 | Feature | Why |
 |---|---|
-| Detachable floating panes | docking on four edges is kept |
 | Wiki markup preview | Markdown preview is kept |
 | XSMP desktop session management | X11 only; session.json covers continuity |
 | OS clipboard file transfer | LCL cannot initiate an OS file drag portably |
@@ -204,17 +211,17 @@ An honest list, so nothing here is mistaken for an oversight.
 | Feature | Status |
 |---|---|
 | Split notebook (two independent tab groups) | not started; split *view* within a tab works |
-| Multiple windows | not started; one window per instance |
+| Multiple windows | File / New Window opens one; documents are not shared between them |
 | "Save these documents?" multi-document dialog | not started; each document is asked about separately |
 | Dragging files from the desktop onto the window | not started |
-| Tab reordering and tab context menu | not started |
+| Tab reordering | not started; the tab context menu is done |
 | Project file list pane (medit's File List) | not started |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
 | Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
-| Terminal splitting, and 5 of medit's 10 colour schemes | not started |
+| 5 of medit's 10 terminal colour schemes | not started; terminal splitting is done |
 | Wiki markup preview | dropped deliberately |
-| Detachable floating panes | dropped deliberately |
+| Text selection with the mouse inside the terminal | not started; the context menu copies the whole screen |
 | Translations | not started |
 | macOS bundle and Windows installer | not started; install.sh covers Unix prefixes |
