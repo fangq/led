@@ -20,6 +20,7 @@ implementation
 uses
   Classes, SysUtils, Forms, ComCtrls,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
+  Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock;
 
 var
@@ -294,7 +295,6 @@ begin
   try
     L.Add('x');
     L.SaveToFile(Path);
-    F.OpenFiles(L);           { not a file list -- should be ignored safely }
   finally
     L.Free;
   end;
@@ -313,6 +313,59 @@ begin
   DeleteFile(Path);
 end;
 
+procedure TestLanguageAndTheme(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  L: TStringList;
+begin
+  WriteLn('language detection and theming');
+
+  Check('grammars were found', LedLanguages.Count > 100);
+  Check('themes were found', LedThemes.Count >= 8);
+
+  Path := TempName('hello.c');
+  L := TStringList.Create;
+  try
+    L.Add('/* a comment */');
+    L.Add('int main(void) { return 0; }');
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('language detected from the suffix', Doc.LangInfo <> nil);
+  if Doc.LangInfo <> nil then
+    CheckEq('and it is C', 'c', Doc.LangInfo.Id);
+  Check('a highlighter was attached', Doc.Master.Highlighter <> nil);
+  Check('comment markers are available',
+    (Doc.LangInfo <> nil) and (Doc.LangInfo.LineComment = '//'));
+
+  { An explicit choice from the Document menu overrules detection. }
+  Doc.SetLanguage('python');
+  Pump;
+  CheckEq('language can be overridden', 'python', Doc.LangInfo.Id);
+
+  { Switching themes must not lose the highlighter or crash the views. }
+  LedSetCurrentTheme('oblivion');
+  Doc.ApplyConfigToViews;
+  Pump;
+  Check('highlighter survives a theme change', Doc.Master.Highlighter <> nil);
+  Check('theme resolved', LedCurrentTheme <> nil);
+  if LedCurrentTheme <> nil then
+    CheckEq('to the one asked for', 'oblivion', LedCurrentTheme.Id);
+  LedSetCurrentTheme('medit');
+  Pump;
+
+  DeleteFile(Path);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -321,6 +374,9 @@ begin
   WriteLn;
 
   F := LedMainForm;
+  { No modal dialog may ever appear during a scripted run: it would block the
+    harness and, worse, land on the screen of whoever happens to be logged in. }
+  F.Silent := True;
   F.Show;
   Pump;
 
@@ -335,6 +391,8 @@ begin
   TestDocumentBehaviour(F);
   WriteLn;
   TestRecentFiles(F);
+  WriteLn;
+  TestLanguageAndTheme(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

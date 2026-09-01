@@ -31,6 +31,16 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="src/led.syn.tests.theme.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Syn.Tests.Theme"/>
+      </Unit>
+      <Unit>
+        <Filename Value="src/led.syn.tests.languages.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Syn.Tests.Languages"/>
+      </Unit>
+      <Unit>
         <Filename Value="src/led.core.tests.settings.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Tests.Settings"/>
@@ -59,7 +69,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="src;../packages/ledcore/src"/>
+      <OtherUnitFiles Value="src;../packages/ledcore/src;../packages/ledsyn/src"/>
       <UnitOutputDirectory Value="../lib/test-$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>

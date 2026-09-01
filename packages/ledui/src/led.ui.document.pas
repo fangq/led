@@ -19,8 +19,10 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, SynEdit, SynEditTypes, SynEditMiscClasses,
+  SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
-  Led.Core.Modeline, Led.Core.Prefs, Led.UI.Edit;
+  Led.Core.Modeline, Led.Core.Prefs, Led.Syn.Languages, Led.Syn.Theme,
+  Led.Syn.Factory, Led.UI.Edit;
 
 type
   TLedDocument = class;
@@ -46,6 +48,8 @@ type
     procedure NoteDiskState;
     procedure ApplyConfigToView(AView: TLedEdit);
     procedure ReadModelines;
+    procedure DetectLanguage;
+    procedure ApplyLanguage;
     function PreparedText: string;
   public
     constructor Create(AOwner: TComponent); override;
@@ -69,6 +73,9 @@ type
 
     procedure SetEncoding(const AEncoding: string);
     procedure SetLineEnd(ALineEnd: TLedLineEnd);
+    { An explicit choice from the Document menu; overrides detection. }
+    procedure SetLanguage(const ALangId: string);
+    function LangInfo: TLedLangInfo;
 
     function DisplayName: string;
     function IsUntitled: Boolean;
@@ -111,10 +118,35 @@ type
 function LedUserConfig: TLedDocConfig;
 procedure LedReloadUserConfig;
 
+{ The theme named by Editor/color_scheme, or nil when it is not installed. }
+function LedCurrentTheme: TLedTheme;
+procedure LedSetCurrentTheme(const AId: string);
+
 implementation
 
 var
   FUserConfig: TLedDocConfig = nil;
+  FTheme: TLedTheme = nil;
+  FThemeResolved: Boolean = False;
+
+function LedCurrentTheme: TLedTheme;
+begin
+  if not FThemeResolved then
+  begin
+    FTheme := LedThemes.FindById(
+      LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
+    FThemeResolved := True;
+  end;
+  Result := FTheme;
+end;
+
+procedure LedSetCurrentTheme(const AId: string);
+begin
+  FTheme := LedThemes.FindById(AId);
+  FThemeResolved := True;
+  LedPrefs.SetStr(LedPrefColorScheme, AId);
+  LedRetheme(FTheme);
+end;
 
 function LedUserConfig: TLedDocConfig;
 begin
@@ -176,6 +208,7 @@ begin
     AView.Options := AView.Options + [eoTabsToSpaces];
 
   AView.Gutter.LineNumberPart.Visible := FConfig.GetBool(LedSetShowLineNumbers);
+  LedApplyThemeToEditor(LedCurrentTheme, AView);
 
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
@@ -187,6 +220,52 @@ var
 begin
   for i := 0 to FViews.Count - 1 do
     ApplyConfigToView(TLedEdit(FViews[i]));
+end;
+
+function TLedDocument.LangInfo: TLedLangInfo;
+begin
+  Result := LedLanguages.FindById(FConfig.GetStr(LedSetLang));
+end;
+
+{ Detection is recorded at lcsAuto, the most specific source, because a
+  modeline saying "mode: python" has already been applied at lcsFile and a
+  guess from the filename should not overrule it. }
+procedure TLedDocument.DetectLanguage;
+var
+  Lang: TLedLangInfo;
+  FirstLine: string;
+begin
+  if FConfig.HasValue(LedSetLang) and
+     (FConfig.SourceOf(LedSetLang) <= lcsFile) then
+  begin
+    { A modeline already named one; honour it if it exists. }
+    if LedLanguages.FindById(FConfig.GetStr(LedSetLang)) <> nil then Exit;
+  end;
+
+  FirstLine := '';
+  if FMaster.Lines.Count > 0 then FirstLine := FMaster.Lines[0];
+  Lang := LedLanguages.FindForFile(FFileName, FirstLine);
+  if Lang <> nil then
+    FConfig.SetStr(LedSetLang, Lang.Id, lcsAuto);
+end;
+
+procedure TLedDocument.ApplyLanguage;
+var
+  HL: TSynCustomHighlighter;
+begin
+  HL := LedHighlighterFor(FConfig.GetStr(LedSetLang));
+  if HL <> nil then
+    LedApplyThemeToHighlighter(LedCurrentTheme, HL);
+  { The highlighter belongs to the shared buffer, so setting it on the master
+    reaches every view. }
+  FMaster.Highlighter := HL;
+end;
+
+procedure TLedDocument.SetLanguage(const ALangId: string);
+begin
+  FConfig.SetStr(LedSetLang, ALangId, lcsAuto);
+  ApplyLanguage;
+  if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
 function TLedDocument.GetModified: Boolean;
@@ -328,6 +407,8 @@ begin
   FConfig.SetStr(LedSetEncoding, FInfo.Encoding, lcsAuto);
   FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
   ReadModelines;
+  DetectLanguage;
+  ApplyLanguage;
   ApplyConfigToViews;
 
   if Assigned(FOnChanged) then FOnChanged(Self);

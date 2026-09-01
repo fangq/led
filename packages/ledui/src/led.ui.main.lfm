@@ -30,6 +30,10 @@ object LedMainForm: TLedMainForm
         Width = 70
       end    
       item
+        Text = 'Plain text'
+        Width = 130
+      end    
+      item
         Text = 'INS'
         Width = 60
       end>
@@ -137,6 +141,13 @@ object LedMainForm: TLedMainForm
         Action = actQuit
       end
     end
+    object mnuDocument: TMenuItem
+      Caption = '&Document'
+      object miLanguage: TMenuItem
+        Caption = '&Language'
+        OnClick = miLanguageClick
+      end
+    end
     object mnuView: TMenuItem
       Caption = '&View'
       object miSplitSideBySide: TMenuItem
@@ -150,6 +161,10 @@ object LedMainForm: TLedMainForm
       end
       object miCycleViews: TMenuItem
         Action = actCycleViews
+      end
+      object miTheme: TMenuItem
+        Caption = 'Colour &Theme'
+        OnClick = miThemeClick
       end
       object miSep3: TMenuItem
         Caption = '-'
