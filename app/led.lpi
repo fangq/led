@@ -78,6 +78,16 @@
         <UnitName Value="Led.Core.Types"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.config.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Config"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.modeline.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Modeline"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.encodings.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Encodings"/>
