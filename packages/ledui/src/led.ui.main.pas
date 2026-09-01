@@ -603,6 +603,10 @@ begin
     in phases 3 and 5. }
   FOutput := TLedOutputPane.Create(Self);
   FOutput.OnJump := @OutputJump;
+  { The output pane is a TSynEdit like the editor, and was the one pane
+    nothing ever themed -- so it sat there as a white rectangle in the middle
+    of a dark window.  It takes the same theme the documents do. }
+  LedApplyThemeToEditor(LedCurrentTheme, FOutput);
 
   FBrowser := TLedFileBrowser.Create(Self);
   FBrowser.OnOpenFile := @BrowserOpenFile;
@@ -905,6 +909,8 @@ begin
   LedReloadUserConfig;
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
+  { The output pane is not a document, so the loop below never reaches it. }
+  LedApplyThemeToEditor(LedCurrentTheme, FOutput);
   for i := 0 to FBook.PageCount - 1 do
     for j := 0 to FBook.Pages[i].ControlCount - 1 do
       if FBook.Pages[i].Controls[j] is TLedTab then
