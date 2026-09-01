@@ -1559,6 +1559,77 @@ begin
     Say('    note: the markup paints no guides yet; see TestFoldGuides');
 end;
 
+{ Two independent tab groups in one window.
+
+  The checks are about where tabs actually are and what happened to the
+  document underneath, not about whether the calls returned.  The plan's claim
+  for this feature is that moving a tab between groups is a reparent because
+  TLedDocument owns the buffer -- so the document, its text and its modified
+  state have to come through untouched, and that is what is asserted. }
+procedure TestSplitNotebook(F: TLedMainForm);
+var
+  DocA, DocB: TLedDocument;
+  TabA: TLedTab;
+  Before: Integer;
+begin
+  Say('split notebook');
+
+  { Two tabs, because one is not enough to split with. }
+  DocA := F.Documents.NewDocument;
+  F.AddTab(DocA);
+  DocB := F.Documents.NewDocument;
+  F.AddTab(DocB);
+  Pump;
+
+  Check('not split to begin with', not F.NotebookSplit);
+  Check('and there is no second group', F.Notebook2 = nil);
+
+  DocA.Master.Lines.Text := 'the text that must survive the move';
+  Before := F.TabCount;
+
+  F.SetNotebookSplit(True);
+  Pump;
+  Check('splitting makes a second group', F.NotebookSplit);
+  Check('and it exists', F.Notebook2 <> nil);
+  CheckEqInt('no tab was lost or gained', Before, F.TabCount);
+  Check('both groups hold tabs',
+    (F.Notebook.PageCount > 0) and (F.Notebook2.PageCount > 0));
+
+  { The tab that moved carries its document with it, unmodified. }
+  TabA := F.ActiveTab;
+  Check('the active tab is in the second group',
+    (TabA <> nil) and (TabA.Sheet.PageControl = F.Notebook2));
+
+  F.MoveTabToOtherNotebook;
+  Pump;
+  Check('and can be moved back',
+    (F.ActiveTab <> nil) and
+    (F.ActiveTab.Sheet.PageControl = F.Notebook));
+  CheckEqInt('still no tab lost', Before, F.TabCount);
+
+  { Both groups have a tab again only if the move left one behind; after the
+    move back, the second group is empty, and focusing an empty group would
+    strand the user.  So this asserts the refusal, not a switch. }
+  F.FocusOtherNotebook;
+  Pump;
+  Check('focus does not move into an empty group', F.ActiveTab <> nil);
+
+  { Unsplitting brings everything back rather than closing anything. }
+  F.SetNotebookSplit(False);
+  Pump;
+  Check('unsplit removes the second group', not F.NotebookSplit);
+  Check('and it is gone', F.Notebook2 = nil);
+  CheckEqInt('with every tab still open', Before, F.TabCount);
+
+  { The point of the whole design: the document went through a reparent, not
+    a save and reload. }
+  { Compared line by line: Lines.Text appends a trailing line ending, so a
+    whole-buffer comparison fails on a difference that is not there. }
+  CheckEqInt('the document still has its one line', 1, DocA.Master.Lines.Count);
+  CheckEq('and its text survived the move untouched',
+    'the text that must survive the move', DocA.Master.Lines[0]);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -1630,6 +1701,8 @@ begin
   TestTools(F);
   WriteLn;
   TestFoldGuides(F);
+  WriteLn;
+  TestSplitNotebook(F);
   WriteLn;
   TestPaneRail(F);
   WriteLn;

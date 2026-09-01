@@ -13,7 +13,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, Graphics, ImgList, Clipbrd, LCLIntf, ToolWin,
-  SynEdit, SynEditTypes,
+  PairSplitter, SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths,
@@ -96,6 +96,9 @@ type
     actMoveToSplit: TAction;
     actShowToolbar: TAction;
     actResetLayout: TAction;
+    actSplitNotebook: TAction;
+    actFocusOtherNotebook: TAction;
+    actMoveToNotebook: TAction;
     miHeaderStyle: TMenuItem;
     actStripTrailing: TAction;
     actToggleBrowser: TAction;
@@ -295,6 +298,9 @@ type
     procedure actReportBugExecute(Sender: TObject);
     procedure actShowToolbarExecute(Sender: TObject);
     procedure actResetLayoutExecute(Sender: TObject);
+    procedure actSplitNotebookExecute(Sender: TObject);
+    procedure actFocusOtherNotebookExecute(Sender: TObject);
+    procedure actMoveToNotebookExecute(Sender: TObject);
     procedure miHeaderStyleClick(Sender: TObject);
     procedure HeaderStylePicked(Sender: TObject);
     procedure actSplitTermHExecute(Sender: TObject);
@@ -380,6 +386,13 @@ type
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
+    { The second tab group.  nil until the window is split, which is what
+      "split notebook" means: two independent sets of tabs side by side in one
+      window, as medit's get_notebook(window, 0/1) offered.  The pair splitter
+      exists only while it does. }
+    FBook2: TPageControl;
+    FBookSplit: TPairSplitter;
+    FActiveBookIdx: Integer;
     FRecent: TLedRecentFiles;
     FSearch: TLedSearchState;
     FInstance: TLedInstance;
@@ -433,6 +446,20 @@ type
       whenever the user changes them. }
     procedure ReserveActionShortcuts;
     procedure PopulateHeaderStyleMenu;
+    { The tab group new tabs go to and ActiveTab reads from. }
+    function ActiveBook: TPageControl;
+    function BookByIndex(AIndex: Integer): TPageControl;
+    function IndexOfBook(ABook: TPageControl): Integer;
+    { Every tab in the window, both groups, in group order.  Five copies of
+      the same nested loop over pages and their controls were doing this
+      before, and every one of them would have had to learn about the second
+      group. }
+    procedure CollectTabs(AInto: TFPList);
+    function TabOnPage(APage: TCustomPage): TLedTab;
+    procedure SetActiveBook(AIndex: Integer);
+    procedure BookEnter(Sender: TObject);
+    procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
+
     procedure SaveSession;
 
     { Empties a dynamic submenu without destroying its items mid-event.  See
@@ -492,6 +519,15 @@ type
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
     property Notebook: TPageControl read FBook;
+    { The second tab group, nil unless the window is split. }
+    property Notebook2: TPageControl read FBook2;
+    function TabCount: Integer;
+    function NotebookSplit: Boolean;
+    { Splits the window into two independent tab groups, or puts them back
+      together.  Idempotent. }
+    procedure SetNotebookSplit(AEnable: Boolean; AVertical: Boolean = False);
+    procedure FocusOtherNotebook;
+    procedure MoveTabToOtherNotebook;
     { For the self-test: the shortcut New Tab actually carries, so a check can
       prove the accelerator survived rather than only that the editor let go
       of the key. }
@@ -635,6 +671,7 @@ begin
   FBook.Parent := FDock.Center;
   FBook.Align := alClient;
   FBook.OnChange := @BookChange;
+  FBook.OnEnter := @BookEnter;
   FBook.Images := ImageList1;
   FBook.PopupMenu := PopupTab;
 
@@ -936,7 +973,8 @@ end;
 
 procedure TLedMainForm.PrefsApplied(Sender: TObject);
 var
-  i, j: Integer;
+  i: Integer;
+  Tabs: TFPList;
 begin
   { Preferences feed the user layer of every document's config, and the theme
     may have changed too, so both are rebuilt and pushed to every view. }
@@ -947,10 +985,14 @@ begin
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   { The output pane is not a document, so the loop below never reaches it. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
-  for i := 0 to FBook.PageCount - 1 do
-    for j := 0 to FBook.Pages[i].ControlCount - 1 do
-      if FBook.Pages[i].Controls[j] is TLedTab then
-        TLedTab(FBook.Pages[i].Controls[j]).Document.ApplyConfigToViews;
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+  finally
+    Tabs.Free;
+  end;
   UpdateStatusBar;
 end;
 
@@ -1088,13 +1130,18 @@ end;
 
 function TLedMainForm.FindTabFor(ADoc: TLedDocument): TLedTab;
 var
-  i, j: Integer;
+  i: Integer;
+  Tabs: TFPList;
 begin
-  for i := 0 to FBook.PageCount - 1 do
-    for j := 0 to FBook.Pages[i].ControlCount - 1 do
-      if (FBook.Pages[i].Controls[j] is TLedTab) and
-         (TLedTab(FBook.Pages[i].Controls[j]).Document = ADoc) then
-        Exit(TLedTab(FBook.Pages[i].Controls[j]));
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      if TLedTab(Tabs[i]).Document = ADoc then
+        Exit(TLedTab(Tabs[i]));
+  finally
+    Tabs.Free;
+  end;
   Result := nil;
 end;
 
@@ -1440,22 +1487,27 @@ end;
 procedure TLedMainForm.ViewMouseWheel(Sender: TObject; Shift: TShiftState;
   WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
 var
-  i, j, k: Integer;
+  i, k: Integer;
   Tab: TLedTab;
+  Tabs: TFPList;
 begin
   if not (ssCtrl in Shift) then Exit;
   Handled := True;
-  for i := 0 to FBook.PageCount - 1 do
-    for j := 0 to FBook.Pages[i].ControlCount - 1 do
-      if FBook.Pages[i].Controls[j] is TLedTab then
-      begin
-        Tab := TLedTab(FBook.Pages[i].Controls[j]);
-        for k := 0 to Tab.ViewCount - 1 do
-          if WheelDelta > 0 then
-            LedZoomFont(Tab.Views[k], 1)
-          else
-            LedZoomFont(Tab.Views[k], -1);
-      end;
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Tab := TLedTab(Tabs[i]);
+      for k := 0 to Tab.ViewCount - 1 do
+        if WheelDelta > 0 then
+          LedZoomFont(Tab.Views[k], 1)
+        else
+          LedZoomFont(Tab.Views[k], -1);
+    end;
+  finally
+    Tabs.Free;
+  end;
 end;
 
 { --- encoding and line-ending menus ---------------------------------------- }
@@ -1637,15 +1689,20 @@ end;
 
 procedure TLedMainForm.ThemeItemClick(Sender: TObject);
 var
-  i, j: Integer;
+  i: Integer;
+  Tabs: TFPList;
 begin
   LedSetCurrentTheme(TMenuItem(Sender).Hint);
   PopulateThemeMenu;         { move the tick }
   { Every open view has to be repainted with the new chrome colours. }
-  for i := 0 to FBook.PageCount - 1 do
-    for j := 0 to FBook.Pages[i].ControlCount - 1 do
-      if FBook.Pages[i].Controls[j] is TLedTab then
-        TLedTab(FBook.Pages[i].Controls[j]).Document.ApplyConfigToViews;
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+  finally
+    Tabs.Free;
+  end;
 end;
 
 { --- session -------------------------------------------------------------- }
@@ -1958,6 +2015,23 @@ begin
   end;
 end;
 
+{ Split Notebook toggles: the same item puts the window back together, which
+  is what the checked state in the menu says. }
+procedure TLedMainForm.actSplitNotebookExecute(Sender: TObject);
+begin
+  SetNotebookSplit(not NotebookSplit);
+end;
+
+procedure TLedMainForm.actFocusOtherNotebookExecute(Sender: TObject);
+begin
+  FocusOtherNotebook;
+end;
+
+procedure TLedMainForm.actMoveToNotebookExecute(Sender: TObject);
+begin
+  MoveTabToOtherNotebook;
+end;
+
 procedure TLedMainForm.miHeaderStyleClick(Sender: TObject);
 begin
   PopulateHeaderStyleMenu;
@@ -1968,6 +2042,214 @@ begin
   if not (Sender is TMenuItem) then Exit;
   FDock.HeaderStyle := TMenuItem(Sender).Hint;
   LedPrefs.SetStr(LedPrefHeaderStyle, FDock.HeaderStyle);
+end;
+
+{ --- the two tab groups ---------------------------------------------------- }
+
+function TLedMainForm.BookByIndex(AIndex: Integer): TPageControl;
+begin
+  if AIndex = 1 then Result := FBook2 else Result := FBook;
+end;
+
+function TLedMainForm.IndexOfBook(ABook: TPageControl): Integer;
+begin
+  if (ABook <> nil) and (ABook = FBook2) then Result := 1 else Result := 0;
+end;
+
+function TLedMainForm.ActiveBook: TPageControl;
+begin
+  Result := BookByIndex(FActiveBookIdx);
+  if Result = nil then Result := FBook;
+end;
+
+function TLedMainForm.TabOnPage(APage: TCustomPage): TLedTab;
+var
+  i: Integer;
+begin
+  Result := nil;
+  if APage = nil then Exit;
+  for i := 0 to APage.ControlCount - 1 do
+    if APage.Controls[i] is TLedTab then
+      Exit(TLedTab(APage.Controls[i]));
+end;
+
+procedure TLedMainForm.CollectTabs(AInto: TFPList);
+var
+  b, i: Integer;
+  Book: TPageControl;
+  Tab: TLedTab;
+begin
+  AInto.Clear;
+  for b := 0 to 1 do
+  begin
+    Book := BookByIndex(b);
+    if Book = nil then Continue;
+    for i := 0 to Book.PageCount - 1 do
+    begin
+      Tab := TabOnPage(Book.Pages[i]);
+      if Tab <> nil then AInto.Add(Tab);
+    end;
+  end;
+end;
+
+procedure TLedMainForm.SetActiveBook(AIndex: Integer);
+begin
+  if BookByIndex(AIndex) = nil then AIndex := 0;
+  if FActiveBookIdx = AIndex then Exit;
+  FActiveBookIdx := AIndex;
+  UpdateStatusBar;
+end;
+
+{ Clicking anywhere in a group makes it the active one, which is what decides
+  where a new tab lands and which tab the menus act on. }
+procedure TLedMainForm.BookEnter(Sender: TObject);
+begin
+  if Sender is TPageControl then
+    SetActiveBook(IndexOfBook(TPageControl(Sender)));
+end;
+
+{ Across both groups, which is what "is there more than one tab open" has to
+  mean once there can be two of them. }
+function TLedMainForm.TabCount: Integer;
+begin
+  Result := FBook.PageCount;
+  if FBook2 <> nil then Inc(Result, FBook2.PageCount);
+end;
+
+function TLedMainForm.NotebookSplit: Boolean;
+begin
+  Result := FBook2 <> nil;
+end;
+
+{ Moving a tab between groups is a reparent and nothing more.  That is the
+  whole payoff of TLedDocument owning the buffer rather than any view: the
+  document, its undo history and its marks are untouched, and the views keep
+  pointing at the same shared TSynEditStringList.  Nothing is saved, reloaded
+  or re-highlighted. }
+procedure TLedMainForm.MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
+var
+  Sheet, Old: TTabSheet;
+begin
+  if (ATab = nil) or (ABook = nil) then Exit;
+  Old := ATab.Sheet;
+  if (Old <> nil) and (Old.PageControl = ABook) then Exit;
+
+  Sheet := ABook.AddTabSheet;
+  ATab.Parent := Sheet;
+  ATab.Sheet := Sheet;
+  RefreshTabCaption(ATab);
+  ABook.ActivePage := Sheet;
+  Old.Free;
+end;
+
+procedure TLedMainForm.SetNotebookSplit(AEnable: Boolean; AVertical: Boolean);
+var
+  Tabs: TFPList;
+  i: Integer;
+begin
+  if AEnable = NotebookSplit then Exit;
+
+  if AEnable then
+  begin
+    { A pair splitter holding the two groups, in place of the single one. }
+    FBookSplit := TPairSplitter.Create(Self);
+    FBookSplit.Parent := FDock.Center;
+    FBookSplit.Align := alClient;
+    if AVertical then
+      FBookSplit.SplitterType := pstVertical
+    else
+      FBookSplit.SplitterType := pstHorizontal;
+
+    FBook.Parent := FBookSplit.Sides[0];
+    FBook.Align := alClient;
+
+    FBook2 := TPageControl.Create(Self);
+    FBook2.Parent := FBookSplit.Sides[1];
+    FBook2.Align := alClient;
+    FBook2.OnChange := @BookChange;
+    FBook2.OnEnter := @BookEnter;
+    FBook2.Images := ImageList1;
+    FBook2.PopupMenu := PopupTab;
+
+    { Divide the space evenly.  TPairSplitter leaves the divider wherever its
+      default falls, which is not the middle -- the same thing that made a
+      fresh split view come out lopsided in c79f95a. }
+    if AVertical then
+      FBookSplit.Position := FBookSplit.Height div 2
+    else
+      FBookSplit.Position := FBookSplit.Width div 2;
+
+    { A split with nothing in the second group is a puzzle rather than a
+      feature, so the tab in front moves across to start it off -- as long as
+      that does not empty the first. }
+    if FBook.PageCount > 1 then
+      MoveTabToBook(ActiveTab, FBook2);
+    SetActiveBook(1);
+  end
+  else
+  begin
+    { Everything comes back to the first group, in order, before anything is
+      freed. }
+    Tabs := TFPList.Create;
+    try
+      CollectTabs(Tabs);
+      for i := 0 to Tabs.Count - 1 do
+        if TLedTab(Tabs[i]).Sheet.PageControl = FBook2 then
+          MoveTabToBook(TLedTab(Tabs[i]), FBook);
+    finally
+      Tabs.Free;
+    end;
+
+    FBook2.Free;
+    FBook2 := nil;
+    FBook.Parent := FDock.Center;
+    FBook.Align := alClient;
+    FreeAndNil(FBookSplit);
+    SetActiveBook(0);
+  end;
+
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.FocusOtherNotebook;
+var
+  Other: TPageControl;
+  Tab: TLedTab;
+begin
+  if not NotebookSplit then Exit;
+  if FActiveBookIdx = 0 then Other := FBook2 else Other := FBook;
+  { Not into an empty group.  Moving the last tab out of one leaves a half
+    with nothing in it, and focusing that would put the caret nowhere and
+    leave every document-shaped menu item greyed out with no way back except
+    to guess.  The group is left in place -- the user split the window and
+    can unsplit it -- but focus stays where there is something to edit. }
+  if (Other = nil) or (Other.PageCount = 0) then Exit;
+  SetActiveBook(IndexOfBook(Other));
+  Tab := ActiveTab;
+  if Tab <> nil then
+    LedTryFocus(Tab.ActiveView);
+end;
+
+procedure TLedMainForm.MoveTabToOtherNotebook;
+var
+  Tab: TLedTab;
+  Target: TPageControl;
+begin
+  Tab := ActiveTab;
+  if Tab = nil then Exit;
+
+  { Asking to move a tab when there is nowhere to move it to is a reasonable
+    way to ask for a split, and is what medit's Move to Split Notebook does. }
+  if not NotebookSplit then
+  begin
+    SetNotebookSplit(True);
+    Exit;
+  end;
+
+  if Tab.Sheet.PageControl = FBook then Target := FBook2 else Target := FBook;
+  MoveTabToBook(Tab, Target);
+  SetActiveBook(IndexOfBook(Target));
+  LedTryFocus(Tab.ActiveView);
 end;
 
 procedure TLedMainForm.SaveSession;
@@ -2146,10 +2428,8 @@ var
   i: Integer;
 begin
   Result := nil;
-  if (FBook = nil) or (FBook.ActivePage = nil) then Exit;
-  for i := 0 to FBook.ActivePage.ControlCount - 1 do
-    if FBook.ActivePage.Controls[i] is TLedTab then
-      Exit(TLedTab(FBook.ActivePage.Controls[i]));
+  if (ActiveBook = nil) or (ActiveBook.ActivePage = nil) then Exit;
+  Result := TabOnPage(ActiveBook.ActivePage);
 end;
 
 function TLedMainForm.ActiveView: TLedEdit;
@@ -2167,7 +2447,7 @@ function TLedMainForm.AddTab(ADoc: TLedDocument): TLedTab;
 var
   Sheet: TTabSheet;
 begin
-  Sheet := FBook.AddTabSheet;
+  Sheet := ActiveBook.AddTabSheet;
   Result := TLedTab.CreateForDocument(Self, ADoc);
   Result.Parent := Sheet;
   Result.Sheet := Sheet;
@@ -2176,7 +2456,7 @@ begin
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
   RefreshTabCaption(Result);
-  FBook.ActivePage := Sheet;
+  ActiveBook.ActivePage := Sheet;
   { During FormCreate the window is not visible yet, so this cannot succeed
     and must not be allowed to raise; FormShow focuses the editor once the
     window is up. }
@@ -2202,17 +2482,22 @@ end;
 
 procedure TLedMainForm.DocChanged(ADoc: TLedDocument);
 var
-  i, j: Integer;
+  i: Integer;
   Tab: TLedTab;
+  Tabs: TFPList;
 begin
-  for i := 0 to FBook.PageCount - 1 do
-    for j := 0 to FBook.Pages[i].ControlCount - 1 do
-      if FBook.Pages[i].Controls[j] is TLedTab then
-      begin
-        Tab := TLedTab(FBook.Pages[i].Controls[j]);
-        if Tab.Document = ADoc then
-          RefreshTabCaption(Tab);
-      end;
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Tab := TLedTab(Tabs[i]);
+      if Tab.Document = ADoc then
+        RefreshTabCaption(Tab);
+    end;
+  finally
+    Tabs.Free;
+  end;
   UpdateStatusBar;
 end;
 
@@ -2343,6 +2628,15 @@ begin
     TogglePane, so the rail is reconciled here rather than trusted to be
     told. }
   FDock.RefreshRails;
+
+  { medit enables these only when there is more than one tab, because
+    splitting a window to move its only document into the empty half is not a
+    thing anyone means to do.  Putting the halves back together stays
+    available whenever they are apart. }
+  actSplitNotebook.Enabled := NotebookSplit or (TabCount > 1);
+  actSplitNotebook.Checked := NotebookSplit;
+  actFocusOtherNotebook.Enabled := NotebookSplit;
+  actMoveToNotebook.Enabled := NotebookSplit or (TabCount > 1);
 
   actLineNumbers.Enabled := HasDoc;
   actLineNumbers.Checked := HasDoc and

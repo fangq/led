@@ -14,7 +14,7 @@ checked off by the presence of a menu entry.
 | Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | yes | done |
 | Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | not needed for speed | deferred: benchmarked at 88 ms for a 5 MB single line, so this is readability only, and a lines-view decorator risks text corruption. Revisit deliberately |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
-| Split notebook<br><sub>two independent tab groups per window</sub> | yes | | phase-3 |
+| Split notebook<br><sub>two independent tab groups per window</sub> | yes | yes | done |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
 | Code folding: braces<br><sub>C/C++/Java/JS and friends</sub> | yes | yes | via the converted grammars' fold markers |
 | Code folding: end-keyword<br><sub>Matlab/Octave/Pascal</sub> | yes | yes | Pascal, Matlab, Octave, Ruby, Lua and sh |
@@ -26,7 +26,7 @@ checked off by the presence of a menu entry.
 | Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | partly | five of the ten carried over |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
-| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
+| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | partly | tabs, carets and the dock layout are restored; which of the two notebooks a tab was in is not |
 | Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | yes | done |
 
 ## Actions (80)
@@ -65,7 +65,7 @@ checked off by the presence of a menu entry.
 | `LanguageMenu` | yes | yes | done |
 | `LineEndMenu` | yes | yes | done |
 | `LineNumbers` | yes | yes | done |
-| `MoveToSplitView` | yes | | |
+| `MoveToSplitView` | yes | yes | done; View > Move to Split Notebook |
 | `NewDoc` | yes | yes | done |
 | `NewFolder` | yes | | |
 | `NewWindow` | yes | yes | done |
@@ -210,7 +210,6 @@ An honest list, so nothing here is mistaken for an oversight.
 
 | Feature | Status |
 |---|---|
-| Split notebook (two independent tab groups) | not started; split *view* within a tab works |
 | Multiple windows | File / New Window opens one; documents are not shared between them |
 | "Save these documents?" multi-document dialog | not started; each document is asked about separately |
 | Dragging files from the desktop onto the window | not started |
