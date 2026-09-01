@@ -259,6 +259,10 @@ object LedMainForm: TLedMainForm
       Caption = '&Output Pane'
       OnExecute = actToggleOutputExecute
     end
+    object actToggleTerminal: TAction
+      Caption = '&Terminal'
+      OnExecute = actToggleTerminalExecute
+    end
     object actToggleLeftPane: TAction
       Caption = '&Left Pane'
       OnExecute = actToggleLeftPaneExecute
@@ -500,6 +504,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleOutput: TMenuItem
         Action = actToggleOutput
+      end
+      object mi_ToggleTerminal: TMenuItem
+        Action = actToggleTerminal
       end
     end
   end

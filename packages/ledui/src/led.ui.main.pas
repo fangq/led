@@ -19,7 +19,8 @@ uses
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
-  Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser;
+  Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
+  Led.Term.View, Led.Term.Pty;
 
 type
   TLedMainForm = class(TForm)
@@ -70,6 +71,7 @@ type
     actLineNumbers: TAction;
     actStopTool: TAction;
     actToggleOutput: TAction;
+    actToggleTerminal: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
     MainMenu1: TMainMenu;
@@ -148,6 +150,7 @@ type
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
     mi_ToggleOutput: TMenuItem;
+    mi_ToggleTerminal: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
@@ -210,6 +213,7 @@ type
     procedure actToggleOutputExecute(Sender: TObject);
     procedure miToolListClick(Sender: TObject);
     procedure actFindInFilesExecute(Sender: TObject);
+    procedure actToggleTerminalExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -226,6 +230,7 @@ type
     FOutput: TLedOutputPane;
     FGrepDialog: TLedGrepDialog;
     FBrowser: TLedFileBrowser;
+    FTerminal: TLedTermView;
     FCheckingDisk: Boolean;
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
@@ -516,7 +521,39 @@ end;
 
 procedure TLedMainForm.actToggleOutputExecute(Sender: TObject);
 begin
-  FDock.ToggleEdge(ledBottom);
+  FDock.ShowPane('output');
+  FDock.EdgeVisible[ledBottom] := True;
+end;
+
+procedure TLedMainForm.actToggleTerminalExecute(Sender: TObject);
+var
+  Dir: string;
+begin
+  if not LedPtyAvailable then
+  begin
+    ReportError('A terminal needs a pseudo-terminal, which is not available '
+      + 'on this platform yet.');
+    Exit;
+  end;
+
+  if FTerminal = nil then
+  begin
+    FTerminal := TLedTermView.Create(Self);
+    FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal);
+  end;
+  FDock.ShowPane('terminal');
+  FDock.EdgeVisible[ledBottom] := True;
+
+  { Started on first use, in the folder of the document in front of you,
+    which is nearly always where you wanted to be. }
+  if not FTerminal.Running then
+  begin
+    Dir := GetCurrentDir;
+    if (ActiveTab <> nil) and not ActiveTab.Document.IsUntitled then
+      Dir := ExtractFileDir(ActiveTab.Document.FileName);
+    FTerminal.Start('', Dir);
+  end;
+  if FTerminal.CanFocus then FTerminal.SetFocus;
 end;
 
 procedure TLedMainForm.OutputJump(const AFileName: string;
@@ -1557,6 +1594,7 @@ begin
   actPreferences.Enabled := True;
   actStopTool.Enabled := FRunner.Running;
   actToggleOutput.Checked := FDock.EdgeVisible[ledBottom];
+  actToggleTerminal.Enabled := LedPtyAvailable;
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actFindInFiles.Enabled := True;

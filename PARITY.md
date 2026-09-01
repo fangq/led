@@ -22,8 +22,8 @@ checked off by the presence of a menu entry.
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
-| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | | phase-7 |
-| Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | | phase-7 |
+| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | partly | one terminal works on Unix; splitting and Windows ConPTY are not done |
+| Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | partly | five of the ten carried over |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
 | Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | done (single window; split notebook in phase 3) |
