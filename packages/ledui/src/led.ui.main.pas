@@ -20,7 +20,8 @@ uses
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.UI.Symbols;
+  Led.Term.View, Led.Term.Pty, Led.UI.Symbols, Led.UI.Preview,
+  Led.UI.Print;
 
 type
   TLedMainForm = class(TForm)
@@ -31,6 +32,7 @@ type
     actSaveAs: TAction;
     actReload: TAction;
     actCloseTab: TAction;
+    actPrint: TAction;
     actPreferences: TAction;
     actShortcuts: TAction;
     actQuit: TAction;
@@ -73,6 +75,7 @@ type
     actToggleOutput: TAction;
     actToggleTerminal: TAction;
     actToggleSymbols: TAction;
+    actTogglePreview: TAction;
     actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
@@ -86,29 +89,31 @@ type
     mi_Save: TMenuItem;
     mi_SaveAs: TMenuItem;
     miSep2: TMenuItem;
+    mi_Print: TMenuItem;
+    miSep3: TMenuItem;
     mi_CloseTab: TMenuItem;
     mi_Quit: TMenuItem;
     mnuEdit: TMenuItem;
     mi_Undo: TMenuItem;
     mi_Redo: TMenuItem;
-    miSep3: TMenuItem;
+    miSep4: TMenuItem;
     mi_Cut: TMenuItem;
     mi_Copy: TMenuItem;
     mi_Paste: TMenuItem;
-    miSep4: TMenuItem;
+    miSep5: TMenuItem;
     mi_SelectAll: TMenuItem;
     mi_PasteColumn: TMenuItem;
     mi_ClearSelection: TMenuItem;
-    miSep5: TMenuItem;
+    miSep6: TMenuItem;
     mi_Indent: TMenuItem;
     mi_Unindent: TMenuItem;
     mi_IndentSpace: TMenuItem;
     mi_UnindentSpace: TMenuItem;
-    miSep6: TMenuItem;
+    miSep7: TMenuItem;
     mi_Comment: TMenuItem;
     mi_Uncomment: TMenuItem;
     mi_Complete: TMenuItem;
-    miSep7: TMenuItem;
+    miSep8: TMenuItem;
     mi_Shortcuts: TMenuItem;
     mi_Preferences: TMenuItem;
     mnuSearch: TMenuItem;
@@ -118,43 +123,44 @@ type
     mi_FindPrev: TMenuItem;
     mi_QuickFind: TMenuItem;
     mi_FindInFiles: TMenuItem;
-    miSep8: TMenuItem;
-    mi_GotoLine: TMenuItem;
     miSep9: TMenuItem;
+    mi_GotoLine: TMenuItem;
+    miSep10: TMenuItem;
     mi_ToggleBracket: TMenuItem;
     mi_SelectToBracket: TMenuItem;
     mnuDocument: TMenuItem;
     miLanguage: TMenuItem;
     miEncoding: TMenuItem;
     miLineEnd: TMenuItem;
-    miSep10: TMenuItem;
+    miSep11: TMenuItem;
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
     mnuTools: TMenuItem;
     miToolList: TMenuItem;
-    miSep11: TMenuItem;
+    miSep12: TMenuItem;
     mi_StopTool: TMenuItem;
     mnuView: TMenuItem;
     mi_WrapText: TMenuItem;
     mi_LineNumbers: TMenuItem;
-    miSep12: TMenuItem;
+    miSep13: TMenuItem;
     mi_ToggleFold: TMenuItem;
     mi_FoldAll: TMenuItem;
     mi_UnfoldAll: TMenuItem;
-    miSep13: TMenuItem;
+    miSep14: TMenuItem;
     mi_SplitSideBySide: TMenuItem;
     mi_SplitStacked: TMenuItem;
     mi_Unsplit: TMenuItem;
     mi_CycleViews: TMenuItem;
-    miSep14: TMenuItem;
-    miTheme: TMenuItem;
     miSep15: TMenuItem;
+    miTheme: TMenuItem;
+    miSep16: TMenuItem;
     mi_ToggleLeftPane: TMenuItem;
     mi_ToggleBottomPane: TMenuItem;
     mi_ToggleOutput: TMenuItem;
     mi_ToggleTerminal: TMenuItem;
     mi_ToggleSymbols: TMenuItem;
+    mi_TogglePreview: TMenuItem;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
     StatusBar1: TStatusBar;
@@ -220,6 +226,8 @@ type
     procedure actToggleTerminalExecute(Sender: TObject);
     procedure actCompleteExecute(Sender: TObject);
     procedure actToggleSymbolsExecute(Sender: TObject);
+    procedure actPrintExecute(Sender: TObject);
+    procedure actTogglePreviewExecute(Sender: TObject);
   private
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
@@ -238,7 +246,9 @@ type
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTermView;
     FSymbols: TLedSymbolPane;
+    FPreview: TLedPreviewPane;
     FCheckingDisk: Boolean;
+    procedure RefreshPreview;
     procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
@@ -536,6 +546,49 @@ procedure TLedMainForm.actToggleOutputExecute(Sender: TObject);
 begin
   FDock.ShowPane('output');
   FDock.EdgeVisible[ledBottom] := True;
+end;
+
+procedure TLedMainForm.RefreshPreview;
+var
+  Doc: TLedDocument;
+begin
+  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if LedPreviewHandles(Doc.FileName) then
+    FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
+      ExtractFileDir(Doc.FileName))
+  else
+    FPreview.ShowMessage_('This is not a Markdown file.');
+end;
+
+procedure TLedMainForm.actTogglePreviewExecute(Sender: TObject);
+begin
+  if FPreview = nil then
+  begin
+    FPreview := TLedPreviewPane.Create(Self);
+    FDock.AddPane(ledRight, 'preview', 'Preview', FPreview);
+  end;
+  FDock.ShowPane('preview');
+  FDock.EdgeVisible[ledRight] := True;
+  RefreshPreview;
+end;
+
+procedure TLedMainForm.actPrintExecute(Sender: TObject);
+begin
+  if Silent then Exit;
+  if not LedPrinterAvailable then
+  begin
+    ReportError('No printer is configured.');
+    Exit;
+  end;
+  if ActiveTab = nil then Exit;
+  try
+    LedPrintDocument(ActiveView, ActiveTab.Document.DisplayName);
+  except
+    on E: Exception do
+      ReportError('Printing failed: ' + E.Message);
+  end;
 end;
 
 procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
@@ -1550,6 +1603,7 @@ begin
   if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
      (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
+  RefreshPreview;
 end;
 
 procedure TLedMainForm.ViewStatusChange(Sender: TObject;
@@ -1636,6 +1690,8 @@ begin
   actToggleTerminal.Enabled := LedPtyAvailable;
   actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
   actComplete.Enabled := HasDoc;
+  actPrint.Enabled := HasDoc and LedPrinterAvailable;
+  actTogglePreview.Enabled := True;
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actFindInFiles.Enabled := True;

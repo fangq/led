@@ -31,6 +31,11 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="src/led.core.tests.markdown.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Tests.Markdown"/>
+      </Unit>
+      <Unit>
         <Filename Value="src/led.core.tests.ctags.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Tests.Ctags"/>
