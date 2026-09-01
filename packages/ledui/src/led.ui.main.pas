@@ -20,7 +20,7 @@ uses
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.UI.Symbols, Led.UI.Preview,
+  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print;
 
 type
@@ -244,7 +244,7 @@ type
     FOutput: TLedOutputPane;
     FGrepDialog: TLedGrepDialog;
     FBrowser: TLedFileBrowser;
-    FTerminal: TLedTermView;
+    FTerminal: TLedTerminalPane;
     FSymbols: TLedSymbolPane;
     FPreview: TLedPreviewPane;
     FCheckingDisk: Boolean;
@@ -635,7 +635,7 @@ begin
 
   if FTerminal = nil then
   begin
-    FTerminal := TLedTermView.Create(Self);
+    FTerminal := TLedTerminalPane.Create(Self);
     FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal);
   end;
   FDock.ShowPane('terminal');
@@ -648,9 +648,9 @@ begin
     Dir := GetCurrentDir;
     if (ActiveTab <> nil) and not ActiveTab.Document.IsUntitled then
       Dir := ExtractFileDir(ActiveTab.Document.FileName);
-    FTerminal.Start('', Dir);
+    FTerminal.Start(Dir);
   end;
-  if FTerminal.CanFocus then FTerminal.SetFocus;
+  FTerminal.FocusActive;
 end;
 
 procedure TLedMainForm.OutputJump(const AFileName: string;
