@@ -60,6 +60,8 @@ type
     constructor Create(TheOwner: TComponent); override;
   end;
 
+  TLedPaneNotify = procedure(const AId: string) of object;
+
   TLedDockHost = class(TPanel)
   private
     FSite: TAnchorDockPanel;
@@ -73,7 +75,11 @@ type
     FRailsStale: Boolean;
     FRailsSettle: TTimer;
     FDraggingWanted: Boolean;
+    FHeaderStyleWanted: THeaderStyleName;
+    FOnPaneShown: TLedPaneNotify;
     procedure ApplyDockPolicy;
+    function GetHeaderStyle: THeaderStyleName;
+    procedure SetHeaderStyle(const AValue: THeaderStyleName);
     procedure RailsSettled(Sender: TObject);
     procedure BuildRail(AEdge: TLedDockEdge);
     procedure RailButtonClick(Sender: TObject);
@@ -144,6 +150,20 @@ type
     property Center: TPanel read FCenter;
     property Images: TCustomImageList read FImages write SetImages;
     property DraggingAllowed: Boolean read GetDragging write SetDragging;
+
+    { Raised whenever a pane is put on screen, from wherever -- the View menu,
+      an edge button, or a restored layout.  A pane with something behind it,
+      the terminal above all, needs starting when it appears and not only
+      when one particular menu item was the thing that showed it. }
+    property OnPaneShown: TLedPaneNotify read FOnPaneShown write FOnPaneShown;
+
+    { The pane header's appearance.  AnchorDocking ships Frame3D, Line, Lines,
+      Points, ThemedCaption and ThemedButton; led adds LedPlain.  Taste
+      differs and the right answer is not obvious, so it is offered rather
+      than decided. }
+    function HeaderStyleNames: TStringArray;
+    property HeaderStyle: THeaderStyleName read GetHeaderStyle
+      write SetHeaderStyle;
     property ShowRails: Boolean read FShowRails write SetShowRails;
     property EdgeVisible[AEdge: TLedDockEdge]: Boolean
       read GetEdgeVisible write SetEdgeVisible;
@@ -190,10 +210,7 @@ begin
     the LCL only accepts an identifier, so the id is sanitised rather than
     used raw. }
   Name := 'Pane_' + StringReplace(AId, '-', '_', [rfReplaceAll]);
-  { All caps, small: a pane title should name the thing and then get out of
-    the way.  AnchorDocking draws the caption verbatim, so the case is set
-    here rather than at paint time. }
-  Caption := UpperCase(ACaption);
+  Caption := ACaption;
   BorderStyle := bsSizeable;
   Width := EdgeDefault[AEdge];
   Height := EdgeDefault[AEdge];
@@ -210,10 +227,9 @@ end;
 constructor TLedDockHeader.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  { A pane title is a label, not a heading.  Two points down from the UI font
-    and never bold; AnchorDocking sets Bold itself when the pane has focus,
-    which is left alone because it is the only focus cue a flat header has. }
-  Font.Size := Max(6, Screen.SystemFont.Size - 2);
+  { Deliberately nothing.  Shrinking the caption here was tried and read as
+    too small; the class is kept because HeaderClass is the only hook that
+    reaches every header, and the next thing that needs one will want it. }
 end;
 
 { A header that is a name on a slightly lighter band, and nothing else.
@@ -329,6 +345,7 @@ begin
   DockMaster.HeaderClass := TLedDockHeader;
 
   FDraggingWanted := True;
+  FHeaderStyleWanted := 'Line';
   ApplyDockPolicy;
 
   { No header on the editor, and that is the fix for a state the user could
@@ -428,6 +445,8 @@ begin
   Pane := PaneById(AId);
   if Pane = nil then Exit;
   DockPane(Pane);
+  if Assigned(FOnPaneShown) then
+    FOnPaneShown(AId);
 end;
 
 procedure TLedDockHost.HidePane(const AId: string);
@@ -799,13 +818,38 @@ begin
     stroke instead of six edges. }
   DockMaster.HeaderFlatten := True;
   DockMaster.HeaderFilled := False;
-  DockMaster.HeaderStyle := LedHeaderStyleName;
+  DockMaster.HeaderStyle := FHeaderStyleWanted;
 
   { With flat headers nothing else says which pane has focus, a cue the
     bevels used to carry by accident. }
   DockMaster.HeaderHighlightFocused := True;
 
   DockMaster.AllowDragging := FDraggingWanted;
+end;
+
+function TLedDockHost.GetHeaderStyle: THeaderStyleName;
+begin
+  Result := FHeaderStyleWanted;
+end;
+
+procedure TLedDockHost.SetHeaderStyle(const AValue: THeaderStyleName);
+begin
+  if AValue = '' then Exit;
+  FHeaderStyleWanted := AValue;
+  DockMaster.HeaderStyle := AValue;
+  Invalidate;
+end;
+
+{ Every style the dock knows about, led's own included.  Read from
+  AnchorDocking's own registry rather than listed here, so a style added
+  upstream turns up in the menu without led being told about it. }
+function TLedDockHost.HeaderStyleNames: TStringArray;
+var
+  i: Integer;
+begin
+  SetLength(Result, DockMaster.HeaderStyleName2ADHeaderStyle.Count);
+  for i := 0 to DockMaster.HeaderStyleName2ADHeaderStyle.Count - 1 do
+    Result[i] := DockMaster.HeaderStyleName2ADHeaderStyle.Keys[i];
 end;
 
 function TLedDockHost.GetDragging: Boolean;

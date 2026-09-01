@@ -37,7 +37,9 @@ strips off with `Editor/show_pane_buttons`.
 Panes can be dragged between edges, floated and redocked, and the arrangement
 persists in `layout.xml`. `Editor/lock_pane_layout` disables dragging if you
 would rather panes stayed put; it gates only the two places AnchorDocking
-starts a drag — a header and a tab — so panes still open, close and resize. **View ▸ Reset Pane Layout** closes every pane,
+starts a drag — a header and a tab — so panes still open, close and resize.
+**View ▸ Pane Header Style** picks how the header's drag handle is drawn,
+from the six the docking package ships plus led's own plain band. **View ▸ Reset Pane Layout** closes every pane,
 redocks the editor and discards that file — the way back from an arrangement
 dragging has made unusable, which the docking package offers no other route
 out of.

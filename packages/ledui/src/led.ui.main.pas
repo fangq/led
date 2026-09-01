@@ -95,6 +95,7 @@ type
     actMoveToSplit: TAction;
     actShowToolbar: TAction;
     actResetLayout: TAction;
+    miHeaderStyle: TMenuItem;
     actStripTrailing: TAction;
     actToggleBrowser: TAction;
     actSplitTermH: TAction;
@@ -293,6 +294,8 @@ type
     procedure actReportBugExecute(Sender: TObject);
     procedure actShowToolbarExecute(Sender: TObject);
     procedure actResetLayoutExecute(Sender: TObject);
+    procedure miHeaderStyleClick(Sender: TObject);
+    procedure HeaderStylePicked(Sender: TObject);
     procedure actSplitTermHExecute(Sender: TObject);
     procedure actSplitTermVExecute(Sender: TObject);
     procedure actStripTrailingExecute(Sender: TObject);
@@ -421,6 +424,9 @@ type
     procedure LineEndItemClick(Sender: TObject);
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+    procedure PaneShown(const AId: string);
+    procedure StartTerminal;
+    procedure PopulateHeaderStyleMenu;
     procedure SaveSession;
 
     { Empties a dynamic submenu without destroying its items mid-event.  See
@@ -602,6 +608,8 @@ begin
     than here.  The lock is in Preferences for anyone who would rather not,
     and View > Reset Pane Layout is the way back from a bad drop. }
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
+  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Line');
+  FDock.OnPaneShown := @PaneShown;
 
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
@@ -855,8 +863,6 @@ begin
 end;
 
 procedure TLedMainForm.actToggleTerminalExecute(Sender: TObject);
-var
-  Dir: string;
 begin
   if not LedPtyAvailable then
   begin
@@ -871,15 +877,7 @@ begin
   FDock.ShowPane('terminal');
   FDock.EdgeVisible[ledBottom] := True;
 
-  { Started on first use, in the folder of the document in front of you,
-    which is nearly always where you wanted to be. }
-  if not FTerminal.Running then
-  begin
-    Dir := GetCurrentDir;
-    if (ActiveTab <> nil) and not ActiveTab.Document.IsUntitled then
-      Dir := ExtractFileDir(ActiveTab.Document.FileName);
-    FTerminal.Start(Dir);
-  end;
+  { ShowPane raises OnPaneShown, which starts it. }
   LedTryFocus(FTerminal.Active);
 end;
 
@@ -921,6 +919,7 @@ begin
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
+  FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Line');
   { The output pane is not a document, so the loop below never reaches it. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
   for i := 0 to FBook.PageCount - 1 do
@@ -1829,6 +1828,92 @@ begin
     AItem.Delete(i);
     Application.ReleaseComponent(Child);
   end;
+end;
+
+{ The pane header's look is a matter of taste and the right answer is not
+  obvious -- a hairline grip reads as structure to one person and as clutter
+  to the next -- so the choice is offered instead of decided.  The list comes
+  from AnchorDocking's own registry, so a style added upstream appears here
+  without led being told, and led's own LedPlain sits among them. }
+{ Starting the shell is the pane's own business, not one menu item's.  It used
+  to happen only inside actToggleTerminalExecute, so a terminal opened from an
+  edge button or restored with the layout came up as an empty black rectangle
+  with no prompt in it. }
+procedure TLedMainForm.StartTerminal;
+var
+  Dir: string;
+begin
+  if FTerminal = nil then Exit;
+  if FTerminal.Running then Exit;
+  { In the folder of the document in front of you, which is nearly always
+    where you wanted to be. }
+  Dir := GetCurrentDir;
+  if (ActiveTab <> nil) and not ActiveTab.Document.IsUntitled then
+    Dir := ExtractFileDir(ActiveTab.Document.FileName);
+  FTerminal.Start(Dir);
+end;
+
+procedure TLedMainForm.PaneShown(const AId: string);
+begin
+  if SameText(AId, 'terminal') then
+    StartTerminal
+  else if SameText(AId, 'preview') then
+    { The preview renders the document in front of you; shown from an edge
+      button it would otherwise sit blank until something else refreshed it. }
+    RefreshPreview;
+end;
+
+{ AnchorDocking stores its style names upper-cased -- RegisterHeaderStyle
+  does AddOrSetData(uppercase(StyleName)) -- so the registry hands back
+  FRAME3D and THEMEDCAPTION, which is no way to label a menu.  These say what
+  the style actually draws. }
+function HeaderStyleCaption(const AName: string): string;
+begin
+  if SameText(AName, 'Frame3D') then Result := 'Raised frame'
+  else if SameText(AName, 'Line') then Result := 'Hairline grip'
+  else if SameText(AName, 'Lines') then Result := 'Ridged grip'
+  else if SameText(AName, 'Points') then Result := 'Dotted grip'
+  else if SameText(AName, 'ThemedCaption') then Result := 'Desktop title bar'
+  else if SameText(AName, 'ThemedButton') then Result := 'Desktop button'
+  else if SameText(AName, 'LedPlain') then Result := 'Plain band'
+  else Result := AName;
+end;
+
+procedure TLedMainForm.PopulateHeaderStyleMenu;
+var
+  Names: TStringArray;
+  i: Integer;
+  Item: TMenuItem;
+  Current: string;
+begin
+  ClearMenu(miHeaderStyle);
+  Current := FDock.HeaderStyle;
+  Names := FDock.HeaderStyleNames;
+  for i := 0 to High(Names) do
+  begin
+    Item := TMenuItem.Create(miHeaderStyle);
+    Item.Caption := HeaderStyleCaption(Names[i]);
+    { The real name travels in Hint, because the caption is now a label and
+      no longer something the dock would recognise. }
+    Item.Hint := Names[i];
+    Item.RadioItem := True;
+    Item.GroupIndex := 71;
+    Item.Checked := SameText(Names[i], Current);
+    Item.OnClick := @HeaderStylePicked;
+    miHeaderStyle.Add(Item);
+  end;
+end;
+
+procedure TLedMainForm.miHeaderStyleClick(Sender: TObject);
+begin
+  PopulateHeaderStyleMenu;
+end;
+
+procedure TLedMainForm.HeaderStylePicked(Sender: TObject);
+begin
+  if not (Sender is TMenuItem) then Exit;
+  FDock.HeaderStyle := TMenuItem(Sender).Hint;
+  LedPrefs.SetStr(LedPrefHeaderStyle, FDock.HeaderStyle);
 end;
 
 procedure TLedMainForm.SaveSession;

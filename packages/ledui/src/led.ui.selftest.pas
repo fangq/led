@@ -1319,6 +1319,10 @@ end;
   only through the View menu, because AnchorDocking removes it rather than
   collapsing it to something clickable. }
 procedure TestPaneRail(F: TLedMainForm);
+var
+  Names: TStringArray;
+  i: Integer;
+  Found: Boolean;
 begin
   Say('pane buttons on the edges');
 
@@ -1396,6 +1400,23 @@ begin
   Check('the lock survives a layout reload', not F.Dock.DraggingAllowed);
   DeleteFile(LedConfigFile('selftest-layout.xml'));
   F.Dock.DraggingAllowed := True;
+
+  { The header style is offered rather than decided, so the list has to be
+    real and the choice has to stick. }
+  Names := F.Dock.HeaderStyleNames;
+  CheckEqInt('six built-in header styles plus led''s own',
+    7, Length(Names));
+  Found := False;
+  { Compared case-insensitively on purpose: AnchorDocking upper-cases the
+    keys when registering, so an exact match against 'LedPlain' fails even
+    though the style is there -- which is exactly what this check caught. }
+  for i := 0 to High(Names) do
+    if SameText(Names[i], 'LedPlain') then Found := True;
+  Check('including led''s own', Found);
+  F.Dock.HeaderStyle := 'Points';
+  CheckEq('the style can be changed', 'Points', F.Dock.HeaderStyle);
+  F.Dock.HeaderStyle := 'Line';
+  CheckEq('and changed back', 'Line', F.Dock.HeaderStyle);
 
   F.Dock.ShowRails := False;
   Pump;
