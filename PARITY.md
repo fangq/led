@@ -47,11 +47,11 @@ checked off by the presence of a menu entry.
 | `Delete` | yes | | |
 | `EditBookmarks` | yes | | |
 | `EncodingMenu` | yes | yes | done |
-| `Find` | yes | | |
-| `FindCurrent` | yes | | |
-| `FindCurrentBack` | yes | | |
-| `FindNext` | yes | | |
-| `FindPrevious` | yes | | |
+| `Find` | yes | yes | done |
+| `FindCurrent` | yes | yes | done |
+| `FindCurrentBack` | yes | yes | done |
+| `FindNext` | yes | yes | done |
+| `FindPrevious` | yes | yes | done |
 | `FocusDoc` | yes | | |
 | `GoBack` | yes | | |
 | `GoForward` | yes | | |
@@ -86,12 +86,12 @@ checked off by the presence of a menu entry.
 | `PrintPdf` | yes | | |
 | `PrintPreview` | yes | | |
 | `Properties` | yes | | |
-| `QuickSearch` | yes | | |
+| `QuickSearch` | yes | yes | done |
 | `Quit` | yes | yes | done |
 | `Redo` | yes | yes | done |
 | `Reload` | yes | yes | done |
 | `ReopenWithEncoding` | yes | partly | prompted automatically on a failed decode; no explicit menu item yet |
-| `Replace` | yes | | |
+| `Replace` | yes | yes | done |
 | `ReportBug` | yes | | |
 | `Save` | yes | yes | done |
 | `SaveAs` | yes | yes | done |
