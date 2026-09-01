@@ -1401,6 +1401,19 @@ begin
   DeleteFile(LedConfigFile('selftest-layout.xml'));
   F.Dock.DraggingAllowed := True;
 
+  { Showing a pane has to put it on screen, not merely dock it into a hidden
+    edge.  The View actions used to set the edge visible themselves and the
+    edge buttons did not, so Output appeared to do nothing until some other
+    bottom pane revealed the edge for it. }
+  F.Dock.EdgeVisible[ledBottom] := False;
+  Pump;
+  F.Dock.ShowPane('output');
+  Pump;
+  Check('showing a pane reveals its edge', F.Dock.EdgeVisible[ledBottom]);
+  Check('and the pane itself is visible', F.Dock.PaneVisible('output'));
+  F.Dock.HidePane('output');
+  Pump;
+
   { The header style is offered rather than decided, so the list has to be
     real and the choice has to stick. }
   Names := F.Dock.HeaderStyleNames;
