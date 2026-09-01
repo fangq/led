@@ -60,6 +60,9 @@ type
     FRails: array[TLedDockEdge] of TPanel;
     FImages: TCustomImageList;
     FShowRails: Boolean;
+    FRailsStale: Boolean;
+    FRailsSettle: TTimer;
+    procedure RailsSettled(Sender: TObject);
     procedure BuildRail(AEdge: TLedDockEdge);
     procedure RailButtonClick(Sender: TObject);
     procedure SetShowRails(AValue: Boolean);
@@ -195,6 +198,11 @@ begin
     FRails[E].Width := 0;
     FRails[E].Height := 0;
   end;
+
+  FRailsSettle := TTimer.Create(Self);
+  FRailsSettle.Interval := 250;
+  FRailsSettle.Enabled := False;
+  FRailsSettle.OnTimer := @RailsSettled;
 
   FSite := TAnchorDockPanel.Create(Self);
   FSite.Parent := Self;
@@ -470,6 +478,23 @@ begin
   RefreshRails;
 end;
 
+{ A drag leaves the rails out of date, and the drop itself is the worst
+  moment to read the dock.  So the refresh is deferred: a short one-shot
+  timer fires once the layout has settled, well after AnchorDocking has
+  finished rebuilding its sites.  Quarter of a second is below noticing and
+  far above the rebuild. }
+procedure TLedDockHost.RailsSettled(Sender: TObject);
+begin
+  FRailsSettle.Enabled := False;
+  if (DragManager <> nil) and DragManager.IsDragging then
+  begin
+    { still going -- come back }
+    FRailsSettle.Enabled := True;
+    Exit;
+  end;
+  RefreshRails;
+end;
+
 procedure TLedDockHost.RebuildRails;
 var
   E: TLedDockEdge;
@@ -487,6 +512,30 @@ var
   i: Integer;
   Btn: TSpeedButton;
 begin
+  { Never while a drag is in flight.  This is called from the action-update
+    pass, which runs on every idle -- including throughout a drag -- and
+    PaneVisible reads DockMaster.GetSite(Pane).Visible.  During a drop
+    AnchorDocking is tearing down and building host sites, so those reads can
+    land on a site that is part-way through being freed.  At the gtk2 level
+    that surfaces as
+
+      GLib-GObject-WARNING: instance with invalid (NULL) class pointer
+      GLib-GObject-CRITICAL: g_signal_stop_emission_by_name: assertion
+        'G_TYPE_CHECK_INSTANCE (instance)' failed
+
+    and then an access violation.  The rails are a convenience; they have no
+    business reading the dock's internals at the one moment those internals
+    are not a consistent structure.  RefreshAfterDrag picks it up once the
+    drag is over. }
+  if (DragManager <> nil) and DragManager.IsDragging then
+  begin
+    FRailsStale := True;
+    if FRailsSettle <> nil then
+      FRailsSettle.Enabled := True;
+    Exit;
+  end;
+  FRailsStale := False;
+
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
   begin
     if FRails[E] = nil then Continue;
