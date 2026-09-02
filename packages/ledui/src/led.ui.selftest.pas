@@ -187,6 +187,61 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestBrowserNavigation(F: TLedMainForm);
+var
+  Dir, Sub, Start: string;
+begin
+  Say('file browser navigation');
+
+  Dir := IncludeTrailingPathDelimiter(TempName('nav'));
+  Sub := Dir + 'inner' + PathDelim;
+  ForceDirectories(Sub);
+
+  F.Dock.ShowPane('files');
+  Pump;
+  F.Browser.SetRoot(Dir);
+  Pump;
+  Start := F.Browser.Root;
+
+  Check('nothing to go back to yet', not F.Browser.CanGoBack);
+  Check('and nothing forward', not F.Browser.CanGoForward);
+
+  F.Browser.SetRoot(Sub);
+  Pump;
+  Check('moving somewhere makes back available', F.Browser.CanGoBack);
+
+  F.Browser.GoBack;
+  Pump;
+  CheckEq('and back returns to where it was', Start, F.Browser.Root);
+  Check('with forward now available', F.Browser.CanGoForward);
+
+  F.Browser.GoForward;
+  Pump;
+  Check('forward goes on again',
+    SameFileName(ExcludeTrailingPathDelimiter(Sub), F.Browser.Root));
+
+  { Going somewhere new from part-way back drops the forward trail, the way
+    a browser does -- otherwise Forward leads somewhere the user has since
+    left. }
+  F.Browser.GoBack;
+  Pump;
+  F.Browser.SetRoot(GetTempDir);
+  Pump;
+  Check('a new turning discards the forward trail', not F.Browser.CanGoForward);
+
+  F.Browser.GoUp;
+  Pump;
+  Check('up leaves a real folder', DirectoryExists(F.Browser.Root));
+
+  F.Browser.GoHome;
+  Pump;
+  CheckEq('home is the user folder',
+    ExcludeTrailingPathDelimiter(GetUserDir), F.Browser.Root);
+
+  RemoveDir(Sub);
+  RemoveDir(ExcludeTrailingPathDelimiter(Dir));
+end;
+
 procedure TestTerminalPaneAndSession(F: TLedMainForm);
 var
   Pane: TLedTerminalPane;
@@ -2036,6 +2091,7 @@ begin
   WriteLn;
   TestIconsAndFocus(F);
   TestTerminalPaneAndSession(F);
+  TestBrowserNavigation(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
