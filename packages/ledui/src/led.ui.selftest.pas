@@ -515,6 +515,7 @@ end;
 procedure TestTerminalPaneAndSession(F: TLedMainForm);
 var
   Pane: TLedTerminalPane;
+  Term: TLedTermView;
   Doc: TLedDocument;
   Tab: TLedTab;
   Sess: TLedSession;
@@ -567,6 +568,30 @@ begin
       Pump;
       Check('the split count is capped', Pane.Count <= LedMaxTerminals);
       Check('and the cap is above where we started', Pane.Count > Before);
+
+      { Mouse selection.  Driven through the cell model rather than by
+        synthesising mouse events, because what can be wrong here is which
+        cells the selection covers and what text comes out of them. }
+      Term := Pane.Active;
+      Term.Screen.Feed('hello world' + #13#10 + 'second line' + #13#10);
+      Pump;
+      Check('nothing is selected to begin with', not Term.HasSelection);
+      CheckEq('so there is no text to copy', '', Term.SelectedText);
+
+      Term.SelectAll;
+      Check('select all selects something', Term.HasSelection);
+      Check('and the text includes what was written',
+        Pos('hello world', Term.SelectedText) > 0);
+      Check('and the second line too',
+        Pos('second line', Term.SelectedText) > 0);
+
+      { Every row is padded to the full width; the padding must not come
+        out with the text. }
+      Check('without the row padding',
+        Pos('hello world  ', Term.SelectedText) = 0);
+
+      Term.ClearSelection;
+      Check('and it can be cleared', not Term.HasSelection);
     finally
       Pane.Free;
     end;

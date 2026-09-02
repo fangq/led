@@ -34,6 +34,12 @@ type
     FTimer: TTimer;
     FLastCols, FLastRows: Integer;
     FCharW, FCharH: Integer;
+    { Mouse selection, in cell coordinates on the visible screen.  Anchor is
+      where the drag began and Head where it is now; either may be the
+      earlier of the two, so the pair is ordered only when it is used. }
+    FSelAnchor, FSelHead: TPoint;
+    FSelecting: Boolean;
+    FHasSel: Boolean;
     FScheme: Integer;
     FScrollOffset: Integer;    // lines scrolled back; 0 is the live view
     FOnTitleChange: TNotifyEvent;
@@ -49,6 +55,14 @@ type
     procedure UTF8KeyPress(var UTF8Key: TUTF8Char); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
       MousePos: TPoint): Boolean; override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+    function CellAt(X, Y: Integer): TPoint;
+    function SelectionOrdered(out AFrom, ATo: TPoint): Boolean;
+    function CellSelected(ACol, ARow: Integer): Boolean;
     procedure DoEnter; override;
     procedure FontChanged(Sender: TObject); override;
     class function GetControlClassDefaultSize: TSize; override;
@@ -62,6 +76,14 @@ type
     procedure Paste(const AText: string);
     procedure SetScheme(AIndex: Integer);
     function SchemeName(AIndex: Integer): string;
+
+    { The selected text, rows joined by newlines and trailing blanks on each
+      row trimmed -- a terminal pads every row to full width, and pasting
+      that padding back is never what anyone wants. }
+    function SelectedText: string;
+    function HasSelection: Boolean;
+    procedure ClearSelection;
+    procedure SelectAll;
     function SchemeCount: Integer;
 
     property Screen: TLedTermScreen read FScreen;
@@ -140,6 +162,131 @@ const
                $98A125, $D5E8EE, $423607, $9A5F26, $756E58, $837B65,
                $96A1A1, $A1A6C3, $ACB0B0, $E3F6FD))
   );
+
+{ Screen cell under a pixel, clamped, so a drag that leaves the window keeps
+  extending the selection instead of stopping at the edge. }
+function TLedTermView.CellAt(X, Y: Integer): TPoint;
+begin
+  if FCharW < 1 then Exit(Point(0, 0));
+  Result.X := X div FCharW;
+  Result.Y := Y div FCharH;
+  if Result.X < 0 then Result.X := 0;
+  if Result.Y < 0 then Result.Y := 0;
+  if Result.X > FScreen.Cols then Result.X := FScreen.Cols;
+  if Result.Y > FScreen.Rows - 1 then Result.Y := FScreen.Rows - 1;
+end;
+
+function TLedTermView.SelectionOrdered(out AFrom, ATo: TPoint): Boolean;
+begin
+  Result := FHasSel;
+  if not Result then Exit;
+  AFrom := FSelAnchor;
+  ATo := FSelHead;
+  if (ATo.Y < AFrom.Y) or ((ATo.Y = AFrom.Y) and (ATo.X < AFrom.X)) then
+  begin
+    AFrom := FSelHead;
+    ATo := FSelAnchor;
+  end;
+end;
+
+{ Selection runs by lines, not as a rectangle: everything from the start cell
+  to the end cell in reading order, which is what a terminal selection means
+  when the text wraps. }
+function TLedTermView.CellSelected(ACol, ARow: Integer): Boolean;
+var
+  A, B: TPoint;
+begin
+  Result := False;
+  if not SelectionOrdered(A, B) then Exit;
+  if (ARow < A.Y) or (ARow > B.Y) then Exit;
+  if (ARow = A.Y) and (ACol < A.X) then Exit;
+  if (ARow = B.Y) and (ACol >= B.X) then Exit;
+  Result := True;
+end;
+
+function TLedTermView.HasSelection: Boolean;
+var
+  A, B: TPoint;
+begin
+  Result := SelectionOrdered(A, B) and ((A.X <> B.X) or (A.Y <> B.Y));
+end;
+
+procedure TLedTermView.ClearSelection;
+begin
+  if not FHasSel then Exit;
+  FHasSel := False;
+  FSelecting := False;
+  Invalidate;
+end;
+
+procedure TLedTermView.SelectAll;
+begin
+  FSelAnchor := Point(0, 0);
+  FSelHead := Point(FScreen.Cols, FScreen.Rows - 1);
+  FHasSel := True;
+  Invalidate;
+end;
+
+function TLedTermView.SelectedText: string;
+var
+  A, B: TPoint;
+  Row, C0, C1, X: Integer;
+  Line: string;
+begin
+  Result := '';
+  if not SelectionOrdered(A, B) then Exit;
+  for Row := A.Y to B.Y do
+  begin
+    if Row = A.Y then C0 := A.X else C0 := 0;
+    if Row = B.Y then C1 := B.X - 1 else C1 := FScreen.Cols - 1;
+    Line := '';
+    for X := C0 to C1 do
+      Line := Line + FScreen.Cell(X, Row).Ch;
+    { Every row is padded to full width; the padding is not text. }
+    Line := TrimRight(Line);
+    if Result <> '' then Result := Result + LineEnding;
+    Result := Result + Line;
+  end;
+end;
+
+procedure TLedTermView.MouseDown(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  { Clicking a terminal should put the caret in it.  ledterm cannot use
+    Led.UI.Focus -- ledui depends on ledterm, not the other way round -- and
+    the guard is four lines, so it is repeated rather than inverted. }
+  if CanFocus and (GetParentForm(Self) <> nil) and
+     (GetParentForm(Self).Active or
+      (GetParentForm(Self).IsControlVisible and GetParentForm(Self).Enabled)) then
+    SetFocus;
+  FSelAnchor := CellAt(X, Y);
+  FSelHead := FSelAnchor;
+  FSelecting := True;
+  FHasSel := False;
+  Invalidate;
+end;
+
+procedure TLedTermView.MouseMove(Shift: TShiftState; X, Y: Integer);
+begin
+  inherited MouseMove(Shift, X, Y);
+  if not FSelecting then Exit;
+  FSelHead := CellAt(X, Y);
+  FHasSel := True;
+  Invalidate;
+end;
+
+procedure TLedTermView.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  FSelecting := False;
+  { A click with no drag is a click, not an empty selection. }
+  if not HasSelection then FHasSel := False;
+  Invalidate;
+end;
 
 constructor TLedTermView.Create(AOwner: TComponent);
 begin
@@ -370,6 +517,13 @@ begin
       FG := ColourOf(C.FG, Schemes[FScheme].Foreground);
       BG := ColourOf(C.BG, Schemes[FScheme].Background);
       if caInverse in C.Attr then
+      begin
+        T := FG; FG := BG; BG := T;
+      end;
+
+      { Selected cells swap their colours, which reads correctly whatever
+        the scheme and needs no colour of its own. }
+      if (FScrollOffset = 0) and CellSelected(X, Y) then
       begin
         T := FG; FG := BG; BG := T;
       end;

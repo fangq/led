@@ -41,6 +41,7 @@ type
     procedure DoClose(Sender: TObject);
     procedure DoPaste(Sender: TObject);
     procedure DoCopyScreen(Sender: TObject);
+    procedure DoSelectAll(Sender: TObject);
     procedure DoClear(Sender: TObject);
     procedure DoBigger(Sender: TObject);
     procedure DoSmaller(Sender: TObject);
@@ -130,8 +131,9 @@ begin
   FMenu := TPopupMenu.Create(Self);
   FMenu.OnPopup := @MenuPopup;
 
-  Add('Copy Screen', @DoCopyScreen);
+  Add('Copy', @DoCopyScreen);
   Add('Paste', @DoPaste);
+  Add('Select All', @DoSelectAll);
   Add('-', nil);
   Add('Split Side by Side', @DoSplitH);
   Add('Split Stacked', @DoSplitV);
@@ -157,12 +159,29 @@ begin
 end;
 
 procedure TLedTerminalPane.MenuPopup(Sender: TObject);
+
+  procedure EnableItem(const ACaption: string; AEnabled: Boolean);
+  var
+    i: Integer;
+  begin
+    for i := 0 to FMenu.Items.Count - 1 do
+      if FMenu.Items[i].Caption = ACaption then
+      begin
+        FMenu.Items[i].Enabled := AEnabled;
+        Exit;
+      end;
+  end;
+
 begin
   { Only offer to split while there is room, and only offer to close when
     closing leaves something behind. }
-  FMenu.Items[3].Enabled := FTerminals.Count < LedMaxTerminals;
-  FMenu.Items[4].Enabled := FMenu.Items[3].Enabled;
-  FMenu.Items[5].Enabled := FTerminals.Count > 1;
+  { Found by name rather than by index: the indices moved when Select All
+    was added, and a menu that greys the wrong item is worse than one that
+    greys nothing. }
+  EnableItem('Split Side by Side', FTerminals.Count < LedMaxTerminals);
+  EnableItem('Split Stacked', FTerminals.Count < LedMaxTerminals);
+  EnableItem('Close This Terminal', FTerminals.Count > 1);
+  EnableItem('Copy', True);
 end;
 
 function TLedTerminalPane.AddTerminal(AParent: TWinControl): TLedTermView;
@@ -321,13 +340,23 @@ var
   i: Integer;
   S: string;
 begin
-  { The whole visible screen.  There is no mouse selection in the terminal
-    yet, and copying everything is more useful than copying nothing. }
   if FActive = nil then Exit;
+  { What was selected with the mouse, if anything; otherwise the whole
+    visible screen, which is what the item used to be able to offer. }
+  if FActive.HasSelection then
+  begin
+    Clipboard.AsText := FActive.SelectedText;
+    Exit;
+  end;
   S := '';
   for i := 0 to FActive.Screen.Rows - 1 do
     S := S + FActive.Screen.RowText(i) + LineEnding;
   Clipboard.AsText := TrimRight(S) + LineEnding;
+end;
+
+procedure TLedTerminalPane.DoSelectAll(Sender: TObject);
+begin
+  if FActive <> nil then FActive.SelectAll;
 end;
 
 procedure TLedTerminalPane.DoClear(Sender: TObject);
