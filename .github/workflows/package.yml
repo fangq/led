@@ -4,8 +4,14 @@ name: Package
 #   Linux   -> .deb + a portable .tar.gz
 #   Windows -> Inno Setup .exe (unsigned) + a portable .zip
 #   macOS   -> .dmg holding led.app
-# Runs on main and on version tags; also on demand.  Tag pushes (v*)
-# additionally attach the installers to a GitHub Release.
+# Runs on version tags and on demand.  Tag pushes (v*) additionally attach
+# the installers to a GitHub Release.
+#
+# Not on every push to main.  Three installers is roughly six runner-minutes
+# a commit for artifacts nobody downloads between releases, and CI already
+# compiles the same Release build on all three platforms -- so a break here
+# shows up there anyway, without the packaging on top.  Use the Actions tab
+# when you want an installer from an untagged commit.
 #
 # led reads its grammars, themes and shipped tools from a data directory at
 # run time, so every package here has to carry data/ as well as the binary --
@@ -14,7 +20,6 @@ name: Package
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
 

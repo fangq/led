@@ -161,11 +161,19 @@ jobs:
 
   # The newest Lazarus, which is where the *other* half of the vendored
   # engine's shims compile: the branch taken when the base class already has
-  # GetInstanceLanguageName and CurrentLineText.  Allowed to fail, because it
-  # is now the only Linux job that depends on the SourceForge download, and a
-  # stall there says nothing about led.
+  # GetInstanceLanguageName and CurrentLineText.
+  #
+  # On demand only.  It is the one Linux job that cannot use apt -- the whole
+  # point is a Lazarus newer than the distro's -- so it is also the only one
+  # that depends on the SourceForge download, and that download is what it
+  # kept reporting: run 33663570288 spent its fifteen minutes inside the
+  # install step and never reached a compiler.  continue-on-error meant those
+  # runs said nothing either way, at forty minutes of runner time apiece.
+  # Run it from the Actions tab before a release, or when the vendored engine
+  # changes, which is when its answer is actually worth having.
   newest-lazarus:
-    name: newest Lazarus (optional)
+    name: newest Lazarus (on demand)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     continue-on-error: true

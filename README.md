@@ -147,13 +147,20 @@ from SourceForge, which stalls often enough to have failed a required job on a
 push whose code was fine, and once held a runner for an hour and a half.
 
 Windows and macOS have no distribution package, so those jobs still use the
-action, with a step timeout so a stall fails fast and names itself. One
-optional `newest Lazarus` job covers the current release — it is allowed to
-fail, because it is the remaining job that depends on that download and a slow
-mirror says nothing about led.
+action, with a step timeout so a stall fails fast and names itself.
 
-`.github/workflows/package.yml` builds the three installers on every push to
-`main`, and attaches them to a GitHub Release on a `v*` tag.
+A `newest Lazarus` job covers the current release — the half of the vendored
+engine's shims that 2.2 never compiles — but it runs **on demand only**, from
+the Actions tab. It is the one Linux job that cannot use apt, so it is the one
+that kept reporting the download rather than led: allowed to fail, forty
+minutes of runner time, and no answer either way. Run it before a release, or
+after touching `packages/ledsyn/vendor`.
+
+`.github/workflows/package.yml` builds the three installers on a `v*` tag,
+which also attaches them to a GitHub Release, and on demand. It does not run
+on ordinary pushes to `main`: CI already compiles the same Release build on
+all three platforms, so a break shows up there without paying for the
+packaging on top of it.
 
 ### Column selection
 
