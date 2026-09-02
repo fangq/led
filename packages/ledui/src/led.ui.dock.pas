@@ -572,6 +572,14 @@ begin
     a pane behaves the same. }
   if not GetEdgeVisible(Pane.Edge) then
     SetEdgeVisible(Pane.Edge, True);
+
+  { Docking a pane makes AnchorDocking rebuild sites, and a rebuilt centre
+    site comes back with the close button that would shut the editor area.
+    The idle pass re-hides it, so this was only ever visible for the moment
+    in between -- but "only for a moment" is how long it takes to click, and
+    a check that opened a pane and then asked could see it. }
+  GuardCentreHeader;
+
   if Assigned(FOnPaneShown) then
     FOnPaneShown(AId);
 end;
@@ -821,11 +829,19 @@ begin
         them; showing four stacked panes because one was asked for is not
         what the menu item promises. }
       DockPane(Pane);
+      GuardCentreHeader;
       Exit;
     end
     else
       HidePane(Pane.PaneId);
   end;
+
+  { Undocking rebuilds the surrounding sites, and the rebuilt centre site
+    brings back the close button that would shut the editor area.  Showing a
+    pane and hiding it again left the editor closable until the idle pass
+    came round -- long enough to click.  Every route that can rebuild a site
+    now puts the guard back before returning. }
+  GuardCentreHeader;
 end;
 
 function TLedDockHost.GetEdgeSize(AEdge: TLedDockEdge): Integer;

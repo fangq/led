@@ -162,6 +162,19 @@ on ordinary pushes to `main`: CI already compiles the same Release build on
 all three platforms, so a break shows up there without paying for the
 packaging on top of it.
 
+### Wiki markup
+
+`.wiki`, `.wp` and `.usemod` files — or any file whose first line is
+`<!-- wiki -->` — are highlighted as MediaWiki and render in the preview pane
+(**View > Preview**) through `Led.Core.Wiki`, a port of medit's in-tree
+converter.  The dialect is medit's UseMod / Habitat one: `= Heading =`,
+`== # Heading ==` for numbered headings and `<toc>`, `*`/`#` lists,
+`; term : definition`, `||tables||`, `'''bold'''`, `[[FreeLinks]]`,
+`[url label]`, bare URLs, `WikiWord`, `[#anchors]` and `<nowiki>`.
+
+Anything matching no rule is escaped and shown as text, so unknown syntax
+looks wrong rather than disappearing.
+
 ### Very long lines
 
 Past `Editor/max_line_len` characters (4096, medit's figure) a line is drawn

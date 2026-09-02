@@ -4218,5 +4218,10 @@
     }
    ]
   }
+ ],
+ "fileTypes": [
+  "wiki",
+  "wp",
+  "usemod"
  ]
 }

@@ -21,7 +21,7 @@ uses
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
+  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
@@ -560,6 +560,10 @@ type
 
     { Public so the --self-test harness, and later the scripting API, can
       drive the window the same way a user would. }
+    { The preview pane.  Public because whether its HTML control accepted
+      what the converter produced is not observable from anywhere else --
+      the render path turns an exception into a message label. }
+    property Preview: TLedPreviewPane read FPreview;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
@@ -1011,15 +1015,23 @@ end;
 procedure TLedMainForm.RefreshPreview;
 var
   Doc: TLedDocument;
+  First: string;
 begin
   if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
-  if LedPreviewHandles(Doc.FileName) then
-    FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
-      ExtractFileDir(Doc.FileName))
+  if Doc.Master.Lines.Count > 0 then
+    First := Doc.Master.Lines[0]
   else
-    FPreview.ShowMessage_('This is not a Markdown file.');
+    First := '';
+  if LedPreviewHandles(Doc.FileName, First) then
+  begin
+    FPreview.IsWiki := LedIsWikiFile(Doc.FileName, First);
+    FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
+      ExtractFileDir(Doc.FileName));
+  end
+  else
+    FPreview.ShowMessage_('This is not a Markdown or wiki file.');
 end;
 
 procedure TLedMainForm.actTogglePreviewExecute(Sender: TObject);
