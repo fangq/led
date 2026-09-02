@@ -23,6 +23,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
+  Led.UI.Bookmarks,
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, LCLProc, LazFileUtils;
 
@@ -63,6 +64,8 @@ type
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
     actToggleBookmark: TAction;
+    actAddBookmark: TAction;
+    actEditBookmarks: TAction;
     actNextBookmark: TAction;
     actPrevBookmark: TAction;
     actSplitSideBySide: TAction;
@@ -178,6 +181,9 @@ type
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
+    mi_AddBookmark: TMenuItem;
+    miBookmarks: TMenuItem;
+    mi_EditBookmarks: TMenuItem;
     mnuTools: TMenuItem;
     miToolList: TMenuItem;
     miSep15: TMenuItem;
@@ -355,6 +361,9 @@ type
     procedure actSelectAllExecute(Sender: TObject);
     procedure actSelectToBracketExecute(Sender: TObject);
     procedure actToggleBookmarkExecute(Sender: TObject);
+    procedure actAddBookmarkExecute(Sender: TObject);
+    procedure actEditBookmarksExecute(Sender: TObject);
+    procedure miBookmarksClick(Sender: TObject);
     procedure actToggleBracketExecute(Sender: TObject);
     procedure actUncommentExecute(Sender: TObject);
     procedure actUndoExecute(Sender: TObject);
@@ -496,6 +505,7 @@ type
     procedure CheckExternalChanges;
     function CurrentView: TLedEdit;
     procedure GotoAdjacentBookmark(AForward: Boolean);
+    procedure BookmarkItemClick(Sender: TObject);
     procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
     procedure DocChanged(ADoc: TLedDocument);
@@ -536,6 +546,7 @@ type
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
     function SaveDocument(ADoc: TLedDocument): Boolean;
+    procedure PopulateBookmarkMenu;
     function FormatWindowTitle(ADoc: TLedDocument): string;
     { Where an Open or Save As dialog should start, and how it learns. }
     procedure ApplyTabVisibility;
@@ -788,6 +799,7 @@ begin
   PopulateToolMenu;
   PopulateReopenMenu;
   PopulateDocMenu;
+  PopulateBookmarkMenu;
   { Every other dynamic submenu is filled here as well as on its own click,
     which is why they have contents the first time the menu is opened.  This
     one was only filled on click, so it came up empty until it had been
@@ -1487,6 +1499,82 @@ begin
       Exit;
     end;
   ReportError('All ten bookmark slots are in use.');
+end;
+
+{ Add rather than toggle: medit had both, because on a line that already
+  carries one, toggle removes it and Add is then the only way to be sure a
+  bookmark is there afterwards. }
+procedure TLedMainForm.actAddBookmarkExecute(Sender: TObject);
+var
+  V: TLedEdit;
+  i, X, Y: Integer;
+begin
+  V := CurrentView;
+  if V = nil then Exit;
+  for i := 0 to 9 do
+    if V.GetBookMark(i, X, Y) and (Y = V.CaretY) then Exit;   // already there
+  for i := 0 to 9 do
+    if not V.GetBookMark(i, X, Y) then
+    begin
+      V.SetBookMark(i, 1, V.CaretY);
+      Exit;
+    end;
+  ReportError('All ten bookmark slots are in use.');
+end;
+
+procedure TLedMainForm.actEditBookmarksExecute(Sender: TObject);
+var
+  Line: Integer;
+begin
+  if Silent or (CurrentView = nil) then Exit;
+  Line := LedEditBookmarks(Self, CurrentView);
+  if Line > 0 then
+  begin
+    CurrentView.CaretXY := Point(1, Line);
+    LedTryFocus(CurrentView);
+  end;
+end;
+
+procedure TLedMainForm.miBookmarksClick(Sender: TObject);
+begin
+  PopulateBookmarkMenu;
+end;
+
+{ The bookmarks of the current document, in line order, each showing the text
+  of its line -- which is what makes a list worth having over the gutter
+  marks, where ten of them look alike. }
+procedure TLedMainForm.PopulateBookmarkMenu;
+var
+  Marks: TLedBookmarkArray;
+  i: Integer;
+  Item: TMenuItem;
+  Label_: string;
+begin
+  ClearMenu(miBookmarks);
+  Marks := LedCollectBookmarks(CurrentView);
+  for i := 0 to High(Marks) do
+  begin
+    Item := TMenuItem.Create(miBookmarks);
+    Label_ := Marks[i].Text;
+    if Length(Label_) > 48 then Label_ := Copy(Label_, 1, 45) + '...';
+    if Label_ = '' then Label_ := '(blank line)';
+    Item.Caption := Format('%d:  %s', [Marks[i].Line, Label_]);
+    Item.Tag := Marks[i].Line;
+    Item.OnClick := @BookmarkItemClick;
+    miBookmarks.Add(Item);
+  end;
+  miBookmarks.Enabled := Length(Marks) > 0;
+  if Length(Marks) = 0 then
+    miBookmarks.Caption := 'Bookmarks  (none set)'
+  else
+    miBookmarks.Caption := 'Bookmarks';
+end;
+
+procedure TLedMainForm.BookmarkItemClick(Sender: TObject);
+begin
+  if CurrentView = nil then Exit;
+  CurrentView.CaretXY := Point(1, TMenuItem(Sender).Tag);
+  LedTryFocus(CurrentView);
 end;
 
 { Walks the bookmarks in line order rather than slot order, which is what

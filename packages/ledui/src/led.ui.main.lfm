@@ -389,6 +389,14 @@ object LedMainForm: TLedMainForm
       Caption = '&Reset Pane Layout'
       OnExecute = actResetLayoutExecute
     end
+    object actAddBookmark: TAction
+      Caption = '&Add Bookmark'
+      OnExecute = actAddBookmarkExecute
+    end
+    object actEditBookmarks: TAction
+      Caption = '&Edit Bookmarks...'
+      OnExecute = actEditBookmarksExecute
+    end
     object actSplitNotebook: TAction
       Caption = 'Split &Notebook'
       OnExecute = actSplitNotebookExecute
@@ -648,6 +656,16 @@ object LedMainForm: TLedMainForm
       end
       object mi_PrevBookmark: TMenuItem
         Action = actPrevBookmark
+      end
+      object mi_AddBookmark: TMenuItem
+        Action = actAddBookmark
+      end
+      object miBookmarks: TMenuItem
+        Caption = '&Bookmarks'
+        OnClick = miBookmarksClick
+      end
+      object mi_EditBookmarks: TMenuItem
+        Action = actEditBookmarks
       end
     end
     object mnuTools: TMenuItem

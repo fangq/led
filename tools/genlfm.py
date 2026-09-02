@@ -3,7 +3,14 @@
 # repetitive; the output is an ordinary designer-editable form, and this
 # script is not needed to build.
 #
-# Run from the repository root:  python3 tools/genlfm.py
+# STALE -- do not run.  The .lfm has been hand-edited since, and regenerating
+# it drops everything added that way: the notebook-split actions, the dock
+# header-style menu and more.  Running it once already clobbered them.
+#
+# Kept because the tables below are still the clearest inventory of the
+# actions and menus, and because a future rewrite of the form may want them.
+# To add an action now, edit packages/ledui/src/led.ui.main.lfm and the
+# published fields in led.ui.main.pas by hand -- there are only two places.
 SC_CTRL, SC_SHIFT, SC_ALT = 0x4000, 0x2000, 0x8000
 
 def key(ch):        return ord(ch.upper())
@@ -60,6 +67,8 @@ ACTIONS = [
  ('actSelectToBracket','&Select to Matching Bracket', sc('ctrl','shift','RBRACKET'), 'actSelectToBracketExecute', ''),
 
  ('actToggleBookmark', 'Toggle &Bookmark',      sc('ctrl','B'), 'actToggleBookmarkExecute', 'bookmark'),
+ ('actAddBookmark',    '&Add Bookmark',         0, 'actAddBookmarkExecute', ''),
+ ('actEditBookmarks',  '&Edit Bookmarks...',    0, 'actEditBookmarksExecute', ''),
  ('actNextBookmark',   '&Next Bookmark',        sc('alt','DOWN'), 'actNextBookmarkExecute', ''),
  ('actPrevBookmark',   '&Previous Bookmark',    sc('alt','UP'), 'actPrevBookmarkExecute', ''),
 
@@ -169,8 +178,10 @@ MENUS = [
    ('sub','miLanguage','&Language','miLanguageClick'),
    ('sub','miEncoding','&Encoding','miEncodingClick'),
    ('sub','miLineEnd','Line &Endings','miLineEndClick'), ('sep',),
-   ('action','actToggleBookmark'),
-   ('action','actNextBookmark'), ('action','actPrevBookmark')]),
+   ('action','actToggleBookmark'), ('action','actAddBookmark'),
+   ('action','actNextBookmark'), ('action','actPrevBookmark'),
+   ('sub','miBookmarks','&Bookmarks','miBookmarksClick'),
+   ('action','actEditBookmarks')]),
  ('mnuTools', '&Tools', [
    ('sub','miToolList','(no tools)','miToolListClick'), ('sep',),
    ('action','actSplitTermH'), ('action','actSplitTermV'), ('sep',),
@@ -427,6 +438,7 @@ handlers = sorted(set(h for _,_,_,h,_ in ACTIONS)) + \
             'miLineEndClick','miThemeClick','miToolListClick',
             'miReopenEncodingClick','miDocListClick',
             'miTabCloseOthersClick','miTabCopyPathClick','miTabOpenFolderClick',
+            'miBookmarksClick',
             'PopupEditorPopup','PopupTabPopup']
 open('/tmp/claude-1000/-home-fangq-space-git-Project-github-mooedit/bd727f38-db94-4db5-b44d-b8c08e116214/scratchpad/handlers.txt','w').write("\n".join(handlers) + "\n")
 print("lfm written; %d actions, %d toolbar buttons, %d menus"

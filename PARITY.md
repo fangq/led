@@ -35,8 +35,8 @@ checked off by the presence of a menu entry.
 | Feature | medit | led | Decision |
 |---|---|---|---|
 | `About` | yes | yes | done |
-| `AddBookmark` | yes | | |
-| `BookmarksMenu` | yes | | |
+| `AddBookmark` | yes | done | |
+| `BookmarksMenu` | yes | done | |
 | `CaseSensitiveSort` | yes | | |
 | `Close` | yes | yes | done |
 | `CloseAll` | yes | yes | done |
@@ -46,7 +46,7 @@ checked off by the presence of a menu entry.
 | `Cut` | yes | yes | done |
 | `CycleSplitViews` | yes | yes | done |
 | `Delete` | yes | yes | done |
-| `EditBookmarks` | yes | | |
+| `EditBookmarks` | yes | done | |
 | `EncodingMenu` | yes | yes | done |
 | `Find` | yes | yes | done |
 | `FindCurrent` | yes | yes | done |
@@ -68,12 +68,12 @@ checked off by the presence of a menu entry.
 | `LineNumbers` | yes | yes | done |
 | `MoveToSplitView` | yes | yes | done; View > Move to Split Notebook |
 | `NewDoc` | yes | yes | done |
-| `NewFolder` | yes | | |
+| `NewFolder` | yes | done; on the file browser context menu | |
 | `NewWindow` | yes | yes | done |
 | `NextBookmark` | yes | yes | done |
 | `NextPlaceholder` | yes | | |
 | `NextTab` | yes | yes | done |
-| `NoDocuments` | yes | | |
+| `NoDocuments` | yes | done; the Window menu says so when there are none | |
 | `Open` | yes | yes | done |
 | `OpenRecent` | yes | yes | done |
 | `PageSetup` | yes | yes | done |
@@ -98,8 +98,8 @@ checked off by the presence of a menu entry.
 | `SaveAs` | yes | yes | done |
 | `SelectAll` | yes | yes | done |
 | `SelectToMatchingBracket` | yes | yes | done |
-| `ShowHiddenFiles` | yes | | |
-| `ShowParentFolder` | yes | | |
+| `ShowHiddenFiles` | yes | done; a checkbox on the file browser rather than an action | |
+| `ShowParentFolder` | yes | done; the crumb trail and the Up button | |
 | `ShowToolbar` | yes | yes | done |
 | `SortFoldersFirst` | yes | | |
 | `SpecialChars` | yes | | |
@@ -213,7 +213,6 @@ An honest list, so nothing here is mistaken for an oversight.
 |---|---|
 | Spell checking | not started, and not previously listed: medit's SpellAddToDict, SpellIgnoreWord, spell_enabled and spell_scope have no counterpart here |
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
-| Bookmark management | jumping between bookmarks and toggling them works; medit's AddBookmark, EditBookmarks and the Bookmarks menu do not exist |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | Multiple windows | File / New Window opens one; documents are not shared between them |
 
