@@ -389,6 +389,14 @@ object LedMainForm: TLedMainForm
       Caption = '&Reset Pane Layout'
       OnExecute = actResetLayoutExecute
     end
+    object actToggleProject: TAction
+      Caption = '&Project Files'
+      OnExecute = actToggleProjectExecute
+    end
+    object actAddToProject: TAction
+      Caption = 'Add to &Project'
+      OnExecute = actAddToProjectExecute
+    end
     object actAddBookmark: TAction
       Caption = '&Add Bookmark'
       OnExecute = actAddBookmarkExecute
@@ -786,6 +794,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleSymbols: TMenuItem
         Action = actToggleSymbols
+      end
+      object mi_ToggleProject: TMenuItem
+        Action = actToggleProject
       end
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview

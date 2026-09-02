@@ -143,6 +143,11 @@
         <UnitName Value="Led.UI.Tab"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.project.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.Project"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledui/src/led.ui.bookmarks.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Bookmarks"/>

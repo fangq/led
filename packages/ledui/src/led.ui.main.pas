@@ -23,7 +23,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
-  Led.UI.Bookmarks,
+  Led.UI.Bookmarks, Led.UI.Project,
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, LCLProc, LazFileUtils;
 
@@ -69,6 +69,8 @@ type
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
     actToggleBookmark: TAction;
+    actToggleProject: TAction;
+    actAddToProject: TAction;
     actAddBookmark: TAction;
     actEditBookmarks: TAction;
     actNextBookmark: TAction;
@@ -186,6 +188,8 @@ type
     mi_ToggleBookmark: TMenuItem;
     mi_NextBookmark: TMenuItem;
     mi_PrevBookmark: TMenuItem;
+    mi_ToggleProject: TMenuItem;
+    mt_AddToProject: TMenuItem;
     mi_AddBookmark: TMenuItem;
     miBookmarks: TMenuItem;
     mi_EditBookmarks: TMenuItem;
@@ -366,6 +370,8 @@ type
     procedure actSelectAllExecute(Sender: TObject);
     procedure actSelectToBracketExecute(Sender: TObject);
     procedure actToggleBookmarkExecute(Sender: TObject);
+    procedure actToggleProjectExecute(Sender: TObject);
+    procedure actAddToProjectExecute(Sender: TObject);
     procedure actAddBookmarkExecute(Sender: TObject);
     procedure actEditBookmarksExecute(Sender: TObject);
     procedure miBookmarksClick(Sender: TObject);
@@ -435,6 +441,7 @@ type
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTerminalPane;
     FSymbols: TLedSymbolPane;
+    FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
     FCheckingDisk: Boolean;
     procedure RefreshPreview;
@@ -579,6 +586,7 @@ type
     function NewDocShortCut: TShortCut;
     property Recent: TLedRecentFiles read FRecent;
     property Browser: TLedFileBrowser read FBrowser;
+    property Project: TLedProjectPane read FProject;
     property Search: TLedSearchState read FSearch;
 
     { Takes ownership of the single-instance server and starts listening for
@@ -777,6 +785,13 @@ begin
   FBrowser.OnOpenFile := @BrowserOpenFile;
 
   FDock.AddPane(ledLeft, 'files', 'Files', FBrowser, 'browser');
+
+  { The curated file list.  Its own pane rather than a tab of the browser:
+    the browser shows where files are, this shows which ones matter. }
+  FProject := TLedProjectPane.Create(Self);
+  FProject.OnOpen := @BrowserOpenFile;
+  FProject.LoadFrom(LedConfigFile('filelist.json'));
+  FDock.AddPane(ledLeft, 'project', 'Project', FProject, 'doc');
 
   FSymbols := TLedSymbolPane.Create(Self);
   FSymbols.OnJump := @SymbolJump;
@@ -1024,6 +1039,25 @@ begin
     on E: Exception do
       ReportError('Printing failed: ' + E.Message);
   end;
+end;
+
+procedure TLedMainForm.actToggleProjectExecute(Sender: TObject);
+begin
+  FDock.TogglePane('project');
+end;
+
+{ Puts the current document on the list.  The only way in, deliberately: a
+  list that filled itself from whatever you opened would be the recent-files
+  menu again. }
+procedure TLedMainForm.actAddToProjectExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document.FileName = '') then Exit;
+  FDock.ShowPane('project');
+  if (FProject <> nil) and (FProject.AddFile(Tab.Document.FileName) = nil) then
+    UpdateStatusBar;      // already listed; nothing to say about it
 end;
 
 procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
@@ -3462,6 +3496,7 @@ begin
     panes sit is part of the window, not part of the documents in it. }
   FDock.SaveLayout(LedConfigFile('layout.xml'));
   FRecent.Save;
+  if FProject <> nil then FProject.SaveIfDirty;
   FSearch.SaveFlags;
   if LedPrefs.Dirty then
     LedPrefs.Save;

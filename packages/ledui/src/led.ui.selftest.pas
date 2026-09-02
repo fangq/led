@@ -187,6 +187,81 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestProjectList(F: TLedMainForm);
+var
+  L: TStringList;
+  P1, P2, Store: string;
+  G, N: TTreeNode;
+begin
+  Say('project file list');
+
+  P1 := TempName('proj-1.txt');
+  P2 := TempName('proj-2.txt');
+  Store := TempName('filelist.json');
+  L := TStringList.Create;
+  try
+    L.Add('a'); L.SaveToFile(P1); L.SaveToFile(P2);
+  finally
+    L.Free;
+  end;
+
+  F.Dock.ShowPane('project');
+  Pump;
+  F.Project.Tree.Items.Clear;
+
+  { With no group yet, adding a file makes one -- otherwise the first Add to
+    Project would silently do nothing. }
+  N := F.Project.AddFile(P1);
+  Check('adding a file to an empty list works', N <> nil);
+  CheckEqInt('and it made a group to hold it', 1, F.Project.GroupCount);
+  CheckEqInt('with the file in it', 1, F.Project.FileCount);
+  Check('the node shows the base name, not the path',
+    F.Project.Tree.Items[1].Text = ExtractFileName(P1));
+  CheckEq('while the list remembers where it is', ExpandFileName(P1),
+    F.Project.PathOf(F.Project.Tree.Items[1]));
+
+  { The same file twice would be two entries for one file, and removing one
+    would leave the other. }
+  Check('adding the same file again is refused', F.Project.AddFile(P1) = nil);
+  CheckEqInt('so the count is unchanged', 1, F.Project.FileCount);
+
+  G := F.Project.AddGroup('Second');
+  Check('a second group can be added', G <> nil);
+  F.Project.Tree.Selected := G;
+  F.Project.AddFile(P2);
+  CheckEqInt('and a file goes into the selected group', 2, F.Project.GroupCount);
+  CheckEqInt('with two files listed now', 2, F.Project.FileCount);
+  CheckEqInt('the second group holds one', 1, G.Count);
+
+  { Round trip.  A list that does not survive the session is a tab bar. }
+  F.Project.SaveTo(Store);
+  Check('the list was written', FileExists(Store));
+  F.Project.Tree.Items.Clear;
+  CheckEqInt('cleared', 0, F.Project.GroupCount);
+  F.Project.LoadFrom(Store);
+  CheckEqInt('both groups came back', 2, F.Project.GroupCount);
+  CheckEqInt('and both files', 2, F.Project.FileCount);
+
+  { Removing a group takes its files with it. }
+  F.Project.Tree.Selected := F.Project.Tree.Items.GetFirstNode;
+  F.Project.Tree.Selected.Delete;
+  CheckEqInt('removing a group removes its files too', 1, F.Project.FileCount);
+
+  { A corrupt list must not stop the editor starting. }
+  L := TStringList.Create;
+  try
+    L.Text := 'this is not json';
+    L.SaveToFile(Store);
+  finally
+    L.Free;
+  end;
+  F.Project.LoadFrom(Store);
+  CheckEqInt('a corrupt list loads as an empty one', 0, F.Project.GroupCount);
+
+  F.Project.Tree.Items.Clear;
+  DeleteFile(P1); DeleteFile(P2); DeleteFile(Store);
+end;
+
 procedure TestSharedDocuments(F: TLedMainForm);
 var
   W: TLedMainForm;
@@ -248,9 +323,13 @@ begin
 
       Doc.Master.Modified := False;
     finally
+      { Closing it must not raise.  It did: a pane the window never created
+        was asked to save itself on the way out, and every close -- of any
+        window, not just this one -- died on it. }
       W.Close;
       Pump;
       Application.ProcessMessages;
+      Check('closing the second window is clean', True);
     end;
 
     { Closing the second window must not take the first window's document
@@ -2476,6 +2555,7 @@ begin
   TestRememberedState(F);
   TestBookmarkList(F);
   TestSharedDocuments(F);
+  TestProjectList(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
