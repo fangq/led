@@ -215,7 +215,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 
-| Project file list pane (medit's File List) | not started |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
