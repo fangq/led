@@ -45,6 +45,9 @@ type
     property ActiveView: TLedEdit read FActiveView;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
+    { How the tab was last split, so a session can put it back the same way.
+      False -- and meaningless -- when there is only one view. }
+    function SplitIsVertical: Boolean;
     { Applied to every view the tab creates, including the ones a later split
       adds, so the context menu does not go missing after Split View. }
     property ViewPopupMenu: TPopupMenu read FViewPopupMenu write SetViewPopupMenu;
@@ -138,6 +141,20 @@ end;
 procedure TLedTab.ViewEnter(Sender: TObject);
 begin
   FActiveView := TLedEdit(Sender);
+end;
+
+function TLedTab.SplitIsVertical: Boolean;
+var
+  Side: TWinControl;
+begin
+  { Read back off the splitter that actually holds the views, rather than
+    remembering what was asked for -- the two can differ once a split has
+    been closed and remade. }
+  Result := False;
+  if FViews.Count < 2 then Exit;
+  Side := TLedEdit(FViews[1]).Parent;
+  if not (Side is TPairSplitterSide) then Exit;
+  Result := TPairSplitter(Side.Parent).SplitterType = pstVertical;
 end;
 
 function TLedTab.CanSplit: Boolean;

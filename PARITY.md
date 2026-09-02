@@ -23,11 +23,11 @@ checked off by the presence of a menu entry.
 | Toggle matching bracket<br><sub>Ctrl+]</sub> | yes | yes | done |
 | Ctrl+scroll font zoom<br><sub>temporary, 4-72 pt, not persisted</sub> | yes | yes | done |
 | Breadcrumb folder navigation<br><sub>clickable path segments in the file browser</sub> | yes | yes | done |
-| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | partly | splitting works, and a split divider is centred on creation; Windows ConPTY is not done |
-| Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | partly | five of the ten carried over |
+| Split terminal panels<br><sub>recursive horizontal/vertical splits</sub> | yes | yes | recursive splits, closing collapses the divider, capped at 8; Windows ConPTY is not done |
+| Terminal colour schemes<br><sub>the 10 named ANSI palettes</sub> | yes | yes | all ten carried over as data, plus one of led's own |
 | Customizable colour themes<br><sub>the 8 style schemes</sub> | yes | yes | done; applied to the built-in highlighters |
 | Encoding detection with prompt<br><sub>try-list, BOM, mixed line endings</sub> | yes | yes | done |
-| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | partly | tabs, carets and the dock layout are restored; which of the two notebooks a tab was in is not |
+| Session save and restore<br><sub>windows, tabs, carets, layout</sub> | yes | yes | tabs, per-view carets, split views, which notebook each tab was in, and the dock layout; a second *window* is not, since documents are not shared between windows |
 | Single instance with file hand-off<br><sub>second invocation reuses the running one</sub> | yes | yes | done |
 
 ## Actions (80)
@@ -224,7 +224,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
-| 5 of medit's 10 terminal colour schemes | not started |
 | Wiki markup preview | dropped deliberately |
 | Text selection with the mouse inside the terminal | not started; the context menu copies the whole screen |
 | Translations | not started |

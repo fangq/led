@@ -69,33 +69,73 @@ type
     property OnExited: TNotifyEvent read FOnExited write FOnExited;
   end;
 
+{ The palette list, without needing a terminal to ask.  The pane used to
+  construct a throwaway TLedTermView purely to read the names for its menu. }
+function LedTermSchemeCount: Integer;
+function LedTermSchemeName(AIndex: Integer): string;
+
 implementation
 
 const
-  { The ten schemes medit shipped (mooterminal.c:87), carried over as data. }
-  Schemes: array[0..4] of TLedTermScheme = (
-    (Name: 'Default'; Foreground: $D0D0D0; Background: $211417;
-     Cursor: $D0D0D0;
-     Palette: ($211417, $281CC0, $18B218, $4C73A2, $B21818, $B218B2,
-               $18B2B2, $B2B2B2, $686868, $5555FF, $55FF55, $55FFFF,
-               $FF5555, $FF55FF, $FFFF55, $FFFFFF)),
+  { medit shipped ten named ANSI palettes (mooterminal.c:86); all ten are
+    here as data, followed by led's own.  The cursor takes the foreground,
+    which is what VTE does when a scheme does not name one.
+
+    Colours are TColor, so $00BBGGRR -- the byte order is reversed from the
+    #rrggbb in the C source, and these were converted rather than retyped. }
+  Schemes: array[0..10] of TLedTermScheme = (
+    (Name: 'Default'; Foreground: $ECECEC; Background: $000000;
+     Cursor: $ECECEC;
+     Palette: ($211417, $281CC0, $18B218, $4C73A2, $8B4812, $B218B2,
+               $B3A12A, $CCCFD0, $645C5E, $5161F6, $7AD133, $0CADE9,
+               $DE7B2A, $CB61C0, $DEC733, $FFFFFF)),
     (Name: 'Black on White'; Foreground: $000000; Background: $FFFFFF;
      Cursor: $000000;
-     Palette: ($000000, $1818B2, $18B218, $18B2B2, $B21818, $B218B2,
-               $1868B2, $B2B2B2, $686868, $5555FF, $55FF55, $55FFFF,
-               $FF5555, $FF55FF, $FFFF55, $FFFFFF)),
-    (Name: 'Green on Black'; Foreground: $18FF18; Background: $000000;
-     Cursor: $18FF18;
-     Palette: ($000000, $1818B2, $18B218, $18B2B2, $B21818, $B218B2,
-               $1868B2, $B2B2B2, $686868, $5555FF, $55FF55, $55FFFF,
-               $FF5555, $FF55FF, $FFFF55, $FFFFFF)),
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Black on Light Yellow'; Foreground: $000000; Background: $DDFFFF;
+     Cursor: $000000;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Marble'; Foreground: $FFFFFF; Background: $000000;
+     Cursor: $FFFFFF;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Green on Black'; Foreground: $18F018; Background: $000000;
+     Cursor: $18F018;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Paper, Light'; Foreground: $000000; Background: $FFFFFF;
+     Cursor: $000000;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Paper'; Foreground: $000000; Background: $FFFFFF;
+     Cursor: $000000;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
     (Name: 'Linux Colors'; Foreground: $B2B2B2; Background: $000000;
      Cursor: $B2B2B2;
-     Palette: ($000000, $0000AA, $00AA00, $00AAAA, $AA0000, $AA00AA,
-               $0055AA, $AAAAAA, $555555, $5555FF, $55FF55, $55FFFF,
-               $FF5555, $FF55FF, $FFFF55, $FFFFFF)),
-    (Name: 'Solarized Dark'; Foreground: $98A18396 and $FFFFFF;
-     Background: $362B00; Cursor: $98A183;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'VIM Colors'; Foreground: $000000; Background: $FFFFFF;
+     Cursor: $000000;
+     Palette: ($000000, $0000C0, $008000, $008080, $C00000, $C000C0,
+               $808000, $C0C0C0, $808080, $6060FF, $00FF00, $00FFFF,
+               $FF8080, $FF40FF, $FFFF00, $FFFFFF)),
+    (Name: 'White on Black'; Foreground: $FFFFFF; Background: $000000;
+     Cursor: $FFFFFF;
+     Palette: ($000000, $1818B2, $18B218, $1868B2, $B21818, $B218B2,
+               $B2B218, $B2B2B2, $686868, $5454FF, $54FF54, $54FFFF,
+               $FF5454, $FF54FF, $FFFF54, $FFFFFF)),
+    (Name: 'Solarized Dark'; Foreground: $98A183; Background: $362B00;
+     Cursor: $98A183;
      Palette: ($362B00, $1B26DC, $868900, $89A716, $2F32CB, $8236D3,
                $98A125, $D5E8EE, $423607, $9A5F26, $756E58, $837B65,
                $96A1A1, $A1A6C3, $ACB0B0, $E3F6FD))
@@ -135,15 +175,25 @@ begin
   Result.CY := 240;
 end;
 
-function TLedTermView.SchemeCount: Integer;
+function LedTermSchemeCount: Integer;
 begin
   Result := Length(Schemes);
 end;
 
-function TLedTermView.SchemeName(AIndex: Integer): string;
+function LedTermSchemeName(AIndex: Integer): string;
 begin
   if (AIndex < 0) or (AIndex > High(Schemes)) then Exit('');
   Result := Schemes[AIndex].Name;
+end;
+
+function TLedTermView.SchemeCount: Integer;
+begin
+  Result := LedTermSchemeCount;
+end;
+
+function TLedTermView.SchemeName(AIndex: Integer): string;
+begin
+  Result := LedTermSchemeName(AIndex);
 end;
 
 procedure TLedTermView.SetScheme(AIndex: Integer);

@@ -29,7 +29,8 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.UI.Symbols,
+  Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
+  Led.Core.Session, Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, ActnList, Menus, PairSplitter, LCLProc;
@@ -177,6 +178,191 @@ begin
   Tab.Unsplit;
   Pump;
   CheckEqInt('one view again', 1, Tab.ViewCount);
+end;
+
+const
+  { mooterminal.c:86, in that order. }
+  MeditSchemes: array[0..9] of string = (
+    'Default', 'Black on White', 'Black on Light Yellow', 'Marble',
+    'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
+    'VIM Colors', 'White on Black');
+
+procedure TestTerminalPaneAndSession(F: TLedMainForm);
+var
+  Pane: TLedTerminalPane;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Sess: TLedSession;
+  Found: Boolean;
+  Missing: string;
+  j: Integer;
+  Path1, Path2: string;
+  L: TStringList;
+  i, Before: Integer;
+begin
+  { An audit rather than a feature test: PARITY called terminal splitting,
+    the colour schemes and session restore "partly" done without saying what
+    was missing, and the suite had never touched TLedTerminalPane at all. }
+  Say('terminal pane');
+
+  if not LedPtyAvailable then
+    WriteLn('  (skipped: no pseudo-terminal on this platform)')
+  else
+  begin
+    Pane := TLedTerminalPane.Create(F);
+    try
+      Pane.Parent := F;
+      Pane.Width := 600;
+      Pane.Height := 300;
+      Pane.Visible := False;
+      Pump;
+
+      Check('the pane starts a terminal', Pane.Start(GetTempDir));
+      CheckEqInt('one to begin with', 1, Pane.Count);
+
+      Pane.Split(False);
+      Pump;
+      CheckEqInt('side-by-side split gives two', 2, Pane.Count);
+      Pane.Split(True);
+      Pump;
+      CheckEqInt('and a stacked split gives three', 3, Pane.Count);
+
+      { Splitting is recursive, so the third lives inside the second's
+        splitter rather than beside the first. }
+      Check('the splits nest', Pane.Active.Parent is TPairSplitterSide);
+
+      Pane.CloseActive;
+      Pump;
+      CheckEqInt('closing one collapses its splitter', 2, Pane.Count);
+      Check('and something is still active', Pane.Active <> nil);
+
+      { The cap exists so a stuck key cannot fork shells without limit. }
+      Before := Pane.Count;
+      for i := 1 to LedMaxTerminals + 2 do Pane.Split(False);
+      Pump;
+      Check('the split count is capped', Pane.Count <= LedMaxTerminals);
+      Check('and the cap is above where we started', Pane.Count > Before);
+    finally
+      Pane.Free;
+    end;
+  end;
+
+  { medit shipped ten named ANSI palettes.  Checked by name rather than by
+    count, so led is free to add its own without the check going off -- the
+    parity note claimed five were missing when six were, which is what
+    counting instead of naming gets you. }
+  Say('terminal colour schemes');
+  Missing := '';
+  for i := 0 to High(MeditSchemes) do
+  begin
+    Found := False;
+    for j := 0 to LedTermSchemeCount - 1 do
+      if SameText(LedTermSchemeName(j), MeditSchemes[i]) then Found := True;
+    if not Found then Missing := Missing + MeditSchemes[i] + ' ';
+  end;
+  CheckEq('all ten of medit''s palettes are present', '', Missing);
+
+  Found := True;
+  for i := 0 to LedTermSchemeCount - 1 do
+    if LedTermSchemeName(i) = '' then Found := False;
+  Check('and every palette is named', Found);
+
+  { Session round trip.  What is written is what comes back, so anything the
+    writer never looked at is silently lost -- which is the question the
+    "partly" label was hiding. }
+  Say('session round trip');
+
+  Path1 := TempName('session-a.txt');
+  Path2 := TempName('session-b.txt');
+  L := TStringList.Create;
+  try
+    L.Add('one'); L.Add('two'); L.Add('three'); L.Add('four');
+    L.SaveToFile(Path1);
+    L.SaveToFile(Path2);
+  finally
+    L.Free;
+  end;
+
+  Doc := F.Documents.NewDocument;
+  Doc.LoadFromFile(Path1);
+  Tab := F.AddTab(Doc);
+  Pump;
+  Tab.ActiveView.CaretXY := Point(2, 3);
+
+  { A split view, and a tab in the second notebook: both are things a user
+    sets up and expects to find again. }
+  Tab.SplitView(False);
+  Pump;
+  CheckEqInt('the tab has two views before saving', 2, Tab.ViewCount);
+
+  { A second document, moved into the split notebook.  Both tab groups hold
+    real work, so both have to be written. }
+  Doc := F.Documents.NewDocument;
+  Doc.LoadFromFile(Path2);
+  Tab := F.AddTab(Doc);
+  Pump;
+  F.actSplitNotebookExecute(nil);
+  Pump;
+  if F.Notebook2 <> nil then
+  begin
+    F.MoveTabToBook(Tab, F.Notebook2);
+    Pump;
+    Check('the second notebook holds a tab', F.Notebook2.PageCount > 0);
+  end;
+
+  F.SaveSession;
+  Sess := TLedSession.Create;
+  try
+    Check('the session file was written', Sess.Load);
+    Check('it has a window', Sess.WindowCount > 0);
+
+    Found := False;
+    for i := 0 to High(Sess.Windows[0].Tabs) do
+      if SameText(Sess.Windows[0].Tabs[i].FileName, Path1) then Found := True;
+    Check('the first document is in the session', Found);
+
+    { The one that matters.  SaveSession walks Notebook only, so anything the
+      user moved into the second tab group is dropped without a word. }
+    Found := False;
+    for i := 0 to High(Sess.Windows[0].Tabs) do
+      if SameText(Sess.Windows[0].Tabs[i].FileName, Path2) then Found := True;
+    Check('and so is the one in the second notebook', Found);
+
+    { Split views: the tab with two views has to come back with two. }
+    Found := False;
+    for i := 0 to High(Sess.Windows[0].Tabs) do
+      if SameText(Sess.Windows[0].Tabs[i].FileName, Path1) then
+        Found := Length(Sess.Windows[0].Tabs[i].Views) = 2;
+    Check('the split view is recorded', Found);
+
+    { And the notebook each tab was in. }
+    Found := False;
+    for i := 0 to High(Sess.Windows[0].Tabs) do
+      if SameText(Sess.Windows[0].Tabs[i].FileName, Path2) then
+        Found := Sess.Windows[0].Tabs[i].Notebook = 1;
+    Check('with the tab group it was in', Found);
+  finally
+    Sess.Free;
+  end;
+
+  { Put the window back the way it was found.  Leaving the notebook split
+    broke the precondition of the split-notebook test that runs later, which
+    is a fault in this test and not in that one. }
+  if F.NotebookSplit then
+  begin
+    F.SetNotebookSplit(False);
+    Pump;
+  end;
+  while F.Notebook.PageCount > 1 do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  Check('the window is back to one tab group', not F.NotebookSplit);
+
+  DeleteFile(Path1);
+  DeleteFile(Path2);
 end;
 
 procedure TestIconsAndFocus(F: TLedMainForm);
@@ -1849,6 +2035,7 @@ begin
   TestSharedBufferSplitView(F);
   WriteLn;
   TestIconsAndFocus(F);
+  TestTerminalPaneAndSession(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
