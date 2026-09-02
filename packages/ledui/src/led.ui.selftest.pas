@@ -30,7 +30,7 @@ uses
   Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
-  Led.Core.Session, Led.UI.Symbols,
+  Led.Core.Session, Led.UI.Bookmarks, Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, ActnList, Menus, PairSplitter, LCLProc;
@@ -186,6 +186,64 @@ const
     'Default', 'Black on White', 'Black on Light Yellow', 'Marble',
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
+
+procedure TestBookmarkList(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Marks: TLedBookmarkArray;
+  i: Integer;
+begin
+  Say('bookmark list');
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  V := F.ActiveView;
+  V.Lines.Text := 'one' + LineEnding + 'two' + LineEnding + 'three' +
+    LineEnding + 'four' + LineEnding + 'five';
+  for i := 0 to 9 do V.ClearBookMark(i);
+
+  { Set them out of order, so the collector has something to sort. }
+  V.CaretXY := Point(1, 4); F.actAddBookmarkExecute(nil);
+  V.CaretXY := Point(1, 2); F.actAddBookmarkExecute(nil);
+  Pump;
+
+  Marks := LedCollectBookmarks(V);
+  CheckEqInt('both bookmarks are found', 2, Length(Marks));
+  CheckEqInt('and they come back in line order, not slot order',
+    2, Marks[0].Line);
+  CheckEqInt('with the later one second', 4, Marks[1].Line);
+  CheckEq('each carrying the text of its line', 'two', Marks[0].Text);
+
+  { Add is not toggle: asking twice on the same line leaves one. }
+  V.CaretXY := Point(1, 2);
+  F.actAddBookmarkExecute(nil);
+  Pump;
+  CheckEqInt('adding twice on one line leaves one', 2,
+    Length(LedCollectBookmarks(V)));
+
+  { Toggle still removes, which is the difference between the two. }
+  F.actToggleBookmarkExecute(nil);
+  Pump;
+  CheckEqInt('toggling the same line removes it', 1,
+    Length(LedCollectBookmarks(V)));
+
+  { The menu lists them, with the line number and its text. }
+  F.PopulateBookmarkMenu;
+  CheckEqInt('the menu has one entry', 1, F.miBookmarks.Count);
+  Check('naming the line it jumps to',
+    Pos('4:', F.miBookmarks.Items[0].Caption) = 1);
+  Check('and showing the text there',
+    Pos('four', F.miBookmarks.Items[0].Caption) > 0);
+
+  for i := 0 to 9 do V.ClearBookMark(i);
+  F.PopulateBookmarkMenu;
+  CheckEqInt('with none set the menu is empty', 0, F.miBookmarks.Count);
+  Check('and says so', not F.miBookmarks.Enabled);
+
+  F.ActiveTab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+end;
 
 procedure TestRememberedState(F: TLedMainForm);
 var
@@ -2307,6 +2365,7 @@ begin
   TestTabReordering(F);
   TestSaveTheRightDocument(F);
   TestRememberedState(F);
+  TestBookmarkList(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
