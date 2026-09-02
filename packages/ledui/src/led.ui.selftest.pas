@@ -2472,6 +2472,132 @@ begin
   Pump;
 end;
 
+{ Long lines are truncated for display only.
+
+  The whole feature turns on one claim: what the caret and the painter see is
+  short, and what reaches the disk is not.  So this asserts the bytes, not
+  the setting.  A version of this that only checked IsTruncated passed while
+  Lines.Text was returning the truncated string, which would have saved a
+  5 MB line as 4 KB. }
+procedure TestLongLines(F: TLedMainForm);
+const
+  Long = 12000;
+var
+  Tab: TLedTab;
+  V: TLedEdit;
+  P, Q: string;
+  L: TStringList;
+  Full: string;
+  RealLine, StartByte, ByteLen: Integer;
+begin
+  Say('long lines');
+
+  Full := StringOfChar('x', Long);
+  P := TempName('longline-in.txt');
+  Q := TempName('longline-out.txt');
+  L := TStringList.Create;
+  try
+    L.Add('short first line');
+    L.Add(Full);
+    L.Add('short last line');
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+
+  { Not "the limit is 4096": that is also TLedLongLineView's constructor
+    default, so asserting it cannot tell a preference that was applied from
+    one that was never read.  Set it to something no default would produce
+    and reopen. }
+  CheckEqInt('the limit is medit''s 4096 by default', 4096, V.LongLines.Limit);
+
+  LedPrefs.SetInt('Editor/max_line_len', 700);
+  Tab.Document.ApplyConfigToViews;
+  Pump;
+  CheckEqInt('and a preference changes it', 700, V.LongLines.Limit);
+  CheckEqInt('so the line truncates where the preference says',
+    700, V.LongLines.VisibleLength(1));
+  LedPrefs.SetInt('Editor/max_line_len', 4096);
+  Tab.Document.ApplyConfigToViews;
+  Pump;
+  CheckEqInt('and back again', 4096, V.LongLines.Limit);
+  Check('the long line is truncated', V.LongLines.IsTruncated(1));
+  Check('the short ones are not',
+    (not V.LongLines.IsTruncated(0)) and (not V.LongLines.IsTruncated(2)));
+  CheckEqInt('what the caret can see is the limit',
+    4096, V.LongLines.VisibleLength(1));
+  CheckEqInt('the buffer below still holds all of it',
+    Long, V.LongLines.FullLength(1));
+  CheckEqInt('and the marker sits one past the visible end',
+    4097, V.LongLineMarkerCol(1));
+
+  { What the painter is actually handed.  Asking the view was not enough:
+    every check above passed while the editor drew the whole line, because
+    SynEdit fetches the row for painting straight from the buffer and never
+    consults the view chain. }
+  RealLine := 0; StartByte := 0; ByteLen := 0;
+  V.LongLines.Display.SetHighlighterTokensLine(1, RealLine, StartByte, ByteLen);
+  CheckEqInt('the painter is given only the visible bytes', 4096, ByteLen);
+
+  { The property led saves through.  This is the check that matters. }
+  CheckEqInt('the text led saves is the untruncated line',
+    Long, Length(V.Lines[1]));
+
+  { And end to end, because a length can be right while the bytes are not. }
+  Tab.Document.SaveToFile(Q);
+  Pump;
+  L := TStringList.Create;
+  try
+    L.LoadFromFile(Q);
+    CheckEqInt('a save round-trip keeps every line', 3, L.Count);
+    CheckEqInt('and the long line comes back whole', Long, Length(L[1]));
+    CheckEq('byte for byte', Full, L[1]);
+  finally
+    L.Free;
+  end;
+
+  { Edit the truncated line and undo it.  SynEdit builds an undo record from
+    the line it is about to change, and if it read that through this view the
+    record would hold 4 KB and undo would write 4 KB back over 12 KB -- a
+    silent truncation with no save involved.  --bench-longline reported
+    exactly that shape, printing a first-line length of 4096 after its
+    type-then-undo step, which is what sent this check looking. }
+  V.CaretXY := Point(1, 2);
+  V.InsertTextAtCaret('typed ');
+  Pump;
+  CheckEqInt('typing on a truncated line leaves the tail alone',
+    Long + 6, Length(V.Lines[1]));
+  V.Undo;
+  Pump;
+  CheckEqInt('and undoing it restores the whole line, not the visible part',
+    Long, Length(V.Lines[1]));
+  CheckEq('byte for byte after undo', Full, V.Lines[1]);
+
+  { Revealing shows one more limit's worth, and only for that line. }
+  Check('revealing more reports it did something', V.LongLines.RevealMore(1));
+  CheckEqInt('now two limits are visible', 8192, V.LongLines.VisibleLength(1));
+  Check('revealing all clears the truncation', V.LongLines.RevealAll(1));
+  Check('so nothing is hidden any more', not V.LongLines.IsTruncated(1));
+  CheckEqInt('and no marker is offered', 0, V.LongLineMarkerCol(1));
+
+  { A limit of 0 is how a user turns the feature off entirely. }
+  V.LongLines.Limit := 0;
+  Check('a zero limit truncates nothing', not V.LongLines.IsTruncated(1));
+  V.LongLines.Limit := 4096;
+  Check('and restoring it truncates again', V.LongLines.IsTruncated(1));
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+  DeleteFile(Q);
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -2829,6 +2955,15 @@ begin
   Check('as the file that was asked for',
     (F.ActiveTab <> nil) and (F.ActiveTab.Document.FileName = Path));
 
+  { A file named on the command line has to be configured like any other.
+    Photographing a 6000-character line with max_line_len=60 showed it
+    untruncated, which the bench -- which opens through OpenFiles after
+    startup -- did not reproduce, so the suspicion was this path. }
+  if F.ActiveTab <> nil then
+    CheckEqInt('and the long-line limit was applied to it',
+      LedPrefs.GetInt('Editor/max_line_len', -1),
+      F.ActiveTab.ActiveView.LongLines.Limit);
+
   DeleteFile(Path);
 end;
 
@@ -2912,6 +3047,7 @@ begin
   TestTools(F);
   WriteLn;
   TestFoldGuides(F);
+  TestLongLines(F);
   WriteLn;
   TestSplitNotebook(F);
   WriteLn;

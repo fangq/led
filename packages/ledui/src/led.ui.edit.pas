@@ -13,7 +13,8 @@ uses
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType,
   SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
-  Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.Core.Spell;
+  Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.LongLine,
+  Led.Core.Spell;
 
 {$I led.lazversion.inc}
 
@@ -47,6 +48,7 @@ type
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
     FSpell: TLedSpellMarkup;
+    FLongLines: TLedLongLineView;
     FGuideColour: TColor;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
@@ -54,10 +56,19 @@ type
     procedure SetWrapEnabled(AValue: Boolean);
     function LineIndentColumn(ATextIdx: Integer): Integer;
     procedure DrawBlockGuides;
+    procedure DrawLongLineMarkers;
     procedure CompletionSearch(var APosition: Integer);
     procedure CollectWords(const APrefix: string; AInto: TStrings);
   protected
     procedure Paint; override;
+    { Keeps the long-line view's live range on the caret and the selection.
+      Every caret or selection movement passes through here, which is what
+      makes the "a line being edited is never truncated" invariant hold
+      without every edit path having to remember it. }
+    procedure StatusChanged(AChanges: TSynStatusChanges); override;
+    { Clicking the marker reveals the next chunk, which is medit's gesture. }
+    procedure MouseDown(AButton: TMouseButton; AShift: TShiftState;
+      X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -76,6 +87,16 @@ type
     { Created on first use.  TSynCompletion builds a popup form, and building
       a form inside another form's constructor hangs. }
     function Completion: TSynCompletion;
+
+    { Display-only truncation of very long lines; see Led.UI.LongLine for why
+      the buffer is never touched.  Always present, because the view has to be
+      in the chain before any text arrives -- the limit is what turns it on
+      and off. }
+    property LongLines: TLedLongLineView read FLongLines;
+    { The character offset the marker sits at on a truncated line, or 0.
+      Public so the self-test can ask which lines are truncated and how far,
+      which is the decision behind the pixels. }
+    function LongLineMarkerCol(ATextIdx: Integer): Integer;
 
     { The spell markup, created on first use.  Off until a preference turns
       it on, so a document that is never checked costs nothing. }
@@ -162,6 +183,18 @@ begin
   AddColumnKey(ecColSelRight, VK_RIGHT);
   AddColumnKey(ecColSelLineStart, VK_HOME);
   AddColumnKey(ecColSelLineEnd,   VK_END);
+
+  { AsFirst, so this sits at the bottom of the view chain, immediately above
+    the text buffer.  Added on top instead it caps the caret and the painter
+    but nothing else, and the views below -- the trimmer and above all the
+    tab expander, which rescans a changed line end to end -- keep walking the
+    full 5 MB on every keystroke.  From the bottom, everything above it sees
+    the short line.
+
+    TCustomSynEdit.Lines is built straight on FLines and does not pass
+    through the chain at all, so load and save still see the whole line. }
+  FLongLines := TLedLongLineView.Create;
+  GetTextViewsManager.AddTextView(FLongLines, True);
 
   Gutter.Visible := True;
   Gutter.LineNumberPart.Visible := True;
@@ -396,6 +429,47 @@ begin
   SetLength(Result, N);
 end;
 
+{ medit's " ..." at the truncation point, so hidden text reads as hidden
+  rather than as absent.  Drawn rather than inserted: putting the marker in
+  the text would make it selectable, searchable and saveable, which is three
+  kinds of wrong for something that is not in the file. }
+procedure TLedEdit.DrawLongLineMarkers;
+var
+  FV: TSynEditFoldedView;
+  Row, TextIdx, TextLeft, X, Col: Integer;
+  Saved: TColor;
+begin
+  if FLongLines = nil then Exit;
+  if FLongLines.Limit <= 0 then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+
+  if Gutter.Visible then
+    TextLeft := Gutter.Width + 2
+  else
+    TextLeft := 1;
+
+  Saved := Canvas.Font.Color;
+  Canvas.Brush.Style := bsClear;
+  Canvas.Font.Color := clRed;
+  try
+    for Row := 0 to LinesInWindow do
+    begin
+      TextIdx := FV.ScreenLineToTextIndex(Row);
+      if (TextIdx < 0) or (TextIdx >= Lines.Count) then Continue;
+      Col := LongLineMarkerCol(TextIdx);
+      if Col = 0 then Continue;
+      X := TextLeft + (Col - LeftChar) * CharWidth;
+      if X < TextLeft then Continue;
+      if X > ClientWidth then Continue;
+      Canvas.TextOut(X, Row * LineHeight, LedLongLineMarker);
+    end;
+  finally
+    Canvas.Font.Color := Saved;
+    Canvas.Brush.Style := bsSolid;
+  end;
+end;
+
 procedure TLedEdit.DrawBlockGuides;
 var
   Runs: TLedGuideRuns;
@@ -531,6 +605,7 @@ procedure TLedEdit.Paint;
 begin
   inherited Paint;
   DrawBlockGuides;
+  DrawLongLineMarkers;
 end;
 
 { Word completion drawn from the document itself.  medit had none at all, and
@@ -709,6 +784,64 @@ destructor TLedEdit.Destroy;
 begin
   FreeAndNil(FCompletion);
   inherited Destroy;
+end;
+
+{ Where the "..." goes: one past the last visible character, so it reads as
+  a continuation of the text rather than as part of it.  0 when the line is
+  not truncated. }
+function TLedEdit.LongLineMarkerCol(ATextIdx: Integer): Integer;
+begin
+  Result := 0;
+  if FLongLines = nil then Exit;
+  if (ATextIdx < 0) or (ATextIdx >= Lines.Count) then Exit;
+  if not FLongLines.IsTruncated(ATextIdx) then Exit;
+  Result := FLongLines.VisibleLength(ATextIdx) + 1;
+end;
+
+{ A click at or past the marker reveals one more limit's worth of the line.
+
+  Deliberately not "anywhere on a truncated line": the marker is the only
+  part of the row that means "there is more", and a bare click that both
+  moved the caret and changed what the line shows would make the text jump
+  under the pointer. }
+procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;
+  X, Y: Integer);
+var
+  P: TPoint;
+  TextIdx, Col: Integer;
+begin
+  if (AButton = mbLeft) and (FLongLines <> nil) and (FLongLines.Limit > 0) then
+  begin
+    P := PixelsToRowColumn(Point(X, Y));
+    TextIdx := P.Y - 1;
+    Col := LongLineMarkerCol(TextIdx);
+    if (Col > 0) and (P.X >= Col) then
+    begin
+      FLongLines.RevealMore(TextIdx);
+      Invalidate;
+      Exit;
+    end;
+  end;
+  inherited MouseDown(AButton, AShift, X, Y);
+end;
+
+procedure TLedEdit.StatusChanged(AChanges: TSynStatusChanges);
+var
+  A, B: Integer;
+begin
+  inherited StatusChanged(AChanges);
+  if FLongLines = nil then Exit;
+  if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
+
+  A := CaretY - 1;
+  B := A;
+  if SelAvail then
+  begin
+    A := BlockBegin.Y - 1;
+    B := BlockEnd.Y - 1;
+    if B < A then begin A := BlockEnd.Y - 1; B := BlockBegin.Y - 1; end;
+  end;
+  FLongLines.SetLiveRange(A, B);
 end;
 
 function TLedEdit.VisibleLineCount: Integer;

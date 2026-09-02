@@ -23,7 +23,8 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
-  Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup;
+  Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup,
+  Led.UI.LongLine;
 
 type
   TLedDocument = class;
@@ -257,6 +258,12 @@ begin
     AView.Options := AView.Options + [eoTabsToSpaces];
 
   AView.Gutter.LineNumberPart.Visible := FConfig.GetBool(LedSetShowLineNumbers);
+
+  { How long a line has to be before only the first part of it is shown.
+    medit's max_line_len, and 0 turns it off for anyone who would rather have
+    the whole line and the cost that comes with it. }
+  AView.LongLines.Limit :=
+    LedPrefs.GetInt('Editor/max_line_len', LedDefaultLineLimit);
 
   { Spelling.  In code only comments and strings are prose, which is the
     default; "all" is for plain text and Markdown. }

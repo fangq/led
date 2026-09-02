@@ -30,12 +30,24 @@ type
 var
   Steps: array of TStep;
 
+{ The buffer length is printed beside every step on purpose.  Truncation is
+  a display feature, so any step that changes this number has reached the
+  text -- which is how the SelectAll-then-insert sequence below was caught
+  replacing only the visible 4 KB. }
+var
+  WatchLen: function: Integer;
+
 procedure Note(const AName: string; AStart: QWord);
+var
+  L: string;
 begin
   SetLength(Steps, Length(Steps) + 1);
   Steps[High(Steps)].Name := AName;
   Steps[High(Steps)].Millis := GetTickCount64 - AStart;
-  WriteLn(Format('  %-42s %6d ms', [AName, Steps[High(Steps)].Millis]));
+  L := '';
+  if WatchLen <> nil then
+    L := Format('   buffer=%d', [WatchLen()]);
+  WriteLn(Format('  %-42s %6d ms%s', [AName, Steps[High(Steps)].Millis, L]));
 end;
 
 procedure Pump;
@@ -59,6 +71,31 @@ begin
   try
     for i := 1 to AMegabytes * 1024 do
       F.WriteBuffer(Chunk[1], Length(Chunk));
+  finally
+    F.Free;
+  end;
+end;
+
+{ The realistic long-line file: many of them, not one enormous one.  Minified
+  JavaScript, a CSV of long records, a log with embedded payloads.  The
+  single-line fixture is the pathological end of the range and the caret is
+  always on the long line there, so it shows the truncation's overhead
+  without any of its benefit; this one shows the case people actually open. }
+function MakeManyLongLineFile(ALines, ALen: Integer): string;
+var
+  F: TFileStream;
+  S: string;
+  i: Integer;
+begin
+  Result := IncludeTrailingPathDelimiter(GetTempDir) +
+    Format('led-bench-manylong-%d.txt', [GetProcessID]);
+  F := TFileStream.Create(Result, fmCreate);
+  try
+    for i := 1 to ALines do
+    begin
+      S := StringOfChar('x', ALen) + #10;
+      F.WriteBuffer(S[1], Length(S));
+    end;
   finally
     F.Free;
   end;
@@ -96,12 +133,22 @@ begin
   end;
 end;
 
+var
+  BenchView: TLedEdit;
+
+function BenchFirstLineLen: Integer;
+begin
+  if BenchView = nil then Exit(0);
+  Result := Length(BenchView.Lines[0]);
+end;
+
 procedure BenchFile(F: TLedMainForm; const APath, ALabel: string);
 var
   T: QWord;
   Tab: TLedTab;
   V: TLedEdit;
   Files: TStringList;
+  i, Step: Integer;
 begin
   WriteLn(Format('%s  (%d KiB on disk)', [ALabel, FileSizeKiB(APath)]));
 
@@ -119,6 +166,8 @@ begin
   Tab := F.ActiveTab;
   if Tab = nil then Exit;
   V := Tab.ActiveView;
+  BenchView := V;
+  WatchLen := @BenchFirstLineLen;
 
   T := GetTickCount64;
   V.CaretXY := Point(1, 1);
@@ -134,6 +183,22 @@ begin
   V.CaretXY := Point(Length(V.Lines[0]) div 2, 1);
   Pump;
   Note('caret to the middle', T);
+
+  { Scrolling, which is the operation long-line truncation exists to make
+    cheap: every row that comes into view has to be measured and painted. }
+  T := GetTickCount64;
+  Step := V.Lines.Count div 20;
+  if Step < 1 then Step := 1;
+  i := 1;
+  while i <= V.Lines.Count do
+  begin
+    V.TopLine := i;
+    Application.ProcessMessages;
+    Inc(i, Step);
+  end;
+  V.TopLine := 1;
+  Pump;
+  Note('scroll through the whole file', T);
 
   T := GetTickCount64;
   V.SelectAll;
@@ -160,7 +225,7 @@ end;
 function LedRunLongLineBench: Integer;
 var
   F: TLedMainForm;
-  P1, P2: string;
+  P1, P2, P3: string;
   T: QWord;
 begin
   Result := 0;
@@ -175,15 +240,18 @@ begin
   T := GetTickCount64;
   P1 := MakeSingleLineFile(5);
   P2 := MakeManyLineFile(200000);
+  P3 := MakeManyLongLineFile(300, 30000);
   WriteLn(Format('fixtures generated in %d ms', [GetTickCount64 - T]));
   WriteLn;
 
   try
     BenchFile(F, P1, '5 MB on ONE line');
+    BenchFile(F, P3, '300 lines of 30000 chars (the realistic case)');
     BenchFile(F, P2, '200k lines, ~13 MB');
   finally
     DeleteFile(P1);
     DeleteFile(P2);
+    DeleteFile(P3);
   end;
 end;
 
