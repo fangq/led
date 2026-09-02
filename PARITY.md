@@ -211,6 +211,7 @@ An honest list, so nothing here is mistaken for an oversight.
 
 | Feature | Status |
 |---|---|
+| CJK text sits below the Latin baseline | when the editor font lacks CJK glyphs, GTK's fallback font has a larger ascent and SynEdit draws each run from the row top rather than a shared baseline.  `TheTextDrawer.NewTextOut` is not virtual and the drawer is not replaceable, so a fix means vendoring it.  A monospace font with CJK coverage avoids the fallback entirely |
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |

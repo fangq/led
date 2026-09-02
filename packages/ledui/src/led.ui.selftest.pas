@@ -1718,6 +1718,56 @@ begin
   Check('a plain drag is not a column selection',
     not LedHasColumnSelection(V));
 
+  { The whole gesture, end to end, through the commands the menus call:
+    Ctrl+drag a rectangle, Copy, put the caret somewhere else, Paste.  The
+    checks below drive LedPasteColumn directly with a hand-built selection,
+    which is not the path a user takes -- an access violation was reported
+    here that none of them saw. }
+  V.SelectionMode := smNormal;
+  LedClearSelection(V);
+  V.CaretXY := Point(1, 1);
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  LedCopy(V);
+  Pump;
+  Check('a dragged rectangle copies', Clipboard.AsText <> '');
+
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  V.CaretXY := Point(1, 1);
+  Pump;
+  LedPaste(V);
+  Pump;
+  CheckEq('and pastes back as a rectangle at the caret',
+    '1111aaaa1111', V.Lines[0]);
+  CheckEq('on the second line too', '2222bbbb2222', V.Lines[1]);
+  V.Undo;
+  Pump;
+  CheckEq('and undoes in one step', 'aaaa1111', V.Lines[0]);
+
+  { And pasting a rectangle *over* a dragged rectangle, which is the case
+    that has to clear the block before inserting. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 0 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('pasting over a dragged rectangle leaves the document intact',
+    V.Lines.Count >= 4);
+  V.Undo;
+  Pump;
+
   V.SelectionMode := smNormal;
   LedClearSelection(V);
   V.BlockBegin := Point(5, 1);
@@ -2781,6 +2831,252 @@ begin
   DeleteFile(P);
 end;
 
+{ Column copy and paste in a file that has a highlighter and a truncated
+  line.  Reported as an access violation, and the plain-document checks above
+  do not reach it: the long-line display view only clamps tokens when a
+  highlighter is asking for them, and it looks the line up in the buffer
+  below by index. }
+procedure TestColumnPasteWithHighlighter(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  V: TLedEdit;
+  P: string;
+  L: TStringList;
+begin
+  Say('column paste with a highlighter');
+
+  P := TempName('colpaste.c');
+  L := TStringList.Create;
+  try
+    L.Add('int aaaa1111;');
+    L.Add('int bbbb2222;');
+    L.Add('int cccc3333;');
+    { Well past the limit, so the truncating view is live on this line. }
+    L.Add('// ' + StringOfChar('x', 9000));
+    L.Add('int dd;');
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+
+  { An index past the end.  A column paste is a run of edits inside one undo
+    block, each firing notifications with a paint pending, so the painter can
+    ask about a row the document no longer has.  The buffer below does not
+    bounds-check in a Release build. }
+  Check('asking about a line past the end is safe',
+    not V.LongLines.IsTruncated(999999));
+  CheckEqInt('and it reports no visible length', 0,
+    V.LongLines.VisibleLength(999999));
+  CheckEqInt('and no marker column', 0, V.LongLineMarkerCol(999999));
+
+  Check('the file has a highlighter', V.Highlighter <> nil);
+  Check('and a truncated line', V.LongLines.IsTruncated(3));
+
+  { Drag a rectangle over the first three lines, copy it, then paste it at
+    the start of the long line -- so the insert lands on the very line the
+    display view is clamping. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  LedCopy(V);
+  Pump;
+  Check('a rectangle copies out of a highlighted file', Clipboard.AsText <> '');
+
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  V.CaretXY := Point(1, 4);
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('pasting onto a truncated line does not fall', V.Lines.Count >= 5);
+  V.Undo;
+  Pump;
+
+  { And the other direction: copy a rectangle that includes the truncated
+    line, which asks the view for text past the point it hides. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 0 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 6 * V.CharWidth,
+    4 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 6 * V.CharWidth,
+    4 * V.LineHeight + 2);
+  Pump;
+  LedCopy(V);
+  Pump;
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('a rectangle spanning a truncated line survives a round trip',
+    V.Lines.Count >= 5);
+
+  { A drag that runs up and to the left.  Every check so far drags down and
+    right, so BlockBegin has always been the top-left corner; dragged the
+    other way it is the *bottom-right* one, and LedPasteColumn takes it as
+    the place to start writing. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  Pump;
+  Check('dragging up and left still makes a rectangle',
+    LedHasColumnSelection(V));
+  LedCopy(V);
+  Pump;
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('and it pastes back without falling', V.Lines.Count >= 5);
+  V.Undo;
+  Pump;
+
+  { Paste *over* a rectangle that was dragged upwards, which is the case
+    where BlockBegin is the corner the block is cleared from. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('pasting over an upward rectangle survives', V.Lines.Count >= 5);
+  V.Undo;
+  Pump;
+
+  { Cut a rectangle, then paste it.  LedCut takes a different path from
+    LedCopy -- it copies and then clears the block -- and nothing above cuts. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  LedCut(V);
+  Pump;
+  Check('cutting a rectangle leaves the document standing', V.Lines.Count >= 5);
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('and it pastes back', V.Lines.Count >= 5);
+  V.Undo; V.Undo;
+  Pump;
+
+  { With the tab split, so a second view shares the buffer and has a long-line
+    view of its own.  An edit through one view notifies the other while it is
+    scrolled somewhere else entirely. }
+  Tab.SplitView(False);
+  Pump;
+  Check('the tab split', Tab.ViewCount > 1);
+  V := Tab.ActiveView;
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  LedCopy(V);
+  V.CaretXY := Point(1, 4);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('a column paste in a split tab survives', V.Lines.Count >= 5);
+  V.Undo;
+  Pump;
+
+  { Pasting past the last line, which extends the document as it goes. }
+  V.CaretXY := Point(1, V.Lines.Count);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('and pasting at the end extends the document', V.Lines.Count >= 5);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
+{ Three small things reported from real use, each of which a check could
+  have caught and none did. }
+procedure TestReportedPolish(F: TLedMainForm);
+var
+  i, WithIcons: Integer;
+begin
+  Say('reported polish');
+
+  { The Window menu's document submenu.  Its caption in the form file is the
+    placeholder "(no documents)", and nothing ever replaced it, so the submenu
+    holding the document list was itself labelled "no documents" however many
+    there were. }
+  F.PopulateDocMenu;
+  Pump;
+  CheckGt('the window menu lists the open documents', 0,
+    F.DocListMenu.Count);
+  Check('and is not still labelled "(no documents)"',
+    F.DocListMenu.Caption <> '(no documents)');
+  Check('the submenu is enabled when it has entries',
+    F.DocListMenu.Enabled);
+
+  { The terminal is a text surface, so the pointer over it should say so. }
+  if F.Terminal <> nil then
+  begin
+    F.Terminal.Start(GetTempDir);
+    Pump;
+    if F.Terminal.Active <> nil then
+      CheckEqInt('the terminal shows a text cursor, not an arrow',
+        Ord(crIBeam), Ord(F.Terminal.Active.Cursor));
+
+    { And its context menu had no icons at all, alone among led's menus. }
+    Check('the terminal menu has an image list',
+      F.Terminal.Menu.Images <> nil);
+    WithIcons := 0;
+    for i := 0 to F.Terminal.Menu.Items.Count - 1 do
+      if F.Terminal.Menu.Items[i].ImageIndex >= 0 then Inc(WithIcons);
+    CheckGt('and its items carry icons', 4, WithIcons);
+  end;
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -3232,6 +3528,8 @@ begin
   TestFoldGuides(F);
   TestLongLines(F);
   TestWikiMarkup(F);
+  TestColumnPasteWithHighlighter(F);
+  TestReportedPolish(F);
   WriteLn;
   TestSplitNotebook(F);
   WriteLn;

@@ -15,6 +15,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, Menus, Clipbrd, PairSplitter, Forms,
+  ImgList,
   { LCL-only, and carries no led dependency of its own, so using it here does
     not compromise ledterm being buildable on its own. }
   Led.UI.Splitter,
@@ -24,12 +25,22 @@ const
   LedMaxTerminals = 8;
 
 type
+  { How the pane asks for an icon index without knowing where icons come from.
+    ledterm carries no ledui dependency -- that is what lets it build on its
+    own -- so the application passes its resolver in rather than this unit
+    reaching for Led.UI.Icons. }
+  TLedIconLookup = function(const AName: string): Integer;
+
   TLedTerminalPane = class(TPanel)
   private
     FTerminals: TFPList;         // of TLedTermView
     FActive: TLedTermView;
     FMenu: TPopupMenu;
     FSchemeMenu: TMenuItem;
+    { The icon each context-menu item wants, parallel to FMenu.Items.  Held
+      here rather than in the item because TMenuItem has nowhere to put it
+      that is not already meaningful. }
+    FMenuIcons: TStringList;
     FWorkDir: string;
     function AddTerminal(AParent: TWinControl): TLedTermView;
     procedure TermEnter(Sender: TObject);
@@ -51,6 +62,10 @@ type
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
+    { Gives the context menu the application's icons.  Called once, after the
+      pane is built, by whoever owns the image list. }
+    procedure ApplyMenuIcons(AImages: TCustomImageList; ALookup: TLedIconLookup);
+
     { Starts the first terminal.  Later ones are started by splitting. }
     function Start(const AWorkDir: string): Boolean;
     procedure Split(AVertical: Boolean);
@@ -60,6 +75,9 @@ type
 
     property Active: TLedTermView read FActive;
     property Count: Integer read GetCount;
+    { The context menu, so a check can ask whether its items were given
+      icons.  They had none at all until someone said so. }
+    property Menu: TPopupMenu read FMenu;
   end;
 
 implementation
@@ -101,7 +119,24 @@ end;
 destructor TLedTerminalPane.Destroy;
 begin
   FTerminals.Free;
+  FMenuIcons.Free;
   inherited Destroy;
+end;
+
+procedure TLedTerminalPane.ApplyMenuIcons(AImages: TCustomImageList;
+  ALookup: TLedIconLookup);
+var
+  i, Idx: Integer;
+begin
+  if (AImages = nil) or (ALookup = nil) or (FMenuIcons = nil) then Exit;
+  FMenu.Images := AImages;
+  for i := 0 to FMenu.Items.Count - 1 do
+  begin
+    if i >= FMenuIcons.Count then Break;
+    if FMenuIcons[i] = '' then Continue;
+    Idx := ALookup(FMenuIcons[i]);
+    if Idx >= 0 then FMenu.Items[i].ImageIndex := Idx;
+  end;
 end;
 
 function TLedTerminalPane.GetCount: Integer;
@@ -114,7 +149,8 @@ var
   Item: TMenuItem;
   i: Integer;
 
-  function Add(const ACaption: string; AHandler: TNotifyEvent): TMenuItem;
+  function Add(const ACaption: string; AHandler: TNotifyEvent;
+    const AIcon: string = ''): TMenuItem;
   begin
     Result := TMenuItem.Create(FMenu);
     if ACaption = '-' then
@@ -125,26 +161,32 @@ var
       Result.OnClick := AHandler;
     end;
     FMenu.Items.Add(Result);
+    FMenuIcons.Add(AIcon);
   end;
 
 begin
   FMenu := TPopupMenu.Create(Self);
   FMenu.OnPopup := @MenuPopup;
+  FMenuIcons := TStringList.Create;
 
-  Add('Copy', @DoCopyScreen);
-  Add('Paste', @DoPaste);
-  Add('Select All', @DoSelectAll);
+  { The names are the application's, resolved in ApplyMenuIcons.  The items
+    with no name -- the text size ones and the scheme submenu -- have no icon
+    in the set, and an item with a blank glyph beside its neighbours looks
+    worse than one that simply has none. }
+  Add('Copy', @DoCopyScreen, 'copy');
+  Add('Paste', @DoPaste, 'paste');
+  Add('Select All', @DoSelectAll, 'selectall');
   Add('-', nil);
-  Add('Split Side by Side', @DoSplitH);
-  Add('Split Stacked', @DoSplitV);
-  Add('Close This Terminal', @DoClose);
+  Add('Split Side by Side', @DoSplitH, 'splith');
+  Add('Split Stacked', @DoSplitV, 'splitv');
+  Add('Close This Terminal', @DoClose, 'close');
   Add('-', nil);
-  Add('Clear', @DoClear);
+  Add('Clear', @DoClear, 'delete');
   Add('Larger Text', @DoBigger);
   Add('Smaller Text', @DoSmaller);
   Add('-', nil);
 
-  FSchemeMenu := Add('Colour Scheme', nil);
+  FSchemeMenu := Add('Colour Scheme', nil, 'prefs');
   { The scheme list is fixed, so it is built once.  A submenu filled from its
     own parent's OnClick never opens -- a childless item is a leaf. }
   for i := 0 to LedTermSchemeCount - 1 do

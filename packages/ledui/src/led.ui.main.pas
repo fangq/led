@@ -535,7 +535,6 @@ type
     function ConfirmCloseAll: Boolean;
     procedure PopulateReopenMenu;
     procedure ReopenEncodingItemClick(Sender: TObject);
-    procedure PopulateDocMenu;
     procedure DocItemClick(Sender: TObject);
     function TabOnPage(AIndex: Integer): TLedTab;
     procedure FindWordAtCursor(ABackwards: Boolean);
@@ -560,6 +559,12 @@ type
 
     { Public so the --self-test harness, and later the scripting API, can
       drive the window the same way a user would. }
+    { The terminal pane, for the checks that look at its context menu and
+      its cursor. }
+    property Terminal: TLedTerminalPane read FTerminal;
+    { The Window menu's document submenu, so a check can read the caption a
+      user sees rather than trust that it was set. }
+    property DocListMenu: TMenuItem read miDocList;
     { The preview pane.  Public because whether its HTML control accepted
       what the converter produced is not observable from anywhere else --
       the render path turns an exception into a message label. }
@@ -571,6 +576,9 @@ type
     function SaveDocument(ADoc: TLedDocument): Boolean;
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
+    { Public alongside PopulateBookmarkMenu, for the same reason: a check has
+      to be able to build the menu and then read what a user would see. }
+    procedure PopulateDocMenu;
     function FormatWindowTitle(ADoc: TLedDocument): string;
     { Where an Open or Save As dialog should start, and how it learns. }
     procedure ApplyTabVisibility;
@@ -830,6 +838,9 @@ begin
   if LedPtyAvailable then
   begin
     FTerminal := TLedTerminalPane.Create(Self);
+    { The terminal's context menu was the one menu in the application with no
+      icons at all -- ledterm cannot see Led.UI.Icons, so it asks. }
+    FTerminal.ApplyMenuIcons(ImageList1, @LedIconIndex);
     FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal, 'terminal');
   end;
 
@@ -3750,29 +3761,61 @@ var
   i: Integer;
   Item: TMenuItem;
   Tab: TLedTab;
+  Tabs: TFPList;
 begin
   ClearMenu(miDocList);
-  for i := 0 to FBook.PageCount - 1 do
-  begin
-    Tab := TabOnPage(i);
-    if Tab = nil then Continue;
-    Item := TMenuItem.Create(miDocList);
-    Item.Caption := Tab.Document.DisplayName;
-    if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
-    Item.Tag := i;
-    Item.RadioItem := True;
-    Item.Checked := i = FBook.ActivePageIndex;
-    Item.OnClick := @DocItemClick;
-    miDocList.Add(Item);
+  Tabs := TFPList.Create;
+  try
+    { CollectTabs, not FBook alone: with the notebook split there is a second
+      book, and its tabs are documents in this window too -- the Window menu
+      was listing only half of them. }
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Tab := TLedTab(Tabs[i]);
+      if Tab = nil then Continue;
+      Item := TMenuItem.Create(miDocList);
+      Item.Caption := Tab.Document.DisplayName;
+      if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
+      Item.Tag := i;
+      { Checkable but not RadioItem.  A rebuilt submenu of radio items leaves
+        every one it has ever ticked looking selected, which is the bug the
+        pane-header style menu had. }
+      Item.Checked := Tab = ActiveTab;
+      Item.OnClick := @DocItemClick;
+      miDocList.Add(Item);
+    end;
+  finally
+    Tabs.Free;
   end;
+
+  { The caption, which is the whole reason this was reported.  '(no documents)'
+    is what the form file starts it as, and nothing ever set it to anything
+    else -- so the submenu holding the document list was itself labelled "no
+    documents", however many there were. }
   miDocList.Enabled := miDocList.Count > 0;
-  if miDocList.Count = 0 then miDocList.Caption := '(no documents)';
+  if miDocList.Count = 0 then
+    miDocList.Caption := '(no documents)'
+  else
+    miDocList.Caption := '&Documents';
 end;
 
 procedure TLedMainForm.DocItemClick(Sender: TObject);
+var
+  Tabs: TFPList;
+  Idx: Integer;
 begin
-  FBook.ActivePageIndex := TMenuItem(Sender).Tag;
-  BookChange(nil);
+  { The tag indexes the collected list, which spans both notebooks, so the
+    page index of one book is no longer the right thing to set. }
+  Idx := TMenuItem(Sender).Tag;
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    if (Idx >= 0) and (Idx < Tabs.Count) then
+      RevealDocument(TLedTab(Tabs[Idx]).Document);
+  finally
+    Tabs.Free;
+  end;
 end;
 
 function TLedMainForm.TabOnPage(AIndex: Integer): TLedTab;

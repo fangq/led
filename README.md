@@ -175,6 +175,20 @@ converter.  The dialect is medit's UseMod / Habitat one: `= Heading =`,
 Anything matching no rule is escaped and shown as text, so unknown syntax
 looks wrong rather than disappearing.
 
+### CJK text and the editor font
+
+If the editor font has no CJK glyphs, GTK falls back to one that does — and
+because SynEdit draws each run from the top of the row rather than from a
+shared baseline, the fallback font's larger ascent puts those glyphs visibly
+lower than the Latin ones beside them.  Nothing in led positions that text;
+`TheTextDrawer.NewTextOut` is neither virtual nor replaceable, so correcting
+it would mean vendoring SynEdit's text drawer.
+
+The fix is a font that covers what you read.  Set **Editor > font** to a
+monospace family with CJK coverage — `Noto Sans Mono CJK SC`, `Noto Sans Mono
+CJK JP`, `WenQuanYi Micro Hei Mono`, `Sarasa Mono` — and the baselines line
+up, because no fallback happens.
+
 ### Very long lines
 
 Past `Editor/max_line_len` characters (4096, medit's figure) a line is drawn
