@@ -123,6 +123,21 @@ jobs:
       - name: Check every grammar loads
         run: ./bin/langcheck data/grammars
 
+  conpty:
+    name: Windows terminal backend type-checks
+    # led.term.pty.conpty.inc is Windows-only code, and the developer's
+    # machine has no Windows cross-toolchain.  This compiles it against a
+    # mirror of FPC's Win32 declarations on Linux, so a typo in it is caught
+    # here rather than by the Windows job several minutes later.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gcarreno/setup-lazarus@v3.4.1
+        with:
+          lazarus-version: stable
+      - name: Type-check ConPTY
+        run: make conpty
+
   gui-self-test:
     name: scripted GUI self-test (xvfb)
     runs-on: ubuntu-22.04
