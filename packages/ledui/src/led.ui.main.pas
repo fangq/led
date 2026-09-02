@@ -388,6 +388,14 @@ type
     FRecovery: TLedRecovery;
     FRecoveryTimer: TTimer;
     FRecoveryOffered: Boolean;
+    { Dragging a tab along the strip to reorder it.  TPageControl has no such
+      thing built in, so the drag is tracked here: the index the press
+      landed on, and whether the pointer has since moved far enough to mean
+      a drag rather than a click. }
+    FDragTabIndex: Integer;
+    FDragTabBook: TPageControl;
+    FDragStarted: Boolean;
+    FDragOrigin: TPoint;
     FDocs: TLedDocuments;
     FDock: TLedDockHost;
     FBook: TPageControl;
@@ -463,6 +471,12 @@ type
     function TabOnPage(APage: TCustomPage): TLedTab;
     procedure SetActiveBook(AIndex: Integer);
     procedure BookEnter(Sender: TObject);
+    procedure BookTabMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure BookTabMouseMove(Sender: TObject; Shift: TShiftState;
+      X, Y: Integer);
+    procedure BookTabMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
 
 
     { Empties a dynamic submenu without destroying its items mid-event.  See
@@ -2119,6 +2133,62 @@ end;
 
 { Clicking anywhere in a group makes it the active one, which is what decides
   where a new tab lands and which tab the menus act on. }
+{ Reordering a tab by dragging it along the strip.  The press remembers
+  which tab it landed on; the move only counts as a drag once the pointer has
+  travelled far enough that it cannot be a click, otherwise every click on a
+  tab would shuffle the strip. }
+procedure TLedMainForm.BookTabMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+var
+  Book: TPageControl;
+begin
+  FDragTabIndex := -1;
+  FDragStarted := False;
+  FDragTabBook := nil;
+  if Button <> mbLeft then Exit;
+  if not (Sender is TPageControl) then Exit;
+  Book := TPageControl(Sender);
+  FDragTabIndex := Book.IndexOfTabAt(X, Y);
+  if FDragTabIndex < 0 then Exit;
+  FDragTabBook := Book;
+  FDragOrigin := Point(X, Y);
+end;
+
+procedure TLedMainForm.BookTabMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: Integer);
+var
+  Target: Integer;
+begin
+  if (FDragTabBook = nil) or (FDragTabIndex < 0) then Exit;
+  if not (ssLeft in Shift) then Exit;
+
+  if not FDragStarted then
+  begin
+    if Abs(X - FDragOrigin.X) < Mouse.DragThreshold then Exit;
+    FDragStarted := True;
+    FDragTabBook.Cursor := crDrag;
+  end;
+
+  Target := FDragTabBook.IndexOfTabAt(X, Y);
+  if (Target < 0) or (Target = FDragTabIndex) then Exit;
+  if Target >= FDragTabBook.PageCount then Exit;
+
+  { PageIndex is both the position and the identity, so assigning it moves
+    the page and renumbers the rest; the dragged tab's index has to follow. }
+  FDragTabBook.Pages[FDragTabIndex].PageIndex := Target;
+  FDragTabIndex := Target;
+  FDragTabBook.ActivePageIndex := Target;
+end;
+
+procedure TLedMainForm.BookTabMouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  if FDragTabBook <> nil then FDragTabBook.Cursor := crDefault;
+  FDragTabBook := nil;
+  FDragTabIndex := -1;
+  FDragStarted := False;
+end;
+
 procedure TLedMainForm.BookEnter(Sender: TObject);
 begin
   if Sender is TPageControl then
@@ -2185,6 +2255,9 @@ begin
     FBook2.Align := alClient;
     FBook2.OnChange := @BookChange;
     FBook2.OnEnter := @BookEnter;
+    FBook2.OnMouseDown := @BookTabMouseDown;
+    FBook2.OnMouseMove := @BookTabMouseMove;
+    FBook2.OnMouseUp := @BookTabMouseUp;
     FBook2.Images := ImageList1;
     FBook2.PopupMenu := PopupTab;
 
