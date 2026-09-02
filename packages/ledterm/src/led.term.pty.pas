@@ -110,31 +110,6 @@ function setenv_(name, value: PChar; overwrite: cint): cint; cdecl;
 function unsetenv_(name: PChar): cint; cdecl; external 'c' name 'unsetenv';
 {$ENDIF}
 
-function LedPtyAvailable: Boolean;
-begin
-  {$IF DEFINED(UNIX)}
-  Result := True;
-  {$ELSEIF DEFINED(WINDOWS)}
-  { Whether the six ConPTY entry points resolved.  False on anything older
-    than Windows 10 1809, where the pane says the terminal is unavailable --
-    which is better than opening a window that never prints anything. }
-  Result := ConPtyLoad;
-  {$ELSE}
-  Result := False;
-  {$IFEND}
-end;
-
-function LedDefaultShell: string;
-begin
-  {$IFDEF UNIX}
-  Result := GetEnvironmentVariable('SHELL');
-  if Result = '' then Result := '/bin/sh';
-  {$ELSE}
-  Result := GetEnvironmentVariable('COMSPEC');
-  if Result = '' then Result := 'cmd.exe';
-  {$ENDIF}
-end;
-
 constructor TLedPty.Create;
 begin
   inherited Create;
@@ -355,6 +330,36 @@ begin
 end;
 
 {$IFEND}
+
+{ These two sit *below* the platform block on purpose.  Each asks its own
+  backend a question, and on Windows the answer lives in the include above --
+  compiled here, ConPtyLoad was not yet declared and the Windows build failed
+  on it while every other platform was fine.  Anything a backend defines is in
+  scope from here down, so the next one of these cannot happen. }
+
+function LedPtyAvailable: Boolean;
+begin
+  {$IF DEFINED(UNIX)}
+  Result := True;
+  {$ELSEIF DEFINED(WINDOWS)}
+  { Whether the six ConPTY entry points resolved.  False on anything older
+    than Windows 10 1809, where the pane says the terminal is unavailable --
+    which is better than opening a window that never prints anything. }
+  Result := ConPtyLoad;
+  {$ELSE}
+  Result := False;
+  {$IFEND}
+end;
+
+function LedDefaultShell: string;
+begin
+  {$IFDEF UNIX}
+  Result := SysUtils.GetEnvironmentVariable('SHELL');
+  if Result = '' then Result := '/bin/sh';
+  {$ELSE}
+  Result := ConPtyDefaultShell;
+  {$ENDIF}
+end;
 
 procedure TLedPty.WriteString(const AText: string);
 begin

@@ -5,7 +5,13 @@
   surface it uses, copied signature-for-signature out of FPC 3.2.2's
   rtl/win/wininc, and includes the real source.  It cannot prove the code is
   correct against Windows, but it catches every typo, arity mistake and type
-  error before a push. }
+  error before a push.
+
+  It only sees what is *in* the include.  Two Windows-only errors once got
+  past it because they were in the unit around it: a call to ConPtyLoad
+  placed above the include that defines it, and an unqualified
+  GetEnvironmentVariable that the Windows unit shadows.  Both now live in the
+  include, where this compiles them. }
 program conptycheck;
 
 {$mode objfpc}{$H+}
@@ -73,6 +79,13 @@ function CreateProcessW(lpApplicationName: LPWSTR; lpCommandLine: LPWSTR;
 function TerminateProcess(hProcess: THandle; uExitCode: UINT): BOOL; forward;
 function WaitForSingleObject(hHandle: THandle; dwMilliseconds: DWORD): DWORD; forward;
 
+{ Not called by the include, but declared so the include is compiled with the
+  same ambiguity Windows has.  The Windows unit exports this alongside
+  SysUtils' one-argument function of the same name, and an unqualified call
+  then picks the wrong one.  That shipped once; with this here it cannot
+  again. }
+function GetEnvironmentVariable(lpName, lpBuffer: PChar; nSize: DWORD): DWORD; forward;
+
 type
   { The parts of TLedPty the include touches. }
   TLedPty = class
@@ -91,8 +104,6 @@ type
     function ChildExited: Boolean;
   end;
 
-function LedDefaultShell: string; forward;
-
 {$I led.term.pty.conpty.inc}
 
 { Stubs, never called; present only so the program links. }
@@ -106,7 +117,7 @@ function WriteFile(hFile: THandle; const Buffer; nNumberOfBytesToWrite: DWORD; v
 function CreateProcessW(lpApplicationName: LPWSTR; lpCommandLine: LPWSTR; lpProcessAttributes, lpThreadAttributes: PSecurityAttributes; bInheritHandles: BOOL; dwCreationFlags: DWORD; lpEnvironment: Pointer; lpCurrentDirectory: LPWSTR; const lpStartupInfo: TStartupInfoW; var lpProcessInformation: TProcessInformation): BOOL; begin Result := False; end;
 function TerminateProcess(hProcess: THandle; uExitCode: UINT): BOOL; begin Result := True; end;
 function WaitForSingleObject(hHandle: THandle; dwMilliseconds: DWORD): DWORD; begin Result := 0; end;
-function LedDefaultShell: string; begin Result := 'cmd.exe'; end;
+function GetEnvironmentVariable(lpName, lpBuffer: PChar; nSize: DWORD): DWORD; begin Result := 0; end;
 
 begin
   WriteLn('conpty include type-checks');
