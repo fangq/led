@@ -69,6 +69,8 @@ Source: "{#SrcDir}\data\grammars\*"; DestDir: "{app}\data\grammars"; Flags: igno
 Source: "{#SrcDir}\data\themes\*";   DestDir: "{app}\data\themes";   Flags: ignoreversion recursesubdirs
 Source: "{#SrcDir}\data\tools\*";    DestDir: "{app}\data\tools";    Flags: ignoreversion recursesubdirs
 Source: "{#SrcDir}\data\langs\*";    DestDir: "{app}\data\langs";    Flags: ignoreversion recursesubdirs
+; The spell-check word list and the SCOWL notice that must travel with it.
+Source: "{#SrcDir}\data\dict\*";     DestDir: "{app}\data\dict";     Flags: ignoreversion recursesubdirs
 
 [Icons]
 Name: "{group}\led";           Filename: "{app}\{#AppExe}"

@@ -143,6 +143,16 @@
         <UnitName Value="Led.UI.Tab"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.spell.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.Spell"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.spellmarkup.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.SpellMarkup"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledui/src/led.ui.project.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.UI.Project"/>

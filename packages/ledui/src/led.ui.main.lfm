@@ -955,6 +955,12 @@ object LedMainForm: TLedMainForm
     OnPopup = PopupEditorPopup
     Left = 48
     Top = 368
+    object miSpelling: TMenuItem
+      Caption = 'Spelling'
+    end
+    object mcSpellSep: TMenuItem
+      Caption = '-'
+    end
     object mcUndo: TMenuItem
       Action = actUndo
     end

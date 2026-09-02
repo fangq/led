@@ -33,7 +33,7 @@ cp packaging/icons/led.icns "$APP/Contents/Resources/led.icns"
 # The grammars, themes and shipped tools are read at run time.  Contents/
 # Resources/data is where Led.Core.Paths looks first on Darwin.
 mkdir -p "$APP/Contents/Resources/data"
-for sub in grammars themes tools langs; do
+for sub in grammars themes tools langs dict; do
   [ -d "data/$sub" ] && cp -R "data/$sub" "$APP/Contents/Resources/data/"
 done
 

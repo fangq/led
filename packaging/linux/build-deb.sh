@@ -28,7 +28,7 @@ install -m 0755 bin/led "$PKG/usr/bin/led"
 # The grammars, themes and shipped tools are read at run time.  A package that
 # ships only the executable produces an editor that opens every file as plain
 # text, so this is not optional.
-for sub in grammars themes tools langs; do
+for sub in grammars themes tools langs dict; do
   [ -d "data/$sub" ] && cp -r "data/$sub" "$PKG/usr/share/led/"
 done
 
@@ -71,7 +71,7 @@ STAGE="led-${VERSION}-linux-$(uname -m)"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/bin" "$STAGE/data"
 cp bin/led "$STAGE/bin/"
-for sub in grammars themes tools langs; do
+for sub in grammars themes tools langs dict; do
   [ -d "data/$sub" ] && cp -r "data/$sub" "$STAGE/data/"
 done
 for f in README.md PARITY.md install.sh; do
