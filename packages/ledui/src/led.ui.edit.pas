@@ -160,16 +160,54 @@ begin
     are bound, since Alt+drag is grabbed by the window manager on several
     Linux desktops and would otherwise be unreachable.
 
-    emUseMouseActions makes SynEdit take every mouse gesture from these
-    lists instead of its built-in handling, and the lists start EMPTY.  So
-    they have to be filled with the defaults first, or the only gesture the
-    editor understands is the one added below -- no caret placement, no
-    drag-select, no wheel, no context menu, and no clicking the fold boxes
-    in the gutter. }
-  MouseOptions := MouseOptions + [emUseMouseActions];
+    emUseMouseActions makes SynEdit take every gesture from the *user* lists
+    rather than its internal ones -- GetActionsForOptions returns FUserActions
+    when that option is set -- and ResetMouseActions copies the internal
+    defaults into them.  So the defaults have to be there, or the editor
+    understands nothing but what is added here: no caret placement, no
+    drag-select, no wheel, no context menu, no fold boxes.
+
+    Which list matters, and this is where the first attempt went wrong.
+    SynEdit keeps three, and MouseDown asks them in order: MouseSelActions
+    when the click landed inside a selection, then MouseTextActions, and
+    MouseActions only if neither claimed it.  A Ctrl+drag was registered on
+    MouseActions -- the last one -- while MouseTextActions holds the stock
+
+      emcStartSelections, mbXLeft, ccSingle, cdDown, [], [ssShift, ssAlt]
+
+    whose mask names only Shift and Alt.  Ctrl is unmasked, so that entry
+    matches a Ctrl+left-press, starts an ordinary selection and returns
+    handled, and the column command three lines below never got a look.
+    Alt+drag worked because emAltSetsColumnMode puts its entries in the same
+    list as the default it has to beat.
+
+    So the Ctrl entries go in MouseTextActions too, and the stock selection
+    entries get ssCtrl added to their masks so they stand down when it is
+    held.  emAltSetsColumnMode stays on, which is what keeps Alt+drag. }
+  MouseOptions := MouseOptions + [emUseMouseActions, emAltSetsColumnMode];
   ResetMouseActions;
-  MouseActions.AddCommand(emcStartColumnSelections, True, mbXLeft, ccSingle,
-    cdDown, [ssCtrl], [ssCtrl, ssAlt, ssShift]);
+
+  for i := MouseTextActions.Count - 1 downto 0 do
+    if MouseTextActions[i].Command = emcStartSelections then
+      MouseTextActions[i].ShiftMask :=
+        MouseTextActions[i].ShiftMask + [ssCtrl];
+
+  { Ctrl+drag starts a rectangle; Ctrl+Shift+drag extends the one already
+    there, which is the pair SynEdit registers for Alt. }
+  MouseTextActions.AddCommand(emcStartColumnSelections, True, mbXLeft,
+    ccSingle, cdDown, [ssCtrl], [ssShift, ssAlt, ssCtrl],
+    emcoSelectionStart);
+  MouseTextActions.AddCommand(emcStartColumnSelections, True, mbXLeft,
+    ccSingle, cdDown, [ssShift, ssCtrl], [ssShift, ssAlt, ssCtrl],
+    emcoSelectionContinue);
+
+  { And inside an existing selection the sel list answers first, so a
+    Ctrl+drag that begins on selected text would start a drag-move instead. }
+  for i := MouseSelActions.Count - 1 downto 0 do
+    if MouseSelActions[i].Command = emcStartDragMove then
+      MouseSelActions[i].ShiftMask :=
+        MouseSelActions[i].ShiftMask + [ssCtrl];
+
   DefaultSelectionMode := smNormal;
   OnProcessCommand := @ColumnCommand;
 
