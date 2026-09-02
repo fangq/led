@@ -42,6 +42,12 @@ type
     function Options: TSynSearchOptions;
     procedure RememberSearch(const S: string);
     procedure RememberReplace(const S: string);
+    { The option toggles survive a restart, as medit's search_flags and
+      quick_search_flags did.  Stored as one integer each rather than a key
+      per checkbox: they are read and written together and never on their
+      own. }
+    procedure LoadFlags;
+    procedure SaveFlags;
     property History: TStringList read FHistory;
     property ReplaceHistory: TStringList read FReplaceHistory;
   end;
@@ -111,7 +117,7 @@ type
 implementation
 
 uses
-  LCLType;
+  LCLType, Led.Core.Prefs;
 
 { TLedSearchState }
 
@@ -128,6 +134,44 @@ begin
   FHistory.Free;
   FReplaceHistory.Free;
   inherited Destroy;
+end;
+
+const
+  { Bit positions in the stored flag word.  Appending is safe; renumbering
+    would silently change what an existing prefs.ini means. }
+  sfMatchCase    = 1;
+  sfWholeWord    = 2;
+  sfRegex        = 4;
+  sfBackwards    = 8;
+  sfSelectedOnly = 16;
+  sfHighlightAll = 32;
+
+procedure TLedSearchState.LoadFlags;
+var
+  F: Integer;
+begin
+  F := LedPrefs.GetInt('Editor/search_flags', sfHighlightAll);
+  MatchCase    := (F and sfMatchCase) <> 0;
+  WholeWord    := (F and sfWholeWord) <> 0;
+  Regex        := (F and sfRegex) <> 0;
+  SelectedOnly := (F and sfSelectedOnly) <> 0;
+  HighlightAll := (F and sfHighlightAll) <> 0;
+  { Direction is deliberately not restored: a search that starts backwards
+    because of something done last week is a surprise, not a convenience. }
+  Backwards := False;
+end;
+
+procedure TLedSearchState.SaveFlags;
+var
+  F: Integer;
+begin
+  F := 0;
+  if MatchCase then F := F or sfMatchCase;
+  if WholeWord then F := F or sfWholeWord;
+  if Regex then F := F or sfRegex;
+  if SelectedOnly then F := F or sfSelectedOnly;
+  if HighlightAll then F := F or sfHighlightAll;
+  LedPrefs.SetInt('Editor/search_flags', F);
 end;
 
 function TLedSearchState.Options: TSynSearchOptions;

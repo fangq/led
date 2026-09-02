@@ -187,6 +187,98 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestRememberedState(F: TLedMainForm);
+var
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  L: TStringList;
+  Path, Saved: string;
+  Before: Integer;
+begin
+  Say('remembered state');
+
+  { The window title comes from a format string, with medit's placeholders,
+    so a title configured there carries over. }
+  Path := TempName('title.txt');
+  L := TStringList.Create;
+  try
+    L.Add('hello'); L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  Before := F.Notebook.PageCount;
+  Doc := F.Documents.OpenFile(Path);
+  Tab := F.AddTab(Doc);
+  Pump;
+
+  Saved := LedPrefs.GetStr('Editor/window_title', '%a - %f%s');
+  try
+    LedPrefs.SetStr('Editor/window_title', '%a | %b');
+    CheckEq('the title uses the format and the base name',
+      'led | ' + ExtractFileName(Path), F.FormatWindowTitle(Doc));
+
+    LedPrefs.SetStr('Editor/window_title', '%%literal');
+    CheckEq('a doubled per cent is one per cent',
+      '%literal', F.FormatWindowTitle(Doc));
+
+    LedPrefs.SetStr('Editor/window_title', '%z');
+    CheckEq('an unknown placeholder is left visible',
+      '%z', F.FormatWindowTitle(Doc));
+
+    { The status suffix is the part that has to follow the document. }
+    LedPrefs.SetStr('Editor/window_title', '%s');
+    CheckEq('a saved document has no status suffix', '',
+      F.FormatWindowTitle(Doc));
+    Tab.ActiveView.SelectAll;
+    Tab.ActiveView.SelText := 'changed';
+    Pump;
+    CheckEq('a modified one says so', ' [modified]', F.FormatWindowTitle(Doc));
+
+    LedPrefs.SetStr('Editor/window_title_no_doc', 'nothing open');
+    CheckEq('and there is a separate format for no document',
+      'nothing open', F.FormatWindowTitle(nil));
+  finally
+    LedPrefs.SetStr('Editor/window_title', Saved);
+    LedPrefs.SetStr('Editor/window_title_no_doc', '%a');
+  end;
+
+  { The search toggles survive a restart. }
+  F.Search.MatchCase := True;
+  F.Search.Regex := True;
+  F.Search.WholeWord := False;
+  F.Search.SaveFlags;
+  F.Search.MatchCase := False;
+  F.Search.Regex := False;
+  F.Search.WholeWord := True;
+  F.Search.LoadFlags;
+  Check('match case came back on', F.Search.MatchCase);
+  Check('regex came back on', F.Search.Regex);
+  Check('and whole word came back off', not F.Search.WholeWord);
+  { Direction is deliberately not restored. }
+  Check('but the direction is not remembered', not F.Search.Backwards);
+
+  { The tab strip can be hidden while a single document is open. }
+  LedPrefs.SetBool('Editor/use_tabs', False);
+  F.ApplyTabVisibility;
+  Pump;
+  if F.Notebook.PageCount = 1 then
+    Check('one document can hide the tab strip', not F.Notebook.ShowTabs);
+  LedPrefs.SetBool('Editor/use_tabs', True);
+  F.ApplyTabVisibility;
+  Pump;
+  Check('and it comes back', F.Notebook.ShowTabs);
+
+  Doc.Master.Modified := False;
+  while F.Notebook.PageCount > Before do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(Path);
+end;
+
 procedure TestSaveTheRightDocument(F: TLedMainForm);
 var
   A, B: TLedTab;
@@ -2214,6 +2306,7 @@ begin
   TestBrowserNavigation(F);
   TestTabReordering(F);
   TestSaveTheRightDocument(F);
+  TestRememberedState(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
