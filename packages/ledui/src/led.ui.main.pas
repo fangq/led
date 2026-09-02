@@ -463,9 +463,7 @@ type
     function TabOnPage(APage: TCustomPage): TLedTab;
     procedure SetActiveBook(AIndex: Integer);
     procedure BookEnter(Sender: TObject);
-    procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
 
-    procedure SaveSession;
 
     { Empties a dynamic submenu without destroying its items mid-event.  See
       the implementation for why TMenuItem.Clear cannot be used here. }
@@ -490,7 +488,6 @@ type
     procedure UpdateStatusBar;
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
-    procedure CloseActiveTab(AReplace: Boolean);
     procedure PopulateReopenMenu;
     procedure ReopenEncodingItemClick(Sender: TObject);
     procedure PopulateDocMenu;
@@ -518,6 +515,10 @@ type
 
     { Public so the --self-test harness, and later the scripting API, can
       drive the window the same way a user would. }
+    { Public so the self-test can drive a session round trip. }
+    procedure SaveSession;
+    procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
+    procedure CloseActiveTab(AReplace: Boolean);
     function ActiveTab: TLedTab;
     function ActiveView: TLedEdit;
     function AddTab(ADoc: TLedDocument): TLedTab;
@@ -2274,7 +2275,8 @@ var
   W: TLedWindowState;
   T: TLedTabState;
   Tab: TLedTab;
-  i, j: Integer;
+  Book: TPageControl;
+  i, j, v, B: Integer;
   E: TLedDockEdge;
 begin
   S := TLedSession.Create;
@@ -2291,20 +2293,39 @@ begin
     end;
     S.SetWindow(0, W);
 
-    for i := 0 to FBook.PageCount - 1 do
-      for j := 0 to FBook.Pages[i].ControlCount - 1 do
-        if FBook.Pages[i].Controls[j] is TLedTab then
-        begin
-          Tab := TLedTab(FBook.Pages[i].Controls[j]);
-          if Tab.Document.IsUntitled then Continue;
-          T := Default(TLedTabState);
-          T.FileName := Tab.Document.FileName;
-          T.Encoding := Tab.Document.Info.Encoding;
-          T.Line := Tab.ActiveView.CaretY;
-          T.Column := Tab.ActiveView.CaretX;
-          T.TopLine := Tab.ActiveView.TopLine;
-          S.AddTab(0, T);
-        end;
+    { Both tab groups, not just the first.  Walking FBook alone dropped
+      everything the user had moved into the split notebook. }
+    for B := 0 to 1 do
+    begin
+      Book := BookByIndex(B);
+      if Book = nil then Continue;
+      for i := 0 to Book.PageCount - 1 do
+        for j := 0 to Book.Pages[i].ControlCount - 1 do
+          if Book.Pages[i].Controls[j] is TLedTab then
+          begin
+            Tab := TLedTab(Book.Pages[i].Controls[j]);
+            if Tab.Document.IsUntitled then Continue;
+            T := Default(TLedTabState);
+            T.FileName := Tab.Document.FileName;
+            T.Encoding := Tab.Document.Info.Encoding;
+            T.Notebook := B;
+            { The active view's caret stays where it was, so a session
+              written now still opens in an older build. }
+            T.Line := Tab.ActiveView.CaretY;
+            T.Column := Tab.ActiveView.CaretX;
+            T.TopLine := Tab.ActiveView.TopLine;
+            { And every view, so a split tab comes back split. }
+            SetLength(T.Views, Tab.ViewCount);
+            for v := 0 to Tab.ViewCount - 1 do
+            begin
+              T.Views[v].Line := Tab.Views[v].CaretY;
+              T.Views[v].Column := Tab.Views[v].CaretX;
+              T.Views[v].TopLine := Tab.Views[v].TopLine;
+            end;
+            T.SplitVertical := Tab.SplitIsVertical;
+            S.AddTab(0, T);
+          end;
+    end;
 
     S.Save;
   finally
@@ -2319,6 +2340,7 @@ var
   i: Integer;
   Doc: TLedDocument;
   Tab: TLedTab;
+  v: Integer;
   E: TLedDockEdge;
 begin
   Result := False;
@@ -2356,8 +2378,33 @@ begin
       if Doc.ViewCount = 0 then
       begin
         Tab := AddTab(Doc);
-        if W.Tabs[i].Line > 0 then
+
+        { Put the tab back in the group it came from.  The split is created
+          on first need, so the second group exists by the time a tab that
+          belongs there asks for it. }
+        if W.Tabs[i].Notebook = 1 then
         begin
+          if not NotebookSplit then SetNotebookSplit(True);
+          MoveTabToBook(Tab, FBook2);
+        end;
+
+        { Recreate the splits before placing any caret, so the views exist
+          to place them in. }
+        for v := 1 to Length(W.Tabs[i].Views) - 1 do
+          if Tab.CanSplit then Tab.SplitView(W.Tabs[i].SplitVertical);
+
+        if Length(W.Tabs[i].Views) > 0 then
+        begin
+          for v := 0 to Min(High(W.Tabs[i].Views), Tab.ViewCount - 1) do
+          begin
+            Tab.Views[v].CaretXY := Point(Max(1, W.Tabs[i].Views[v].Column),
+              Min(Max(1, W.Tabs[i].Views[v].Line), Doc.Master.Lines.Count));
+            Tab.Views[v].TopLine := Max(1, W.Tabs[i].Views[v].TopLine);
+          end;
+        end
+        else if W.Tabs[i].Line > 0 then
+        begin
+          { A session written before views were recorded. }
           Tab.ActiveView.CaretXY := Point(Max(1, W.Tabs[i].Column),
             Min(Max(1, W.Tabs[i].Line), Doc.Master.Lines.Count));
           Tab.ActiveView.TopLine := Max(1, W.Tabs[i].TopLine);

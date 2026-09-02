@@ -21,13 +21,30 @@ const
   LedSessionVersion = 1;
 
 type
+  { One view of a document inside a tab.  A tab that has been split holds
+    several, each with its own caret and scroll position. }
+  TLedViewState = record
+    Line: Integer;        // 1-based caret position
+    Column: Integer;
+    TopLine: Integer;     // first visible line, so the view is restored too
+  end;
+
   TLedTabState = record
     FileName: string;
     Encoding: string;
     Language: string;
-    Line: Integer;        // 1-based caret position
+    Line: Integer;        // the active view's caret, kept for older sessions
     Column: Integer;
-    TopLine: Integer;     // first visible line, so the view is restored too
+    TopLine: Integer;
+    { Which tab group the tab was in.  0 is the only one unless the notebook
+      is split; without this, everything the user moved into the second group
+      was dropped on save without a word. }
+    Notebook: Integer;
+    { Every view, in creation order, and how the tab was split to make them.
+      Empty for a session written before split views were recorded, in which
+      case Line/Column/TopLine above still describe the single view. }
+    Views: array of TLedViewState;
+    SplitVertical: Boolean;
   end;
 
   TLedDockState = record
@@ -140,9 +157,9 @@ end;
 procedure TLedSession.Save;
 var
   Root: TJSONObject;
-  WinArr, TabArr, DockArr: TJSONArray;
-  WinObj, TabObj, DockObj: TJSONObject;
-  i, j, k: Integer;
+  WinArr, TabArr, DockArr, ViewArr: TJSONArray;
+  WinObj, TabObj, DockObj, ViewObj: TJSONObject;
+  i, j, k, v: Integer;
 begin
   Root := TJSONObject.Create;
   try
@@ -173,6 +190,21 @@ begin
         TabObj.Add('line', FWindows[i].Tabs[j].Line);
         TabObj.Add('column', FWindows[i].Tabs[j].Column);
         TabObj.Add('topLine', FWindows[i].Tabs[j].TopLine);
+        TabObj.Add('notebook', FWindows[i].Tabs[j].Notebook);
+        if Length(FWindows[i].Tabs[j].Views) > 1 then
+        begin
+          TabObj.Add('splitVertical', FWindows[i].Tabs[j].SplitVertical);
+          ViewArr := TJSONArray.Create;
+          TabObj.Add('views', ViewArr);
+          for v := 0 to High(FWindows[i].Tabs[j].Views) do
+          begin
+            ViewObj := TJSONObject.Create;
+            ViewArr.Add(ViewObj);
+            ViewObj.Add('line', FWindows[i].Tabs[j].Views[v].Line);
+            ViewObj.Add('column', FWindows[i].Tabs[j].Views[v].Column);
+            ViewObj.Add('topLine', FWindows[i].Tabs[j].Views[v].TopLine);
+          end;
+        end;
       end;
 
       DockArr := TJSONArray.Create;
@@ -197,10 +229,10 @@ function TLedSession.Load: Boolean;
 var
   Text: string;
   Data: TJSONData;
-  Root, WinObj, TabObj, DockObj: TJSONObject;
-  WinArr, TabArr, DockArr: TJSONArray;
+  Root, WinObj, TabObj, DockObj, ViewObj: TJSONObject;
+  WinArr, TabArr, DockArr, ViewArr: TJSONArray;
   L: TStringList;
-  i, j, k, w: Integer;
+  i, j, k, w, v: Integer;
   Tab: TLedTabState;
 begin
   Clear;
@@ -259,6 +291,23 @@ begin
           Tab.Line := TabObj.Get('line', 1);
           Tab.Column := TabObj.Get('column', 1);
           Tab.TopLine := TabObj.Get('topLine', 1);
+          Tab.Notebook := TabObj.Get('notebook', 0);
+          Tab.SplitVertical := TabObj.Get('splitVertical', False);
+
+          ViewArr := TabObj.Get('views', TJSONArray(nil));
+          if ViewArr <> nil then
+          begin
+            SetLength(Tab.Views, ViewArr.Count);
+            for v := 0 to ViewArr.Count - 1 do
+              if ViewArr.Items[v] is TJSONObject then
+              begin
+                ViewObj := TJSONObject(ViewArr.Items[v]);
+                Tab.Views[v].Line := ViewObj.Get('line', 1);
+                Tab.Views[v].Column := ViewObj.Get('column', 1);
+                Tab.Views[v].TopLine := ViewObj.Get('topLine', 1);
+              end;
+          end;
+
           if Tab.FileName <> '' then
             AddTab(w, Tab);
         end;

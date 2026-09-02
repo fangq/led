@@ -112,7 +112,6 @@ procedure TLedTerminalPane.BuildMenu;
 var
   Item: TMenuItem;
   i: Integer;
-  Probe: TLedTermView;
 
   function Add(const ACaption: string; AHandler: TNotifyEvent): TMenuItem;
   begin
@@ -146,19 +145,14 @@ begin
   FSchemeMenu := Add('Colour Scheme', nil);
   { The scheme list is fixed, so it is built once.  A submenu filled from its
     own parent's OnClick never opens -- a childless item is a leaf. }
-  Probe := TLedTermView.Create(Self);
-  try
-    for i := 0 to Probe.SchemeCount - 1 do
-    begin
-      Item := TMenuItem.Create(FSchemeMenu);
-      Item.Caption := Probe.SchemeName(i);
-      Item.Tag := i;
-      Item.RadioItem := True;
-      Item.OnClick := @DoScheme;
-      FSchemeMenu.Add(Item);
-    end;
-  finally
-    Probe.Free;
+  for i := 0 to LedTermSchemeCount - 1 do
+  begin
+    Item := TMenuItem.Create(FSchemeMenu);
+    Item.Caption := LedTermSchemeName(i);
+    Item.Tag := i;
+    Item.RadioItem := True;
+    Item.OnClick := @DoScheme;
+    FSchemeMenu.Add(Item);
   end;
 end;
 
