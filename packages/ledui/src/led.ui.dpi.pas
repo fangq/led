@@ -51,6 +51,22 @@ function LedScale96(APixels: Integer): Integer;
 function LedDefaultFontSize: Integer;
 
 { The default monospace family for this platform. }
+{ A monospace family that carries Han, Kana and Hangul, or '' when the system
+  has none installed.
+
+  Wanted because of how the editor draws: SynEdit positions glyphs itself and
+  LCL's gtk2 backend draws one codepoint per layout, each with its top at the
+  row's top, so a character that falls back to another font lands on a lower
+  baseline than the Latin beside it.  GtkTextView -- which is what medit uses
+  -- lays a whole line out as one PangoLayout and grows the line to fit,
+  which is why medit shows the same file correctly.  SynEdit's rows are all
+  one height, so the only way to one baseline is one font.
+
+  The order is deliberate: the pan-CJK Noto and Source Han faces first,
+  because they are metric-compatible across the four locales, then the
+  common per-platform choices. }
+function LedWideMonospaceFamily: string;
+
 function LedDefaultFontName: string;
 
 { Split an "Editor/font" value into a family and a point size.  The
@@ -199,6 +215,36 @@ begin
   Result := (D > 0) and (D <> GAppliedPPI);
   if Result then
     LedApplyScaleAll(D);
+end;
+
+var
+  { Screen.Fonts builds its list by asking the widgetset, which is not free,
+    and the answer cannot change while the program runs. }
+  FWideFamily: string = #1;   { #1 means "not looked up yet" }
+
+function LedWideMonospaceFamily: string;
+const
+  Candidates: array[0..11] of string = (
+    'Noto Sans Mono CJK SC', 'Noto Sans Mono CJK JP',
+    'Noto Sans Mono CJK TC', 'Noto Sans Mono CJK KR',
+    'Source Han Mono SC', 'Source Han Mono',
+    'Sarasa Mono SC', 'Sarasa Term SC',
+    'WenQuanYi Micro Hei Mono', 'WenQuanYi Zen Hei Mono',
+    { Windows and macOS respectively, both fixed-pitch and both shipped. }
+    'MS Gothic', 'Hiragino Sans'
+  );
+var
+  i: Integer;
+begin
+  if FWideFamily <> #1 then Exit(FWideFamily);
+  FWideFamily := '';
+  for i := 0 to High(Candidates) do
+    if Screen.Fonts.IndexOf(Candidates[i]) >= 0 then
+    begin
+      FWideFamily := Candidates[i];
+      Break;
+    end;
+  Result := FWideFamily;
 end;
 
 function LedDefaultFontName: string;

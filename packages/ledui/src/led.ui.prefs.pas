@@ -115,7 +115,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..49] of TLedPrefItem = (
+  PrefItems: array[0..50] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -245,6 +245,9 @@ const
     (Category: 'Files'; Kind: pkBool; Key: 'Editor/add_newline';
      Caption: 'End the file with a newline'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkString; Key: 'Editor/cjk_font';
+     Caption: 'Font for documents with CJK text'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkInt; Key: 'Editor/max_line_len';
      Caption: 'Truncate display of lines longer than'; DefStr: '';
      DefInt: 4096; MinInt: 0; MaxInt: 1000000; Choices: ''),

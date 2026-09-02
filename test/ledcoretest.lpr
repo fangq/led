@@ -15,7 +15,7 @@ uses
   Led.Core.Tests.Settings, Led.Core.Tests.Filters, Led.Syn.Tests.Languages,
   Led.Syn.Tests.Theme,
   Led.Core.Tests.CLI, Led.Core.Tests.Tools, Led.Core.Tests.Grep, Led.Term.Tests.Screen, Led.Core.Tests.Ctags, Led.Core.Tests.Markdown, Led.Core.Tests.Recovery,
-  Led.Core.Tests.Wiki;
+  Led.Core.Tests.Wiki, Led.Core.Tests.Scripts;
 
 type
   TLedTestRunner = class(TTestRunner)
