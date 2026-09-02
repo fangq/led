@@ -1326,7 +1326,11 @@
   "name": "MediaWiki",
   "section": "Markup",
   "hidden": false,
-  "globs": [],
+  "globs": [
+   "*.wiki",
+   "*.wp",
+   "*.usemod"
+  ],
   "mimetypes": [],
   "lineComment": "",
   "blockCommentStart": "<!--",

@@ -13,6 +13,7 @@ checked off by the presence of a menu entry.
 |---|---|---|---|
 | Vertical / box selection<br><sub>Ctrl+drag or Ctrl+Shift+arrows; copy, paste back as a column, type and delete on every line</sub> | yes | yes | mouse and keyboard; a column copy pastes back as a column because led remembers what it put on the clipboard, which the clipboard itself cannot say |
 | Long-line truncate-and-reveal<br><sub>display only past 4096 chars, click the marker for more</sub> | yes | yes | done.  The first pass deferred this on the open time alone; the per-operation numbers in the same benchmark said otherwise.  A view at the bottom of SynEdit's chain shortens what the caret, the metrics and the painter see, while `Lines` -- which led saves through -- bypasses the chain entirely.  A line the caret or selection touches is never truncated, because a selection ending at a truncation point destroys the tail when replaced |
+| Wiki markup preview<br><sub>UseMod / Habitat dialect, rendered in the preview pane</sub> | yes | yes | done.  Dropped up front as "a niche format", which was a judgement about other people's files rather than this editor's users.  Led.Core.Wiki is a Pascal port of medit's in-tree converter, rule for rule; `.wiki`, `.wp`, `.usemod` and a `<!-- wiki -->` first line select it.  Highlighting needed a local patch to `data/langs/mediawiki.lang`, which upstream ships with no globs at all |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | yes | done |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
@@ -196,7 +197,6 @@ One decision taken up front turned out to be wrong and has been undone.
 
 | Feature | Why |
 |---|---|
-| Wiki markup preview | Markdown preview is kept |
 | XSMP desktop session management | X11 only; session.json covers continuity |
 | OS clipboard file transfer | LCL cannot initiate an OS file drag portably |
 | Dragging files out of the app | Windows-only in LCL; not worth the split |
@@ -217,7 +217,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | ConPTY backend written, type-checked by `make conpty` and compiling green in the win32 CI job, but **never once run on Windows** -- no behaviour here is verified.  Needs Windows 10 1809; older Windows reports the terminal unavailable.  Scrollback is best-effort, because conhost keeps no history of its own |
-| Wiki markup preview | dropped deliberately |
 | Translations | not started |
 | Code signing and notarization | not started; the macOS bundle is ad-hoc signed and the Windows installer is unsigned |
 | RPM, AppImage and Flatpak | not started; .deb, a portable tarball, an Inno Setup .exe and a .dmg are built |

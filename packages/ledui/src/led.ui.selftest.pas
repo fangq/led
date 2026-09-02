@@ -27,7 +27,8 @@ uses
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
-  Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
+  Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
+  Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -2598,6 +2599,80 @@ begin
   DeleteFile(Q);
 end;
 
+{ Wiki markup: the language is detected and the preview renders it.
+
+  Led.Core.Tests.Wiki covers the converter itself, headlessly and in detail.
+  What that cannot see is the wiring: whether opening a .wiki file picks the
+  grammar up, and whether the preview pane chooses the wiki renderer over the
+  Markdown one. }
+procedure TestWikiMarkup(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+begin
+  Say('wiki markup');
+
+  P := TempName('notes.wiki');
+  L := TStringList.Create;
+  try
+    L.Add('= Heading =');
+    L.Add('');
+    L.Add('Some ''''''bold'''''' text and a [[FreeLink]].');
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+
+  { Upstream mediawiki.lang carries no globs, so without led's patch this
+    opens as plain text and nothing below would be true. }
+  Check('a .wiki file gets a language', Tab.Document.LangInfo <> nil);
+  if Tab.Document.LangInfo <> nil then
+    CheckEq('and it is the wiki one', 'mediawiki', Tab.Document.LangInfo.Id);
+  Check('with a highlighter to match', Tab.ActiveView.Highlighter <> nil);
+
+  Check('the preview offers to render it', LedPreviewHandles(P, ''));
+  Check('and knows it is wiki rather than markdown', LedIsWikiFile(P, ''));
+  Check('a .md file is still markdown',
+    LedPreviewHandles('x.md', '') and (not LedIsWikiFile('x.md', '')));
+  Check('and a plain .txt saying so is wiki too',
+    LedIsWikiFile('x.txt', '<!-- wiki -->'));
+
+  { And it has to survive the HTML control.  The converter's output is
+    checked in detail headlessly, but IpHtmlPanel is the thing that has to
+    accept <dl> nesting, id= attributes and <a name>, and when it throws the
+    pane catches it and shows a label -- which looks like success from
+    anywhere except here. }
+  F.actTogglePreviewExecute(nil);
+  Pump;
+  if F.Preview <> nil then
+  begin
+    F.Preview.IsWiki := True;
+    F.Preview.Update(Tab.Document.Master.Lines.Text, 'notes', '');
+    Check('the html control renders the wiki output', F.Preview.RenderNow);
+    F.Preview.IsWiki := False;
+    F.Preview.Update('# markdown heading', 'md', '');
+    Check('and still renders markdown', F.Preview.RenderNow);
+  end;
+
+  { Put the pane back.  Leaving the right edge open changed what the dock
+    reported to the next section, which failed on "the editor area cannot be
+    closed" -- a check about docking, broken by a test about wiki files. }
+  F.Dock.EdgeVisible[ledRight] := False;
+  Pump;
+  Check('showing and hiding a pane leaves the editor area unclosable',
+    not F.Dock.CentreCanBeClosed);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -3048,6 +3123,7 @@ begin
   WriteLn;
   TestFoldGuides(F);
   TestLongLines(F);
+  TestWikiMarkup(F);
   WriteLn;
   TestSplitNotebook(F);
   WriteLn;
