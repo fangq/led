@@ -124,6 +124,8 @@ grammars:
 # compiles the real source against it.  It proves nothing about Windows
 # behaviour -- only that the code is well-formed.
 conpty:
+	@# -FU does not create the directory, so a clean checkout fails here.
+	mkdir -p lib/conptycheck
 	$(FPC) -Mobjfpc -Sh -Fipackages/ledterm/src -FUlib/conptycheck \
 	       -otools/conptycheck/conptycheck tools/conptycheck/conptycheck.lpr
 	./tools/conptycheck/conptycheck

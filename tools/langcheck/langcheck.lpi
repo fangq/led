@@ -32,7 +32,7 @@
       <Filename Value="../../bin/langcheck"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="../../packages/ledsyn/vendor"/>
+      <IncludeFiles Value="../../packages/ledsyn/vendor;../../packages/ledcore/src"/>
       <OtherUnitFiles Value="../../packages/ledsyn/vendor"/>
       <UnitOutputDirectory Value="../../lib/langcheck-$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
