@@ -34,8 +34,8 @@ uses
   Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
-  Clipbrd, SynEditTypes, SynEditKeyCmds, ActnList, Menus, PairSplitter,
-  LCLProc;
+  Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
+  PairSplitter, LCLProc;
 
 var
   Failures: Integer = 0;
@@ -1735,6 +1735,86 @@ begin
        (V.Keystrokes[i].Shift = [ssCtrl, ssShift]) then Found := True;
   Check('Ctrl+Shift+Down extends a rectangle', Found);
 
+  { Ctrl and the left button start a rectangle, as medit did.  Asserted
+    because it is one entry in a list that ResetMouseActions has emptied
+    before now, and losing it is silent. }
+  Found := False;
+  for i := 0 to V.MouseActions.Count - 1 do
+    if (V.MouseActions[i].Command = emcStartColumnSelections) and
+       (V.MouseActions[i].Button = mbXLeft) and
+       (ssCtrl in V.MouseActions[i].Shift) then Found := True;
+  Check('Ctrl and the left button start a rectangle', Found);
+
+  { Pasting rows of unequal length over a rectangle: each row replaces the
+    block on its own line, so the text after it shifts by that row's own
+    width, not by a single amount for the whole block. }
+  V.Lines.Text := 'aa[..]zz' + LineEnding +
+                  'bb[..]yy' + LineEnding +
+                  'cc[..]xx';
+  Clipboard.AsText := 'LONGER' + LineEnding + 'M' + LineEnding + 'MID';
+  V.BlockBegin := Point(3, 1);
+  V.BlockEnd := Point(7, 3);      { the four characters "[..]" on each line }
+  V.SelectionMode := smColumn;
+  LedPasteColumn(V);
+  Pump;
+  CheckEq('a longer row pushes the rest right', 'aaLONGERzz', V.Lines[0]);
+  CheckEq('a shorter one pulls it left', 'bbMyy', V.Lines[1]);
+  CheckEq('and each line shifts by its own width', 'ccMIDxx', V.Lines[2]);
+  V.Undo;
+  Pump;
+  CheckEq('one undo puts all three back', 'aa[..]zz', V.Lines[0]);
+
+  { --- edge cases that crash rather than misbehave ----------------------- }
+
+  { An empty document: LedPasteColumn walks Lines[Count - 1] to extend the
+    file, which is Lines[-1] when there are none. }
+  V.Lines.Clear;
+  Clipboard.AsText := 'AA' + LineEnding + 'BB';
+  V.CaretXY := Point(1, 1);
+  LedPasteColumn(V);
+  Pump;
+  Check('a column paste into an empty document survives', V.Lines.Count >= 1);
+
+  { A rectangle running past the last line. }
+  V.Lines.Text := 'one' + LineEnding + 'two';
+  V.BlockBegin := Point(2, 1);
+  V.BlockEnd := Point(3, 2);
+  V.SelectionMode := smColumn;
+  Clipboard.AsText := 'X' + LineEnding + 'Y' + LineEnding + 'Z' + LineEnding + 'W';
+  LedPasteColumn(V);
+  Pump;
+  Check('a paste longer than the document extends it', V.Lines.Count >= 4);
+
+  { Typing over a rectangle whose lines are shorter than the column. }
+  V.Lines.Text := 'aaaaaa' + LineEnding + 'bb' + LineEnding + 'cccccc';
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(5, 3);
+  V.SelectionMode := smColumn;
+  V.CommandProcessor(ecChar, 'Q', nil);
+  Pump;
+  Check('typing into a ragged rectangle pads the short line',
+    Length(V.Lines[1]) >= 5);
+  CheckEq('and lands at the column on the long ones', 'aaaaQaa', V.Lines[0]);
+
+  { Repeated commands through the hook, then undo, then more editing --
+    the sequence most likely to leave SynEdit's state inconsistent. }
+  V.Lines.Text := 'xxxx' + LineEnding + 'yyyy' + LineEnding + 'zzzz';
+  V.BlockBegin := Point(2, 1);
+  V.BlockEnd := Point(2, 3);
+  V.SelectionMode := smColumn;
+  V.CommandProcessor(ecChar, '1', nil);
+  V.CommandProcessor(ecChar, '2', nil);
+  V.CommandProcessor(ecDeleteLastChar, #0, nil);
+  Pump;
+  V.Undo; V.Undo; V.Undo;
+  Pump;
+  V.SelectionMode := smNormal;
+  V.CaretXY := Point(1, 1);
+  V.CommandProcessor(ecChar, 'k', nil);
+  Pump;
+  Check('the editor still edits after a run of column commands',
+    Pos('k', V.Lines[0]) > 0);
+
   Found := False;
   for i := 0 to V.Keystrokes.Count - 1 do
     if (V.Keystrokes[i].Command = ecColSelDown) and
@@ -2405,6 +2485,7 @@ var
   V: TLedEdit;
   Runs: TLedGuideRuns;
   i, Body, Opener, Closer, BodyCol: Integer;
+  Before, After: Integer;
 begin
   Say('block guides');
 
@@ -2457,6 +2538,33 @@ begin
   CheckEqInt('the line that opens it does not', 0, Opener);
   CheckEqInt('nor the line that closes it', 0, Closer);
   CheckEqInt('and it sits at the opening line''s indent column', 5, BodyCol);
+  { Folding must not take the guides with it.  The guide for a line below a
+    collapsed block still has to be drawn, and at the same column -- the
+    complaint was that the rules broke up and then vanished after a fold. }
+  Before := Length(V.ComputeBlockGuides(0, V.Lines.Count - 1));
+  V.CaretY := 1;
+  LedFoldAll(V);
+  Pump;
+  Check('folding everything changes what is on screen', V.FoldState <> '');
+  After := Length(V.ComputeBlockGuides(0, V.Lines.Count - 1));
+  CheckEqInt('the guides survive a fold', Before, After);
+  LedUnfoldAll(V);
+  Pump;
+  CheckEqInt('and are unchanged after unfolding again', Before,
+    Length(V.ComputeBlockGuides(0, V.Lines.Count - 1)));
+
+  { The gutter draws chevrons and nothing else now.  A marker beside a line
+    where no block starts was the other half of the complaint, and it came
+    from reading SynEdit's block-selection classifications -- so selecting
+    lines must not create one. }
+  V.BlockBegin := Point(1, 2);
+  V.BlockEnd := Point(1, 4);
+  V.SelectionMode := smNormal;
+  Pump;
+  CheckEqInt('selecting lines adds no fold markers', Before,
+    Length(V.ComputeBlockGuides(0, V.Lines.Count - 1)));
+  V.SelText := V.SelText;      { leave the document as it was }
+
 end;
 
 { Two independent tab groups in one window.

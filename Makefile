@@ -99,8 +99,16 @@ tests:
 # Drives the real forms through a scripted sequence.  Needs a display; under
 # CI that means xvfb-run.  It uses a configuration directory of its own, so it
 # reports led's behaviour rather than yours.
+# On its own display when one can be had.  Sharing the desktop makes the
+# focus-dependent checks depend on whatever else has a window open, which
+# showed up as two failures that would not reproduce on the next run.
 selftest: build
-	./$(BIN) --self-test
+	@if command -v xvfb-run >/dev/null 2>&1; then \
+	  xvfb-run -a ./$(BIN) --self-test; \
+	else \
+	  echo "(xvfb-run not found; running on the current display)"; \
+	  ./$(BIN) --self-test; \
+	fi
 
 # Every converted grammar must load in the engine the editor actually uses.
 grammars:

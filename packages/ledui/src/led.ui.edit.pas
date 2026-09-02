@@ -176,10 +176,18 @@ begin
   Gutter.LineNumberPart.AutoSize := True;
   Gutter.LineNumberPart.DigitCount := 2;
   Gutter.LineNumberPart.LeadingZeros := False;
+  { The marks column only ever holds a bookmark glyph, and at twelve pixels
+    it read as a broad empty band between the numbers and the code.  Six is
+    enough for the glyph and stops the gutter looking like two gutters. }
   Gutter.MarksPart.AutoSize := False;
-  Gutter.MarksPart.Width := LedScale96(12);
-  Gutter.SeparatorPart.Width := LedScale96(2);
+  Gutter.MarksPart.Width := LedScale96(6);
+  Gutter.SeparatorPart.Width := LedScale96(1);
   Gutter.ChangesPart.Width := LedScale96(3);
+
+  { The line the caret is on, called out in the gutter the way every editor
+    that has line numbers does. }
+  Gutter.LineNumberPart.MarkupInfoCurrentLine.Foreground := clWhite;
+  Gutter.LineNumberPart.MarkupInfoCurrentLine.Style := [fsBold];
 
   { The fold column must be sized explicitly, and this is not cosmetic
     fiddling.  TSynGutterCodeFolding derives its box from
