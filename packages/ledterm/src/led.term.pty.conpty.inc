@@ -103,6 +103,19 @@ begin
   Result := FConPtyOk;
 end;
 
+{ The shell to start when the caller named no command.
+
+  SysUtils. is not decoration.  The Windows unit exports a three-argument
+  GetEnvironmentVariable(PChar; PChar; DWORD): DWORD, and it is in scope here
+  because the enclosing unit uses Windows -- so the unqualified one-argument
+  call that works everywhere else resolves to that instead and the build fails
+  with "wrong number of parameters".  Which is exactly what it did. }
+function ConPtyDefaultShell: string;
+begin
+  Result := SysUtils.GetEnvironmentVariable('COMSPEC');
+  if Result = '' then Result := 'cmd.exe';
+end;
+
 function TLedPty.Spawn(const ACommand, AWorkDir: string;
   ACols, ARows: Integer): Boolean;
 var
@@ -181,7 +194,7 @@ begin
   SIEx.StartupInfo.cb := SizeOf(TStartupInfoExW);
 
   if ACommand <> '' then Cmd := UTF8Decode(ACommand)
-  else Cmd := UTF8Decode(LedDefaultShell);
+  else Cmd := UTF8Decode(ConPtyDefaultShell);
   { CreateProcessW may write to the command line buffer, so it cannot be a
     literal or a shared string. }
   UniqueString(Cmd);
