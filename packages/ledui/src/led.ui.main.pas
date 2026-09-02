@@ -23,7 +23,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
-  Led.UI.Bookmarks, Led.UI.Project,
+  Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, LCLProc, LazFileUtils;
 
@@ -257,6 +257,8 @@ type
     tbSep5: TToolButton;
     tbStopTool: TToolButton;
     PopupEditor: TPopupMenu;
+    miSpelling: TMenuItem;
+    mcSpellSep: TMenuItem;
     mcUndo: TMenuItem;
     mcRedo: TMenuItem;
     mcSep1: TMenuItem;
@@ -333,6 +335,11 @@ type
     procedure miTabCopyPathClick(Sender: TObject);
     procedure miTabOpenFolderClick(Sender: TObject);
     procedure PopupEditorPopup(Sender: TObject);
+    procedure PopulateSpellMenu;
+    procedure SpellSuggestClick(Sender: TObject);
+    procedure SpellAddClick(Sender: TObject);
+    procedure SpellIgnoreClick(Sender: TObject);
+    procedure RefreshSpelling;
     procedure PopupTabPopup(Sender: TObject);
     procedure ActionList1Update(AAction: TBasicAction; var Handled: Boolean);
     procedure actCloseTabExecute(Sender: TObject);
@@ -3890,6 +3897,126 @@ begin
   mcUncomment.Enabled := actUncomment.Enabled;
   mcToggleFold.Enabled := actToggleFold.Enabled;
   PopulateContextTools;
+  PopulateSpellMenu;
+end;
+
+{ Corrections for the word under the caret, plus medit's SpellAddToDict and
+  SpellIgnoreWord.  The word is found the same way the squiggle finds it, so
+  what is offered corrections is exactly what was underlined. }
+procedure TLedMainForm.PopulateSpellMenu;
+var
+  V: TLedEdit;
+  Line, Word: string;
+  Start, Len, i: Integer;
+  Sugg: TStringList;
+  Item: TMenuItem;
+begin
+  ClearMenu(miSpelling);
+  miSpelling.Enabled := False;
+  miSpelling.Visible := LedPrefs.GetBool('Editor/spell_enabled', False);
+  mcSpellSep.Visible := miSpelling.Visible;
+  if not miSpelling.Visible then Exit;
+
+  V := CurrentView;
+  if V = nil then Exit;
+  if (V.CaretY < 1) or (V.CaretY > V.Lines.Count) then Exit;
+  Line := V.Lines[V.CaretY - 1];
+  Word := LedWordAt(Line, V.LogicalCaretXY.X, Start, Len);
+  if (Word = '') or LedSpell.Check(Word) then
+  begin
+    miSpelling.Caption := 'Spelling';
+    Exit;
+  end;
+
+  miSpelling.Caption := 'Spelling: ' + Word;
+  miSpelling.Enabled := True;
+
+  Sugg := TStringList.Create;
+  try
+    LedSpell.Suggest(Word, Sugg);
+    for i := 0 to Sugg.Count - 1 do
+    begin
+      Item := TMenuItem.Create(miSpelling);
+      Item.Caption := Sugg[i];
+      Item.Hint := IntToStr(Start) + ':' + IntToStr(Len);
+      Item.OnClick := @SpellSuggestClick;
+      miSpelling.Add(Item);
+    end;
+    if Sugg.Count = 0 then
+    begin
+      Item := TMenuItem.Create(miSpelling);
+      Item.Caption := '(no suggestions)';
+      Item.Enabled := False;
+      miSpelling.Add(Item);
+    end;
+  finally
+    Sugg.Free;
+  end;
+
+  Item := TMenuItem.Create(miSpelling);
+  Item.Caption := '-';
+  miSpelling.Add(Item);
+
+  Item := TMenuItem.Create(miSpelling);
+  Item.Caption := 'Add to Dictionary';
+  Item.Hint := Word;
+  Item.OnClick := @SpellAddClick;
+  miSpelling.Add(Item);
+
+  Item := TMenuItem.Create(miSpelling);
+  Item.Caption := 'Ignore for Now';
+  Item.Hint := Word;
+  Item.OnClick := @SpellIgnoreClick;
+  miSpelling.Add(Item);
+end;
+
+procedure TLedMainForm.SpellSuggestClick(Sender: TObject);
+var
+  V: TLedEdit;
+  Span: string;
+  Colon, Start, Len: Integer;
+begin
+  V := CurrentView;
+  if V = nil then Exit;
+  { The span was stashed on the item as "start:len" when the menu was
+    built, so the replacement lands where the underline was even if the
+    caret has since moved. }
+  Hint := TMenuItem(Sender).Hint;
+  Colon := Pos(':', Hint);
+  if Colon < 2 then Exit;
+  Start := StrToIntDef(Copy(Span, 1, Colon - 1), 0);
+  Len := StrToIntDef(Copy(Span, Colon + 1, MaxInt), 0);
+  if (Start < 1) or (Len < 1) then Exit;
+
+  { Through TextBetweenPoints, so the correction is one undo step. }
+  V.TextBetweenPoints[Point(Start, V.CaretY), Point(Start + Len, V.CaretY)] :=
+    TMenuItem(Sender).Caption;
+  RefreshSpelling;
+end;
+
+procedure TLedMainForm.SpellAddClick(Sender: TObject);
+begin
+  LedSpell.Add(TMenuItem(Sender).Hint);
+  RefreshSpelling;
+end;
+
+procedure TLedMainForm.SpellIgnoreClick(Sender: TObject);
+begin
+  LedSpell.Ignore(TMenuItem(Sender).Hint);
+  RefreshSpelling;
+end;
+
+{ A word added or ignored changes every open document, not just this one. }
+procedure TLedMainForm.RefreshSpelling;
+var
+  i, j: Integer;
+begin
+  for i := 0 to FDocs.Count - 1 do
+    for j := 0 to FDocs[i].ViewCount - 1 do
+    begin
+      FDocs[i].Views[j].SpellMarkup.Invalidate;
+      FDocs[i].Views[j].Invalidate;
+    end;
 end;
 
 procedure TLedMainForm.PopulateContextTools;

@@ -103,8 +103,8 @@ checked off by the presence of a menu entry.
 | `ShowToolbar` | yes | yes | done |
 | `SortFoldersFirst` | yes | | |
 | `SpecialChars` | yes | | |
-| `SpellAddToDict` | yes | | |
-| `SpellIgnoreWord` | yes | | |
+| `SpellAddToDict` | yes | done | |
+| `SpellIgnoreWord` | yes | done; for the session | |
 | `SplitViewHorizontal` | yes | yes | done |
 | `SplitViewVertical` | yes | yes | done |
 | `StopJob` | yes | yes | done |
@@ -154,8 +154,8 @@ checked off by the presence of a menu entry.
 | `show_trailing_spaces` | yes | yes | done |
 | `smart_home_end` | yes | yes | done |
 | `spaces_instead_of_tabs` | yes | yes | done |
-| `spell_enabled` | yes | | |
-| `spell_scope` | yes | | |
+| `spell_enabled` | yes | done | |
+| `spell_scope` | yes | done; code or all | |
 | `strip` | yes | yes | done |
 | `tab_indents` | yes | yes | done |
 | `tab_width` | yes | yes | done |
@@ -211,7 +211,6 @@ An honest list, so nothing here is mistaken for an oversight.
 
 | Feature | Status |
 |---|---|
-| Spell checking | not started, and not previously listed: medit's SpellAddToDict, SpellIgnoreWord, spell_enabled and spell_scope have no counterpart here |
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 

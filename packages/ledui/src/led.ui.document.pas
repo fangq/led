@@ -23,7 +23,7 @@ uses
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
-  Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi;
+  Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup;
 
 type
   TLedDocument = class;
@@ -257,6 +257,15 @@ begin
     AView.Options := AView.Options + [eoTabsToSpaces];
 
   AView.Gutter.LineNumberPart.Visible := FConfig.GetBool(LedSetShowLineNumbers);
+
+  { Spelling.  In code only comments and strings are prose, which is the
+    default; "all" is for plain text and Markdown. }
+  if not LedPrefs.GetBool('Editor/spell_enabled', False) then
+    AView.SetSpellScope(lssOff)
+  else if SameText(LedPrefs.GetStr('Editor/spell_scope', 'code'), 'all') then
+    AView.SetSpellScope(lssAll)
+  else
+    AView.SetSpellScope(lssCode);
   LedApplyThemeToEditor(LedCurrentTheme, AView);
 
   { The block guides are a markup rather than an editor property, so the theme

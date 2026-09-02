@@ -12,7 +12,7 @@ uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditHighlighterFoldBase, SynEditHighlighter,
-  Led.UI.Dpi, Led.UI.FoldGutter;
+  Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.Core.Spell;
 
 { Shortcuts the menus own, which the editor must therefore not consume.
 
@@ -43,6 +43,7 @@ type
                           // a circular unit reference
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
+    FSpell: TLedSpellMarkup;
     FGuideColour: TColor;
     function GetWrapEnabled: Boolean;
     procedure SetWrapEnabled(AValue: Boolean);
@@ -70,6 +71,11 @@ type
     { Created on first use.  TSynCompletion builds a popup form, and building
       a form inside another form's constructor hangs. }
     function Completion: TSynCompletion;
+
+    { The spell markup, created on first use.  Off until a preference turns
+      it on, so a document that is never checked costs nothing. }
+    function SpellMarkup: TLedSpellMarkup;
+    procedure SetSpellScope(AScope: TLedSpellScope);
     { Lines actually on display.  Folding hides lines in the view, never in
       the buffer, so Lines.Count does not move when something is folded and
       is the wrong thing to look at.  TextView is protected on TSynEdit, so
@@ -388,6 +394,27 @@ end;
 
 { Word completion drawn from the document itself.  medit had none at all, and
   it is the absence people notice within a minute. }
+function TLedEdit.SpellMarkup: TLedSpellMarkup;
+begin
+  if FSpell = nil then
+  begin
+    { Owned by the markup manager once added, as the other markups are. }
+    FSpell := TLedSpellMarkup.Create(Self);
+    MarkupManager.AddMarkUp(FSpell);
+  end;
+  Result := FSpell;
+end;
+
+procedure TLedEdit.SetSpellScope(AScope: TLedSpellScope);
+begin
+  { Nothing is created while spell checking is off, so the dictionary is
+    never loaded for someone who does not use it. }
+  if (FSpell = nil) and (AScope = lssOff) then Exit;
+  SpellMarkup.Scope := AScope;
+  SpellMarkup.Invalidate;
+  Invalidate;
+end;
+
 function TLedEdit.Completion: TSynCompletion;
 begin
   if FCompletion = nil then

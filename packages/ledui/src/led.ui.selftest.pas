@@ -30,7 +30,8 @@ uses
   Led.UI.Icons, Led.UI.Focus, Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
-  Led.Core.Session, Led.UI.Bookmarks, Led.UI.Symbols,
+  Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
+  Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, ActnList, Menus, PairSplitter, LCLProc;
@@ -186,6 +187,109 @@ const
     'Default', 'Black on White', 'Black on Light Yellow', 'Marble',
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
+
+procedure TestSpelling(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Start, Len: Integer;
+  W: string;
+  Before: Integer;
+  Bound: TLazSynDisplayTokenBound;
+  Rtl: TLazSynDisplayRtlInfo;
+  Attr: TSynSelectedColor;
+begin
+  Say('spelling');
+
+  Check('the shipped dictionary loaded', LedSpell.Loaded);
+  Check('with a plausible number of words', LedSpell.WordCount > 50000);
+
+  { The word finder is shared between the squiggle and the context menu, so
+    that what gets offered corrections is exactly what was underlined. }
+  W := LedWordAt('the recieve word', 6, Start, Len);
+  CheckEq('the word under a column is found', 'recieve', W);
+  CheckEqInt('at the right place', 5, Start);
+  CheckEqInt('with the right length', 7, Len);
+
+  W := LedWordAt('call foo_bar(x)', 7, Start, Len);
+  CheckEq('an identifier stops at the underscore', 'foo', W);
+
+  W := LedWordAt('it''s here', 2, Start, Len);
+  CheckEq('a contraction is one word', 'it''s', W);
+
+  W := LedWordAt(#39 + 'quoted' + #39, 3, Start, Len);
+  CheckEq('but surrounding quotes are not part of it', 'quoted', W);
+
+  Before := F.Notebook.PageCount;
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  V := F.ActiveView;
+  V.Lines.Text := 'I recieve the notice';
+  V.CaretXY := Point(3, 1);
+
+  { Off by default, so nothing is underlined until asked. }
+  LedPrefs.SetBool('Editor/spell_enabled', False);
+  F.ActiveTab.Document.ApplyConfigToViews;
+  Pump;
+  F.PopupEditorPopup(nil);
+  Check('the spelling menu is hidden while the feature is off',
+    not F.miSpelling.Visible);
+
+  LedPrefs.SetBool('Editor/spell_enabled', True);
+  LedPrefs.SetStr('Editor/spell_scope', 'all');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  Pump;
+  V.CaretXY := Point(4, 1);      { inside "recieve" }
+  F.PopupEditorPopup(nil);
+  Check('and shown when it is on', F.miSpelling.Visible);
+  Check('naming the misspelled word',
+    Pos('recieve', F.miSpelling.Caption) > 0);
+  Check('with suggestions under it', F.miSpelling.Count > 0);
+  Check('the first of which is the correction',
+    F.miSpelling.Items[0].Caption = 'receive');
+
+  { The markup itself, not just the menu.  SynEdit markups are the part of
+    this that can be wired up correctly and still paint nothing -- the fold
+    colours did exactly that -- so the contract is asserted directly: the
+    editor asks GetMarkupAttributeAtRowCol for each token, and the answer has
+    to be the wavy underline inside the misspelling and nil outside it. }
+  Bound := Default(TLazSynDisplayTokenBound);
+  Rtl := Default(TLazSynDisplayRtlInfo);
+
+  Bound.Logical := 3;          { inside "recieve", which spans 3..9 }
+  Attr := V.SpellMarkup.GetMarkupAttributeAtRowCol(1, Bound, Rtl);
+  Check('the markup claims a column inside the misspelling', Attr <> nil);
+  if Attr <> nil then
+  begin
+    Check('and asks for a wavy underline', Attr.FrameStyle = slsWaved);
+    Check('along the bottom edge', Attr.FrameEdges = sfeBottom);
+    Check('in red', Attr.FrameColor = clRed);
+  end;
+
+  Bound.Logical := 1;          { "I", which is correct }
+  Attr := V.SpellMarkup.GetMarkupAttributeAtRowCol(1, Bound, Rtl);
+  Check('and claims nothing on a correctly spelled word', Attr = nil);
+
+  Bound.Logical := 12;         { "the" }
+  Attr := V.SpellMarkup.GetMarkupAttributeAtRowCol(1, Bound, Rtl);
+  Check('nor on a short common one', Attr = nil);
+
+  { Adding a word silences it everywhere, not just here. }
+  LedSpell.Ignore('recieve');
+  Check('an ignored word is accepted', LedSpell.Check('recieve'));
+  V.CaretXY := Point(4, 1);
+  F.PopupEditorPopup(nil);
+  Check('and the menu stops offering corrections for it',
+    Pos('recieve', F.miSpelling.Caption) = 0);
+
+  LedPrefs.SetBool('Editor/spell_enabled', False);
+  F.ActiveTab.Document.Master.Modified := False;
+  while F.Notebook.PageCount > Before do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+end;
 
 procedure TestProjectList(F: TLedMainForm);
 var
@@ -2556,6 +2660,7 @@ begin
   TestBookmarkList(F);
   TestSharedDocuments(F);
   TestProjectList(F);
+  TestSpelling(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);

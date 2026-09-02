@@ -146,7 +146,7 @@ install:
 	  exit 1; }
 	install -Dm755 $(BIN) $(PREFIX)/bin/led
 	@# Grammars, themes and the shipped tools are read at run time.
-	@for sub in grammars themes tools langs; do \
+	@for sub in grammars themes tools langs dict; do \
 	  if [ -d "data/$$sub" ]; then \
 	    mkdir -p "$(PREFIX)/share/led/$$sub"; \
 	    cp -r "data/$$sub/." "$(PREFIX)/share/led/$$sub/"; \
