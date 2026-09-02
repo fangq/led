@@ -129,12 +129,19 @@ jobs:
     # machine has no Windows cross-toolchain.  This compiles it against a
     # mirror of FPC's Win32 declarations on Linux, so a typo in it is caught
     # here rather than by the Windows job several minutes later.
-    runs-on: ubuntu-latest
+    #
+    # apt, not gcarreno/setup-lazarus: this job was written with that action
+    # and sat inside it for two hours and twenty-four minutes on its first
+    # real run, which is the stall .github/actions/lazarus-apt exists to
+    # avoid.  It also needs no Lazarus at all -- make conpty calls fpc
+    # directly -- but the composite action is the pattern every other Linux
+    # job here uses and it brings fpc with it.  timeout-minutes so the next
+    # hang fails in a quarter of an hour rather than sitting there.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - uses: gcarreno/setup-lazarus@v3.4.1
-        with:
-          lazarus-version: stable
+      - uses: ./.github/actions/lazarus-apt
       - name: Type-check ConPTY
         run: make conpty
 
