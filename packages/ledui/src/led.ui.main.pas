@@ -22,7 +22,8 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview,
-  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.Core.Recovery, Led.UI.Dpi,
+  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
+  Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, LCLProc, LazFileUtils;
 
 type
@@ -502,6 +503,7 @@ type
     procedure UpdateStatusBar;
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
+    function ConfirmCloseAll: Boolean;
     procedure PopulateReopenMenu;
     procedure ReopenEncodingItemClick(Sender: TObject);
     procedure PopulateDocMenu;
@@ -533,6 +535,7 @@ type
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
+    function SaveDocument(ADoc: TLedDocument): Boolean;
     function ActiveTab: TLedTab;
     function ActiveView: TLedEdit;
     function AddTab(ADoc: TLedDocument): TLedTab;
@@ -2894,6 +2897,30 @@ begin
   PopulateToolMenu;
 end;
 
+{ Saves ADoc, whichever tab happens to be in front.  An untitled document
+  still needs the dialog, and that dialog needs the document in front of the
+  user, so it is brought forward first. }
+function TLedMainForm.SaveDocument(ADoc: TLedDocument): Boolean;
+var
+  Tab: TLedTab;
+begin
+  Result := False;
+  if ADoc = nil then Exit;
+  if ADoc.IsUntitled then
+  begin
+    { Bring it forward, so the Save As dialog is about the document the user
+      is looking at. }
+    Tab := FindTabFor(ADoc);
+    if (Tab <> nil) and (Tab.Sheet <> nil) and
+       (Tab.Sheet.PageControl <> nil) then
+      Tab.Sheet.PageControl.ActivePage := Tab.Sheet;
+    actSaveAsExecute(nil);
+  end
+  else
+    ADoc.Save;
+  Result := not ADoc.Modified;
+end;
+
 procedure TLedMainForm.actSaveExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -2925,6 +2952,60 @@ begin
   end;
 end;
 
+{ Asks about every modified document at once.  One at a time is fine for one;
+  for six it is six dialogs with no way to see how many are left, which is
+  what medit's single list avoided. }
+function TLedMainForm.ConfirmCloseAll: Boolean;
+var
+  Dirty: TFPList;
+  Names: TStringList;
+  Ticked: TList;
+  i: Integer;
+  Doc: TLedDocument;
+begin
+  Result := True;
+  Dirty := TFPList.Create;
+  Names := TStringList.Create;
+  Ticked := TList.Create;
+  try
+    for i := 0 to FDocs.Count - 1 do
+      if FDocs[i].Modified then
+      begin
+        Dirty.Add(FDocs[i]);
+        Names.Add(FDocs[i].DisplayName);
+      end;
+
+    if Dirty.Count = 0 then Exit(True);
+    if Silent then Exit(True);
+
+    { One document keeps the plain question; a list for one item would be
+      more ceremony than the answer is worth. }
+    if Dirty.Count = 1 then
+      Exit(ConfirmClose(TLedDocument(Dirty[0])));
+
+    case LedAskSaveMany(Self, Names, Ticked) of
+      lsmCancel: Exit(False);
+      lsmDiscard: Exit(True);
+      lsmSave:
+        begin
+          for i := 0 to Ticked.Count - 1 do
+          begin
+            Doc := TLedDocument(Dirty[PtrInt(Ticked[i])]);
+            if not SaveDocument(Doc) then
+              { A failed or cancelled save stops the close: the alternative
+                is losing the work the user just asked to keep. }
+              Exit(False);
+          end;
+          Result := True;
+        end;
+    end;
+  finally
+    Ticked.Free;
+    Names.Free;
+    Dirty.Free;
+  end;
+end;
+
 function TLedMainForm.ConfirmClose(ADoc: TLedDocument): Boolean;
 var
   Res: Integer;
@@ -2935,7 +3016,10 @@ begin
   case Res of
     mrYes:
       begin
-        actSaveExecute(nil);
+        { SaveDocument, not actSaveExecute: the latter saves whichever tab is
+          active, so closing a window with several modified documents saved
+          the same one over and over and left the rest unsaved. }
+        SaveDocument(ADoc);
         Result := not ADoc.Modified;
       end;
     mrNo: Result := True;
@@ -3026,16 +3110,9 @@ begin
 end;
 
 procedure TLedMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
-var
-  i: Integer;
 begin
-  for i := 0 to FDocs.Count - 1 do
-    if not ConfirmClose(FDocs[i]) then
-    begin
-      CanClose := False;
-      Exit;
-    end;
-  CanClose := True;
+  CanClose := ConfirmCloseAll;
+  if not CanClose then Exit;
 
   { Written before the windows come down, while the state still exists. }
   if LedPrefs.GetBool(LedPrefSaveSession, False) then

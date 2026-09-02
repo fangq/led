@@ -216,7 +216,7 @@ An honest list, so nothing here is mistaken for an oversight.
 | Bookmark management | jumping between bookmarks and toggling them works; medit's AddBookmark, EditBookmarks and the Bookmarks menu do not exist |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | Multiple windows | File / New Window opens one; documents are not shared between them |
-| "Save these documents?" multi-document dialog | not started; each document is asked about separately |
+
 | Project file list pane (medit's File List) | not started |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
