@@ -119,8 +119,8 @@ checked off by the presence of a menu entry.
 
 | Feature | medit | led | Decision |
 |---|---|---|---|
-| `/open` | yes | | |
-| `Editor` | yes | | |
+| `/open` | yes | replaced by last_dir | |
+| `Editor` | yes | the prefix itself, not a setting | |
 | `add_newline` | yes | yes | done |
 | `auto_indent` | yes | yes | done |
 | `auto_save` | yes | replaced | crash recovery journals unsaved work to `<config>/recovery` instead of writing the user's file behind their back; see `Editor/recovery_enabled` |
@@ -128,7 +128,7 @@ checked off by the presence of a menu entry.
 | `auto_sync` | yes | yes | done |
 | `backspace_indents` | yes | yes | done |
 | `color_scheme` | yes | yes | done |
-| `dialogs` | yes | | |
+| `dialogs` | yes | replaced by last_dir | |
 | `draw_right_margin` | yes | yes | done |
 | `enable_highlighting` | yes | yes | done |
 | `encoding_save` | yes | yes | done |
@@ -138,16 +138,16 @@ checked off by the presence of a menu entry.
 | `highlight_matching_brackets` | yes | yes | done |
 | `highlight_mismatching_brackets` | yes | yes | done |
 | `indent_width` | yes | yes | done |
-| `last_dir` | yes | | |
-| `line_numbers_font` | yes | | |
+| `last_dir` | yes | done | |
+| `line_numbers_font` | yes | SynEdit's gutter draws with the editor font -- MarkupInfo carries colours and style but no font -- so this needs a custom gutter part | |
 | `make_backups` | yes | yes | done |
 | `open_dialog_follows_doc` | yes | yes | done |
-| `open_new_window` | yes | | |
-| `pdf_last_dir` | yes | | |
-| `quick_search_flags` | yes | | |
+| `open_new_window` | yes | done; honoured on the single-instance hand-off | |
+| `pdf_last_dir` | yes | done | |
+| `quick_search_flags` | yes | done; shares the search_flags word | |
 | `right_margin_offset` | yes | yes | done |
 | `save_session` | yes | yes | done |
-| `search_flags` | yes | | |
+| `search_flags` | yes | done | |
 | `show_line_numbers` | yes | yes | done |
 | `show_spaces` | yes | yes | done |
 | `show_tabs` | yes | yes | done |
@@ -159,9 +159,9 @@ checked off by the presence of a menu entry.
 | `strip` | yes | yes | done |
 | `tab_indents` | yes | yes | done |
 | `tab_width` | yes | yes | done |
-| `use_tabs` | yes | | |
-| `window_title` | yes | | |
-| `window_title_no_doc` | yes | | |
+| `use_tabs` | yes | done; hides the tab strip when one document is open | |
+| `window_title` | yes | done | |
+| `window_title_no_doc` | yes | done | |
 | `wrapping_dont_split_words` | yes | yes | done |
 | `wrapping_enable` | yes | yes | done |
 

@@ -536,6 +536,11 @@ type
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
     function SaveDocument(ADoc: TLedDocument): Boolean;
+    function FormatWindowTitle(ADoc: TLedDocument): string;
+    { Where an Open or Save As dialog should start, and how it learns. }
+    procedure ApplyTabVisibility;
+    function DialogStartDir: string;
+    procedure RememberDialogDir(const AFileName: string);
     function ActiveTab: TLedTab;
     function ActiveView: TLedEdit;
     function AddTab(ADoc: TLedDocument): TLedTab;
@@ -557,11 +562,13 @@ type
     function NewDocShortCut: TShortCut;
     property Recent: TLedRecentFiles read FRecent;
     property Browser: TLedFileBrowser read FBrowser;
+    property Search: TLedSearchState read FSearch;
 
     { Takes ownership of the single-instance server and starts listening for
       hand-offs from later invocations. }
     procedure AdoptInstance(AInstance: TLedInstance);
     procedure ApplyCommandLine(ACmd: TLedCommandLine; const ACwd: string);
+    procedure HandOffToNewWindow(ACmd: TLedCommandLine; const ACwd: string);
   end;
 
 var
@@ -660,6 +667,8 @@ begin
   FRecent := TLedRecentFiles.Create;
   FRecent.Load;
   FSearch := TLedSearchState.Create;
+  { The search toggles are the user's, not the session's. }
+  FSearch.LoadFlags;
   { Defaults are captured before keys.ini is read, so a customisation can be
     told from a default and Reset has something to go back to. }
   FShortcuts := TLedShortcuts.Create(ActionList1);
@@ -753,6 +762,12 @@ begin
   { Restore where the user last put the panes.  A layout from an older build
     is discarded rather than fought with, leaving the defaults. }
   FDock.LoadLayout(LedConfigFile('layout.xml'));
+
+  { medit's use_tabs decided whether documents share a window through a tab
+    strip.  led always uses tabs -- one document per window is what New Window
+    is for -- so the setting controls whether the strip is shown when there is
+    only one document in it. }
+  ApplyTabVisibility;
 
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
@@ -1008,6 +1023,8 @@ begin
   { Preferences feed the user layer of every document's config, and the theme
     may have changed too, so both are rebuilt and pushed to every view. }
   LedReloadUserConfig;
+  ApplyTabVisibility;
+  ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
@@ -1086,6 +1103,15 @@ begin
   Cmd := TLedCommandLine.Create;
   try
     Cmd.FromJSON(APayload, Cwd);
+    { medit's open_new_window preference says a hand-off should land in a
+      window of its own rather than another tab here.  --new-tab on the
+      command line overrides it, since that is the more specific request. }
+    if Cmd.NewWindow or
+       (LedPrefs.GetBool('Editor/open_new_window', False) and not Cmd.NewTab) then
+    begin
+      HandOffToNewWindow(Cmd, Cwd);
+      Exit;
+    end;
     ApplyCommandLine(Cmd, Cwd);
   finally
     Cmd.Free;
@@ -1096,6 +1122,21 @@ begin
   if WindowState = wsMinimized then WindowState := wsNormal;
   Show;
   BringToFront;
+end;
+
+{ Opens the request in a second window instead of this one.  Documents are
+  not shared between windows, so this is a genuinely separate editor -- which
+  is what both the flag and the preference ask for. }
+procedure TLedMainForm.HandOffToNewWindow(ACmd: TLedCommandLine;
+  const ACwd: string);
+var
+  W: TLedMainForm;
+begin
+  W := TLedMainForm.Create(Application);
+  W.Show;
+  W.ApplyCommandLine(ACmd, ACwd);
+  if W.WindowState = wsMinimized then W.WindowState := wsNormal;
+  W.BringToFront;
 end;
 
 procedure TLedMainForm.ApplyCommandLine(ACmd: TLedCommandLine;
@@ -2644,6 +2685,7 @@ begin
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
+  ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;
   { During FormCreate the window is not visible yet, so this cannot succeed
@@ -2727,7 +2769,7 @@ begin
     StatusBar1.Panels[2].Text := '';
     StatusBar1.Panels[3].Text := '';
     StatusBar1.Panels[4].Text := '';
-    Caption := 'led';
+    Caption := FormatWindowTitle(nil);
     Exit;
   end;
 
@@ -2745,10 +2787,104 @@ begin
   else
     StatusBar1.Panels[4].Text := 'OVR';
 
-  if D.IsUntitled then
-    Caption := Format('led - %s', [D.DisplayName])
+  Caption := FormatWindowTitle(D);
+end;
+
+{ The window title, from the format string in preferences.  medit's
+  placeholders, so a title people had configured there carries over:
+
+    %a  the application name        %b  the document's base name
+    %f  its full display name       %u  its path, or the display name
+    %s  the status suffix -- " [modified]", " [new file]" and so on
+    %%  a literal per cent
+
+  Two formats, because with no document open most of them have nothing to
+  expand to. }
+{ medit remembered the last directory a file dialog visited, and could be
+  told to follow the current document instead.  Both, here. }
+{ Hides the tab strip when it has nothing to choose between, if the user asked
+  for that.  TPageControl draws no strip at all when ShowTabs is off, which is
+  the point: a single document then fills the window. }
+procedure TLedMainForm.ApplyTabVisibility;
+var
+  Always: Boolean;
+begin
+  Always := LedPrefs.GetBool('Editor/use_tabs', True);
+  if FBook <> nil then
+    FBook.ShowTabs := Always or (FBook.PageCount > 1);
+  if FBook2 <> nil then
+    FBook2.ShowTabs := Always or (FBook2.PageCount > 1);
+end;
+
+function TLedMainForm.DialogStartDir: string;
+var
+  Tab: TLedTab;
+begin
+  if LedPrefs.GetBool('Editor/open_dialog_follows_doc', True) then
+  begin
+    Tab := ActiveTab;
+    if (Tab <> nil) and (Tab.Document.FileName <> '') then
+      Exit(ExtractFilePath(Tab.Document.FileName));
+  end;
+  Result := LedPrefs.GetStr('Editor/last_dir', '');
+  if (Result <> '') and not DirectoryExists(Result) then Result := '';
+end;
+
+procedure TLedMainForm.RememberDialogDir(const AFileName: string);
+var
+  Dir: string;
+begin
+  Dir := ExtractFilePath(AFileName);
+  if Dir <> '' then LedPrefs.SetStr('Editor/last_dir', Dir);
+end;
+
+function TLedMainForm.FormatWindowTitle(ADoc: TLedDocument): string;
+var
+  Fmt, Status: string;
+  i: Integer;
+begin
+  if ADoc = nil then
+    Fmt := LedPrefs.GetStr('Editor/window_title_no_doc', '%a')
   else
-    Caption := Format('led - %s', [D.FileName]);
+    Fmt := LedPrefs.GetStr('Editor/window_title', '%a - %f%s');
+
+  Status := '';
+  if ADoc <> nil then
+  begin
+    if ADoc.IsUntitled then Status := ' [new file]'
+    else if not FileExists(ADoc.FileName) then Status := ' [deleted]'
+    else if ADoc.Modified then Status := ' [modified]';
+  end;
+
+  Result := '';
+  i := 1;
+  while i <= Length(Fmt) do
+  begin
+    if (Fmt[i] = '%') and (i < Length(Fmt)) then
+    begin
+      Inc(i);
+      case Fmt[i] of
+        'a': Result := Result + 'led';
+        'b': if ADoc <> nil then
+               Result := Result + ExtractFileName(ADoc.DisplayName);
+        'f': if ADoc <> nil then Result := Result + ADoc.DisplayName;
+        'u': if ADoc <> nil then
+             begin
+               if ADoc.FileName <> '' then Result := Result + ADoc.FileName
+               else Result := Result + ADoc.DisplayName;
+             end;
+        's': Result := Result + Status;
+        '%': Result := Result + '%';
+      else
+        { An unknown placeholder is left as typed rather than swallowed, so a
+          mistake in the format is visible instead of silent. }
+        Result := Result + '%' + Fmt[i];
+      end;
+    end
+    else
+      Result := Result + Fmt[i];
+    Inc(i);
+  end;
 end;
 
 procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
@@ -2843,8 +2979,15 @@ end;
 
 procedure TLedMainForm.actOpenExecute(Sender: TObject);
 begin
+  { Start where the last one left off, or in the current document's folder
+    when the user asked for that. }
+  OpenDialog1.InitialDir := DialogStartDir;
   if OpenDialog1.Execute then
+  begin
+    if OpenDialog1.Files.Count > 0 then
+      RememberDialogDir(OpenDialog1.Files[0]);
     OpenFiles(OpenDialog1.Files);
+  end;
 end;
 
 procedure TLedMainForm.OpenFiles(AFiles: TStrings);
@@ -2941,8 +3084,10 @@ begin
   if Tab = nil then Exit;
   if not Tab.Document.IsUntitled then
     SaveDialog1.FileName := Tab.Document.FileName;
+  SaveDialog1.InitialDir := DialogStartDir;
   if SaveDialog1.Execute then
   begin
+    RememberDialogDir(SaveDialog1.FileName);
     Tab.Document.SaveToFile(SaveDialog1.FileName);
     RefreshTabCaption(Tab);
     UpdateStatusBar;
@@ -3054,6 +3199,7 @@ begin
   if Doc.ViewCount = 0 then
     FDocs.CloseDocument(Doc);
 
+  ApplyTabVisibility;
   if AReplace and (FBook.PageCount = 0) then
     actNewExecute(nil)
   else
@@ -3130,6 +3276,7 @@ begin
     panes sit is part of the window, not part of the documents in it. }
   FDock.SaveLayout(LedConfigFile('layout.xml'));
   FRecent.Save;
+  FSearch.SaveFlags;
   if LedPrefs.Dirty then
     LedPrefs.Save;
 end;
@@ -3238,7 +3385,9 @@ begin
     Dlg.Options := Dlg.Options + [ofOverwritePrompt];
     Dlg.FileName := ChangeFileExt(ExtractFileName(
       ActiveTab.Document.DisplayName), '.pdf');
+    Dlg.InitialDir := LedPrefs.GetStr('Editor/pdf_last_dir', DialogStartDir);
     if not Dlg.Execute then Exit;
+    LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
     try
       LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
     except
@@ -3262,7 +3411,9 @@ begin
     Dlg.Options := Dlg.Options + [ofOverwritePrompt];
     Dlg.FileName := ChangeFileExt(ExtractFileName(
       ActiveTab.Document.DisplayName), '.html');
+    Dlg.InitialDir := DialogStartDir;
     if not Dlg.Execute then Exit;
+    RememberDialogDir(Dlg.FileName);
     try
       LedExportHtml(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
     except
