@@ -54,11 +54,11 @@ checked off by the presence of a menu entry.
 | `FindNext` | yes | yes | done |
 | `FindPrevious` | yes | yes | done |
 | `FocusDoc` | yes | yes | done |
-| `GoBack` | yes | | |
-| `GoForward` | yes | | |
-| `GoHome` | yes | | |
+| `GoBack` | yes | done | |
+| `GoForward` | yes | done | |
+| `GoHome` | yes | done | |
 | `GoToLine` | yes | yes | done |
-| `GoUp` | yes | | |
+| `GoUp` | yes | done | |
 | `GotoMatchingBracket` | yes | yes | done |
 | `Help` | yes | yes | done |
 | `Indent` | yes | yes | done |
@@ -86,7 +86,7 @@ checked off by the presence of a menu entry.
 | `PrintOptions` | yes | | |
 | `PrintPdf` | yes | yes | done |
 | `PrintPreview` | yes | | |
-| `Properties` | yes | | |
+| `Properties` | yes | done | |
 | `QuickSearch` | yes | yes | done |
 | `Quit` | yes | yes | done |
 | `Redo` | yes | yes | done |
@@ -214,7 +214,7 @@ An honest list, so nothing here is mistaken for an oversight.
 | Spell checking | not started, and not previously listed: medit's SpellAddToDict, SpellIgnoreWord, spell_enabled and spell_scope have no counterpart here |
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | Bookmark management | jumping between bookmarks and toggling them works; medit's AddBookmark, EditBookmarks and the Bookmarks menu do not exist |
-| File browser navigation history | no GoBack / GoForward / GoHome / GoUp, ShowHiddenFiles is a checkbox rather than an action, and SortFoldersFirst is fixed |
+| File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | Multiple windows | File / New Window opens one; documents are not shared between them |
 | "Save these documents?" multi-document dialog | not started; each document is asked about separately |
 | Tab reordering | not started; the tab context menu is done |

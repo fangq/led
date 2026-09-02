@@ -39,6 +39,12 @@ function LedIconNames: TStringArray;
 { Draws one icon into ABitmap, which must already be sized. }
 procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
 
+{ One icon as a 16x16 bitmap with a transparent background, for the controls
+  that take a Glyph rather than an image list index.  The caller owns the
+  result only through the control it assigns it to -- TSpeedButton.Glyph
+  copies, so the bitmap is freed here. }
+function LedIconBitmap(const AName: string; AColour: TColor): TBitmap;
+
 implementation
 
 const
@@ -48,7 +54,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..39] of string = (
+  IconNames: array[0..43] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -57,7 +63,9 @@ const
     'browser', 'symbols', 'splith', 'splitv', 'wrap', 'linenumbers',
     'help', 'about',
     { The tab headers: a plain document, and one with unsaved changes. }
-    'doc', 'docmodified'
+    'doc', 'docmodified',
+    { File-browser navigation. }
+    'back', 'forward', 'up', 'home'
   );
 
 function LedIconNames: TStringArray;
@@ -413,6 +421,33 @@ begin
         P.C.Brush.Style := bsClear;
         P.C.TextOut(P.X(5.5), P.X(2.5), '?');
       end;
+    'back', 'forward', 'up':
+      begin
+        { One arrow, drawn in the direction asked for. }
+        P.Width(1.8);
+        if N = 'up' then
+        begin
+          P.Line(8, 14, 8, 4);
+          P.Poly([3.5, 8.5, 8, 3.5, 12.5, 8.5], True);
+        end
+        else if N = 'back' then
+        begin
+          P.Line(14, 8, 4, 8);
+          P.Poly([8.5, 3.5, 3.5, 8, 8.5, 12.5], True);
+        end
+        else
+        begin
+          P.Line(2, 8, 12, 8);
+          P.Poly([7.5, 3.5, 12.5, 8, 7.5, 12.5], True);
+        end;
+        P.Width(1.2);
+      end;
+    'home':
+      begin
+        P.Poly([1.5, 8, 8, 2, 14.5, 8]);
+        P.Poly([3.5, 7.5, 3.5, 14, 12.5, 14, 12.5, 7.5]);
+        P.Box(6.5, 9.5, 9.5, 14);
+      end;
     'doc', 'docmodified':
       begin
         DrawPage(P);
@@ -433,6 +468,29 @@ begin
         P.C.TextOut(P.X(6.5), P.X(2.5), 'i');
       end;
   end;
+end;
+
+var
+  FGlyph: TBitmap = nil;
+
+function LedIconBitmap(const AName: string; AColour: TColor): TBitmap;
+begin
+  { One bitmap reused for every call: Glyph.Assign copies, so nothing outside
+    keeps a reference, and this avoids leaking one per button. }
+  if FGlyph = nil then
+  begin
+    FGlyph := TBitmap.Create;
+    FGlyph.PixelFormat := pf24bit;
+    FGlyph.SetSize(16, 16);
+  end;
+  FGlyph.Canvas.Brush.Color := MaskColour;
+  FGlyph.Canvas.Brush.Style := bsSolid;
+  FGlyph.Canvas.FillRect(0, 0, 16, 16);
+  FGlyph.Canvas.AntialiasingMode := amOff;
+  LedDrawIcon(FGlyph, AName, AColour);
+  FGlyph.TransparentColor := MaskColour;
+  FGlyph.Transparent := True;
+  Result := FGlyph;
 end;
 
 function LedBuildIconList(AImages: TImageList; const ANames: array of string;
@@ -471,5 +529,8 @@ begin
     end;
   end;
 end;
+
+finalization
+  FGlyph.Free;
 
 end.

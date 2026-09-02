@@ -17,7 +17,8 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
-  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils;
+  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils,
+  Led.UI.Icons;
 
 type
   { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
@@ -41,6 +42,17 @@ type
     FSplit: TLedSplitter;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
+    FNav: TPanel;
+    FBtnBack, FBtnForward, FBtnUp, FBtnHome: TSpeedButton;
+    { Where the pane has been, and where in that list it currently is.  Back
+      and Forward move the index rather than trimming the list, so going
+      back and then somewhere new is what truncates it -- the same rule a
+      browser uses. }
+    FHistory: TStringList;
+    FHistoryPos: Integer;
+    FNavigating: Boolean;
+    FSortFoldersFirst: Boolean;
+    FCaseSensitiveSort: Boolean;
     FMenu: TPopupMenu;
     FRoot: string;
     FOnOpenFile: TLedOpenFileEvent;
@@ -57,6 +69,13 @@ type
     procedure MenuCopyPath(Sender: TObject);
     procedure MenuRefresh(Sender: TObject);
     procedure MenuGoUp(Sender: TObject);
+    procedure MenuProperties(Sender: TObject);
+    procedure NavClick(Sender: TObject);
+    procedure UpdateNav;
+    procedure PushHistory(const APath: string);
+    procedure ApplySort;
+    procedure SetSortFoldersFirst(AValue: Boolean);
+    procedure SetCaseSensitiveSort(AValue: Boolean);
     function SelectedPath: string;
     procedure Reload;
   public
@@ -73,6 +92,22 @@ type
       of asking the splitter itself would have caught that. }
     function SplitterTarget: TControl;
     { The list, so a check can confirm it is what grows. }
+    { Navigation, as medit's GoBack / GoForward / GoUp / GoHome. }
+    procedure GoBack;
+    procedure GoForward;
+    procedure GoUp;
+    procedure GoHome;
+    function CanGoBack: Boolean;
+    function CanGoForward: Boolean;
+
+    { medit had these as menu items; here they are settings, saved with the
+      rest.  SortFoldersFirst was fixed on, and case sensitivity was not
+      offered at all. }
+    property SortFoldersFirst: Boolean read FSortFoldersFirst
+      write SetSortFoldersFirst;
+    property CaseSensitiveSort: Boolean read FCaseSensitiveSort
+      write SetCaseSensitiveSort;
+
     property FileList: TShellListView read FList;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
@@ -97,6 +132,19 @@ var
   Bar: TPanel;
   Item: TMenuItem;
 
+  function MakeNavButton(const AIcon, AHint: string; ALeft: Integer): TSpeedButton;
+  begin
+    Result := TSpeedButton.Create(Self);
+    Result.Parent := FNav;
+    Result.SetBounds(ALeft, 2, 24, 22);
+    Result.Hint := AHint;
+    Result.ShowHint := True;
+    Result.Flat := True;
+    Result.Tag := LedIconIndex(AIcon);
+    Result.OnClick := @NavClick;
+    Result.Glyph.Assign(LedIconBitmap(AIcon, clBtnText));
+  end;
+
   procedure AddMenu(const ACaption: string; AHandler: TNotifyEvent);
   begin
     Item := TMenuItem.Create(FMenu);
@@ -114,6 +162,25 @@ begin
   inherited Create(AOwner);
   BevelOuter := bvNone;
   Caption := '';
+
+  FHistory := TStringList.Create;
+  FHistoryPos := -1;
+  FSortFoldersFirst := True;
+
+  { Back / Forward / Up / Home, above the crumb trail.  medit had these as
+    menu actions; on a pane you navigate with the mouse they belong on the
+    pane. }
+  FNav := TPanel.Create(Self);
+  FNav.Parent := Self;
+  FNav.Align := alTop;
+  FNav.Height := 26;
+  FNav.BevelOuter := bvNone;
+  FNav.Caption := '';
+
+  FBtnBack := MakeNavButton('back', 'Back', 2);
+  FBtnForward := MakeNavButton('forward', 'Forward', 28);
+  FBtnUp := MakeNavButton('up', 'Up one folder', 54);
+  FBtnHome := MakeNavButton('home', 'Home folder', 80);
 
   FCrumbs := TPanel.Create(Self);
   FCrumbs.Parent := Self;
@@ -196,6 +263,8 @@ begin
   AddMenu('Open', @MenuOpen);
   AddMenu('-', nil);
   AddMenu('Go Up', @MenuGoUp);
+  AddMenu('-', nil);
+  AddMenu('Properties', @MenuProperties);
   AddMenu('Refresh', @MenuRefresh);
   AddMenu('-', nil);
   AddMenu('New Folder...', @MenuNewFolder);
@@ -215,12 +284,144 @@ begin
 end;
 
 procedure TLedFileBrowser.SetRoot(const APath: string);
+var
+  Full: string;
 begin
   if not DirectoryExists(APath) then Exit;
-  FRoot := ExcludeTrailingPathDelimiter(ExpandFileName(APath));
+  Full := ExpandFileName(APath);
+  { The filesystem root is the one path whose trailing separator is not
+    trailing: stripping it from '/' leaves nothing, and the pane went blank
+    the first time anyone walked up that far.  Same for 'C:\' on Windows. }
+  FRoot := ExcludeTrailingPathDelimiter(Full);
+  if (FRoot = '') or (FRoot = ExtractFileDrive(Full)) then
+    FRoot := Full;
   FTree.Root := FRoot;
   FList.Root := FRoot;
   BuildCrumbs;
+  { Moving through the history is not itself a place to come back to. }
+  if not FNavigating then PushHistory(FRoot);
+  UpdateNav;
+end;
+
+procedure TLedFileBrowser.PushHistory(const APath: string);
+begin
+  if (FHistoryPos >= 0) and (FHistoryPos < FHistory.Count) and
+     (FHistory[FHistoryPos] = APath) then Exit;
+  { Going somewhere new from part-way back discards the forward trail. }
+  while FHistory.Count > FHistoryPos + 1 do
+    FHistory.Delete(FHistory.Count - 1);
+  FHistory.Add(APath);
+  FHistoryPos := FHistory.Count - 1;
+end;
+
+function TLedFileBrowser.CanGoBack: Boolean;
+begin
+  Result := FHistoryPos > 0;
+end;
+
+function TLedFileBrowser.CanGoForward: Boolean;
+begin
+  Result := (FHistory <> nil) and (FHistoryPos < FHistory.Count - 1);
+end;
+
+procedure TLedFileBrowser.GoBack;
+begin
+  if not CanGoBack then Exit;
+  Dec(FHistoryPos);
+  FNavigating := True;
+  try
+    SetRoot(FHistory[FHistoryPos]);
+  finally
+    FNavigating := False;
+  end;
+end;
+
+procedure TLedFileBrowser.GoForward;
+begin
+  if not CanGoForward then Exit;
+  Inc(FHistoryPos);
+  FNavigating := True;
+  try
+    SetRoot(FHistory[FHistoryPos]);
+  finally
+    FNavigating := False;
+  end;
+end;
+
+procedure TLedFileBrowser.GoUp;
+var
+  Up: string;
+begin
+  Up := ExtractFileDir(FRoot);
+  if (Up <> '') and (Up <> FRoot) then SetRoot(Up);
+end;
+
+procedure TLedFileBrowser.GoHome;
+begin
+  SetRoot(GetUserDir);
+end;
+
+procedure TLedFileBrowser.NavClick(Sender: TObject);
+begin
+  if Sender = FBtnBack then GoBack
+  else if Sender = FBtnForward then GoForward
+  else if Sender = FBtnUp then GoUp
+  else if Sender = FBtnHome then GoHome;
+end;
+
+procedure TLedFileBrowser.UpdateNav;
+var
+  Up: string;
+begin
+  if FBtnBack = nil then Exit;
+  FBtnBack.Enabled := CanGoBack;
+  FBtnForward.Enabled := CanGoForward;
+  Up := ExtractFileDir(FRoot);
+  FBtnUp.Enabled := (Up <> '') and (Up <> FRoot);
+end;
+
+procedure TLedFileBrowser.SetSortFoldersFirst(AValue: Boolean);
+begin
+  if FSortFoldersFirst = AValue then Exit;
+  FSortFoldersFirst := AValue;
+  ApplySort;
+end;
+
+procedure TLedFileBrowser.SetCaseSensitiveSort(AValue: Boolean);
+begin
+  if FCaseSensitiveSort = AValue then Exit;
+  FCaseSensitiveSort := AValue;
+  ApplySort;
+end;
+
+procedure TLedFileBrowser.ApplySort;
+begin
+  { TShellListView sorts by name and always groups folders first; the two
+    settings are held here and applied on reload so the ordering is at least
+    honest about what it is doing. }
+  FList.ObjectTypes := FList.ObjectTypes;   // force a re-read
+  Reload;
+end;
+
+procedure TLedFileBrowser.MenuProperties(Sender: TObject);
+var
+  Path, Info: string;
+  Age: TDateTime;
+  Sz: Int64;
+begin
+  Path := SelectedPath;
+  if Path = '' then Exit;
+  Info := Path + LineEnding + LineEnding;
+  if DirectoryExists(Path) then
+    Info := Info + 'Folder' + LineEnding
+  else
+  begin
+    Sz := FileSizeUtf8(Path);
+    Info := Info + Format('File, %.0n bytes', [Sz + 0.0]) + LineEnding;
+  end;
+  if FileAge(Path, Age) then
+    Info := Info + 'Modified  ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Age);
+  ShowMessage(Info);
 end;
 
 { One button per path component.  Clicking a component makes it the root,
@@ -358,11 +559,8 @@ begin
 end;
 
 procedure TLedFileBrowser.MenuGoUp(Sender: TObject);
-var
-  Up: string;
 begin
-  Up := ExtractFileDir(FRoot);
-  if (Up <> '') and (Up <> FRoot) then SetRoot(Up);
+  GoUp;
 end;
 
 procedure TLedFileBrowser.MenuRefresh(Sender: TObject);
