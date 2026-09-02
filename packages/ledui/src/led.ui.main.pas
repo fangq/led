@@ -579,6 +579,9 @@ type
     { Public alongside PopulateBookmarkMenu, for the same reason: a check has
       to be able to build the menu and then read what a user would see. }
     procedure PopulateDocMenu;
+    { One crash-recovery journal pass, on demand.  See the note on the
+      implementation for why the timer itself stays off under --self-test. }
+    procedure RunRecoveryPassNow;
     function FormatWindowTitle(ADoc: TLedDocument): string;
     { Where an Open or Save As dialog should start, and how it learns. }
     procedure ApplyTabVisibility;
@@ -2032,7 +2035,17 @@ begin
       E.FileName    := Doc.FileName;
       E.DisplayName := Doc.DisplayName;
       E.Encoding    := Doc.Info.Encoding;
-      E.Language    := Doc.LangInfo.Id;
+      { LangInfo is nil for a document with no language, which every other
+        caller in led checks for and this one did not.  An untitled document
+        has no language -- the self-test asserts exactly that -- so editing
+        Untitled and waiting for this timer dereferenced nil and took the
+        window down.  Reported as a crash a few seconds after pasting into
+        Untitled; the paste only mattered because it made the document
+        modified, which is what brings it into this loop. }
+      if Doc.LangInfo <> nil then
+        E.Language := Doc.LangInfo.Id
+      else
+        E.Language := '';
       E.Line        := Doc.Master.CaretY;
       E.Column      := Doc.Master.CaretX;
       E.SavedAt     := Now;
@@ -2065,6 +2078,19 @@ begin
     changing them.  A harness that races a background task is a harness that
     fails for reasons nobody can reproduce. }
   if Silent then Exit;
+  ReconcileRecovery;
+end;
+
+{ Runs one journal pass now, for the self-test.
+
+  RecoveryTick stands down during a scripted run, for a good reason -- a timer
+  that writes files at arbitrary points between a test's steps makes failures
+  nobody can reproduce.  The cost was that the whole journal path went
+  unexercised by the GUI suite, and it is where a nil dereference sat until a
+  user found it.  Calling it deliberately, at a point of the test's choosing,
+  has neither problem. }
+procedure TLedMainForm.RunRecoveryPassNow;
+begin
   ReconcileRecovery;
 end;
 
