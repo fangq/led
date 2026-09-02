@@ -126,6 +126,33 @@ begin
   Result := LongInt(V);
 end;
 
+{ The handful of colour names a scheme actually uses.  Not a full X11 table:
+  the schemes name their own palette entries for everything else, and a name
+  that is not here resolves to nothing, which is the same answer as before. }
+function LedNamedColour(const AName: string): TLedColour;
+begin
+  case LowerCase(Trim(AName)) of
+    'black':   Result := $000000;
+    'white':   Result := $FFFFFF;
+    'red':     Result := $FF0000;
+    'green':   Result := $008000;
+    'lime':    Result := $00FF00;
+    'blue':    Result := $0000FF;
+    'yellow':  Result := $FFFF00;
+    'cyan', 'aqua':    Result := $00FFFF;
+    'magenta', 'fuchsia': Result := $FF00FF;
+    'gray', 'grey':    Result := $808080;
+    'silver':  Result := $C0C0C0;
+    'maroon':  Result := $800000;
+    'navy':    Result := $000080;
+    'olive':   Result := $808000;
+    'purple':  Result := $800080;
+    'teal':    Result := $008080;
+  else
+    Result := LedNoColour;
+  end;
+end;
+
 function ParseBool(const AValue: string): Boolean;
 begin
   Result := SameText(Trim(AValue), 'true') or (Trim(AValue) = '1');
@@ -172,14 +199,34 @@ end;
 function TLedTheme.ResolveColour(const AValue: string): TLedColour;
 var
   i: Integer;
+  Key: string;
 begin
   if AValue = '' then Exit(LedNoColour);
-  if AValue[1] = '#' then Exit(LedParseColour(AValue));
-  { Otherwise it names a palette entry declared earlier in the file.  Note
-    IndexOfName, not IndexOf: the list holds "name=value" lines. }
-  i := FColours.IndexOfName(AValue);
-  if i < 0 then Exit(LedNoColour);
-  Result := LedParseColour(FColours.ValueFromIndex[i]);
+
+  Key := AValue;
+  if Key[1] = '#' then
+  begin
+    Result := LedParseColour(Key);
+    if Result <> LedNoColour then Exit;
+    { A hash on something that is not hex.  oblivion.xml says
+      background="#black" for line-numbers, and GtkSourceView quietly ignored
+      it and fell through to the widget's own colour, which under a dark GTK
+      theme was dark -- so medit looked right by accident.  Here it left the
+      gutter at its default light grey, a pale band down the side of a dark
+      editor.  Treat the rest as a name. }
+    Key := Copy(Key, 2, MaxInt);
+  end;
+
+  { A palette entry declared earlier in the file.  Note IndexOfName, not
+    IndexOf: the list holds "name=value" lines. }
+  i := FColours.IndexOfName(Key);
+  if i >= 0 then
+  begin
+    Result := LedParseColour(FColours.ValueFromIndex[i]);
+    if Result <> LedNoColour then Exit;
+  end;
+
+  Result := LedNamedColour(Key);
 end;
 
 procedure TLedTheme.ParseStyle(ANode: TDOMElement);

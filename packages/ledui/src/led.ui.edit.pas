@@ -354,14 +354,16 @@ begin
     begin
       Result[N].TextIdx := L;
       SetLength(Result[N].Cols, 0);
+      { Every enclosing block gets a guide, including one that starts at
+        column 1.  Those were skipped, on the grounds that the rule would run
+        down the very edge of the text -- but a function body flush against
+        the margin is the commonest block there is, and leaving it unmarked
+        made the guides look like they stopped working at the top level. }
       for i := 0 to Depth - 1 do
-        { Column 1 means a top-level block, whose guide would run down the
-          very edge of the text.  medit skips those and so does this. }
-        if Stack[i] > 1 then
-        begin
-          SetLength(Result[N].Cols, Length(Result[N].Cols) + 1);
-          Result[N].Cols[High(Result[N].Cols)] := Stack[i];
-        end;
+      begin
+        SetLength(Result[N].Cols, Length(Result[N].Cols) + 1);
+        Result[N].Cols[High(Result[N].Cols)] := Stack[i];
+      end;
       Inc(N);
     end;
 
@@ -387,7 +389,68 @@ procedure TLedEdit.DrawBlockGuides;
 var
   Runs: TLedGuideRuns;
   FV: TSynEditFoldedView;
-  FirstText, LastText, i, j, Row, X, Y, TextLeft: Integer;
+  FirstText, LastText, i, j, Row, TextLeft, LastRow: Integer;
+  RunTop, RunCol: array of Integer;
+
+  function HasCol(const ACols: array of Integer; ACol: Integer): Boolean;
+  var
+    k: Integer;
+  begin
+    for k := 0 to High(ACols) do
+      if ACols[k] = ACol then Exit(True);
+    Result := False;
+  end;
+
+  function IndexOfRun(ACol: Integer): Integer;
+  var
+    k: Integer;
+  begin
+    for k := 0 to High(RunCol) do
+      if RunCol[k] = ACol then Exit(k);
+    Result := -1;
+  end;
+
+  { One line from the top of ATop's row to the top of ABelow's row. }
+  procedure StrokeRun(ACol, ATop, ABelow: Integer);
+  var
+    X: Integer;
+  begin
+    if ABelow <= ATop then Exit;
+    X := TextLeft + (ACol - LeftChar) * CharWidth;
+    if X < TextLeft then Exit;
+    Canvas.MoveTo(X, ATop * LineHeight);
+    Canvas.LineTo(X, ABelow * LineHeight);
+  end;
+
+  procedure OpenRun(ACol, ARow: Integer);
+  var
+    k: Integer;
+  begin
+    for k := 0 to High(RunCol) do
+      if RunCol[k] < 0 then
+      begin
+        RunCol[k] := ACol;
+        RunTop[k] := ARow;
+        Exit;
+      end;
+    SetLength(RunCol, Length(RunCol) + 1);
+    SetLength(RunTop, Length(RunTop) + 1);
+    RunCol[High(RunCol)] := ACol;
+    RunTop[High(RunTop)] := ARow;
+  end;
+
+  procedure FlushRuns(ABelow: Integer);
+  var
+    k: Integer;
+  begin
+    for k := 0 to High(RunCol) do
+      if RunCol[k] >= 0 then
+      begin
+        if ABelow >= 0 then StrokeRun(RunCol[k], RunTop[k], ABelow);
+        RunCol[k] := -1;
+      end;
+  end;
+
 begin
   if FGuideColour = clNone then Exit;
   if not (Highlighter is TSynCustomFoldHighlighter) then Exit;
@@ -400,6 +463,7 @@ begin
 
   Runs := ComputeBlockGuides(FirstText, LastText);
   if Length(Runs) = 0 then Exit;
+  LastRow := -1;
 
   { Where column 1 starts.  TCustomSynEdit.TextLeftPixelOffset computes
     exactly this and is private, so the two lines it amounts to are repeated
@@ -413,23 +477,43 @@ begin
   Canvas.Pen.Width := 1;
   Canvas.Pen.Style := psSolid;
 
+  { One stroke per unbroken vertical run, not one per line.  Drawing each row
+    separately left the rule looking dotted: a per-row LineTo stops a pixel
+    short on some backends, and a row the fold view has no screen line for
+    punched a hole that never closed up. }
+  SetLength(RunTop, 0);
+  SetLength(RunCol, 0);
+
   for i := 0 to High(Runs) do
   begin
     { Folded-away lines have no row of their own; TextIndexToScreenLine gives
-      the row the fold collapsed onto, so they would stack guides on one line. }
+      the row the fold collapsed onto, so they would stack guides on one
+      line.  Such a row ends every run rather than continuing it. }
     Row := FV.TextIndexToScreenLine(Runs[i].TextIdx);
-    if (Row < 0) or (Row >= LinesInWindow) then Continue;
-    if FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx then Continue;
-
-    Y := Row * LineHeight;
-    for j := 0 to High(Runs[i].Cols) do
+    if (Row < 0) or (Row >= LinesInWindow) or
+       (FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx) then
     begin
-      X := TextLeft + (Runs[i].Cols[j] - LeftChar) * CharWidth;
-      if X < TextLeft then Continue;
-      Canvas.MoveTo(X, Y);
-      Canvas.LineTo(X, Y + LineHeight);
+      FlushRuns(-1);
+      Continue;
     end;
+
+    { Close any run whose column is not on this line, then open or extend
+      the ones that are. }
+    for j := 0 to High(RunCol) do
+      if (RunCol[j] >= 0) and not HasCol(Runs[i].Cols, RunCol[j]) then
+      begin
+        StrokeRun(RunCol[j], RunTop[j], Row);
+        RunCol[j] := -1;
+      end;
+
+    for j := 0 to High(Runs[i].Cols) do
+      if IndexOfRun(Runs[i].Cols[j]) < 0 then
+        OpenRun(Runs[i].Cols[j], Row);
+
+    LastRow := Row;
   end;
+
+  FlushRuns(LastRow + 1);
 end;
 
 procedure TLedEdit.Paint;
