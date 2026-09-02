@@ -187,6 +187,71 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestSaveTheRightDocument(F: TLedMainForm);
+var
+  A, B: TLedTab;
+  L: TStringList;
+  P1, P2: string;
+  Before: Integer;
+begin
+  Say('saving a named document');
+
+  P1 := TempName('save-a.txt');
+  P2 := TempName('save-b.txt');
+  L := TStringList.Create;
+  try
+    L.Add('original a'); L.SaveToFile(P1);
+    L.Clear; L.Add('original b'); L.SaveToFile(P2);
+  finally
+    L.Free;
+  end;
+
+  Before := F.Notebook.PageCount;
+  A := F.AddTab(F.Documents.OpenFile(P1));
+  B := F.AddTab(F.Documents.OpenFile(P2));
+  Pump;
+
+  { Both dirty, with B in front.  Edited through the editor, not by assigning
+    Lines.Text -- a direct write to the string list bypasses the undo list,
+    so the document never becomes Modified and this test would pass without
+    testing anything. }
+  A.ActiveView.SelectAll;
+  A.ActiveView.SelText := 'changed a';
+  B.ActiveView.SelectAll;
+  B.ActiveView.SelText := 'changed b';
+  Pump;
+  Check('both documents are modified', A.Document.Modified and B.Document.Modified);
+
+  { Saving A by name has to save A, whichever tab is in front.  ConfirmClose
+    used to call actSaveExecute, which saves the *active* tab -- so closing a
+    window with several modified documents saved the front one repeatedly and
+    left the others on disk unchanged. }
+  Check('B is the tab in front', F.ActiveTab = B);
+  Check('saving A by name reports success', F.SaveDocument(A.Document));
+  Pump;
+  Check('A is no longer modified', not A.Document.Modified);
+  Check('and B still is', B.Document.Modified);
+
+  L := TStringList.Create;
+  try
+    L.LoadFromFile(P1);
+    CheckEq('A''s own file holds A''s text', 'changed a', Trim(L.Text));
+    L.LoadFromFile(P2);
+    CheckEq('and B''s file is untouched', 'original b', Trim(L.Text));
+  finally
+    L.Free;
+  end;
+
+  B.Document.Master.Modified := False;
+  while F.Notebook.PageCount > Before do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(P1); DeleteFile(P2);
+end;
+
 procedure TestTabReordering(F: TLedMainForm);
 var
   A, B, C: TLedTab;
@@ -2148,6 +2213,7 @@ begin
   TestTerminalPaneAndSession(F);
   TestBrowserNavigation(F);
   TestTabReordering(F);
+  TestSaveTheRightDocument(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
