@@ -3077,6 +3077,98 @@ begin
   end;
 end;
 
+{ Copy a rectangle in one document and paste it into another.
+
+  Reported as an access violation.  Every column check before this copied and
+  pasted inside one view, and FColumnClip -- the "what we last put on the
+  clipboard as a rectangle" note -- is a unit-level variable shared by every
+  document, so the target view is not the one the rectangle came from. }
+procedure TestColumnPasteAcrossTabs(F: TLedMainForm);
+var
+  Src, Dst: TLedTab;
+  V: TLedEdit;
+begin
+  Say('column paste across tabs');
+
+  Src := F.AddTab(F.Documents.NewDocument);
+  Pump;
+  if Src = nil then Exit;
+  V := Src.ActiveView;
+  V.Lines.Text := 'aaaa1111' + LineEnding + 'bbbb2222' + LineEnding +
+                  'cccc3333';
+  V.ClearUndo;
+  Pump;
+
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+  LedCopy(V);
+  Pump;
+  Check('the rectangle copied', Clipboard.AsText <> '');
+
+  { A brand new, empty document: one line, and that line is empty, so the
+    paste has to extend the document as it goes. }
+  Dst := F.AddTab(F.Documents.NewDocument);
+  Pump;
+  if Dst = nil then Exit;
+  Check('the second tab is the active one', F.ActiveTab = Dst);
+  V := Dst.ActiveView;
+  CheckEqInt('and it starts with one empty line', 1, V.Lines.Count);
+
+  V.CaretXY := Point(1, 1);
+  LedPaste(V);
+  Pump;
+  CheckGt('pasting a rectangle into an empty document grows it', 1,
+    V.Lines.Count);
+  CheckEq('first row of the rectangle', '1111', V.Lines[0]);
+  CheckEq('and the last', '3333', V.Lines[2]);
+  Check('the source document is untouched',
+    Src.Document.Master.Lines[0] = 'aaaa1111');
+
+  { And into the middle of a document that is shorter than the rectangle,
+    at a column past the end of its lines, which is the padding path. }
+  V.Lines.Text := 'short';
+  V.ClearUndo;
+  Pump;
+  V.CaretXY := Point(20, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  CheckGt('pasting past the end of a short line pads and grows', 1,
+    V.Lines.Count);
+
+  { The rows after the first land on lines the caret is *not* on, so those
+    lines are still truncated -- and TextBetweenPoints works in the view's
+    coordinates, not the buffer's.  Paste at a column past the truncation
+    point and the second row is written to a line the view believes is 4096
+    characters long. }
+  V.Lines.Text := StringOfChar('a', 9000) + LineEnding +
+                  StringOfChar('b', 9000) + LineEnding +
+                  StringOfChar('c', 9000);
+  V.ClearUndo;
+  Pump;
+  Check('the target lines are truncated', V.LongLines.IsTruncated(1));
+  V.CaretXY := Point(6000, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('pasting past a truncation point does not fall', V.Lines.Count >= 3);
+  CheckEqInt('and the rectangle landed at the column asked', 9004,
+    Length(V.Lines[0]));
+  CheckEqInt('on the line below too', 9004, Length(V.Lines[1]));
+
+  Dst.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  Src.Document.Master.Modified := False;
+  if F.ActiveTab = Src then F.CloseActiveTab(False);
+  Pump;
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -3529,6 +3621,7 @@ begin
   TestLongLines(F);
   TestWikiMarkup(F);
   TestColumnPasteWithHighlighter(F);
+  TestColumnPasteAcrossTabs(F);
   TestReportedPolish(F);
   WriteLn;
   TestSplitNotebook(F);

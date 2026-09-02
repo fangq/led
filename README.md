@@ -195,11 +195,17 @@ Past `Editor/max_line_len` characters (4096, medit's figure) a line is drawn
 only up to that point, followed by a red `...`.  Click the marker for another
 4096.  Set the preference to 0 to switch it off.
 
-This is display only.  The buffer keeps every byte, saving is byte-exact, and
-a line the caret or the selection is touching is never truncated — so an edit
-never operates against a shortened line.  On 300 lines of 30,000 characters,
-`bin/led --bench-longline` goes from 68 ms to 18 ms to scroll end to end, and
-from 11 ms to 2 ms to put the caret at the end of a line.
+This is display only, in the strict sense: the logical text every other part
+of the editor sees is the buffer's text, unchanged.  An earlier version also
+shortened the logical line, which was faster again — 18 ms rather than 42 to
+scroll that file — and gave the editor two coordinate spaces that the paste
+path then corrupted text between.  On 300 lines of 30,000 characters,
+`bin/led --bench-longline` goes from 65 ms to 42 ms to scroll end to end and
+from 10 ms to 4 ms to put the caret at the end of a line.
+
+The caret can walk into the hidden tail, and that is deliberate: landing on a
+truncated line reveals the whole of it, so there is never hidden text under
+the cursor.
 
 ### Column selection
 
