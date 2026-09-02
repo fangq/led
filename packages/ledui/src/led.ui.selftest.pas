@@ -1608,6 +1608,8 @@ type
     class procedure Press(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
     class procedure Move(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
     class procedure Release(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
+    class procedure Drag(AView: TLedEdit; AShift: TShiftState;
+      X1, Y1, X2, Y2, ASteps: Integer);
   end;
 
 class procedure TLedMousePoke.Press(AView: TLedEdit; AShift: TShiftState;
@@ -1626,6 +1628,29 @@ class procedure TLedMousePoke.Release(AView: TLedEdit; AShift: TShiftState;
   X, Y: Integer);
 begin
   TLedMousePoke(AView).MouseUp(mbLeft, AShift, X, Y);
+end;
+
+{ A drag the way a mouse makes one: many small moves, each with the message
+  queue drained so the repaint it triggers actually happens.  One Press, one
+  Move and one Release exercises the selection arithmetic but never the paint
+  that runs *during* a selection, which is where a reported crash lived. }
+class procedure TLedMousePoke.Drag(AView: TLedEdit; AShift: TShiftState;
+  X1, Y1, X2, Y2, ASteps: Integer);
+var
+  i, X, Y: Integer;
+begin
+  if ASteps < 1 then ASteps := 1;
+  Press(AView, AShift, X1, Y1);
+  Application.ProcessMessages;
+  for i := 1 to ASteps do
+  begin
+    X := X1 + ((X2 - X1) * i) div ASteps;
+    Y := Y1 + ((Y2 - Y1) * i) div ASteps;
+    Move(AView, AShift, X, Y);
+    Application.ProcessMessages;
+  end;
+  Release(AView, AShift, X2, Y2);
+  Application.ProcessMessages;
 end;
 
 { Which mouse command a gesture resolves to, through SynEdit's own tables and
@@ -3087,6 +3112,7 @@ procedure TestColumnPasteAcrossTabs(F: TLedMainForm);
 var
   Src, Dst: TLedTab;
   V: TLedEdit;
+  i: Integer;
 begin
   Say('column paste across tabs');
 
@@ -3150,6 +3176,7 @@ begin
   V.ClearUndo;
   Pump;
   Check('the target lines are truncated', V.LongLines.IsTruncated(1));
+
   V.CaretXY := Point(6000, 1);
   LedClearSelection(V);
   V.SelectionMode := smNormal;
@@ -3161,11 +3188,129 @@ begin
     Length(V.Lines[0]));
   CheckEqInt('on the line below too', 9004, Length(V.Lines[1]));
 
+  { Last of these, because it replaces the clipboard the checks above rely
+    on.  A column selection reaching past the truncation point.  This is the shape
+    that crashed: while the logical line was shortened, GetPhysicalCharWidths
+    built its width array from the 4096-character view of the line and column
+    arithmetic then indexed it with buffer columns -- 5000, 6000 -- off the
+    end of a dynamic array.  Which is a read of whatever is past it. }
+  V.BlockBegin := Point(5000, 1);
+  V.BlockEnd := Point(6000, 3);
+  V.SelectionMode := smColumn;
+  Pump;
+  Check('a rectangle past the truncation point can be read',
+    Length(V.SelText) > 0);
+  LedCopy(V);
+  Pump;
+  Check('and copied', Clipboard.AsText <> '');
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+
+  { The reported sequence: paste a rectangle into Untitled, then select a
+    rectangle *in* Untitled with the mouse.  The second selection is where it
+    falls over, and it is dragged to places a drag really goes -- past the end
+    of a line, and past the last line -- which is where SynEdit has to invent
+    positions that are not in the text. }
+  V.Lines.Text := '';
+  V.ClearUndo;
+  Pump;
+  V.CaretXY := Point(1, 1);
+  LedPaste(V);
+  Pump;
+  CheckGt('the rectangle landed in the empty document', 1, V.Lines.Count);
+
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  { Well past the right-hand end of every line, and past the last line, and
+    stepped so the editor repaints on the way -- 7 in 10 attempts crashed for
+    the reporter, so whatever it is depends on how the drag unfolds. }
+  TLedMousePoke.Drag(V, [ssCtrl],
+    V.Gutter.Width + 2 + 1 * V.CharWidth, 2,
+    V.Gutter.Width + 2 + 40 * V.CharWidth, 6 * V.LineHeight + 2, 24);
+  Check('selecting a rectangle in the pasted document survives',
+    V.Lines.Count > 1);
+
+  { And again, dragging back up and to the left over the same region. }
+  TLedMousePoke.Drag(V, [ssCtrl],
+    V.Gutter.Width + 2 + 30 * V.CharWidth, 5 * V.LineHeight + 2,
+    V.Gutter.Width + 2 + 0 * V.CharWidth, 2, 24);
+  Check('and so does dragging back over it', V.Lines.Count > 1);
+
+  { Ten times over, because the report was "very often", not "always". }
+  for i := 1 to 10 do
+  begin
+    TLedMousePoke.Drag(V, [ssCtrl],
+      V.Gutter.Width + 2 + (i mod 5) * V.CharWidth, 2,
+      V.Gutter.Width + 2 + (20 + i) * V.CharWidth,
+      (2 + (i mod 4)) * V.LineHeight + 2, 12);
+    LedCopy(V);
+    Application.ProcessMessages;
+  end;
+  Check('and ten rectangles in a row do not', V.Lines.Count > 1);
+  LedCopy(V);
+  Pump;
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  LedPaste(V);
+  Pump;
+  Check('and copying that second rectangle and pasting it again',
+    V.Lines.Count > 1);
+
   Dst.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
   Src.Document.Master.Modified := False;
   if F.ActiveTab = Src then F.CloseActiveTab(False);
+  Pump;
+end;
+
+{ The crash-recovery journal, over a modified untitled document.
+
+  Reported as: paste a column into Untitled, wait a few seconds, crash.  The
+  paste was incidental -- it made the document modified, which is what brings
+  it into the journal pass -- and the few seconds were the recovery timer.
+  RecoveryTick stands down under --self-test, so this whole subsystem had no
+  GUI coverage at all and the nil dereference in it survived every run. }
+procedure TestRecoveryJournalPass(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  V: TLedEdit;
+begin
+  Say('crash-recovery journal pass');
+
+  Tab := F.AddTab(F.Documents.NewDocument);
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+
+  { The precondition the crash needed, and one this suite already asserts
+    elsewhere: an untitled document has no language, so LangInfo is nil. }
+  Check('an untitled document still has no language',
+    Tab.Document.LangInfo = nil);
+
+  V.CaretXY := Point(1, 1);
+  V.InsertTextAtCaret('const M' + LineEnding + 'const P');
+  Pump;
+  Check('and editing it makes it modified', Tab.Document.Modified);
+
+  { This is the line that fell over. }
+  F.RunRecoveryPassNow;
+  Pump;
+  Check('a journal pass over it does not fall', Tab.Document.Modified);
+
+  { Once saved it leaves the journal, which is the other half of the pass. }
+  Tab.Document.Master.Modified := False;
+  F.RunRecoveryPassNow;
+  Pump;
+  Check('and a pass with nothing modified is fine too',
+    not Tab.Document.Modified);
+
+  F.CloseActiveTab(False);
   Pump;
 end;
 
@@ -3538,6 +3683,28 @@ begin
   DeleteFile(Path);
 end;
 
+{ Turns an unhandled exception into a failed check and stops, rather than
+  letting the LCL put up a dialog no one is there to close.
+
+  An instance method, because Application.OnException is "of object". }
+type
+  TSelfTestExceptionSink = class
+    procedure Handle(Sender: TObject; E: Exception);
+  end;
+
+var
+  ExceptionSink: TSelfTestExceptionSink = nil;
+
+procedure TSelfTestExceptionSink.Handle(Sender: TObject; E: Exception);
+begin
+  WriteLn;
+  WriteLn('  FAIL  unhandled ' + E.ClassName + ': ' + E.Message);
+  WriteLn;
+  WriteLn(Format('%d checks, %d failures', [Checks, Failures + 1]));
+  Flush(Output);
+  Halt(1);
+end;
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -3565,6 +3732,16 @@ begin
     ForceDirectories(Sandbox);
     LedForceConfigDir(Sandbox);
   end;
+
+  { An unhandled exception must fail the run, not stop it.
+
+    Removing one nil check and re-running proved why: the suite reached the
+    line that dereferenced it and hung there, because the LCL default handler
+    puts up a modal dialog and under xvfb nobody dismisses it.  A hung run
+    burns its whole CI timeout and reports nothing; a failed one names the
+    check it died in. }
+  if ExceptionSink = nil then ExceptionSink := TSelfTestExceptionSink.Create;
+  Application.OnException := @ExceptionSink.Handle;
 
   Say('led self-test');
   WriteLn;
@@ -3622,6 +3799,7 @@ begin
   TestWikiMarkup(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
+  TestRecoveryJournalPass(F);
   TestReportedPolish(F);
   WriteLn;
   TestSplitNotebook(F);
