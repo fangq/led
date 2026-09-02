@@ -35,18 +35,16 @@
       the painter use.  TSynTextViewsManager.ReconnectViews makes the
       last-added view the top one.
 
-  So a view that shortens what it returns from Get() changes what the caret
-  and the painter see and nothing else.  Edits are unaffected for a second
-  reason: TSynEditStringsLinked routes reads and writes through different
-  delegates, and this class overrides only the read.  An insert at column N
-  reaches the buffer as column N, and N can never exceed the visible prefix,
-  which is byte-identical to the buffer's.
+  The first version of this shortened the logical line too, which was faster
+  again -- 18 ms to scroll that file rather than 42 -- and unsafe: it gave the
+  editor two coordinate spaces, and the paste path corrupted text where they
+  met.  See the note on Get.  Truncation is now a painting matter only, and
+  the logical text is always the buffer's.
 
-  What this does *not* do is pretend the hidden tail is not there.  A line
-  that is truncated reports the visible length, so "select to end of line"
-  selects to the truncation point rather than to the real end.  medit
-  behaves the same way, and it is why both offer a reveal rather than
-  silently hiding text. }
+  The caret can therefore walk into the hidden tail.  That is fine, and is
+  why the reveal-on-caret rule below exists: the moment the caret lands on a
+  truncated line the whole line is shown, so there is never hidden text under
+  the cursor. }
 unit Led.UI.LongLine;
 
 {$mode objfpc}{$H+}
@@ -299,23 +297,29 @@ begin
   Result := (FLimit > 0) and (VisibleLength(AIndex) < FullLength(AIndex));
 end;
 
-{ The one override that matters.  Everything above -- the caret, the painter,
-  GetPhysicalCharWidths and so every logical/physical conversion -- reads the
-  line through here. }
+{ Deliberately *not* truncated.
+
+  Shortening the logical line here is what made this fast -- it caps
+  GetPhysicalCharWidths, which reads Strings[Index] whole, and the tab
+  expander, which rescans a changed line end to end.  It also splits the
+  editor into two coordinate spaces, and led has about fifteen places that
+  read a length from TCustomSynEdit.Lines (the buffer) and then write through
+  TextBetweenPoints (the view).  Every one of them is wrong the moment those
+  two disagree.
+
+  That is not hypothetical.  Pasting a three-row rectangle at column 6000 of
+  a document whose lines are 9000 characters put 10907 characters on the
+  second line: the padding was computed against the buffer's 9000 and applied
+  against the view's 4096.  Only the first row was safe, because the caret was
+  on it and the caret's line is never truncated.
+
+  So the logical text is the buffer's text, always, and truncation is a
+  painting matter only -- see TLedLongLineDisplay.  That costs about half the
+  speed-up and removes a whole class of bug, which for a text editor is not a
+  close call. }
 function TLedLongLineView.Get(Index: integer): string;
-var
-  V: Integer;
 begin
   Result := NextLines.Strings[Index];
-  if FLimit <= 0 then Exit;
-  if Length(Result) <= FLimit then Exit;
-  V := VisibleLength(Index);
-  { No Copy when nothing is hidden.  A live or fully revealed line has
-    VisibleLength = Length, and copying a string to its own length still
-    copies it -- on the caret's own 5 MB line that turned every Get into a
-    5 MB memcpy and made typing slower than with the feature switched off. }
-  if V >= Length(Result) then Exit;
-  Result := Copy(Result, 1, V);
 end;
 
 function TLedLongLineView.GetViewedLines(Index: integer): string;
@@ -323,16 +327,10 @@ begin
   Result := Get(Index);
 end;
 
+{ Same reasoning as Get: this feeds column arithmetic, so it tells the truth. }
 function TLedLongLineView.GetExpandedString(Index: integer): string;
-var
-  V: Integer;
 begin
   Result := inherited GetExpandedString(Index);
-  if FLimit <= 0 then Exit;
-  if Length(Result) <= FLimit then Exit;
-  V := VisibleLength(Index);
-  if V >= Length(Result) then Exit;
-  Result := Copy(Result, 1, V);
 end;
 
 { Uncapped, this is the other half of the cost: it is what sizes the
