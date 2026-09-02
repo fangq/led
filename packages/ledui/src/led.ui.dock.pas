@@ -37,12 +37,13 @@ type
   TLedPaneForm = class(TForm)
   private
     FPaneId: string;
+    FSuffix: string;
     FEdge: TLedDockEdge;
     FContent: TControl;
     FIconName: string;
   public
     constructor CreatePane(AOwner: TComponent; const AId, ACaption: string;
-      AEdge: TLedDockEdge; AControl: TControl);
+      AEdge: TLedDockEdge; AControl: TControl; const ASuffix: string = '');
     property PaneId: string read FPaneId;
     property Edge: TLedDockEdge read FEdge;
     property Content: TControl read FContent;
@@ -84,6 +85,7 @@ type
     FCenter: TPanel;
     FCenterForm: TLedPaneForm;
     FPanes: TFPList;               // of TLedPaneForm, in registration order
+    FSuffix: string;               // '' for the first host, '_2', '_3', ...
     FReady: Boolean;
     FRails: array[TLedDockEdge] of TPanel;
     FImages: TCustomImageList;
@@ -225,6 +227,12 @@ const
 var
   GLedHeaderStyleRegistered: Boolean = False;
 
+var
+  { How many dock hosts have been made in this process.  Only used to keep
+    pane names apart; it never goes down, so closing a window and opening
+    another does not reuse a name that AnchorDocking may still remember. }
+  FHostSeq: Integer = 0;
+
 const
   { Where each edge's panes are dropped the first time.  After that the saved
     layout decides, and after that the user does. }
@@ -235,7 +243,8 @@ const
 { TLedPaneForm }
 
 constructor TLedPaneForm.CreatePane(AOwner: TComponent;
-  const AId, ACaption: string; AEdge: TLedDockEdge; AControl: TControl);
+  const AId, ACaption: string; AEdge: TLedDockEdge; AControl: TControl;
+  const ASuffix: string);
 begin
   { CreateNew, not Create: there is no .lfm for these and there does not need
     to be -- the pane control supplies the whole contents. }
@@ -248,7 +257,14 @@ begin
   { AnchorDocking identifies a control by its Name in the saved layout, and
     the LCL only accepts an identifier, so the id is sanitised rather than
     used raw. }
-  Name := 'Pane_' + StringReplace(AId, '-', '_', [rfReplaceAll]);
+  { AnchorDocking's DockMaster is process-wide and keys every dockable
+    control by name, so a second window whose panes are called Pane_files
+    and Pane_output overwrites the first window's entries and the first
+    window's panes quietly stop opening.  The first window keeps the plain
+    names, so a layout.xml written before this still loads; later windows get
+    a suffix. }
+  FSuffix := ASuffix;
+  Name := 'Pane_' + StringReplace(AId, '-', '_', [rfReplaceAll]) + ASuffix;
   Caption := ACaption;
   BorderStyle := bsSizeable;
   Width := EdgeDefault[AEdge];
@@ -382,6 +398,8 @@ begin
   BevelOuter := bvNone;
   Caption := '';
   FPanes := TFPList.Create;
+  Inc(FHostSeq);
+  if FHostSeq > 1 then FSuffix := '_' + IntToStr(FHostSeq) else FSuffix := '';
   FShowRails := True;
 
   { The rails are created before the dock site and aligned to the edges, so
@@ -408,7 +426,7 @@ begin
   FSite := TAnchorDockPanel.Create(Self);
   FSite.Parent := Self;
   FSite.Align := alClient;
-  FSite.Name := 'LedDockSite';
+  FSite.Name := 'LedDockSite' + FSuffix;
 
   { The centre is a pane like any other, so that the panes around it can be
     dragged past it and it keeps its share of the space.  It is the one pane
@@ -418,7 +436,7 @@ begin
   FCenter.Caption := '';
 
   FCenterForm := TLedPaneForm.CreatePane(Self, 'editor', 'Editor',
-    ledLeft, FCenter);
+    ledLeft, FCenter, FSuffix);
 
   DockMaster.MakeDockPanel(FSite, admrpChild);
   DockMaster.OnCreateControl := @MasterCreateControl;
@@ -498,7 +516,8 @@ function TLedDockHost.AddPane(AEdge: TLedDockEdge;
   const AId, ACaption: string; AControl: TControl;
   const AIconName: string): TLedPaneForm;
 begin
-  Result := TLedPaneForm.CreatePane(Self, AId, ACaption, AEdge, AControl);
+  Result := TLedPaneForm.CreatePane(Self, AId, ACaption, AEdge, AControl,
+    FSuffix);
   if AIconName <> '' then
     Result.IconName := AIconName;
   FPanes.Add(Result);

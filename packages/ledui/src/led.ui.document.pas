@@ -115,6 +115,14 @@ type
     property Items[AIndex: Integer]: TLedDocument read GetItem; default;
   end;
 
+{ Every document open in this process, whichever window is showing it.
+  medit's MooEditor is a singleton for the same reason: with a registry per
+  window, opening a file that is already open in another window produced a
+  second, independent document on the same path, and whichever was saved
+  last silently discarded the other's work.  Neither copy could warn, because
+  each was watching the disk against its own last-known timestamp. }
+function LedDocuments: TLedDocuments;
+
 { The user's preferences expressed as a config, and the parent of every
   document's config.  Rebuilt whenever preferences change. }
 function LedUserConfig: TLedDocConfig;
@@ -680,7 +688,18 @@ begin
   FItems.Remove(ADoc);   // owns the list, so this frees it
 end;
 
+var
+  FDocuments: TLedDocuments = nil;
+
+function LedDocuments: TLedDocuments;
+begin
+  if FDocuments = nil then
+    FDocuments := TLedDocuments.Create(nil);
+  Result := FDocuments;
+end;
+
 finalization
+  FDocuments.Free;
   FUserConfig.Free;
 
 end.
