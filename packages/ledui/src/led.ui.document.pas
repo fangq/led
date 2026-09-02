@@ -24,7 +24,7 @@ uses
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
   Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup,
-  Led.UI.LongLine, Led.Core.Scripts;
+  Led.UI.LongLine;
 
 type
   TLedDocument = class;
@@ -233,7 +233,7 @@ end;
 
 procedure TLedDocument.ApplyConfigToView(AView: TLedEdit);
 var
-  Wrap, FontName, Wide: string;
+  Wrap, FontName: string;
   FontSize: Integer;
 begin
   { Editor/font existed as a preference, appeared in the Preferences dialog,
@@ -246,31 +246,6 @@ begin
     and is deliberately not persisted, so any later config change resets it.
     medit's zoom is temporary in the same way. }
   LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontName, FontSize);
-
-  { A document with Han, Kana or Hangul in it gets a family that carries
-    them, when the system has one.
-
-    Not a preference for the look of it.  SynEdit positions glyphs itself and
-    LCL's gtk2 backend draws one codepoint per layout with its top at the
-    row's top, so a character that falls back to another font sits on a lower
-    baseline than the Latin next to it -- reported, and visible in any CSV
-    with Chinese names in it.  medit does not have the problem because
-    GtkTextView lays out a whole line at once and grows the line to fit the
-    taller font; SynEdit's rows are all one height, so the only way to a
-    single baseline is a single font.
-
-    Per document, so a file with no CJK in it looks exactly as it did.
-    Editor/cjk_font names a family to use instead, or "off" to leave the
-    choice alone. }
-  Wide := LedPrefs.GetStr('Editor/cjk_font', '');
-  if not SameText(Wide, 'off') then
-  begin
-    if Wide = '' then Wide := LedWideMonospaceFamily;
-    if (Wide <> '') and not SameText(Wide, FontName) and
-       LedTextNeedsWideFont(FMaster.Lines.Text) then
-      FontName := Wide;
-  end;
-
   AView.Font.Name := FontName;
   AView.Font.Size := FontSize;
 
