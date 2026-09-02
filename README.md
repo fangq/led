@@ -162,6 +162,18 @@ on ordinary pushes to `main`: CI already compiles the same Release build on
 all three platforms, so a break shows up there without paying for the
 packaging on top of it.
 
+### Very long lines
+
+Past `Editor/max_line_len` characters (4096, medit's figure) a line is drawn
+only up to that point, followed by a red `...`.  Click the marker for another
+4096.  Set the preference to 0 to switch it off.
+
+This is display only.  The buffer keeps every byte, saving is byte-exact, and
+a line the caret or the selection is touching is never truncated — so an edit
+never operates against a shortened line.  On 300 lines of 30,000 characters,
+`bin/led --bench-longline` goes from 68 ms to 18 ms to scroll end to end, and
+from 11 ms to 2 ms to put the caret at the end of a line.
+
 ### Column selection
 
 Hold **Ctrl** and drag, or use **Ctrl+Shift+arrows** (**Alt+Shift+arrows**

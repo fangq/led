@@ -12,7 +12,7 @@ checked off by the presence of a menu entry.
 | Feature | medit | led | Decision |
 |---|---|---|---|
 | Vertical / box selection<br><sub>Ctrl+drag or Ctrl+Shift+arrows; copy, paste back as a column, type and delete on every line</sub> | yes | yes | mouse and keyboard; a column copy pastes back as a column because led remembers what it put on the clipboard, which the clipboard itself cannot say |
-| Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | not needed for speed | deferred: benchmarked at 88 ms for a 5 MB single line, so this is readability only, and a lines-view decorator risks text corruption. Revisit deliberately |
+| Long-line truncate-and-reveal<br><sub>display only past 4096 chars, click the marker for more</sub> | yes | yes | done.  The first pass deferred this on the open time alone; the per-operation numbers in the same benchmark said otherwise.  A view at the bottom of SynEdit's chain shortens what the caret, the metrics and the painter see, while `Lines` -- which led saves through -- bypasses the chain entirely.  A line the caret or selection touches is never truncated, because a selection ending at a truncation point destroys the tail when replaced |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | yes | done |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
@@ -215,7 +215,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
-| Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | ConPTY backend written, type-checked by `make conpty` and compiling green in the win32 CI job, but **never once run on Windows** -- no behaviour here is verified.  Needs Windows 10 1809; older Windows reports the terminal unavailable.  Scrollback is best-effort, because conhost keeps no history of its own |
 | Wiki markup preview | dropped deliberately |
