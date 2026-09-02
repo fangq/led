@@ -36,6 +36,7 @@ uses
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
+  Controls,
   PairSplitter, LCLProc;
 
 var
@@ -1594,6 +1595,60 @@ begin
   DeleteFile(Path);
 end;
 
+{ Reaching TControl.MouseDown from outside the control.
+
+  Protected members are open to code inside a method of a descendant, so a
+  descendant with a class method is the whole trick.  Worth the four lines:
+  without it a check can only ask the mouse-action tables what they would do,
+  and the Ctrl+drag bug was not in the tables -- the entry was correct, it was
+  just in the list SynEdit asks last. }
+type
+  TLedMousePoke = class(TLedEdit)
+  public
+    class procedure Press(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
+    class procedure Move(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
+    class procedure Release(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
+  end;
+
+class procedure TLedMousePoke.Press(AView: TLedEdit; AShift: TShiftState;
+  X, Y: Integer);
+begin
+  TLedMousePoke(AView).MouseDown(mbLeft, AShift, X, Y);
+end;
+
+class procedure TLedMousePoke.Move(AView: TLedEdit; AShift: TShiftState;
+  X, Y: Integer);
+begin
+  TLedMousePoke(AView).MouseMove(AShift, X, Y);
+end;
+
+class procedure TLedMousePoke.Release(AView: TLedEdit; AShift: TShiftState;
+  X, Y: Integer);
+begin
+  TLedMousePoke(AView).MouseUp(mbLeft, AShift, X, Y);
+end;
+
+{ Which mouse command a gesture resolves to, through SynEdit's own tables and
+  in the order MouseDown consults them: the selection list only when the press
+  landed in a selection, then the text list, then the global one. }
+function LedGestureCommand(AView: TLedEdit;
+  AShift: TShiftState): TSynEditorMouseCommand;
+var
+  Info: TSynEditMouseActionInfo;
+  A: TSynEditMouseAction;
+begin
+  Result := emcNone;
+  FillChar(Info, SizeOf(Info), 0);
+  Info.Button := mbXLeft;
+  Info.Shift := AShift;
+  Info.CCount := ccSingle;
+  Info.Dir := cdDown;
+  A := AView.MouseTextActions.FindCommand(Info);
+  if A = nil then
+    A := AView.MouseActions.FindCommand(Info);
+  if A <> nil then Result := A.Command;
+end;
+
 procedure TestColumnSelection(F: TLedMainForm);
 var
   V: TLedEdit;
@@ -1615,6 +1670,56 @@ begin
   { A rectangle covering columns 5..8 of the first three lines.  Note the
     order: assigning BlockBegin resets the mode to DefaultSelectionMode, so
     the mode has to be set after the block, not before. }
+  { First, the gestures.  Everything below this drives SelectionMode straight
+    from code, which is how Ctrl+drag stayed broken while the column feature
+    was covered: the machinery worked, and nothing asked whether a mouse
+    gesture ever reached it. }
+  CheckEqInt('a plain drag starts an ordinary selection',
+    Ord(emcStartSelections), Ord(LedGestureCommand(V, [])));
+  CheckEqInt('and Shift+drag extends one',
+    Ord(emcStartSelections), Ord(LedGestureCommand(V, [ssShift])));
+  CheckEqInt('Ctrl+drag starts a column selection',
+    Ord(emcStartColumnSelections), Ord(LedGestureCommand(V, [ssCtrl])));
+  CheckEqInt('and Ctrl+Shift+drag extends one',
+    Ord(emcStartColumnSelections),
+    Ord(LedGestureCommand(V, [ssCtrl, ssShift])));
+  CheckEqInt('Alt+drag still does too, for SynEdit habits',
+    Ord(emcStartColumnSelections), Ord(LedGestureCommand(V, [ssAlt])));
+
+  { And end to end: a real press, move and release with Ctrl held has to
+    leave a rectangle behind, not a stream selection. }
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  V.SelectionMode := smNormal;
+  Pump;
+  TLedMousePoke.Press(V, [ssCtrl], V.Gutter.Width + 2 + 4 * V.CharWidth,
+    0 * V.LineHeight + 2);
+  TLedMousePoke.Move(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [ssCtrl], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    2 * V.LineHeight + 2);
+  Pump;
+  Check('dragging with Ctrl held leaves a column selection',
+    LedHasColumnSelection(V));
+  CheckEq('covering the rectangle it was dragged over',
+    '1111' + LineEnding + '2222' + LineEnding + '3333', V.SelText);
+
+  { A plain drag must still be an ordinary selection, or the fix traded one
+    broken gesture for another. }
+  V.SelectionMode := smNormal;
+  LedClearSelection(V);
+  Pump;
+  TLedMousePoke.Press(V, [], V.Gutter.Width + 2 + 4 * V.CharWidth, 2);
+  TLedMousePoke.Move(V, [], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    1 * V.LineHeight + 2);
+  TLedMousePoke.Release(V, [], V.Gutter.Width + 2 + 8 * V.CharWidth,
+    1 * V.LineHeight + 2);
+  Pump;
+  Check('a plain drag is not a column selection',
+    not LedHasColumnSelection(V));
+
+  V.SelectionMode := smNormal;
+  LedClearSelection(V);
   V.BlockBegin := Point(5, 1);
   V.BlockEnd := Point(9, 3);
   V.SelectionMode := smColumn;
@@ -1736,15 +1841,18 @@ begin
        (V.Keystrokes[i].Shift = [ssCtrl, ssShift]) then Found := True;
   Check('Ctrl+Shift+Down extends a rectangle', Found);
 
-  { Ctrl and the left button start a rectangle, as medit did.  Asserted
-    because it is one entry in a list that ResetMouseActions has emptied
-    before now, and losing it is silent. }
-  Found := False;
-  for i := 0 to V.MouseActions.Count - 1 do
-    if (V.MouseActions[i].Command = emcStartColumnSelections) and
-       (V.MouseActions[i].Button = mbXLeft) and
-       (ssCtrl in V.MouseActions[i].Shift) then Found := True;
-  Check('Ctrl and the left button start a rectangle', Found);
+  { Ctrl and the left button start a rectangle, as medit did.
+
+    This used to search MouseActions for an entry with emcStartColumnSelections
+    and ssCtrl, find it, and pass -- for as long as the gesture did not work at
+    all.  The entry was real; it was in the list MouseDown consults last, and
+    the default stream-selection entry in the list it consults first matched a
+    Ctrl+press because its mask names only Shift and Alt.  So ask what the
+    gesture resolves to instead of whether a row exists somewhere. }
+  CheckEqInt('Ctrl and the left button start a rectangle',
+    Ord(emcStartColumnSelections), Ord(LedGestureCommand(V, [ssCtrl])));
+  CheckEqInt('and a bare left button still does not',
+    Ord(emcStartSelections), Ord(LedGestureCommand(V, [])));
 
   { Pasting rows of unequal length over a rectangle: each row replaces the
     block on its own line, so the text after it shifts by that row's own
