@@ -187,6 +187,61 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestTabReordering(F: TLedMainForm);
+var
+  A, B, C: TLedTab;
+  L: TStringList;
+  P1, P2, P3: string;
+  Before: Integer;
+begin
+  Say('tab reordering');
+
+  P1 := TempName('order-1.txt');
+  P2 := TempName('order-2.txt');
+  P3 := TempName('order-3.txt');
+  L := TStringList.Create;
+  try
+    L.Add('x');
+    L.SaveToFile(P1); L.SaveToFile(P2); L.SaveToFile(P3);
+  finally
+    L.Free;
+  end;
+
+  Before := F.Notebook.PageCount;
+  A := F.AddTab(F.Documents.OpenFile(P1));
+  B := F.AddTab(F.Documents.OpenFile(P2));
+  C := F.AddTab(F.Documents.OpenFile(P3));
+  Pump;
+  CheckEqInt('three tabs added', Before + 3, F.Notebook.PageCount);
+
+  CheckEqInt('they start in the order they were opened',
+    A.Sheet.PageIndex + 1, B.Sheet.PageIndex);
+  CheckEqInt('and so does the third', B.Sheet.PageIndex + 1, C.Sheet.PageIndex);
+
+  { Moving a page is what a drag does; the drag itself is mouse plumbing,
+    but the reordering underneath it is the part that can be wrong. }
+  C.Sheet.PageIndex := A.Sheet.PageIndex;
+  Pump;
+  Check('the third tab moved ahead of the first',
+    C.Sheet.PageIndex < A.Sheet.PageIndex);
+  Check('and the others shifted along',
+    A.Sheet.PageIndex < B.Sheet.PageIndex);
+  CheckEqInt('with no tab lost', Before + 3, F.Notebook.PageCount);
+
+  Check('every tab still knows its document',
+    (A.Document <> nil) and (B.Document <> nil) and (C.Document <> nil));
+  Check('and the moved one kept its file',
+    SameFileName(P3, C.Document.FileName));
+
+  while F.Notebook.PageCount > Before do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(P1); DeleteFile(P2); DeleteFile(P3);
+end;
+
 procedure TestBrowserNavigation(F: TLedMainForm);
 var
   Dir, Sub, Start: string;
@@ -2092,6 +2147,7 @@ begin
   TestIconsAndFocus(F);
   TestTerminalPaneAndSession(F);
   TestBrowserNavigation(F);
+  TestTabReordering(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
