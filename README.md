@@ -147,6 +147,19 @@ mirror says nothing about led.
 `.github/workflows/package.yml` builds the three installers on every push to
 `main`, and attaches them to a GitHub Release on a `v*` tag.
 
+### Column selection
+
+Hold **Ctrl** and drag, or use **Ctrl+Shift+arrows** (**Alt+Shift+arrows**
+also works, where the window manager does not eat it).  With a rectangle
+selected, typing replaces it on every line, Backspace and Delete take a
+character from every line, and copy puts the rectangle on the clipboard one
+row per line.
+
+Pasting text that was copied as a rectangle puts it back as a rectangle
+rather than inserting whole lines.  The system clipboard has no way to say
+"this is a column", so led remembers what it last put there; copy anything
+else, from any application, and the paste is an ordinary one again.
+
 ## Running
 
 ```sh

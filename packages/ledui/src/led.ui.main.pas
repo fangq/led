@@ -1440,17 +1440,17 @@ end;
 
 procedure TLedMainForm.actCutExecute(Sender: TObject);
 begin
-  if CurrentView <> nil then CurrentView.CutToClipboard;
+  LedCut(CurrentView);
 end;
 
 procedure TLedMainForm.actCopyExecute(Sender: TObject);
 begin
-  if CurrentView <> nil then CurrentView.CopyToClipboard;
+  LedCopy(CurrentView);
 end;
 
 procedure TLedMainForm.actPasteExecute(Sender: TObject);
 begin
-  if CurrentView <> nil then CurrentView.PasteFromClipboard;
+  LedPaste(CurrentView);
 end;
 
 procedure TLedMainForm.actSelectAllExecute(Sender: TObject);

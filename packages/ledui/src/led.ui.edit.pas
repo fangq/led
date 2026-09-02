@@ -11,6 +11,7 @@ interface
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
+  SynEditKeyCmds, LCLType,
   SynEditHighlighterFoldBase, SynEditHighlighter,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.Core.Spell;
 
@@ -45,6 +46,8 @@ type
     FCompletion: TSynCompletion;
     FSpell: TLedSpellMarkup;
     FGuideColour: TColor;
+    procedure ColumnCommand(Sender: TObject;
+      var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
     function GetWrapEnabled: Boolean;
     procedure SetWrapEnabled(AValue: Boolean);
     function LineIndentColumn(ATextIdx: Integer): Integer;
@@ -93,6 +96,29 @@ implementation
 constructor TLedEdit.Create(AOwner: TComponent);
 var
   i: Integer;
+
+  { Adds Ctrl+Shift+<key> for a column command, leaving whatever SynEdit
+    already bound in place. }
+  procedure AddColumnKey(ACmd: TSynEditorCommand; AKey: Word);
+  var
+    K: TSynEditKeyStroke;
+  begin
+    K := Keystrokes.Add;
+    K.Command := ACmd;
+    { One assignment, not Key then Shift.  Setting Key alone leaves the
+      keystroke momentarily bound to the bare arrow, which SynEdit already
+      uses -- and its duplicate check raises on that intermediate state, so
+      the binding never happened and the arrow keys took the blame. }
+    try
+      K.ShortCut := Menus.ShortCut(AKey, [ssCtrl, ssShift]);
+    except
+      on ESynKeyError do
+        { Something else already owns it; leave that alone and rely on
+          SynEdit's own Alt+Shift binding. }
+        K.Free;
+    end;
+  end;
+
 begin
   inherited Create(AOwner);
 
@@ -122,6 +148,18 @@ begin
   MouseActions.AddCommand(emcStartColumnSelections, True, mbXLeft, ccSingle,
     cdDown, [ssCtrl], [ssCtrl, ssAlt, ssShift]);
   DefaultSelectionMode := smNormal;
+  OnProcessCommand := @ColumnCommand;
+
+  { SynEdit binds keyboard rectangle selection to Alt+Shift+arrows, and on
+    several Linux desktops Alt+Shift is taken by the window manager -- the
+    same reason Ctrl+drag is bound alongside Alt+drag above.  Ctrl+Shift+
+    arrows are added as a second way in; SynEdit leaves them unbound. }
+  AddColumnKey(ecColSelUp,    VK_UP);
+  AddColumnKey(ecColSelDown,  VK_DOWN);
+  AddColumnKey(ecColSelLeft,  VK_LEFT);
+  AddColumnKey(ecColSelRight, VK_RIGHT);
+  AddColumnKey(ecColSelLineStart, VK_HOME);
+  AddColumnKey(ecColSelLineEnd,   VK_END);
 
   Gutter.Visible := True;
   Gutter.LineNumberPart.Visible := True;
@@ -394,6 +432,89 @@ end;
 
 { Word completion drawn from the document itself.  medit had none at all, and
   it is the absence people notice within a minute. }
+{ Typing, backspacing and deleting with a rectangle selected act on every
+  line of it, which is the whole point of a rectangle.  SynEdit does not do
+  that on its own: it clears the block and then applies the keystroke once,
+  at the caret, so "type X over three lines" left X on one line and nothing
+  on the other two.
+
+  Handled here rather than in Led.UI.Commands because it has to intercept the
+  command before SynEdit runs it. }
+procedure TLedEdit.ColumnCommand(Sender: TObject;
+  var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
+var
+  FirstY, LastY, Col, y, Len: Integer;
+  Line: string;
+begin
+  { SelAvail is False for a rectangle with no width, but a zero-width block
+    spanning several lines is still a block -- it is exactly what Backspace
+    and Delete are aimed at, and what a multi-line caret looks like. }
+  if SelectionMode <> smColumn then Exit;
+  if not (SelAvail or (BlockBegin.Y <> BlockEnd.Y)) then Exit;
+  { Explicit comparisons, not a set: these commands are 501, 502 and 511, and
+    a Pascal set only spans 0..255, so "Command in [...]" cannot mean what it
+    looks like. }
+  if (Command <> ecChar) and (Command <> ecDeleteChar) and
+     (Command <> ecDeleteLastChar) then Exit;
+  if ReadOnly then Exit;
+
+  FirstY := BlockBegin.Y;
+  LastY := BlockEnd.Y;
+  Col := BlockBegin.X;
+  if BlockEnd.X < Col then Col := BlockEnd.X;
+
+  BeginUndoBlock;
+  try
+    { Clear the rectangle first; SelText on a column selection removes it
+      line by line, which is what is wanted here. }
+    if (BlockBegin.X <> BlockEnd.X) then
+      SelText := '';
+
+    if Command = ecChar then
+    begin
+      for y := FirstY to LastY do
+      begin
+        if (y < 1) or (y > Lines.Count) then Continue;
+        Line := Lines[y - 1];
+        Len := Length(Line);
+        { A line too short to reach the column is padded, so the inserted
+          text still lines up.  Without this the block loses its shape on
+          ragged text. }
+        if Len < Col - 1 then
+          TextBetweenPoints[Point(Len + 1, y), Point(Len + 1, y)] :=
+            StringOfChar(' ', Col - 1 - Len);
+        TextBetweenPoints[Point(Col, y), Point(Col, y)] := AChar;
+      end;
+      CaretXY := Point(Col + Length(AChar), FirstY);
+    end
+    else
+    begin
+      { Backspace and Delete over a zero-width rectangle: take one character
+        from each line, on the side the key names. }
+      for y := FirstY to LastY do
+      begin
+        if (y < 1) or (y > Lines.Count) then Continue;
+        Line := Lines[y - 1];
+        if Command = ecDeleteLastChar then
+        begin
+          if Col > 1 then
+            TextBetweenPoints[Point(Col - 1, y), Point(Col, y)] := '';
+        end
+        else
+          if Col <= Length(Line) then
+            TextBetweenPoints[Point(Col, y), Point(Col + 1, y)] := '';
+      end;
+      if (Command = ecDeleteLastChar) and (Col > 1) then Dec(Col);
+      CaretXY := Point(Col, FirstY);
+    end;
+  finally
+    EndUndoBlock;
+  end;
+
+  { Handled here; SynEdit must not run it again. }
+  Command := ecNone;
+end;
+
 function TLedEdit.SpellMarkup: TLedSpellMarkup;
 begin
   if FSpell = nil then

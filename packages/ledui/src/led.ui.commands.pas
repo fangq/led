@@ -53,6 +53,21 @@ procedure LedZoomFont(AView: TLedEdit; ADelta: Integer);
   aside. }
 procedure LedPasteColumn(AView: TLedEdit);
 
+{ Cut, copy and paste that know about rectangles.
+
+  The system clipboard carries plain text and nothing else -- there is no
+  flag on it saying "these three lines are a column, not three lines".  So
+  led remembers what it last put there as a rectangle, and a paste whose
+  clipboard still holds exactly that text goes back in as a rectangle.  Copy
+  something else in between, from anywhere, and the memory stops matching
+  and the paste is an ordinary one.
+
+  Without this, copying a column and pasting it inserts three whole lines
+  instead of a block, which is the behaviour people remember medit for. }
+procedure LedCut(AView: TLedEdit);
+procedure LedCopy(AView: TLedEdit);
+procedure LedPaste(AView: TLedEdit);
+
 { Escape: drop the selection but keep the caret. }
 procedure LedClearSelection(AView: TLedEdit);
 
@@ -317,6 +332,51 @@ begin
   P := AView.CaretXY;
   AView.SelStart := AView.SelEnd;
   AView.CaretXY := P;
+end;
+
+var
+  { The last text this process put on the clipboard as a rectangle.  Compared
+    by value rather than trusted: another application may have replaced the
+    clipboard since, and pasting its text as a column would be wrong. }
+  FColumnClip: string = '';
+
+procedure LedCopy(AView: TLedEdit);
+begin
+  if (AView = nil) or not AView.SelAvail then Exit;
+  AView.CopyToClipboard;
+  if AView.SelectionMode = smColumn then
+    FColumnClip := Clipboard.AsText
+  else
+    FColumnClip := '';
+end;
+
+procedure LedCut(AView: TLedEdit);
+begin
+  if (AView = nil) or not AView.SelAvail then Exit;
+  if AView.SelectionMode = smColumn then
+  begin
+    AView.CopyToClipboard;
+    FColumnClip := Clipboard.AsText;
+    AView.SelText := '';
+  end
+  else
+  begin
+    FColumnClip := '';
+    AView.CutToClipboard;
+  end;
+end;
+
+procedure LedPaste(AView: TLedEdit);
+begin
+  if (AView = nil) or AView.ReadOnly then Exit;
+  { A rectangle is pasted as a rectangle when the clipboard still holds what
+    was copied as one, and also whenever a rectangle is selected -- replacing
+    the block the user has highlighted is what they asked for either way. }
+  if ((FColumnClip <> '') and (Clipboard.AsText = FColumnClip)) or
+     LedHasColumnSelection(AView) then
+    LedPasteColumn(AView)
+  else
+    AView.PasteFromClipboard;
 end;
 
 procedure LedPasteColumn(AView: TLedEdit);
