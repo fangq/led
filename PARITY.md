@@ -223,7 +223,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
 | Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
 | Wiki markup preview | dropped deliberately |
-| Text selection with the mouse inside the terminal | not started; the context menu copies the whole screen |
 | Translations | not started |
 | Code signing and notarization | not started; the macOS bundle is ad-hoc signed and the Windows installer is unsigned |
 | RPM, AppImage and Flatpak | not started; .deb, a portable tarball, an Inno Setup .exe and a .dmg are built |
