@@ -294,6 +294,10 @@ begin
   ControlStyle := ControlStyle + [csOpaque];
   DoubleBuffered := True;
   TabStop := True;
+  { A text surface, so the pointer says so.  The control inherited the arrow,
+    which reads as "nothing here to select" over a terminal you can in fact
+    select from. }
+  Cursor := crIBeam;
   Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
   Font.Size := 10;
 
