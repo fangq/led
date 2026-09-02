@@ -28,6 +28,7 @@ uses
   Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
+  Led.Core.Scripts, Led.UI.Dpi,
   Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
@@ -3314,6 +3315,93 @@ begin
   Pump;
 end;
 
+{ A document with CJK in it gets a font that carries it.
+
+  Not cosmetic.  SynEdit positions glyphs itself, and LCL gtk2 draws one
+  codepoint per layout with its top at the row top, so a character that falls
+  back to another font sits below the Latin beside it.  medit is unaffected
+  because GtkTextView lays out a whole line at once and grows the line to fit;
+  SynEdit rows are one height, so one font is the only route to one baseline. }
+procedure TestCjkDocumentFont(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  Wide, Plain, P: string;
+  L: TStringList;
+
+  function Han: string;
+  begin
+    { U+4E01 U+91CD U+6885 U+FF0C U+5929 U+6D25 -- the reported line. }
+    Result := #$E4#$B8#$81#$E9#$87#$8D#$E6#$A2#$85#$EF#$BC#$8C +
+              #$E5#$A4#$A9#$E6#$B4#$A5;
+  end;
+
+begin
+  Say('cjk document font');
+
+  Wide := LedWideMonospaceFamily;
+  if Wide = '' then
+  begin
+    Say('  (no CJK monospace family installed; skipping)');
+    Exit;
+  end;
+
+  { A file with no CJK keeps whatever the preference says, so nobody who does
+    not read Chinese sees their editor change. }
+  P := TempName('plain.txt');
+  L := TStringList.Create;
+  try
+    L.Add('just ascii here');
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  Plain := Tab.ActiveView.Font.Name;
+  Check('a latin-only document keeps the configured family',
+    not SameText(Plain, Wide));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+
+  { And one with CJK in it gets the wide family. }
+  P := TempName('cjk.csv');
+  L := TStringList.Create;
+  try
+    L.Add('name,institution');
+    L.Add(Han + ',1476207469@qq.com');
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  CheckEq('a document with CJK gets a family that carries it',
+    Wide, Tab.ActiveView.Font.Name);
+  Check('which is not the one the latin file used',
+    not SameText(Tab.ActiveView.Font.Name, Plain));
+
+  { And it can be turned off. }
+  LedPrefs.SetStr('Editor/cjk_font', 'off');
+  Tab.Document.ApplyConfigToViews;
+  Pump;
+  Check('"off" leaves the font choice alone',
+    not SameText(Tab.ActiveView.Font.Name, Wide));
+  LedPrefs.SetStr('Editor/cjk_font', '');
+  Tab.Document.ApplyConfigToViews;
+  Pump;
+  CheckEq('and clearing it brings the wide family back',
+    Wide, Tab.ActiveView.Font.Name);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -3799,6 +3887,7 @@ begin
   TestWikiMarkup(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
+  TestCjkDocumentFont(F);
   TestRecoveryJournalPass(F);
   TestReportedPolish(F);
   WriteLn;

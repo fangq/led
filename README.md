@@ -177,17 +177,23 @@ looks wrong rather than disappearing.
 
 ### CJK text and the editor font
 
-If the editor font has no CJK glyphs, GTK falls back to one that does — and
-because SynEdit draws each run from the top of the row rather than from a
-shared baseline, the fallback font's larger ascent puts those glyphs visibly
-lower than the Latin ones beside them.  Nothing in led positions that text;
-`TheTextDrawer.NewTextOut` is neither virtual nor replaceable, so correcting
-it would mean vendoring SynEdit's text drawer.
+A document containing Han, Kana or Hangul is shown in a monospace family that
+carries those glyphs — `Noto Sans Mono CJK`, `Source Han Mono`, `Sarasa Mono`,
+`WenQuanYi`, `MS Gothic` or `Hiragino Sans`, whichever is installed.  This is
+per document: a file with no CJK in it looks exactly as it always did.
 
-The fix is a font that covers what you read.  Set **Editor > font** to a
-monospace family with CJK coverage — `Noto Sans Mono CJK SC`, `Noto Sans Mono
-CJK JP`, `WenQuanYi Micro Hei Mono`, `Sarasa Mono` — and the baselines line
-up, because no fallback happens.
+It is not a matter of taste.  SynEdit positions glyphs itself, and LCL's gtk2
+backend draws one codepoint per pango layout with its *top* at the row's top,
+so a character that falls back to a different font sits on a lower baseline
+than the Latin beside it.  medit does not have the problem because
+`MooTextView` descends from `GtkTextView`, which lays out a whole line as one
+layout and grows the line to fit the taller font.  SynEdit's rows are all one
+height, so the only route to a single baseline is a single font — and since
+led picks one font for the whole document, its rows stay uniform where
+medit's grow.
+
+`Editor/cjk_font` names a family to use instead, or `off` to leave the font
+choice alone.
 
 ### Very long lines
 
