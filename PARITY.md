@@ -11,7 +11,7 @@ checked off by the presence of a menu entry.
 
 | Feature | medit | led | Decision |
 |---|---|---|---|
-| Vertical / box selection<br><sub>Ctrl+drag, copy, paste at caret column, paste into box</sub> | yes | yes | done |
+| Vertical / box selection<br><sub>Ctrl+drag or Ctrl+Shift+arrows; copy, paste back as a column, type and delete on every line</sub> | yes | yes | mouse and keyboard; a column copy pastes back as a column because led remembers what it put on the clipboard, which the clipboard itself cannot say |
 | Fast long-line loading<br><sub>truncate past 4096 chars with click-to-reveal</sub> | yes | not needed for speed | deferred: benchmarked at 88 ms for a 5 MB single line, so this is readability only, and a lines-view decorator risks text corruption. Revisit deliberately |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | yes | done |

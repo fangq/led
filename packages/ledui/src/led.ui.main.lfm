@@ -354,12 +354,12 @@ object LedMainForm: TLedMainForm
     end
     object actFindCurrent: TAction
       Caption = 'Find Word at &Cursor'
-      ShortCut = 24614
+      ShortCut = 16498
       OnExecute = actFindCurrentExecute
     end
     object actFindCurrentBack: TAction
       Caption = 'Find Word at Cursor &Backwards'
-      ShortCut = 24616
+      ShortCut = 24690
       OnExecute = actFindCurrentBackExecute
     end
     object actPrevTab: TAction

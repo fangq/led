@@ -34,7 +34,8 @@ uses
   Led.UI.Symbols,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
-  Clipbrd, SynEditTypes, ActnList, Menus, PairSplitter, LCLProc;
+  Clipbrd, SynEditTypes, SynEditKeyCmds, ActnList, Menus, PairSplitter,
+  LCLProc;
 
 var
   Failures: Integer = 0;
@@ -1596,6 +1597,8 @@ procedure TestColumnSelection(F: TLedMainForm);
 var
   V: TLedEdit;
   Doc: TLedDocument;
+  Found: Boolean;
+  i: Integer;
 begin
   Say('column selection');
 
@@ -1648,6 +1651,103 @@ begin
   LedClearSelection(V);
   Check('escape clears the selection', not V.SelAvail);
   CheckEqInt('and leaves the caret', 4, V.CaretX);
+
+  { --- what the earlier checks never asked --------------------------------
+
+    Deleting a rectangle and pasting one explicitly were covered; copying
+    one, pasting over one, and typing over one were not, and those are what
+    the feature is actually used for. }
+
+  V.Lines.Text := 'aaaa1111' + LineEnding + 'bbbb2222' + LineEnding +
+                  'cccc3333' + LineEnding + 'dd';
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+
+  Clipboard.AsText := '';
+  V.CopyToClipboard;
+  CheckEq('copying a rectangle puts its rows on the clipboard',
+    '1111' + LineEnding + '2222' + LineEnding + '3333',
+    Trim(Clipboard.AsText));
+
+  { Typing with a rectangle selected replaces it on every line. }
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+  V.CommandProcessor(ecChar, 'Z', nil);
+  Pump;
+  CheckEq('typing over a rectangle replaces it on the first line',
+    'aaaaZ', V.Lines[0]);
+  CheckEq('and on the last', 'ccccZ', V.Lines[2]);
+
+  V.Undo;
+  CheckEq('and undoes in one step', 'aaaa1111', V.Lines[0]);
+
+  { Pasting over a rectangle should replace it, not insert beside it. }
+  V.Lines.Text := 'aaaa1111' + LineEnding + 'bbbb2222' + LineEnding +
+                  'cccc3333';
+  Clipboard.AsText := 'XX' + LineEnding + 'YY' + LineEnding + 'ZZ';
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+  LedPasteColumn(V);
+  Pump;
+  CheckEq('pasting over a rectangle replaces the first row', 'aaaaXX', V.Lines[0]);
+  CheckEq('and the last', 'ccccZZ', V.Lines[2]);
+
+  { A plain Ctrl+V of text that was column-copied should come back as a
+    column, not as three inserted lines.  This is the part medit got wrong
+    often enough to be remembered for it. }
+  V.Lines.Text := 'aaaa1111' + LineEnding + 'bbbb2222' + LineEnding +
+                  'cccc3333';
+  V.BlockBegin := Point(5, 1);
+  V.BlockEnd := Point(9, 3);
+  V.SelectionMode := smColumn;
+  V.CopyToClipboard;
+  V.SelectionMode := smNormal;
+  V.CaretXY := Point(1, 1);
+  LedPaste(V);
+  Pump;
+  CheckEq('a column copy pastes back as a column', '1111aaaa1111', V.Lines[0]);
+  CheckEq('on the second line too', '2222bbbb2222', V.Lines[1]);
+  CheckEqInt('without inserting any lines', 3, V.Lines.Count);
+
+  { Backspace and Delete take a character from every line of the block. }
+  V.Lines.Text := 'aaXbb' + LineEnding + 'ccXdd' + LineEnding + 'eeXff';
+  V.BlockBegin := Point(4, 1);
+  V.BlockEnd := Point(4, 3);
+  V.SelectionMode := smColumn;
+  V.CommandProcessor(ecDeleteLastChar, #0, nil);
+  Pump;
+  CheckEq('backspace over a zero-width block takes one from each line',
+    'aabb', V.Lines[0]);
+  CheckEq('including the last', 'eeff', V.Lines[2]);
+  V.Undo;
+  CheckEq('and undoes in one step', 'aaXbb', V.Lines[0]);
+
+  { A rectangle can be made from the keyboard, not only with the mouse.
+    SynEdit binds Alt+Shift, which several Linux window managers eat, so
+    Ctrl+Shift is bound too -- this checks the keystroke reaches a command
+    rather than falling through to plain cursor movement. }
+  Found := False;
+  for i := 0 to V.Keystrokes.Count - 1 do
+    if (V.Keystrokes[i].Command = ecColSelDown) and
+       (V.Keystrokes[i].Shift = [ssCtrl, ssShift]) then Found := True;
+  Check('Ctrl+Shift+Down extends a rectangle', Found);
+
+  Found := False;
+  for i := 0 to V.Keystrokes.Count - 1 do
+    if (V.Keystrokes[i].Command = ecColSelDown) and
+       (V.Keystrokes[i].Shift = [ssAlt, ssShift]) then Found := True;
+  Check('and SynEdit''s Alt+Shift+Down still does', Found);
+
+  V.Lines.Text := 'aaaa' + LineEnding + 'bbbb' + LineEnding + 'cccc';
+  V.CaretXY := Point(2, 1);
+  V.CommandProcessor(ecColSelDown, #0, nil);
+  V.CommandProcessor(ecColSelRight, #0, nil);
+  Pump;
+  Check('and doing so makes a column selection',
+    LedHasColumnSelection(V));
 
   if Doc = nil then ;
 end;
