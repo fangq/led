@@ -2486,6 +2486,17 @@ var
   Runs: TLedGuideRuns;
   i, Body, Opener, Closer, BodyCol: Integer;
   Before, After: Integer;
+  Outer: Integer;
+
+  { The column ACol if the line carries a guide there, otherwise 0. }
+  function GuideCol(const ACols: array of Integer; ACol: Integer): Integer;
+  var
+    k: Integer;
+  begin
+    Result := 0;
+    for k := 0 to High(ACols) do
+      if ACols[k] = ACol then Exit(ACol);
+  end;
 begin
   Say('block guides');
 
@@ -2519,25 +2530,34 @@ begin
   Runs := V.ComputeBlockGuides(0, V.Lines.Count - 1);
   CheckGt('guides were computed for the document', 0, Length(Runs));
 
-  Opener := -1; Body := -1; Closer := -1; BodyCol := 0;
+  { Asked by column rather than by count.  A line carries one guide per block
+    that encloses it, so the inner block's opener and closer still carry the
+    *outer* block's guide -- what they must not carry is a guide for the
+    block they themselves begin or end. }
+  Opener := 0; Body := 0; Closer := 0; BodyCol := 0; Outer := 0;
   for i := 0 to High(Runs) do
   begin
-    if Runs[i].TextIdx = 3 then Opener := Length(Runs[i].Cols);
-    if Runs[i].TextIdx = 5 then Closer := Length(Runs[i].Cols);
+    if Runs[i].TextIdx = 3 then Opener := GuideCol(Runs[i].Cols, 5);
+    if Runs[i].TextIdx = 5 then Closer := GuideCol(Runs[i].Cols, 5);
     if Runs[i].TextIdx = 4 then
     begin
-      Body := Length(Runs[i].Cols);
-      if Body > 0 then BodyCol := Runs[i].Cols[0];
+      Body := GuideCol(Runs[i].Cols, 5);
+      BodyCol := GuideCol(Runs[i].Cols, 1);
     end;
+    if Runs[i].TextIdx = 2 then Outer := GuideCol(Runs[i].Cols, 1);
   end;
 
-  { The inner block runs from line 3 to line 5, so only line 4 is inside it.
-    The outer brace sits at column 1 and is skipped, as medit skips a guide
-    that would run down the very edge of the text. }
-  CheckGt('the body of a block carries a guide', 0, Body);
+  { The inner block runs from line 3 to line 5, so only line 4 is inside it. }
+  CheckEqInt('the body of a block carries its guide', 5, Body);
   CheckEqInt('the line that opens it does not', 0, Opener);
   CheckEqInt('nor the line that closes it', 0, Closer);
-  CheckEqInt('and it sits at the opening line''s indent column', 5, BodyCol);
+
+  { The outer brace sits at column 1.  Those used to be skipped, on the
+    grounds that the rule would run down the edge of the text -- but a
+    function body flush against the margin is the commonest block there is,
+    and leaving it unmarked looked like the guides stopped working. }
+  CheckEqInt('a block flush to the left edge is guided too', 1, Outer);
+  CheckEqInt('and a nested line carries both', 1, BodyCol);
   { Folding must not take the guides with it.  The guide for a line below a
     collapsed block still has to be drawn, and at the same column -- the
     complaint was that the rules broke up and then vanished after a fold. }

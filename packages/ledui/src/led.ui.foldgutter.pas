@@ -124,8 +124,12 @@ begin
     as the display scales, clamped at both ends: below about a pixel it
     disappears, above two or three it turns clumsy. }
   LW := Half / 3;
-  if LW < 1.2 then LW := 1.2;
-  if LW > 2.4 then LW := 2.4;
+  { medit clamped this to [1.2, 2.4] against a GTK canvas that antialiased
+    the stroke; a plain TCanvas rounds it to whole pixels, so the same
+    numbers came out a hairline.  Heavier, so the marker reads as a control
+    rather than a scratch. }
+  if LW < 1.8 then LW := 1.8;
+  if LW > 3.0 then LW := 3.0;
 
   Fg := MarkupInfo.Foreground;
   if Fg = clNone then Fg := ACanvas.Pen.Color;

@@ -995,6 +995,14 @@ begin
   if FCenterForm = nil then Exit;
   Site := DockMaster.GetAnchorSite(FCenterForm);
   if (Site = nil) or (Site.Header = nil) then Exit;
+
+  { The whole header, not just its close button.  MakeDockable was asked for
+    no header and AnchorDocking added one anyway: a vertical band down the
+    left of the editor reading "Editor", with a drag grip.  It names the one
+    pane that cannot be anything else, it cannot usefully be dragged or
+    closed, and against a dark theme it is a pale stripe beside the line
+    numbers -- which is what it was reported as. }
+  Site.Header.Visible := False;
   if Site.Header.CloseButton <> nil then
     Site.Header.CloseButton.Visible := False;
 end;
