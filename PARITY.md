@@ -214,7 +214,6 @@ An honest list, so nothing here is mistaken for an oversight.
 | Spell checking | not started, and not previously listed: medit's SpellAddToDict, SpellIgnoreWord, spell_enabled and spell_scope have no counterpart here |
 | Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
-| Multiple windows | File / New Window opens one; documents are not shared between them |
 
 | Project file list pane (medit's File List) | not started |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |

@@ -187,6 +187,90 @@ const
     'Green on Black', 'Paper, Light', 'Paper', 'Linux Colors',
     'VIM Colors', 'White on Black');
 
+procedure TestSharedDocuments(F: TLedMainForm);
+var
+  W: TLedMainForm;
+  Doc, Other: TLedDocument;
+  L: TStringList;
+  Path: string;
+  Before, WinsBefore: Integer;
+  Files: TStringList;
+begin
+  Say('documents across windows');
+
+  Path := TempName('shared.txt');
+  L := TStringList.Create;
+  try
+    L.Add('shared line'); L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  Before := F.Notebook.PageCount;
+  WinsBefore := LedWindows.Count;
+  Check('this window is in the registry', WinsBefore >= 1);
+
+  Files := TStringList.Create;
+  try
+    Files.Add(Path);
+    F.OpenFiles(Files);
+    Pump;
+    Doc := F.Documents.FindByFileName(Path);
+    Check('the file opened', Doc <> nil);
+
+    { A second window shares the registry, so asking it for the same path has
+      to give the same document -- not a second one on the same file, which
+      is how one save silently discarded the other's work. }
+    W := TLedMainForm.Create(Application);
+    try
+      W.Show;
+      Pump;
+      CheckEqInt('the second window registered', WinsBefore + 1,
+        LedWindows.Count);
+
+      Other := W.Documents.FindByFileName(Path);
+      Check('both windows see the same document', Other = Doc);
+      Check('and the registry is one object', W.Documents = F.Documents);
+
+      { Opening it from the other window reveals the tab that has it rather
+        than making another -- medit's moo_editor_set_active_doc. }
+      Check('the other window can reveal it', W.RevealDocument(Doc));
+      CheckEqInt('and no extra tab was made', Before + 1, F.Notebook.PageCount);
+      CheckEqInt('nor in the second window', 1, W.Notebook.PageCount);
+
+      { An edit through one window is visible from the other, because there
+        is only one document. }
+      F.ActiveTab.ActiveView.SelectAll;
+      F.ActiveTab.ActiveView.SelText := 'edited once';
+      Pump;
+      CheckEq('an edit is visible from either window', 'edited once',
+        Trim(Other.Master.Lines.Text));
+
+      Doc.Master.Modified := False;
+    finally
+      W.Close;
+      Pump;
+      Application.ProcessMessages;
+    end;
+
+    { Closing the second window must not take the first window's document
+      with it. }
+    Check('the document survives the other window closing',
+      F.Documents.FindByFileName(Path) <> nil);
+    Check('and its tab is still here', F.ActiveTab <> nil);
+  finally
+    Files.Free;
+  end;
+
+  while F.Notebook.PageCount > Before do
+  begin
+    F.Notebook.ActivePageIndex := F.Notebook.PageCount - 1;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(Path);
+end;
+
 procedure TestBookmarkList(F: TLedMainForm);
 var
   V: TLedEdit;
@@ -2391,6 +2475,7 @@ begin
   TestSaveTheRightDocument(F);
   TestRememberedState(F);
   TestBookmarkList(F);
+  TestSharedDocuments(F);
   TestDockEdges(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);

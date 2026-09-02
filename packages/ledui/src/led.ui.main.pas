@@ -27,6 +27,11 @@ uses
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, LCLProc, LazFileUtils;
 
+{ Every open window, in creation order.  Needed so that opening a file which
+  is already on screen somewhere can raise that window rather than making a
+  second document on the same path. }
+function LedWindows: TFPList;
+
 type
   TLedMainForm = class(TForm)
     ActionList1: TActionList;
@@ -546,6 +551,7 @@ type
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
     function SaveDocument(ADoc: TLedDocument): Boolean;
+    function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
     function FormatWindowTitle(ADoc: TLedDocument): string;
     { Where an Open or Save As dialog should start, and how it learns. }
@@ -588,6 +594,38 @@ var
 implementation
 
 {$R *.lfm}
+
+var
+  FWindows: TFPList = nil;
+
+function LedWindows: TFPList;
+begin
+  if FWindows = nil then FWindows := TFPList.Create;
+  Result := FWindows;
+end;
+
+{ The window showing ADoc, and the tab it is in, or nil.  A document lives in
+  one window at a time, as it does in medit -- opening it elsewhere takes you
+  to it rather than cloning it. }
+function LedFindWindowFor(ADoc: TLedDocument; out ATab: TLedTab): TLedMainForm;
+var
+  i: Integer;
+  W: TLedMainForm;
+  T: TLedTab;
+begin
+  Result := nil;
+  ATab := nil;
+  for i := 0 to LedWindows.Count - 1 do
+  begin
+    W := TLedMainForm(LedWindows[i]);
+    T := W.FindTabFor(ADoc);
+    if T <> nil then
+    begin
+      ATab := T;
+      Exit(W);
+    end;
+  end;
+end;
 
 procedure TLedMainForm.ReportError(const AMessage: string);
 begin
@@ -664,7 +702,9 @@ end;
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
   BuildIcons;
-  FDocs := TLedDocuments.Create(Self);
+  { Shared with every other window in this process; see LedDocuments. }
+  FDocs := LedDocuments;
+  LedWindows.Add(Self);
 
   { The journal is created before anything can be edited, but the directory
     itself is only made on the first write, so an installation that never
@@ -808,7 +848,27 @@ begin
 end;
 
 procedure TLedMainForm.FormDestroy(Sender: TObject);
+var
+  Tabs: TFPList;
+  i: Integer;
+  Doc: TLedDocument;
 begin
+  { FDocs is the process-wide registry and outlives this window, so the
+    documents this window was showing have to be let go of by hand -- but
+    only the ones no other window is still showing. }
+  LedWindows.Remove(Self);
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Doc := TLedTab(Tabs[i]).Document;
+      TLedTab(Tabs[i]).Free;
+      if Doc.ViewCount = 0 then FDocs.CloseDocument(Doc);
+    end;
+  finally
+    Tabs.Free;
+  end;
   FRecovery.Free;
   FRecent.Free;
   FSearch.Free;
@@ -3119,13 +3179,42 @@ begin
 
     Encoding := '';
     if Doc = nil then Continue;
-    if Doc.ViewCount = 0 then
+    { Already on screen somewhere?  Then go to it.  This is what medit does
+      -- moo_editor_set_active_doc presents the window that owns the
+      document -- and it is what keeps one file from becoming two documents
+      that overwrite each other. }
+    if not RevealDocument(Doc) then
       AddTab(Doc);
     FRecent.Add(Doc.FileName);
   end;
   PopulateRecentMenu;
   PopulateLanguageMenu;
   PopulateToolMenu;
+end;
+
+{ Brings ADoc to the front of whichever window holds it, and says whether it
+  found one.  False means the document has no tab anywhere yet. }
+function TLedMainForm.RevealDocument(ADoc: TLedDocument): Boolean;
+var
+  W: TLedMainForm;
+  Tab: TLedTab;
+begin
+  Result := False;
+  if ADoc = nil then Exit;
+  W := LedFindWindowFor(ADoc, Tab);
+  if (W = nil) or (Tab = nil) then Exit;
+
+  if (Tab.Sheet <> nil) and (Tab.Sheet.PageControl <> nil) then
+    Tab.Sheet.PageControl.ActivePage := Tab.Sheet;
+  if W <> Self then
+  begin
+    if W.WindowState = wsMinimized then W.WindowState := wsNormal;
+    W.Show;
+    W.BringToFront;
+  end;
+  LedTryFocus(Tab.ActiveView);
+  W.UpdateStatusBar;
+  Result := True;
 end;
 
 { Saves ADoc, whichever tab happens to be in front.  An untitled document
@@ -3190,7 +3279,7 @@ end;
   what medit's single list avoided. }
 function TLedMainForm.ConfirmCloseAll: Boolean;
 var
-  Dirty: TFPList;
+  Dirty, Tabs: TFPList;
   Names: TStringList;
   Ticked: TList;
   i: Integer;
@@ -3200,13 +3289,21 @@ begin
   Dirty := TFPList.Create;
   Names := TStringList.Create;
   Ticked := TList.Create;
+  Tabs := TFPList.Create;
   try
-    for i := 0 to FDocs.Count - 1 do
-      if FDocs[i].Modified then
+    { Only this window's documents.  The registry is process-wide now, so
+      asking it directly would have one window prompting about another
+      window's unsaved work. }
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Doc := TLedTab(Tabs[i]).Document;
+      if Doc.Modified and (Dirty.IndexOf(Doc) < 0) then
       begin
-        Dirty.Add(FDocs[i]);
-        Names.Add(FDocs[i].DisplayName);
+        Dirty.Add(Doc);
+        Names.Add(Doc.DisplayName);
       end;
+    end;
 
     if Dirty.Count = 0 then Exit(True);
     if Silent then Exit(True);
@@ -3233,6 +3330,7 @@ begin
         end;
     end;
   finally
+    Tabs.Free;
     Ticked.Free;
     Names.Free;
     Dirty.Free;
@@ -3840,5 +3938,8 @@ begin
   if (ActiveTab <> nil) and (ActiveTab.Document.FileName <> '') then
     OpenDocument(ExtractFilePath(ActiveTab.Document.FileName));
 end;
+
+finalization
+  FWindows.Free;
 
 end.
