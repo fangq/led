@@ -1357,6 +1357,7 @@ var
   Names: TStringArray;
   i: Integer;
   Found: Boolean;
+  Other: string;
 begin
   Say('pane buttons on the edges');
 
@@ -1449,21 +1450,37 @@ begin
   Pump;
 
   { The header style is offered rather than decided, so the list has to be
-    real and the choice has to stick. }
+    real and the choice has to stick.
+
+    Deliberately not an exact count.  The built-in styles belong to
+    AnchorDocking, not to led, and there are six of them on Lazarus 2.2 but
+    seven on 4.2, which added GradientMenuBar -- so asserting a total pins
+    the suite to whichever Lazarus happened to be installed when it was
+    written, and it duly failed on the second machine it ran on.  What led
+    guarantees is that its own style is registered alongside the built-ins
+    and that a choice takes effect. }
   Names := F.Dock.HeaderStyleNames;
-  CheckEqInt('six built-in header styles plus led''s own',
-    7, Length(Names));
+  Check('the built-in header styles are there', Length(Names) > 1);
   Found := False;
   { Compared case-insensitively on purpose: AnchorDocking upper-cases the
     keys when registering, so an exact match against 'LedPlain' fails even
     though the style is there -- which is exactly what this check caught. }
   for i := 0 to High(Names) do
     if SameText(Names[i], 'LedPlain') then Found := True;
-  Check('including led''s own', Found);
-  F.Dock.HeaderStyle := 'Points';
-  CheckEq('the style can be changed', 'Points', F.Dock.HeaderStyle);
-  F.Dock.HeaderStyle := 'Line';
-  CheckEq('and changed back', 'Line', F.Dock.HeaderStyle);
+  Check('and led''s own among them', Found);
+
+  { Picked out of the list rather than named, for the same reason. }
+  Other := '';
+  for i := 0 to High(Names) do
+    if not SameText(Names[i], 'LedPlain') then
+    begin
+      Other := Names[i];
+      Break;
+    end;
+  F.Dock.HeaderStyle := Other;
+  CheckEq('the style can be changed', Other, F.Dock.HeaderStyle);
+  F.Dock.HeaderStyle := 'LedPlain';
+  Check('and changed back', SameText('LedPlain', F.Dock.HeaderStyle));
 
   F.Dock.ShowRails := False;
   Pump;
