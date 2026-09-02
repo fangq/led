@@ -16,10 +16,24 @@
   Why a whole Paint override for one glyph: TSynGutterCodeFolding draws the
   symbol in DrawNodeSymbol, which is *private* and not virtual, and it draws
   the surrounding box in there too.  Paint is the nearest thing that can be
-  overridden.  The node-type logic below is therefore a reimplementation of
-  the private FoldTypeForLine and its two helpers, over the same FoldView the
-  original reads, and the vertical rule joining a block to its end is kept
-  because that is medit behaviour too and the thing this column is for.
+  overridden.
+
+  What this column does NOT draw, deliberately:
+
+    * the vertical rule tying a block to its end.  led draws guides down the
+      body of every open block in the text itself, which says the same thing
+      in the place the eye already is; two rules for one fact left a broken
+      line in the gutter that went out of step with the text after every
+      fold.
+
+    * anything derived from FoldClasifications.  SynEdit's own
+      FoldTypeForLine consults fncBlockSelection so that a *selection* can be
+      folded, and reading it here put a chevron beside lines merely because
+      they were highlighted -- a marker on a line with no block starting on
+      it.  Only a real fold start gets a chevron now.
+
+  What is left is one question per line -- does a block start here, and is it
+  collapsed -- which is all a marker column needs to know.
 
   Everything else -- mouse actions, the collapse/expand clicks, the context
   menu -- is inherited untouched: none of it goes through Paint. }
@@ -37,9 +51,7 @@ uses
 type
   TLedGutterCodeFolding = class(TSynGutterCodeFolding)
   private
-    FHidePrevious: Boolean;
     function LedFoldTypeForLine(AScreenLine: Integer): TSynEditFoldLineCapability;
-    function LedIsSingleLineHide(AScreenLine: Integer): Boolean;
     procedure DrawChevron(ACanvas: TCanvas; const ARect: TRect;
       ACollapsed: Boolean);
   public
@@ -53,59 +65,22 @@ const
   { The inset SynEdit uses between the glyph and the line box. }
   cNodeOffset = 1;
 
-{ A reimplementation of TSynGutterCodeFolding.FoldTypeForLine, which is
-  private.  Same reads, same order of precedence; FHidePrevious stands in for
-  the original's FIsFoldHidePreviousLine. }
+{ Does a foldable block start on this screen line, and is it collapsed?
+
+  Everything the previous version borrowed from SynEdit's private
+  FoldTypeForLine -- the look at the line above, the block-selection
+  classifications, the single-line-hide special case -- is gone.  It existed
+  to place a rule and to fold selections, and this column does neither. }
 function TLedGutterCodeFolding.LedFoldTypeForLine(
   AScreenLine: Integer): TSynEditFoldLineCapability;
 var
-  tmp, tmp2: TSynEditFoldLineCapabilities;
+  Caps: TSynEditFoldLineCapabilities;
 begin
-  tmp := FoldView.FoldType[AScreenLine];
-  tmp2 := FoldView.FoldType[AScreenLine - 1];
-  FHidePrevious := False;
-
-  if (AScreenLine = 0) and (ToIdx(GutterArea.TextArea.TopLine) = 0) and
-     (cfCollapsedHide in tmp2) then
-  begin
-    Result := cfCollapsedHide;
-    FHidePrevious := True;
-  end
-  else if cfCollapsedFold in tmp then Result := cfCollapsedFold
-  else if cfCollapsedHide in tmp then Result := cfCollapsedHide
-  else if cfFoldStart     in tmp then Result := cfFoldStart
-  else if cfHideStart     in tmp then Result := cfHideStart
-  else if cfFoldEnd       in tmp then Result := cfFoldEnd
-  else if cfFoldBody      in tmp then Result := cfFoldBody
-  else Result := cfNone;
-
-  if (Result in [cfCollapsedFold, cfCollapsedHide, cfFoldStart]) and
-     (cfHideStart in tmp) and
-     (fncBlockSelection in FoldView.FoldClasifications[AScreenLine]) then
-    Result := cfHideStart;
-
-  if (Result in [cfFoldBody, cfFoldEnd]) and
-     not (fncBlockSelection in FoldView.FoldClasifications[AScreenLine - 1]) then
-  begin
-    tmp := FoldView.FoldType[AScreenLine - 1];
-    if tmp * [cfHideStart, cfFoldStart, cfCollapsedFold, cfCollapsedHide]
-       = [cfHideStart, cfFoldStart] then
-    begin
-      FHidePrevious := True;
-      Result := cfHideStart;
-    end;
-  end;
-end;
-
-function TLedGutterCodeFolding.LedIsSingleLineHide(
-  AScreenLine: Integer): Boolean;
-var
-  tmp: TSynEditFoldLineCapabilities;
-begin
-  tmp := FoldView.FoldType[AScreenLine];
-  Result := (tmp * [cfHideStart, cfFoldStart, cfCollapsedFold] =
-             [cfHideStart, cfFoldStart, cfCollapsedFold])
-            or (cfSingleLineHide in tmp);
+  Result := cfNone;
+  if AScreenLine < 0 then Exit;
+  Caps := FoldView.FoldType[AScreenLine];
+  if cfCollapsedFold in Caps then Result := cfCollapsedFold
+  else if cfFoldStart in Caps then Result := cfFoldStart;
 end;
 
 { medit's draw_fold_mark, in LCL terms.
@@ -185,42 +160,12 @@ end;
 procedure TLedGutterCodeFolding.Paint(ACanvas: TCanvas; AClip: TRect;
   FirstLine, LastLine: Integer);
 var
-  iLine, LineHeight, LineOffset, CenterX: Integer;
-  rcLine, rcFold: TRect;
+  iLine, LineHeight: Integer;
+  rcFold: TRect;
   NodeType: TSynEditFoldLineCapability;
-  RuleColour: TColor;
-
-  { The vertical rule that ties a block to its end, and the foot that turns
-    it into an L at the closing line.  medit draws the same guide; without it
-    the markers are unattached ticks and a long block reads as unrelated
-    lines. }
-  procedure RuleThrough(const R: TRect);
-  begin
-    ACanvas.Pen.Width := 1;
-    ACanvas.Pen.Color := RuleColour;
-    ACanvas.MoveTo(CenterX, R.Top + LineOffset);
-    ACanvas.LineTo(CenterX, R.Bottom);
-    LineOffset := 0;
-  end;
-
-  procedure RuleToFoot(const R: TRect);
-  begin
-    ACanvas.Pen.Width := 1;
-    ACanvas.Pen.Color := RuleColour;
-    ACanvas.MoveTo(CenterX, R.Top + LineOffset);
-    ACanvas.LineTo(CenterX, R.Bottom - 1);
-    ACanvas.LineTo(R.Right, R.Bottom - 1);
-    LineOffset := Min(2, (R.Top + R.Bottom) div 2);
-  end;
-
 begin
   if not Visible then Exit;
-
   LineHeight := SynEdit.LineHeight;
-  LineOffset := 0;
-  if (FirstLine > 0) and
-     (FoldView.FoldType[FirstLine - 1] - [cfFoldBody] = [cfFoldEnd]) then
-    LineOffset := 2;
 
   if MarkupInfo.Background <> clNone then
   begin
@@ -229,57 +174,18 @@ begin
     ACanvas.FillRect(AClip);
   end;
 
-  { The rule is quieter than the markers: it is structure, not a control, and
-    at full strength it draws the eye away from the code. }
-  RuleColour := MarkupInfo.Foreground;
-  if (RuleColour <> clNone) and (MarkupInfo.Background <> clNone) then
-  begin
-    RuleColour := TColor(
-      ((ColorToRGB(RuleColour) and $FF) + (ColorToRGB(MarkupInfo.Background) and $FF)) div 2
-      or (((((ColorToRGB(RuleColour) shr 8) and $FF) + ((ColorToRGB(MarkupInfo.Background) shr 8) and $FF)) div 2) shl 8)
-      or (((((ColorToRGB(RuleColour) shr 16) and $FF) + ((ColorToRGB(MarkupInfo.Background) shr 16) and $FF)) div 2) shl 16));
-  end;
-
-  CenterX := AClip.Left + Width div 2;
-  rcLine.Bottom := AClip.Top;
+  rcFold.Left := AClip.Left;
+  rcFold.Right := AClip.Left + Width;
+  rcFold.Bottom := AClip.Top;
 
   for iLine := FirstLine to LastLine do
   begin
-    rcLine.Top := rcLine.Bottom;
-    Inc(rcLine.Bottom, LineHeight);
-
-    rcFold.Left := AClip.Left;
-    rcFold.Right := AClip.Left + Width;
-    rcFold.Top := rcLine.Top;
-    rcFold.Bottom := rcLine.Bottom;
+    rcFold.Top := rcFold.Bottom;
+    Inc(rcFold.Bottom, LineHeight);
 
     NodeType := LedFoldTypeForLine(iLine);
-    case NodeType of
-      cfFoldStart, cfHideStart, cfCollapsedFold, cfCollapsedHide:
-        begin
-          { A block that continues below gets the rule as well as the marker,
-            so the chevron sits on the line rather than beside it. }
-          if (not FHidePrevious) and
-             (cfFoldBody in FoldView.FoldType[iLine + 1]) and
-             (not LedIsSingleLineHide(iLine)) and
-             (NodeType in [cfFoldStart, cfHideStart]) then
-          begin
-            ACanvas.Pen.Width := 1;
-            ACanvas.Pen.Color := RuleColour;
-            ACanvas.MoveTo(CenterX, rcFold.Top + LineHeight div 2);
-            ACanvas.LineTo(CenterX, rcFold.Bottom);
-          end;
-          DrawChevron(ACanvas, rcFold,
-            NodeType in [cfCollapsedFold, cfCollapsedHide]);
-          LineOffset := 0;
-        end;
-      cfFoldBody:
-        RuleThrough(rcFold);
-      cfFoldEnd:
-        RuleToFoot(rcFold);
-      else
-        LineOffset := 0;
-    end;
+    if NodeType = cfNone then Continue;
+    DrawChevron(ACanvas, rcFold, NodeType = cfCollapsedFold);
   end;
 end;
 
