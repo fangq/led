@@ -12,8 +12,10 @@ uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType,
-  SynEditHighlighterFoldBase, SynEditHighlighter,
+  SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.Core.Spell;
+
+{$I led.lazversion.inc}
 
 { Shortcuts the menus own, which the editor must therefore not consume.
 
@@ -185,9 +187,18 @@ begin
   Gutter.ChangesPart.Width := LedScale96(3);
 
   { The line the caret is on, called out in the gutter the way every editor
-    that has line numbers does. }
+    that has line numbers does.
+
+    MarkupInfoCurrentLine arrived on TSynGutterLineNumber after Lazarus 2.2,
+    where the column has one MarkupInfo for every row and the paint routine
+    reads it once.  There is no hook to single out a row short of
+    reimplementing the part's Paint against two different base classes, so on
+    2.2 the current line simply is not emphasised.  Cosmetic, and the caret
+    and the status bar both still say where you are. }
+  {$IFDEF LED_LAZ3_UP}
   Gutter.LineNumberPart.MarkupInfoCurrentLine.Foreground := clWhite;
   Gutter.LineNumberPart.MarkupInfoCurrentLine.Style := [fsBold];
+  {$ENDIF}
 
   { The fold column must be sized explicitly, and this is not cosmetic
     fiddling.  TSynGutterCodeFolding derives its box from

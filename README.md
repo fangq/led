@@ -66,6 +66,14 @@ Lazarus 2.2 is enough because the TextMate grammar engine — which only ships
 with Lazarus 3 and later — is vendored under `packages/ledsyn/vendor`, with its
 provenance and the two version shims recorded in the README there.
 
+Development happens on Lazarus 4.2, so the tree has to keep compiling against
+both.  `packages/ledcore/src/led.lazversion.inc` is the one place that decides
+which, defining `LED_LAZ3_UP` from LazUtils' `laz_fullversion`; include it and
+guard on that symbol rather than repeating version arithmetic.  One feature is
+currently lost on 2.2: the caret's line is not picked out in the line-number
+gutter, because `TSynGutterLineNumber.MarkupInfoCurrentLine` arrived after it
+and 2.2 has one colour for the whole column.
+
 ```sh
 make                  # the editor, optimized and stripped -> bin/led
 make debug            # with symbols and range checks

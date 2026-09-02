@@ -103,7 +103,7 @@
       <Filename Value="../bin/ledcoretest"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir)"/>
+      <IncludeFiles Value="$(ProjOutDir);../packages/ledcore/src"/>
       <OtherUnitFiles Value="src;../packages/ledcore/src;../packages/ledsyn/src;../packages/ledterm/src"/>
       <UnitOutputDirectory Value="../lib/test-$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
