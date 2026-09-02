@@ -9,8 +9,10 @@
   That is why medit linked libvte rather than reading a pipe, and why this
   exists.
 
-  Windows needs ConPTY, which is a different mechanism entirely; the unit
-  compiles there but reports that it is unavailable rather than pretending. }
+  Windows has no such thing, so the Windows half is ConPTY -- a different
+  mechanism entirely -- and lives in led.term.pty.conpty.inc.  On a Windows
+  older than 10 1809 there is no ConPTY either, and the unit says the
+  terminal is unavailable rather than pretending. }
 unit Led.Term.Pty;
 
 {$mode objfpc}{$H+}
@@ -19,7 +21,8 @@ interface
 
 uses
   Classes, SysUtils
-  {$IFDEF UNIX}, BaseUnix, termio, Unix{$ENDIF};
+  {$IFDEF UNIX}, BaseUnix, termio, Unix{$ENDIF}
+  {$IFDEF WINDOWS}, Windows{$ENDIF};
 
 type
   { A file descriptor and a process id are cint and TPid, which come from
@@ -31,8 +34,10 @@ type
   TLedPtyHandle = cint;
   TLedPtyPid    = TPid;
   {$ELSE}
-  TLedPtyHandle = LongInt;
-  TLedPtyPid    = LongInt;
+  { THandle, not LongInt: a Win64 handle does not fit in 32 bits, and the
+    truncation would only show up as a mysterious invalid-handle failure. }
+  TLedPtyHandle = THandle;
+  TLedPtyPid    = DWORD;
   {$ENDIF}
 
   TLedPty = class
@@ -42,6 +47,16 @@ type
     FRunning: Boolean;
     FSlaveName: string;
     FCols, FRows: Integer;
+    {$IFDEF WINDOWS}
+    { The pseudoconsole and our ends of its two pipes.  FMaster is unused on
+      Windows -- there is no single master descriptor -- so the reads and
+      writes go to different handles. }
+    FPC: THandle;
+    FInWrite: THandle;
+    FOutRead: THandle;
+    FChildProc: THandle;
+    procedure ConPtyCleanup;
+    {$ENDIF}
   public
     constructor Create;
     destructor Destroy; override;
@@ -74,7 +89,7 @@ function LedDefaultShell: string;
 
 implementation
 
-{$IFDEF UNIX}
+{$IF DEFINED(UNIX)}
 const
   TIOCSWINSZ_ = {$IFDEF LINUX}$5414{$ELSE}$80087467{$ENDIF};
 
@@ -97,13 +112,16 @@ function unsetenv_(name: PChar): cint; cdecl; external 'c' name 'unsetenv';
 
 function LedPtyAvailable: Boolean;
 begin
-  {$IFDEF UNIX}
+  {$IF DEFINED(UNIX)}
   Result := True;
+  {$ELSEIF DEFINED(WINDOWS)}
+  { Whether the six ConPTY entry points resolved.  False on anything older
+    than Windows 10 1809, where the pane says the terminal is unavailable --
+    which is better than opening a window that never prints anything. }
+  Result := ConPtyLoad;
   {$ELSE}
-  { ConPTY is a different mechanism and is not implemented yet.  Saying so is
-    better than opening a window that never prints anything. }
   Result := False;
-  {$ENDIF}
+  {$IFEND}
 end;
 
 function LedDefaultShell: string;
@@ -120,7 +138,17 @@ end;
 constructor TLedPty.Create;
 begin
   inherited Create;
+  {$IFDEF UNIX}
   FMaster := -1;
+  {$ELSE}
+  { THandle is unsigned on Windows, where -1 is INVALID_HANDLE_VALUE rather
+    than "unset"; zero is what the cleanup path tests for. }
+  FMaster := 0;
+  FPC := 0;
+  FInWrite := 0;
+  FOutRead := 0;
+  FChildProc := 0;
+  {$ENDIF}
   FCols := 80;
   FRows := 24;
 end;
@@ -131,7 +159,7 @@ begin
   inherited Destroy;
 end;
 
-{$IFDEF UNIX}
+{$IF DEFINED(UNIX)}
 function TLedPty.Spawn(const ACommand, AWorkDir: string;
   ACols, ARows: Integer): Boolean;
 var
@@ -288,6 +316,10 @@ begin
   end;
 end;
 
+{$ELSEIF DEFINED(WINDOWS)}
+
+{$I led.term.pty.conpty.inc}
+
 {$ELSE}
 
 function TLedPty.Spawn(const ACommand, AWorkDir: string;
@@ -322,7 +354,7 @@ begin
   Result := True;
 end;
 
-{$ENDIF}
+{$IFEND}
 
 procedure TLedPty.WriteString(const AText: string);
 begin

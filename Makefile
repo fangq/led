@@ -10,6 +10,7 @@
 #   make res        - regenerate app/led.res from packaging/windows/led.rc
 #   make icon       - regenerate the icons from tools/make-icon.py
 #   make grammars   - reconvert data/grammars from the .lang sources
+#   make conpty     - type-check the Windows ConPTY backend on any platform
 #   make deb        - build dist/*.deb and a portable dist/*.tar.gz (Linux)
 #   make clean      - remove build artifacts
 #   make distclean  - also remove the binaries
@@ -53,6 +54,7 @@ ICONSIZES := 16 22 24 32 48 64 128 256 512
 PASSRC := $(shell find packages app -name '*.pas' -o -name '*.lpr')
 
 .PHONY: all build release debug tests selftest check run res icon grammars \
+        conpty \
         deb clean distclean install uninstall linux win64 win32 macos help
 
 all: build
@@ -106,7 +108,19 @@ grammars:
 	$(LAZBUILD) $(LAZDIR) --widgetset=nogui $(LANGPROJ)
 	./bin/langcheck data/grammars
 
-check: tests grammars selftest
+# The Windows terminal backend, compiled on whatever platform you are on.
+# There is no Windows cross-toolchain on the machine it was written on, so
+# without this the first compiler to see led.term.pty.conpty.inc would be a
+# CI runner three minutes into a push.  The harness mirrors the Win32 surface
+# the include uses, signature for signature out of FPC's rtl/win/wininc, and
+# compiles the real source against it.  It proves nothing about Windows
+# behaviour -- only that the code is well-formed.
+conpty:
+	$(FPC) -Mobjfpc -Sh -Fipackages/ledterm/src -FUlib/conptycheck \
+	       -otools/conptycheck/conptycheck tools/conptycheck/conptycheck.lpr
+	./tools/conptycheck/conptycheck
+
+check: tests grammars conpty selftest
 
 run: build
 	./$(BIN)

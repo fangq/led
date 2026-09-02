@@ -219,7 +219,7 @@ An honest list, so nothing here is mistaken for an oversight.
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | Long-line truncate-and-reveal | deferred with reason: benchmarked as unnecessary for speed, and a lines-view decorator risks text corruption |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
-| Terminal on Windows | needs ConPTY, a different mechanism; the pane reports it is unavailable |
+| Terminal on Windows | ConPTY backend written and type-checked, but never run on Windows -- CI is the first thing to compile it.  Needs Windows 10 1809; older Windows reports the terminal unavailable.  Scrollback is best-effort, because conhost keeps no history of its own |
 | Wiki markup preview | dropped deliberately |
 | Translations | not started |
 | Code signing and notarization | not started; the macOS bundle is ad-hoc signed and the Windows installer is unsigned |

@@ -14,3 +14,4 @@ build/
 led-*-linux-*/
 led-*-win64/
 led.app/
+tools/conptycheck/conptycheck
