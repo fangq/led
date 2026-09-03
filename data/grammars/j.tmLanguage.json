@@ -5,16 +5,7 @@
   {
    "begin": "\\bNB\\.",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "match": "'[^']*?$",
@@ -23,16 +14,7 @@
   {
    "begin": "L?'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "match": "=:",
@@ -65,16 +47,7 @@
     {
      "begin": "\\bNB\\.",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     }
+     "name": "def.comment"
     },
     {
      "match": "'[^']*?$",
@@ -111,16 +84,7 @@
     {
      "begin": "L?'",
      "end": "(?:')|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "\\b[_0-9][_0-9\\.a-zA-Z]*\\b",
@@ -135,40 +99,22 @@
   {
    "begin": "\\b(0\\s+:\\s*0|noun\\s+define)\\b.*$",
    "end": "(?:^\\s*\\)\\s*$)",
-   "name": "def.string"
+   "contentName": "def.string"
   },
   {
    "begin": "^\\s*[\\xE2\\x94\\x80|-]{2,}",
    "end": "(?:^\\s*\\)\\s*$)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   }
+   "name": "def.preprocessor"
   },
   {
    "begin": "^\\s*\\bNote\\b(?!\\s*\\=[:.])\\s*['\\d].*$",
    "end": "(?:^\\s*\\)\\s*$)",
-   "name": "def.comment"
+   "contentName": "def.comment"
   },
   {
    "begin": "\\bNote\\b(?!\\s*\\=[:.])\\s*['\\d].*$",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "match": "[\\(\\)]",

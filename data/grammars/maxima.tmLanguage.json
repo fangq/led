@@ -5,16 +5,7 @@
   {
    "begin": "\\/\\*",
    "end": "\\*\\/",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "match": "\\b(?:and|do|else|elseif|false|for|if|in|not|or|step|then|thru|true|while)\\b",

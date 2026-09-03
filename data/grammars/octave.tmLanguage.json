@@ -5,30 +5,12 @@
   {
    "begin": "^#!",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "begin": "^\\s*[#%]{\\s*$",
    "end": "^\\s*[#%]}\\s*$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -51,16 +33,7 @@
   {
    "begin": "#|%",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -83,16 +56,7 @@
   {
    "begin": "\\.\\.\\.",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -115,16 +79,7 @@
   {
    "begin": "L?\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
@@ -137,32 +92,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "(?<![0-9a-zA-Z_\\)\\]}\\.])'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "''",

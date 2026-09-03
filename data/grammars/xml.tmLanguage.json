@@ -5,16 +5,7 @@
   {
    "begin": "<!--",
    "end": "-->",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "match": "--+",
@@ -102,16 +93,7 @@
         {
          "begin": "<!--",
          "end": "-->",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "match": "--+",
@@ -156,16 +138,7 @@
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -196,16 +169,7 @@
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -229,16 +193,7 @@
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -301,16 +256,7 @@
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -345,16 +291,7 @@
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -405,16 +342,7 @@
     {
      "begin": "[\"']",
      "end": "\\0",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -439,20 +367,12 @@
   {
    "begin": "<\\?",
    "end": "\\?>",
-   "beginCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   }
+   "name": "def.preprocessor"
   },
   {
    "begin": "<(?!/)",
    "end": "/?>",
+   "name": "xml.tag",
    "beginCaptures": {
     "0": {
      "name": "def.identifier"
@@ -487,16 +407,7 @@
     {
      "begin": "[\"']",
      "end": "\\0",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -525,6 +436,7 @@
   {
    "begin": "</",
    "end": ">",
+   "name": "xml.tag",
    "beginCaptures": {
     "0": {
      "name": "def.identifier"

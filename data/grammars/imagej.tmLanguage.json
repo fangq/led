@@ -5,32 +5,14 @@
   {
    "begin": "//",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "patterns": [
@@ -55,16 +37,7 @@
   {
    "begin": "/\\*",
    "end": "\\*/",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -91,16 +64,7 @@
   {
    "begin": "\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",
@@ -115,16 +79,7 @@
   {
    "begin": "'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "(?:\\\\([\\\\\\\"\\'nrbtfav\\?]|[0-7]{1,3}|x[0-9A-Fa-f]+))",

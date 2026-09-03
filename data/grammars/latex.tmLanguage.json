@@ -7,16 +7,7 @@
     {
      "begin": "%",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -39,16 +30,7 @@
     {
      "begin": "\\\\begin\\{comment\\}",
      "end": "\\\\end\\{comment\\}",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -75,7 +57,7 @@
     {
      "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
      "end": "(\\\\end)\\{(\\2)\\}",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -90,7 +72,7 @@
     {
      "begin": "(\\\\begin)\\{lstlisting\\}",
      "end": "(\\\\end)\\{lstlisting\\}",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -105,7 +87,7 @@
     {
      "begin": "(\\\\verb)\\*?(\\S)",
      "end": "\\2",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -115,7 +97,7 @@
     {
      "begin": "(\\\\lstinline)(\\[.*?\\])?{",
      "end": "}",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -125,7 +107,7 @@
     {
      "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
      "end": "\\[",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -135,7 +117,7 @@
     {
      "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
      "end": "\\3",
-     "name": "def.comment",
+     "contentName": "def.comment",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -163,16 +145,7 @@
       {
        "begin": "#",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "patterns": [
@@ -195,16 +168,7 @@
       {
        "begin": "\"",
        "end": "(?:\")|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.constant"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.constant"
-        }
-       },
+       "name": "def.constant",
        "patterns": [
         {
          "match": "\\\\.",
@@ -213,32 +177,14 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "'",
        "end": "(?:')|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.constant"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.constant"
-        }
-       },
+       "name": "def.constant",
        "patterns": [
         {
          "match": "\\\\.",
@@ -247,16 +193,7 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
@@ -321,7 +258,7 @@
     {
      "begin": "(\\\\part\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading0",
+     "contentName": "def.heading0",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -339,16 +276,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -371,16 +299,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -407,7 +326,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -422,7 +341,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -437,7 +356,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -447,7 +366,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -457,7 +376,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -467,7 +386,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -495,16 +414,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -527,16 +437,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -545,32 +446,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -579,16 +462,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -653,6 +527,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -671,16 +546,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -703,16 +569,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -773,6 +630,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -791,16 +649,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -823,16 +672,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -893,7 +733,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -912,16 +752,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -944,16 +775,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -1014,6 +836,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -1032,16 +855,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -1064,16 +878,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -1134,6 +939,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -1152,16 +958,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -1184,16 +981,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -1332,16 +1120,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -1364,16 +1143,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -1400,7 +1170,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1415,7 +1185,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1430,7 +1200,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1440,7 +1210,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1450,7 +1220,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1460,7 +1230,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1488,16 +1258,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -1520,16 +1281,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -1538,32 +1290,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -1572,16 +1306,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -1646,6 +1371,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -1664,16 +1390,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -1696,16 +1413,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -1766,6 +1474,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -1784,16 +1493,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -1816,16 +1516,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -1886,7 +1577,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1905,16 +1596,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -1937,16 +1619,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -2007,6 +1680,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -2025,16 +1699,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -2057,16 +1722,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -2127,6 +1783,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -2145,16 +1802,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -2177,16 +1825,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -2321,7 +1960,7 @@
     {
      "begin": "(\\\\chapter\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading1",
+     "contentName": "def.heading1",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -2339,16 +1978,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -2371,16 +2001,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -2407,7 +2028,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2422,7 +2043,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2437,7 +2058,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2447,7 +2068,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2457,7 +2078,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2467,7 +2088,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2495,16 +2116,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -2527,16 +2139,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -2545,32 +2148,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -2579,16 +2164,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -2653,6 +2229,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -2671,16 +2248,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -2703,16 +2271,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -2773,6 +2332,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -2791,16 +2351,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -2823,16 +2374,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -2893,7 +2435,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -2912,16 +2454,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -2944,16 +2477,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -3014,6 +2538,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -3032,16 +2557,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -3064,16 +2580,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -3134,6 +2641,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -3152,16 +2660,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -3184,16 +2683,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -3332,16 +2822,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -3364,16 +2845,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -3400,7 +2872,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3415,7 +2887,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3430,7 +2902,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3440,7 +2912,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3450,7 +2922,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3460,7 +2932,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3488,16 +2960,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -3520,16 +2983,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -3538,32 +2992,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -3572,16 +3008,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -3646,6 +3073,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -3664,16 +3092,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -3696,16 +3115,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -3766,6 +3176,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -3784,16 +3195,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -3816,16 +3218,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -3886,7 +3279,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -3905,16 +3298,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -3937,16 +3321,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -4007,6 +3382,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -4025,16 +3401,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -4057,16 +3424,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -4127,6 +3485,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -4145,16 +3504,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -4177,16 +3527,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -4321,7 +3662,7 @@
     {
      "begin": "(\\\\section\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading2",
+     "contentName": "def.heading2",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -4339,16 +3680,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -4371,16 +3703,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -4407,7 +3730,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4422,7 +3745,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4437,7 +3760,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4447,7 +3770,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4457,7 +3780,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4467,7 +3790,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4495,16 +3818,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -4527,16 +3841,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -4545,32 +3850,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -4579,16 +3866,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -4653,6 +3931,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -4671,16 +3950,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -4703,16 +3973,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -4773,6 +4034,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -4791,16 +4053,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -4823,16 +4076,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -4893,7 +4137,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -4912,16 +4156,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -4944,16 +4179,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -5014,6 +4240,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -5032,16 +4259,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -5064,16 +4282,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -5134,6 +4343,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -5152,16 +4362,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -5184,16 +4385,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -5332,16 +4524,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -5364,16 +4547,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -5400,7 +4574,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5415,7 +4589,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5430,7 +4604,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5440,7 +4614,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5450,7 +4624,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5460,7 +4634,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5488,16 +4662,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -5520,16 +4685,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -5538,32 +4694,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -5572,16 +4710,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -5646,6 +4775,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -5664,16 +4794,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -5696,16 +4817,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -5766,6 +4878,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -5784,16 +4897,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -5816,16 +4920,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -5886,7 +4981,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -5905,16 +5000,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -5937,16 +5023,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -6007,6 +5084,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -6025,16 +5103,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -6057,16 +5126,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -6127,6 +5187,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -6145,16 +5206,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -6177,16 +5229,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -6321,7 +5364,7 @@
     {
      "begin": "(\\\\subsection\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading3",
+     "contentName": "def.heading3",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -6339,16 +5382,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -6371,16 +5405,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -6407,7 +5432,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6422,7 +5447,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6437,7 +5462,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6447,7 +5472,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6457,7 +5482,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6467,7 +5492,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6495,16 +5520,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -6527,16 +5543,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -6545,32 +5552,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -6579,16 +5568,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -6653,6 +5633,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -6671,16 +5652,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -6703,16 +5675,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -6773,6 +5736,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -6791,16 +5755,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -6823,16 +5778,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -6893,7 +5839,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -6912,16 +5858,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -6944,16 +5881,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -7014,6 +5942,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -7032,16 +5961,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -7064,16 +5984,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -7134,6 +6045,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -7152,16 +6064,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -7184,16 +6087,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -7332,16 +6226,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -7364,16 +6249,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -7400,7 +6276,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7415,7 +6291,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7430,7 +6306,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7440,7 +6316,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7450,7 +6326,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7460,7 +6336,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7488,16 +6364,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -7520,16 +6387,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -7538,32 +6396,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -7572,16 +6412,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -7646,6 +6477,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -7664,16 +6496,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -7696,16 +6519,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -7766,6 +6580,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -7784,16 +6599,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -7816,16 +6622,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -7886,7 +6683,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -7905,16 +6702,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -7937,16 +6725,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -8007,6 +6786,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -8025,16 +6805,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -8057,16 +6828,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -8127,6 +6889,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -8145,16 +6908,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -8177,16 +6931,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -8321,7 +7066,7 @@
     {
      "begin": "(\\\\subsubsection\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading4",
+     "contentName": "def.heading4",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -8339,16 +7084,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -8371,16 +7107,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -8407,7 +7134,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8422,7 +7149,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8437,7 +7164,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8447,7 +7174,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8457,7 +7184,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8467,7 +7194,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8495,16 +7222,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -8527,16 +7245,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -8545,32 +7254,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -8579,16 +7270,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -8653,6 +7335,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -8671,16 +7354,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -8703,16 +7377,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -8773,6 +7438,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -8791,16 +7457,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -8823,16 +7480,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -8893,7 +7541,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -8912,16 +7560,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -8944,16 +7583,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -9014,6 +7644,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -9032,16 +7663,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -9064,16 +7686,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -9134,6 +7747,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -9152,16 +7766,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -9184,16 +7789,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -9332,16 +7928,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -9364,16 +7951,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -9400,7 +7978,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9415,7 +7993,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9430,7 +8008,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9440,7 +8018,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9450,7 +8028,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9460,7 +8038,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9488,16 +8066,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -9520,16 +8089,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -9538,32 +8098,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -9572,16 +8114,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -9646,6 +8179,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -9664,16 +8198,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -9696,16 +8221,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -9766,6 +8282,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -9784,16 +8301,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -9816,16 +8324,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -9886,7 +8385,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -9905,16 +8404,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -9937,16 +8427,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -10007,6 +8488,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -10025,16 +8507,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -10057,16 +8530,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -10127,6 +8591,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -10145,16 +8610,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -10177,16 +8633,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -10321,7 +8768,7 @@
     {
      "begin": "(\\\\paragraph\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading5",
+     "contentName": "def.heading5",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -10339,16 +8786,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -10371,16 +8809,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -10407,7 +8836,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10422,7 +8851,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10437,7 +8866,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10447,7 +8876,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10457,7 +8886,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10467,7 +8896,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10495,16 +8924,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -10527,16 +8947,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -10545,32 +8956,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -10579,16 +8972,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -10653,6 +9037,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -10671,16 +9056,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -10703,16 +9079,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -10773,6 +9140,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -10791,16 +9159,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -10823,16 +9182,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -10893,7 +9243,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -10912,16 +9262,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -10944,16 +9285,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -11014,6 +9346,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -11032,16 +9365,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -11064,16 +9388,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -11134,6 +9449,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -11152,16 +9468,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -11184,16 +9491,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -11332,16 +9630,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -11364,16 +9653,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -11400,7 +9680,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11415,7 +9695,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11430,7 +9710,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11440,7 +9720,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11450,7 +9730,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11460,7 +9740,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11488,16 +9768,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -11520,16 +9791,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -11538,32 +9800,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -11572,16 +9816,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -11646,6 +9881,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -11664,16 +9900,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -11696,16 +9923,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -11766,6 +9984,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -11784,16 +10003,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -11816,16 +10026,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -11886,7 +10087,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -11905,16 +10106,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -11937,16 +10129,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -12007,6 +10190,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -12025,16 +10209,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -12057,16 +10232,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -12127,6 +10293,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -12145,16 +10312,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -12177,16 +10335,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -12321,7 +10470,7 @@
     {
      "begin": "(\\\\subparagraph\\*?)\\{",
      "end": "(?:\\})|$",
-     "name": "def.heading6",
+     "contentName": "def.heading6",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -12339,16 +10488,7 @@
             {
              "begin": "%",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -12371,16 +10511,7 @@
             {
              "begin": "\\\\begin\\{comment\\}",
              "end": "\\\\end\\{comment\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -12407,7 +10538,7 @@
             {
              "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
              "end": "(\\\\end)\\{(\\2)\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12422,7 +10553,7 @@
             {
              "begin": "(\\\\begin)\\{lstlisting\\}",
              "end": "(\\\\end)\\{lstlisting\\}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12437,7 +10568,7 @@
             {
              "begin": "(\\\\verb)\\*?(\\S)",
              "end": "\\2",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12447,7 +10578,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?{",
              "end": "}",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12457,7 +10588,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
              "end": "\\[",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12467,7 +10598,7 @@
             {
              "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
              "end": "\\3",
-             "name": "def.comment",
+             "contentName": "def.comment",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12495,16 +10626,7 @@
               {
                "begin": "#",
                "end": "$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.comment"
-                }
-               },
+               "name": "def.comment",
                "patterns": [
                 {
                  "patterns": [
@@ -12527,16 +10649,7 @@
               {
                "begin": "\"",
                "end": "(?:\")|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -12545,32 +10658,14 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
               {
                "begin": "'",
                "end": "(?:')|$",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.constant"
-                }
-               },
+               "name": "def.constant",
                "patterns": [
                 {
                  "match": "\\\\.",
@@ -12579,16 +10674,7 @@
                 {
                  "begin": "\\\\$",
                  "end": "^",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.preprocessor"
-                  }
-                 }
+                 "name": "def.preprocessor"
                 }
                ]
               },
@@ -12653,6 +10739,7 @@
             {
              "begin": "\\$\\$",
              "end": "\\$\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -12671,16 +10758,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -12703,16 +10781,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -12773,6 +10842,7 @@
             {
              "begin": "\\\\\\[",
              "end": "\\\\\\]",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -12791,16 +10861,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -12823,16 +10884,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -12893,7 +10945,7 @@
             {
              "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
              "end": "(\\\\end)\\{\\2\\}",
-             "name": "latex.display-math",
+             "contentName": "latex.display-math",
              "beginCaptures": {
               "1": {
                "name": "def.keyword"
@@ -12912,16 +10964,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -12944,16 +10987,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -13014,6 +11048,7 @@
             {
              "begin": "\\$",
              "end": "\\$",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -13032,16 +11067,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -13064,16 +11090,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -13134,6 +11151,7 @@
             {
              "begin": "\\\\\\(",
              "end": "\\\\\\)",
+             "name": "latex.display-math",
              "beginCaptures": {
               "0": {
                "name": "latex.display-math"
@@ -13152,16 +11170,7 @@
                   {
                    "begin": "%",
                    "end": "$",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -13184,16 +11193,7 @@
                   {
                    "begin": "\\\\begin\\{comment\\}",
                    "end": "\\\\end\\{comment\\}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.comment"
-                    }
-                   },
+                   "name": "def.comment",
                    "patterns": [
                     {
                      "patterns": [
@@ -13332,16 +11332,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -13364,16 +11355,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -13400,7 +11382,7 @@
           {
            "begin": "(\\\\begin)\\{(verbatim\\*?|alltt)\\}",
            "end": "(\\\\end)\\{(\\2)\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13415,7 +11397,7 @@
           {
            "begin": "(\\\\begin)\\{lstlisting\\}",
            "end": "(\\\\end)\\{lstlisting\\}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13430,7 +11412,7 @@
           {
            "begin": "(\\\\verb)\\*?(\\S)",
            "end": "\\2",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13440,7 +11422,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?{",
            "end": "}",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13450,7 +11432,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])\\[",
            "end": "\\[",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13460,7 +11442,7 @@
           {
            "begin": "(\\\\lstinline)(\\[.*?\\])?((?!\\[)\\S)",
            "end": "\\3",
-           "name": "def.comment",
+           "contentName": "def.comment",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13488,16 +11470,7 @@
             {
              "begin": "#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -13520,16 +11493,7 @@
             {
              "begin": "\"",
              "end": "(?:\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -13538,32 +11502,14 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
             {
              "begin": "'",
              "end": "(?:')|$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.constant"
-              }
-             },
+             "name": "def.constant",
              "patterns": [
               {
                "match": "\\\\.",
@@ -13572,16 +11518,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               }
              ]
             },
@@ -13646,6 +11583,7 @@
           {
            "begin": "\\$\\$",
            "end": "\\$\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -13664,16 +11602,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -13696,16 +11625,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -13766,6 +11686,7 @@
           {
            "begin": "\\\\\\[",
            "end": "\\\\\\]",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -13784,16 +11705,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -13816,16 +11728,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -13886,7 +11789,7 @@
           {
            "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
            "end": "(\\\\end)\\{\\2\\}",
-           "name": "latex.display-math",
+           "contentName": "latex.display-math",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -13905,16 +11808,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -13937,16 +11831,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -14007,6 +11892,7 @@
           {
            "begin": "\\$",
            "end": "\\$",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -14025,16 +11911,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -14057,16 +11934,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -14127,6 +11995,7 @@
           {
            "begin": "\\\\\\(",
            "end": "\\\\\\)",
+           "name": "latex.display-math",
            "beginCaptures": {
             "0": {
              "name": "latex.display-math"
@@ -14145,16 +12014,7 @@
                 {
                  "begin": "%",
                  "end": "$",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -14177,16 +12037,7 @@
                 {
                  "begin": "\\\\begin\\{comment\\}",
                  "end": "\\\\end\\{comment\\}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.comment"
-                  }
-                 },
+                 "name": "def.comment",
                  "patterns": [
                   {
                    "patterns": [
@@ -14325,6 +12176,7 @@
     {
      "begin": "\\$\\$",
      "end": "\\$\\$",
+     "name": "latex.display-math",
      "beginCaptures": {
       "0": {
        "name": "latex.display-math"
@@ -14343,16 +12195,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14375,16 +12218,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14445,6 +12279,7 @@
     {
      "begin": "\\\\\\[",
      "end": "\\\\\\]",
+     "name": "latex.display-math",
      "beginCaptures": {
       "0": {
        "name": "latex.display-math"
@@ -14463,16 +12298,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14495,16 +12321,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14565,7 +12382,7 @@
     {
      "begin": "(\\\\begin)\\{(math|displaymath|equation\\*?|align\\*?|eqnarray\\*?)\\}",
      "end": "(\\\\end)\\{\\2\\}",
-     "name": "latex.display-math",
+     "contentName": "latex.display-math",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -14584,16 +12401,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14616,16 +12424,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14686,6 +12485,7 @@
     {
      "begin": "\\$",
      "end": "\\$",
+     "name": "latex.display-math",
      "beginCaptures": {
       "0": {
        "name": "latex.display-math"
@@ -14704,16 +12504,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14736,16 +12527,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14806,6 +12588,7 @@
     {
      "begin": "\\\\\\(",
      "end": "\\\\\\)",
+     "name": "latex.display-math",
      "beginCaptures": {
       "0": {
        "name": "latex.display-math"
@@ -14824,16 +12607,7 @@
           {
            "begin": "%",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -14856,16 +12630,7 @@
           {
            "begin": "\\\\begin\\{comment\\}",
            "end": "\\\\end\\{comment\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [

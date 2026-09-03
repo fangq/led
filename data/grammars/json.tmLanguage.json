@@ -16,16 +16,7 @@
       {
        "begin": "\"",
        "end": "(?:\")|$",
-       "beginCaptures": {
-        "0": {
-         "name": "js.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "js.string"
-        }
-       },
+       "name": "js.string",
        "patterns": [
         {
          "match": "\\\\(?:[ntrfb\"\\\\/]|u[0-9a-fA-F]{4})",
@@ -38,16 +29,7 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.error"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.error"
-          }
-         }
+         "name": "def.error"
         }
        ]
       },
@@ -73,16 +55,7 @@
     {
      "begin": "\"",
      "end": "(?:\")|$",
-     "beginCaptures": {
-      "0": {
-       "name": "js.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "js.string"
-      }
-     },
+     "name": "js.string",
      "patterns": [
       {
        "match": "\\\\(?:[ntrfb\"\\\\/]|u[0-9a-fA-F]{4})",
@@ -95,16 +68,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.error"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.error"
-        }
-       }
+       "name": "def.error"
       }
      ]
     },

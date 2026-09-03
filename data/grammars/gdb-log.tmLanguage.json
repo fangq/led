@@ -5,16 +5,7 @@
   {
    "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
    "end": "(?:---$)|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "match": "^\\[(?:New |Switching to )?(?:Thread|LWP)\\s+((?:(?:-?[1-9][0-9]*|\\%{def:hexadecimal})))?.*\\]$",
@@ -79,16 +70,7 @@
     {
      "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
      "end": "(?:---$)|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     }
+     "name": "def.comment"
     }
    ]
   },
@@ -129,16 +111,7 @@
     {
      "begin": "\\(gdb\\)|---|Kill|Using|Program|Starting|No symbol",
      "end": "(?:---$)|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     }
+     "name": "def.comment"
     }
    ]
   },

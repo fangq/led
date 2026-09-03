@@ -5,16 +5,7 @@
   {
    "begin": "#",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -41,16 +32,7 @@
   {
    "begin": "\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
+   "name": "def.constant",
    "patterns": [
     {
      "match": "\\\\.",
@@ -59,32 +41,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
+   "name": "def.constant",
    "patterns": [
     {
      "match": "\\\\.",
@@ -93,16 +57,7 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
@@ -145,16 +100,7 @@
     {
      "begin": "#",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -181,16 +127,7 @@
     {
      "begin": "\"",
      "end": "(?:\")|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.constant"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.constant"
-      }
-     },
+     "name": "def.constant",
      "patterns": [
       {
        "match": "\\\\.",
@@ -199,32 +136,14 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       }
      ]
     },
     {
      "begin": "'",
      "end": "(?:')|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.constant"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.constant"
-      }
-     },
+     "name": "def.constant",
      "patterns": [
       {
        "match": "\\\\.",
@@ -233,16 +152,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       }
      ]
     },

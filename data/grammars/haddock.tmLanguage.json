@@ -21,16 +21,7 @@
   {
    "begin": "/",
    "end": "/",
-   "beginCaptures": {
-    "0": {
-     "name": "def.doc-comment-element"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.doc-comment-element"
-    }
-   },
+   "name": "def.doc-comment-element",
    "patterns": [
     {
      "match": "\\\\[/'`\"@#<*-]",
@@ -45,16 +36,7 @@
   {
    "begin": "@",
    "end": "@",
-   "beginCaptures": {
-    "0": {
-     "name": "haddock.monospace"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "haddock.monospace"
-    }
-   },
+   "name": "haddock.monospace",
    "patterns": [
     {
      "match": "\\\\[/'`\"@#<*-]",
@@ -97,16 +79,7 @@
   {
    "begin": "\\s+([|^*$]+)",
    "end": "^(?!\\s*--+)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.doc-comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.doc-comment"
-    }
-   },
+   "name": "def.doc-comment",
    "patterns": [
     {
      "match": "\\\\[/'`\"@#<*-]",
@@ -127,16 +100,7 @@
     {
      "begin": "/",
      "end": "/",
-     "beginCaptures": {
-      "0": {
-       "name": "def.doc-comment-element"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.doc-comment-element"
-      }
-     },
+     "name": "def.doc-comment-element",
      "patterns": [
       {
        "match": "\\\\[/'`\"@#<*-]",
@@ -151,16 +115,7 @@
     {
      "begin": "@",
      "end": "@",
-     "beginCaptures": {
-      "0": {
-       "name": "haddock.monospace"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "haddock.monospace"
-      }
-     },
+     "name": "haddock.monospace",
      "patterns": [
       {
        "match": "\\\\[/'`\"@#<*-]",
@@ -205,16 +160,7 @@
   {
    "begin": "(?<={-)\\s?[|^*$]",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.doc-comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.doc-comment"
-    }
-   },
+   "name": "def.doc-comment",
    "patterns": [
     {
      "match": "\\\\[/'`\"@#<*-]",
@@ -235,16 +181,7 @@
     {
      "begin": "/",
      "end": "/",
-     "beginCaptures": {
-      "0": {
-       "name": "def.doc-comment-element"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.doc-comment-element"
-      }
-     },
+     "name": "def.doc-comment-element",
      "patterns": [
       {
        "match": "\\\\[/'`\"@#<*-]",
@@ -259,16 +196,7 @@
     {
      "begin": "@",
      "end": "@",
-     "beginCaptures": {
-      "0": {
-       "name": "haddock.monospace"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "haddock.monospace"
-      }
-     },
+     "name": "haddock.monospace",
      "patterns": [
       {
        "match": "\\\\[/'`\"@#<*-]",

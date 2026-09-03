@@ -23,10 +23,8 @@
     {
      "begin": "/\\*\\*(?!\\S)",
      "end": "\\*/",
+     "name": "def.doc-comment",
      "beginCaptures": {
-      "0": {
-       "name": "def.doc-comment"
-      },
       "2": {
        "name": "def.doc-comment-element"
       },
@@ -35,11 +33,6 @@
       },
       "4": {
        "name": "def.doc-comment-element"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.doc-comment"
       }
      },
      "patterns": [
@@ -170,32 +163,14 @@
     {
      "begin": "//",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         },
         {
          "patterns": [
@@ -220,16 +195,7 @@
     {
      "begin": "/\\*",
      "end": "\\*/",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -256,16 +222,7 @@
     {
      "begin": "(?:^\\s*#\\s*)if\\b\\s*0\\b",
      "end": "(?:^\\s*#\\s*)(endif|else|elif)\\b",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "begin": "(?:^\\s*#\\s*)if(n?def)?\\b",
@@ -341,44 +298,17 @@
     {
      "begin": "(?:^\\s*#\\s*)(define|undef|error|pragma|ident|if(n?def)?|else|elif|endif|line|warning)\\b",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
+     "name": "def.preprocessor",
      "patterns": [
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "begin": "L?\"",
        "end": "(?:\")|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
@@ -391,48 +321,21 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "//",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "patterns": [
           {
            "begin": "\\\\$",
            "end": "^",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           }
+           "name": "def.preprocessor"
           },
           {
            "patterns": [
@@ -457,16 +360,7 @@
       {
        "begin": "/\\*",
        "end": "\\*/",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "patterns": [
@@ -491,16 +385,7 @@
     {
      "begin": "L?\"",
      "end": "(?:\")|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
@@ -513,16 +398,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       }
      ]
     },

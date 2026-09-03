@@ -5,16 +5,7 @@
   {
    "begin": "\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
+   "name": "def.constant",
    "patterns": [
     {
      "match": "\\\\.",
@@ -23,32 +14,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.constant"
-    }
-   },
+   "name": "def.constant",
    "patterns": [
     {
      "match": "\\\\.",
@@ -57,32 +30,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "/\\*",
    "end": "\\*/",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -133,16 +88,7 @@
     {
      "begin": "/\\*",
      "end": "\\*/",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -203,16 +149,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",

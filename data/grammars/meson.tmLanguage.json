@@ -5,30 +5,12 @@
   {
    "begin": "'''",
    "end": "'''",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "match": "(?i)(?:add_global_arguments|add_global_link_arguments|add_languages|add_project_arguments|add_project_link_arguments|benchmark|build_target|configuration_data|configure_file|custom_target|declare_dependency|dependency|error|environment|executable|find_program|find_library|files|generator|get_option|get_variable|import|include_directories|install_data|install_headers|install_man|install_subdir|is_subproject|is_variable|jar|join_paths|library|message|project|run_command|run_target|set_variable|shared_library|static_library|subdir|subproject|test|vcs_tag|option)\\b",
@@ -49,16 +31,7 @@
   {
    "begin": "#",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [

@@ -17,44 +17,17 @@
   {
    "begin": "(\\s*)\\.\\.(\\s+).+$",
    "end": "^(?!(\\1  \\2)|(^$))",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "begin": "^(\\s*)\\.\\.(\\s*)$",
    "end": "x",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "begin": "(\\s*).+$",
      "end": "^(?!(\\1))",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     }
+     "name": "def.comment"
     }
    ]
   },

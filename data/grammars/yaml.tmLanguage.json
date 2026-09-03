@@ -17,16 +17,7 @@
     {
      "begin": "^(?'indent'\\s+)",
      "end": "^(?!\\%{indent@start})",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "(?=.)"
@@ -47,16 +38,7 @@
       {
        "begin": "^(?'indent'\\s+)",
        "end": "^(?!\\%{indent@start})",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "(?=.)"
@@ -74,16 +56,7 @@
         {
          "begin": "^(?'indent'\\s+)",
          "end": "^(?!\\%{indent@start})",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "match": "(?=.)"
@@ -109,16 +82,7 @@
       {
        "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
        "end": "(?:[^\\\\]\\%{q@start})|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
@@ -139,16 +103,7 @@
       {
        "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
        "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "\\}"
@@ -174,16 +129,7 @@
     {
      "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
      "end": "(?:[^\\\\]\\%{q@start})|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
@@ -204,16 +150,7 @@
     {
      "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
      "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "\\]"
@@ -231,16 +168,7 @@
       {
        "begin": "^(?'indent'\\s+)",
        "end": "^(?!\\%{indent@start})",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "(?=.)"
@@ -258,16 +186,7 @@
         {
          "begin": "^(?'indent'\\s+)",
          "end": "^(?!\\%{indent@start})",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "match": "(?=.)"
@@ -293,16 +212,7 @@
       {
        "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
        "end": "(?:[^\\\\]\\%{q@start})|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
@@ -323,16 +233,7 @@
       {
        "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
        "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "\\]"
@@ -358,16 +259,7 @@
     {
      "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
      "end": "(?:[^\\\\]\\%{q@start})|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "(?:null)(?=\\s*[:,?\\[\\{\\]\\}]|\\s+#)",
@@ -388,16 +280,7 @@
     {
      "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|-\\S)",
      "end": "(?:(?=[:,?\\[\\{\\]\\}]|\\s#))|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "match": "\\}"
@@ -447,30 +330,12 @@
   {
    "begin": "(?<=^|(?:[\\s\\[\\{,]))(?'q'[\"'])",
    "end": "(?:[^\\\\]\\%{q@start})|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "(?=(?:[^-\\?:,\\[\\]\\{\\}#&*!|>'\"%@\\s])|[:-\\?\\]\\}]\\S)",
    "end": "(?:(?=:\\s|:$|\\s#))|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   }
  ],
  "fileTypes": [

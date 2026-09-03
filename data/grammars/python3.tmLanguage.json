@@ -5,30 +5,12 @@
   {
    "begin": "^#!",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "begin": "#",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -51,16 +33,7 @@
   {
    "begin": "(?:(b|B)?)\"\"\"",
    "end": "\"\"\"",
-   "beginCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
+   "name": "python.multiline-string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -75,16 +48,7 @@
   {
    "begin": "(?:(b|B)?)'''",
    "end": "'''",
-   "beginCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
+   "name": "python.multiline-string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -99,16 +63,7 @@
   {
    "begin": "(?:(b|B)?)\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
+   "name": "python.string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -121,32 +76,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "(?:(b|B)?)'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
+   "name": "python.string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -159,32 +96,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "(?:(r|R|rb|RB|rB|Rb|br|BR|bR|Br))\"\"\"",
    "end": "\"\"\"",
-   "beginCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
+   "name": "python.multiline-string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -195,16 +114,7 @@
   {
    "begin": "(?:(r|R|rb|RB|rB|Rb|br|BR|bR|Br))'''",
    "end": "'''",
-   "beginCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.multiline-string"
-    }
-   },
+   "name": "python.multiline-string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -215,16 +125,7 @@
   {
    "begin": "(?:(r|R|rb|RB|rB|Rb|br|BR|bR|Br))\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
+   "name": "python.string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -233,32 +134,14 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },
   {
    "begin": "(?:(r|R|rb|RB|rB|Rb|br|BR|bR|Br))'",
    "end": "(?:')|$",
-   "beginCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "python.string"
-    }
-   },
+   "name": "python.string",
    "patterns": [
     {
      "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -267,16 +150,7 @@
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     }
    ]
   },

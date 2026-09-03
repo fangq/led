@@ -5,44 +5,17 @@
   {
    "begin": "\\(\\*\\*(?!\\))",
    "end": "\\*\\)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.note"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.note"
-    }
-   },
+   "name": "def.note",
    "patterns": [
     {
      "begin": "\\(\\*",
      "end": "\\*\\)",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -53,30 +26,12 @@
       {
        "begin": "\\(\\*",
        "end": "\\*\\)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -91,16 +46,7 @@
     {
      "begin": "\"",
      "end": "\"",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -113,30 +59,12 @@
   {
    "begin": "\\(\\*",
    "end": "\\*\\)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "begin": "\"",
      "end": "\"",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -147,30 +75,12 @@
     {
      "begin": "\\(\\*",
      "end": "\\*\\)",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -221,16 +131,7 @@
   {
    "begin": "\"",
    "end": "\"",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -255,44 +156,17 @@
       {
        "begin": "\\(\\*\\*(?!\\))",
        "end": "\\*\\)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.note"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.note"
-        }
-       },
+       "name": "def.note",
        "patterns": [
         {
          "begin": "\\(\\*",
          "end": "\\*\\)",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -303,30 +177,12 @@
           {
            "begin": "\\(\\*",
            "end": "\\*\\)",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
+             "name": "def.string",
              "patterns": [
               {
                "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -341,16 +197,7 @@
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -363,30 +210,12 @@
       {
        "begin": "\\(\\*",
        "end": "\\*\\)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -397,30 +226,12 @@
         {
          "begin": "\\(\\*",
          "end": "\\*\\)",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -471,16 +282,7 @@
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -553,44 +355,17 @@
       {
        "begin": "\\(\\*\\*(?!\\))",
        "end": "\\*\\)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.note"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.note"
-        }
-       },
+       "name": "def.note",
        "patterns": [
         {
          "begin": "\\(\\*",
          "end": "\\*\\)",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -601,30 +376,12 @@
           {
            "begin": "\\(\\*",
            "end": "\\*\\)",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
+             "name": "def.string",
              "patterns": [
               {
                "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -639,16 +396,7 @@
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -661,30 +409,12 @@
       {
        "begin": "\\(\\*",
        "end": "\\*\\)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -695,30 +425,12 @@
         {
          "begin": "\\(\\*",
          "end": "\\*\\)",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",
@@ -769,16 +481,7 @@
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "(?:\\\\((\\\\|\"|'|n|t|b|r)|[0-9]{3}|x[0-9a-fA-F]{2}))",

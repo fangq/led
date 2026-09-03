@@ -5,30 +5,12 @@
   {
    "begin": "^#!",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "begin": "(?:^\\s*#\\s*)if\\b\\s*0\\b",
    "end": "(?:^\\s*#\\s*)(endif|else|elif)\\b",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "begin": "(?:^\\s*#\\s*)if(n?def)?\\b",
@@ -104,44 +86,17 @@
   {
    "begin": "(?:^\\s*#\\s*)(define|undef|error|pragma|ident|if(n?def)?|else|elif|endif|line|warning)\\b",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
+   "name": "def.preprocessor",
    "patterns": [
     {
      "begin": "\\\\$",
      "end": "^",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     },
     {
      "begin": "L?\"",
      "end": "(?:\")|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "\\%\\%|\\%(?:[1-9][0-9]*\\$)?[#0\\-\\ \\+\\'I]*(?:[1-9][0-9]*|\\*)?(?:\\.\\-?(?:[0-9]+|\\*))?(?:hh|ll|[hlLqjzt])?[diouxXeEfFgGaAcsCSpnm]",
@@ -154,48 +109,21 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       }
      ]
     },
     {
      "begin": "//",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         },
         {
          "patterns": [
@@ -220,16 +148,7 @@
     {
      "begin": "/\\*",
      "end": "\\*/",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -256,16 +175,7 @@
     {
      "begin": "(?<!(?:[!#$%&*./>=<?@:\\\\^|~-]))--+(?!(?:[!#$%&*./>=<?@:\\\\^|~-]))",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -286,16 +196,7 @@
       {
        "begin": "\\s+([|^*$]+)",
        "end": "^(?!\\s*--+)",
-       "beginCaptures": {
-        "0": {
-         "name": "def.doc-comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.doc-comment"
-        }
-       },
+       "name": "def.doc-comment",
        "patterns": [
         {
          "match": "\\\\[/'`\"@#<*-]",
@@ -316,16 +217,7 @@
         {
          "begin": "/",
          "end": "/",
-         "beginCaptures": {
-          "0": {
-           "name": "def.doc-comment-element"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.doc-comment-element"
-          }
-         },
+         "name": "def.doc-comment-element",
          "patterns": [
           {
            "match": "\\\\[/'`\"@#<*-]",
@@ -340,16 +232,7 @@
         {
          "begin": "@",
          "end": "@",
-         "beginCaptures": {
-          "0": {
-           "name": "haddock.monospace"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "haddock.monospace"
-          }
-         },
+         "name": "haddock.monospace",
          "patterns": [
           {
            "match": "\\\\[/'`\"@#<*-]",
@@ -400,30 +283,12 @@
     {
      "begin": "\\{-#",
      "end": "#-\\}",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     }
+     "name": "def.preprocessor"
     },
     {
      "begin": "\\{-",
      "end": "-\\}",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -444,16 +309,7 @@
       {
        "begin": "(?<={-)\\s?[|^*$]",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.doc-comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.doc-comment"
-        }
-       },
+       "name": "def.doc-comment",
        "patterns": [
         {
          "match": "\\\\[/'`\"@#<*-]",
@@ -474,16 +330,7 @@
         {
          "begin": "/",
          "end": "/",
-         "beginCaptures": {
-          "0": {
-           "name": "def.doc-comment-element"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.doc-comment-element"
-          }
-         },
+         "name": "def.doc-comment-element",
          "patterns": [
           {
            "match": "\\\\[/'`\"@#<*-]",
@@ -498,16 +345,7 @@
         {
          "begin": "@",
          "end": "@",
-         "beginCaptures": {
-          "0": {
-           "name": "haddock.monospace"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "haddock.monospace"
-          }
-         },
+         "name": "haddock.monospace",
          "patterns": [
           {
            "match": "\\\\[/'`\"@#<*-]",
@@ -578,30 +416,12 @@
     {
      "begin": "\"",
      "end": "(?:\")|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "match": "(?:\\\\([abfnrtv\\\\\"\\'&]|[0-9]+|o[0-7]+|x[0-9A-Fa-f]+|\\^[A-Z@\\[\\\\\\]^_]|NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL))",
@@ -612,16 +432,7 @@
     {
      "begin": "'",
      "end": "(?:')|$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.character"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.character"
-      }
-     },
+     "name": "def.character",
      "patterns": [
       {
        "match": "(?:\\\\([abfnrtv\\\\\"\\'&]|[0-9]+|o[0-7]+|x[0-9A-Fa-f]+|\\^[A-Z@\\[\\\\\\]^_]|NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL))",

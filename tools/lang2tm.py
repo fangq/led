@@ -469,13 +469,14 @@ class Converter:
             result['begin'] = begin
             result['end'] = end
             if style:
-                # style-inside colours the whole block; otherwise only the
-                # delimiters carry the style, which is GtkSourceView's default.
+                # The engine tags the whole segment -- delimiters included --
+                # and shrinks that to the body only when style-inside is set
+                # (gtksourcecontextengine.c:797).  TextMate's name/contentName
+                # split is the same distinction.
                 if ctx.get('style-inside') == 'true':
-                    result['name'] = style
+                    result['contentName'] = style
                 else:
-                    result['beginCaptures'] = {'0': {'name': style}}
-                    result['endCaptures'] = {'0': {'name': style}}
+                    result['name'] = style
             bc = captures('start')
             if bc:
                 result.setdefault('beginCaptures', {}).update(bc)

@@ -5,16 +5,7 @@
   {
    "begin": "^\\s*(rem\\b|:\\s*:)",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -37,16 +28,7 @@
   {
    "begin": "\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "match": "\\b(?:do|else|exist|exit|for|goto|if|not|return|say|select|then|when)\\b",

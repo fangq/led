@@ -5,32 +5,14 @@
   {
    "begin": "//",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "patterns": [
@@ -63,16 +45,7 @@
   {
    "begin": "/\\*",
    "end": "\\*/",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -138,16 +111,7 @@
   {
    "begin": "\"\"\"",
    "end": "\"\"\"",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "\\$[a-zA-Z]+",
@@ -156,48 +120,21 @@
     {
      "begin": "\\${",
      "end": "}",
-     "beginCaptures": {
-      "0": {
-       "name": "def.identifier"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.identifier"
-      }
-     },
+     "name": "def.identifier",
      "patterns": [
       {
        "patterns": [
         {
          "begin": "//",
          "end": "$",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "patterns": [
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             },
             {
              "patterns": [
@@ -230,16 +167,7 @@
         {
          "begin": "/\\*",
          "end": "\\*/",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "patterns": [
@@ -317,16 +245,7 @@
         {
          "begin": "\"",
          "end": "(?:\")|$",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "(?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))",
@@ -363,16 +282,7 @@
   {
    "begin": "\"",
    "end": "(?:\")|$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "(?:\\\\([\\\\\\\"\\'nrbt$]|u[0-9a-fA-F]{4}))",
@@ -385,48 +295,21 @@
     {
      "begin": "\\${",
      "end": "}",
-     "beginCaptures": {
-      "0": {
-       "name": "def.identifier"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.identifier"
-      }
-     },
+     "name": "def.identifier",
      "patterns": [
       {
        "patterns": [
         {
          "begin": "//",
          "end": "$",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "patterns": [
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             },
             {
              "patterns": [
@@ -459,16 +342,7 @@
         {
          "begin": "/\\*",
          "end": "\\*/",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "patterns": [
@@ -534,16 +408,7 @@
         {
          "begin": "\"\"\"",
          "end": "\"\"\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "\\$[a-zA-Z]+",
