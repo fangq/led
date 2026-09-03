@@ -662,7 +662,7 @@ begin
   if Silent then
     WriteLn(StdErr, 'led: ', AMessage)
   else
-    MessageDlg('led', AMessage, mtError, [mbOK], 0);
+    MessageDlg(LedAppName, AMessage, mtError, [mbOK], 0);
 end;
 
 function TLedMainForm.Confirm(const AMessage: string; ADefault: Boolean): Boolean;
@@ -672,7 +672,7 @@ begin
     WriteLn(StdErr, 'led: ', AMessage, ' -> ', BoolToStr(ADefault, 'yes', 'no'));
     Exit(ADefault);
   end;
-  Result := MessageDlg('led', AMessage, mtConfirmation, [mbYes, mbNo], 0) = mrYes;
+  Result := MessageDlg(LedAppName, AMessage, mtConfirmation, [mbYes, mbNo], 0) = mrYes;
 end;
 
 function TLedMainForm.ConfirmSaveDiscardCancel(const AMessage: string): Integer;
@@ -682,7 +682,7 @@ begin
     WriteLn(StdErr, 'led: ', AMessage, ' -> no');
     Exit(mrNo);
   end;
-  Result := MessageDlg('led', AMessage, mtConfirmation,
+  Result := MessageDlg(LedAppName, AMessage, mtConfirmation,
     [mbYes, mbNo, mbCancel], 0);
 end;
 
@@ -700,7 +700,7 @@ begin
     GetSupportedEncodings(Ids);
     for i := 0 to Ids.Count - 1 do
       Names.Add(Ids[i]);
-    Chosen := InputCombo('led',
+    Chosen := InputCombo(LedAppName,
       Format('%s could not be decoded.'#10 +
              'Which character encoding does it use?',
              [ExtractFileName(AFileName)]), Names);
@@ -3082,7 +3082,8 @@ var
   i: Integer;
 begin
   if ADoc = nil then
-    Fmt := LedPrefs.GetStr('Editor/window_title_no_doc', '%a')
+    Fmt := LedPrefs.GetStr('Editor/window_title_no_doc',
+      '%a - a lightweight editor')
   else
     Fmt := LedPrefs.GetStr('Editor/window_title', '%a - %f%s');
 
@@ -3102,7 +3103,7 @@ begin
     begin
       Inc(i);
       case Fmt[i] of
-        'a': Result := Result + 'led';
+        'a': Result := Result + LedAppName;
         'b': if ADoc <> nil then
                Result := Result + ExtractFileName(ADoc.DisplayName);
         'f': if ADoc <> nil then Result := Result + ADoc.DisplayName;
@@ -3949,8 +3950,8 @@ procedure TLedMainForm.actAboutExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    'led ' + LedVersion + LineEnding + LineEnding +
-    'A light editor, in the shape of medit.' + LineEnding +
+    LedAppTitle + LineEnding + LedVersion + LineEnding + LineEnding +
+    'In the shape of medit.' + LineEnding +
     'Free Pascal ' + {$I %FPCVERSION%} + ', Lazarus LCL, SynEdit.' +
     LineEnding + LineEnding +
     'Widgetset: ' + LedWidgetSetName);

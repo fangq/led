@@ -700,7 +700,7 @@ begin
   try
     LedPrefs.SetStr('Editor/window_title', '%a | %b');
     CheckEq('the title uses the format and the base name',
-      'led | ' + ExtractFileName(Path), F.FormatWindowTitle(Doc));
+      'LED | ' + ExtractFileName(Path), F.FormatWindowTitle(Doc));
 
     LedPrefs.SetStr('Editor/window_title', '%%literal');
     CheckEq('a doubled per cent is one per cent',
@@ -1153,6 +1153,18 @@ begin
   Say('icons and focus');
 
   CheckEqInt('every icon was built', Length(LedIconNames), F.ImageList1.Count);
+
+  { The window icon comes from the MAINICON resource that make-icon.py
+    writes into app/led.res.  Worth asserting rather than assuming: the
+    resource is a Windows .res, and whether it reaches the LCL on a gtk2
+    build is not obvious from the fact that it linked. }
+  { Verified against the X server too: with this in place the window's
+    _NET_WM_ICON property carries the icon at 16 and 128 pixels.  The form's
+    own Icon stays empty on purpose -- that is how the LCL is told to fall
+    back to the application's. }
+  Check('the application has a window icon', not Application.Icon.Empty);
+  CheckEq('the title names the editor', 'LED - a lightweight editor',
+    LedAppTitle);
 
   { The icons are drawn on a mask colour that has to disappear.  Getting this
     wrong is not subtle -- it puts a purple square behind every toolbar

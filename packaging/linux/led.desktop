@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=led
+Name=LED
 GenericName=Text Editor
-Comment=A light programmer's text editor
+Comment=A lightweight programmer's text editor
 Exec=led %F
 Icon=led
 Terminal=false

@@ -3,7 +3,7 @@ object LedMainForm: TLedMainForm
   Height = 700
   Top = 150
   Width = 1000
-  Caption = 'led'
+  Caption = 'LED - a lightweight editor'
   Menu = MainMenu1
   OnActivate = FormActivate
   OnCloseQuery = FormCloseQuery

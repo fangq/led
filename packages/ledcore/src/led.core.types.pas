@@ -41,6 +41,13 @@ function LedNativeLineEnd: TLedLineEnd;
 const
   LedVersion = '2.0.0-dev';
 
+{ What the editor calls itself.  The name is upper-case because it is one --
+  the pun the icon draws; the binary, the configuration directory and the
+  documentation stay lower-case "led". }
+const
+  LedAppName  = 'LED';
+  LedAppTitle = 'LED - a lightweight editor';
+
 { Which LCL backend this binary was built against -- gtk2, qt5, win32, cocoa.
   Worth quoting in a bug report, because most of what goes wrong in a GUI
   goes wrong in exactly one of them. }
