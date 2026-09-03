@@ -1,68 +1,101 @@
 #!/usr/bin/env python3
-"""Generate the led application icon.
+"""Generate the led application icon from the artwork.
 
-The design is deliberately plain, because it has to survive being drawn at
-16 pixels in a task bar: a dark rounded panel, four indented lines of code,
-and one lit caret in amber.  "led" is a light editor, so the caret is the
-only bright thing on it and the only part that must stay recognisable when
-everything else turns to mush.
+The design is a green LED standing on a lit strip -- the pun the editor is
+named for.  Two files in packaging/icons are inputs, not outputs:
 
-This script is the single source for the icon.  It writes, under
-packaging/icons/:
+  led.svg          the master, drawn by hand; also shipped as the scalable
+                   icon Linux desktops prefer
+  led-master.png   that SVG rendered once at 1024 wide, committed
 
-  led.svg                       the scalable copy, for Linux desktops
+Everything else is derived from led-master.png by this script:
+
   led.ico                       multi-size Windows icon, embedded as MAINICON
   led.icns                      macOS bundle icon
   hicolor/<N>x<N>/apps/led.png  the sizes Linux icon themes look for
+  ../windows/wizard-*.bmp       the Inno Setup wizard images
+
+The render is committed rather than done here because the glow under the LED
+is an feGaussianBlur, and the obvious build-time rasteriser drops it:
+cairosvg renders that filter as a hard-edged bar, losing the one thing that
+makes the LED look lit.  Inkscape gets it right but is far too heavy to put
+in CI, and pinning a renderer well enough for a pixel comparison to stay
+stable is worse than committing its output.  So when the artwork changes,
+re-render it by hand and commit both:
+
+  inkscape --export-type=png --export-filename=packaging/icons/led-master.png \
+           --export-width=1024 packaging/icons/led.svg
 
 Run from the repository root:  python3 tools/make-icon.py
 Requires Pillow.
 """
 
+import io
 import os
 import struct
-from PIL import Image, ImageDraw
 
-# The palette.  Two greys and one accent; nothing else.
-PANEL  = (43, 48, 59)      # #2b303b  the sheet
-BORDER = (27, 31, 39)      # #1b1f27  its edge, so the icon reads on dark themes
-TEXT   = (143, 154, 174)   # #8f9aae  lines of code
-CARET  = (255, 197, 66)    # #ffc542  the lit caret
+from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "packaging", "icons")
+MASTER_PNG = os.path.join(OUT, "led-master.png")
 
-MASTER = 1024              # render big, downscale with LANCZOS for crisp edges
+MASTER = 1024              # downscale from here with LANCZOS for crisp edges
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 PNG_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512]
 
-# Geometry on a 64-unit grid, shared by the raster and the SVG so the two
-# cannot drift apart.
-PANEL_BOX = (4, 4, 60, 60)
-PANEL_R = 10
-LINES = [(14, 17, 26), (20, 27, 24), (20, 37, 16), (14, 47, 20)]  # x, y, width
-LINE_H = 4
-CARET_BOX = (41, 34, 46, 46)
+# Inno Setup wizard images, which must be BMP and are drawn on the page
+# background rather than composited, so they carry no alpha.
+WIZARD_BG = (255, 255, 255)
+WIZARD_LARGE = (164, 314)
+WIZARD_SMALL = (55, 55)
+
+_master = None
+
+_master = None
+
+
+def master():
+    """The artwork, square and centred.
+
+    The drawing is 139.36 x 139.65 units -- close to square but not square --
+    so the render comes out 1024 x 1026 and is centred on a square canvas
+    rather than squashed to fit.
+    """
+    global _master
+    if _master is None:
+        art = Image.open(MASTER_PNG).convert("RGBA")
+        side = max(MASTER, art.width, art.height)
+        canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        canvas.paste(art, ((side - art.width) // 2,
+                           (side - art.height) // 2), art)
+        _master = canvas if side == MASTER else \
+            canvas.resize((MASTER, MASTER), Image.LANCZOS)
+    return _master
 
 
 def render(n):
     """The icon at n x n pixels."""
-    s = MASTER / 64.0
-    img = Image.new("RGBA", (MASTER, MASTER), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
+    return master().resize((n, n), Image.LANCZOS)
 
-    def box(x0, y0, x1, y1):
-        return [x0 * s, y0 * s, x1 * s, y1 * s]
 
-    d.rounded_rectangle(box(*PANEL_BOX), radius=PANEL_R * s,
-                        fill=PANEL, outline=BORDER, width=int(2 * s))
-    for x, y, w in LINES:
-        d.rounded_rectangle(box(x, y, x + w, y + LINE_H),
-                            radius=(LINE_H / 2) * s, fill=TEXT)
-    d.rounded_rectangle(box(*CARET_BOX), radius=2 * s, fill=CARET)
+def write_wizard_images():
+    """The two bitmaps Inno Setup shows in its wizard.
 
-    return img.resize((n, n), Image.LANCZOS)
-
+    Flattened onto white: Inno draws these opaque, and a transparent PNG
+    turned into a BMP loses its alpha to black otherwise.
+    """
+    d = os.path.join(ROOT, "packaging", "windows")
+    os.makedirs(d, exist_ok=True)
+    for name, (w, h) in (("wizard-large.bmp", WIZARD_LARGE),
+                         ("wizard-small.bmp", WIZARD_SMALL)):
+        side = min(w, h)
+        art = render(side if name.endswith("small.bmp") else int(side * 0.8))
+        sheet = Image.new("RGB", (w, h), WIZARD_BG)
+        tile = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        tile.paste(art, ((w - art.width) // 2, (h - art.height) // 2), art)
+        sheet.paste(tile, (0, 0), tile)
+        sheet.save(os.path.join(d, name), format="BMP")
 
 def _dib(img):
     """One ICO entry as an uncompressed 32-bit BGRA DIB.
@@ -138,45 +171,18 @@ def write_icns(path):
         f.write(b"icns" + struct.pack(">I", len(body) + 8) + body)
 
 
-def write_svg(path):
-    def rect(x, y, w, h, r, fill, extra=""):
-        return ('  <rect x="%g" y="%g" width="%g" height="%g" rx="%g" '
-                'fill="%s"%s/>\n' % (x, y, w, h, r, fill, extra))
-
-    def hexof(c):
-        return "#%02x%02x%02x" % c
-
-    px, py, px1, py1 = PANEL_BOX
-    body = ['<?xml version="1.0" encoding="UTF-8"?>\n',
-            '<!-- Generated by tools/make-icon.py; edit that, not this. -->\n',
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" '
-            'width="64" height="64">\n',
-            rect(px, py, px1 - px, py1 - py, PANEL_R, hexof(PANEL)),
-            '  <rect x="%g" y="%g" width="%g" height="%g" rx="%g" fill="none" '
-            'stroke="%s" stroke-width="2"/>\n'
-            % (px, py, px1 - px, py1 - py, PANEL_R, hexof(BORDER)),
-            '  <g fill="%s">\n' % hexof(TEXT)]
-    for x, y, w in LINES:
-        body.append("  " + rect(x, y, w, LINE_H, LINE_H / 2, hexof(TEXT)).strip() + "\n")
-    body.append("  </g>\n")
-    cx, cy, cx1, cy1 = CARET_BOX
-    body.append(rect(cx, cy, cx1 - cx, cy1 - cy, 2, hexof(CARET)))
-    body.append("</svg>\n")
-    with open(path, "w") as f:
-        f.writelines(body)
-
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    write_svg(os.path.join(OUT, "led.svg"))
     write_ico(os.path.join(OUT, "led.ico"), ICO_SIZES)
     write_icns(os.path.join(OUT, "led.icns"))
     for n in PNG_SIZES:
         d = os.path.join(OUT, "hicolor", "%dx%d" % (n, n), "apps")
         os.makedirs(d, exist_ok=True)
         render(n).save(os.path.join(d, "led.png"))
-    print("wrote led.svg, led.ico, led.icns and %d hicolor PNGs under %s"
-          % (len(PNG_SIZES), OUT))
+    write_wizard_images()
+    print("wrote led.ico, led.icns, %d hicolor PNGs and the wizard images "
+          "from %s" % (len(PNG_SIZES), os.path.relpath(MASTER_PNG, ROOT)))
 
 
 if __name__ == "__main__":

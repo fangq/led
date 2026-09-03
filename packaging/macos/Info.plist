@@ -2,10 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- The displayed name is LED; CFBundleExecutable below stays the
+       lower-case binary.  CFBundleName is what the menu bar shows and is
+       held to about fifteen characters, so it gets the short form. -->
   <key>CFBundleName</key>
-  <string>led</string>
+  <string>LED</string>
   <key>CFBundleDisplayName</key>
-  <string>led</string>
+  <string>LED</string>
   <key>CFBundleIdentifier</key>
   <string>edu.northeastern.led</string>
   <key>CFBundleExecutable</key>

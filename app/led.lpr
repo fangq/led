@@ -76,7 +76,9 @@ begin
       Exit(0);
     end;
 
-    Application.Title := 'led';
+    { The app is LED; the binary, the config directory and the
+      documentation stay lower-case 'led'. }
+    Application.Title := LedAppTitle;
     RequireDerivedFormResource := True;
     {$IFDEF LINUX}
     { gtk2 caps Application.Scaled at the Xft DPI and reverts a manual bump on
