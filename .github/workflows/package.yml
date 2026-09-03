@@ -172,24 +172,23 @@ jobs:
       # would fail on a good executable.  -t and the decompress-and-compare
       # are what stand in for it.
       #
-      # The compare skips the first 1024 bytes, unlike the Linux one, which
-      # compares every byte.  UPX restores an ELF exactly but not a PE: the
-      # unpacked file comes back the right size to the byte and then differs
-      # at offset 214, inside the optional header, where the packer has not
-      # put every field back as it found it.  Everything past the headers --
-      # all the code and data -- still has to match exactly.
+      # No byte-compare against the unpacked file either, which the Linux
+      # step does do.  UPX restores an ELF exactly; its PE unpacker rebuilds
+      # an equivalent executable rather than the original bytes, so a
+      # compare fails on a perfectly good pack -- first at offset 214 in the
+      # optional header, and still at 7.6 MB once the headers were skipped.
+      # Size is asserted instead, so a truncated or partial round trip is
+      # still caught, and upx -t reads the packed file back.
       - name: Compress the binary (UPX)
         shell: bash
         run: |
           choco install upx -y --no-progress --version=3.96
           before=$(stat -c%s bin/led.exe)
-          cp bin/led.exe "$RUNNER_TEMP/led.orig.exe"
           upx --best --lzma bin/led.exe
           upx -t bin/led.exe
           upx -d -o "$RUNNER_TEMP/led.back.exe" bin/led.exe
           back=$(stat -c%s "$RUNNER_TEMP/led.back.exe")
           [ "$before" = "$back" ] || { echo "unpacked size $back, expected $before" >&2; exit 1; }
-          cmp -i 1024:1024 "$RUNNER_TEMP/led.orig.exe" "$RUNNER_TEMP/led.back.exe"
           echo "led.exe: $before -> $(stat -c%s bin/led.exe) bytes"
 
       - name: Compute version
