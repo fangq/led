@@ -53,6 +53,23 @@ jobs:
       - name: Build editor (Release)
         run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
 
+      # Measured on this binary: 8.2 MB -> 1.7 MB, and the packed executable
+      # passes the whole self-test, all 536 checks.  Both the .deb and the
+      # portable tarball install from bin/led, so packing it here covers
+      # both.  apt's lists were refreshed by the lazarus-apt step above.
+      #
+      # -t proves the packed file unpacks; --version proves the result
+      # actually starts, which -t does not.  led answers --version before it
+      # initialises the LCL, so this needs no display.
+      - name: Compress the binary (UPX)
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y upx-ucl
+          before=$(stat -c%s bin/led)
+          upx --best --lzma bin/led
+          upx -t bin/led
+          ./bin/led --version
+          echo "led: $before -> $(stat -c%s bin/led) bytes"
+
       - name: Compute version
         run: |
           if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
@@ -129,6 +146,22 @@ jobs:
       - name: Build editor (Release)
         shell: bash
         run: lazbuild --widgetset=win32 --build-mode=Release app/led.lpi
+
+      # As on Linux, and for the same reason: the Inno installer and the
+      # portable zip both take bin\led.exe.
+      #
+      # No --version check here.  A Lazarus win32 binary is built for the GUI
+      # subsystem and gets no console, so WriteLn has nowhere to go and the
+      # check would fail on a perfectly good executable.  upx -t still
+      # verifies the packed file.
+      - name: Compress the binary (UPX)
+        shell: bash
+        run: |
+          choco install upx -y --no-progress
+          before=$(stat -c%s bin/led.exe)
+          upx --best --lzma bin/led.exe
+          upx -t bin/led.exe
+          echo "led.exe: $before -> $(stat -c%s bin/led.exe) bytes"
 
       - name: Compute version
         shell: bash
