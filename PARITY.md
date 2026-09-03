@@ -163,7 +163,7 @@ is registered but commented out of medit's own menu.
 | `smart_home_end` | yes | yes | done |
 | `spaces_instead_of_tabs` | yes | yes | done |
 | `spell_enabled` | yes | done | |
-| `spell_scope` | yes | done; code or all | |
+| `spell_scope` | yes | done; auto, code or all | |
 | `strip` | yes | yes | done |
 | `tab_indents` | yes | yes | done |
 | `tab_width` | yes | yes | done |

@@ -60,6 +60,7 @@ type
     function CreateView(AOwner: TComponent): TLedEdit;
     procedure RemoveView(AView: TLedEdit);
     procedure ApplyConfigToViews;
+    function SpellScopeForDocument: TLedSpellScope;
 
     { AForcedEncoding empty means "work it out": BOM, then the encoding this
       document last used, then the user's candidate list. }
@@ -265,14 +266,7 @@ begin
   AView.LongLines.Limit :=
     LedPrefs.GetInt('Editor/max_line_len', LedDefaultLineLimit);
 
-  { Spelling.  In code only comments and strings are prose, which is the
-    default; "all" is for plain text and Markdown. }
-  if not LedPrefs.GetBool('Editor/spell_enabled', False) then
-    AView.SetSpellScope(lssOff)
-  else if SameText(LedPrefs.GetStr('Editor/spell_scope', 'code'), 'all') then
-    AView.SetSpellScope(lssAll)
-  else
-    AView.SetSpellScope(lssCode);
+  AView.SetSpellScope(SpellScopeForDocument);
   LedApplyThemeToEditor(LedCurrentTheme, AView);
 
   { The block guides are a markup rather than an editor property, so the theme
@@ -283,6 +277,38 @@ begin
 
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
+end;
+
+{ Languages whose files are prose rather than source.  Under the default
+  "auto" these are checked end to end; everything else is checked in its
+  comments and strings only.
+
+  This is medit's documented behaviour rather than its implemented one:
+  moospellcheck.cpp turns checking off for any file with a language at all,
+  including Markdown and LaTeX, and its own comment says the
+  comments-and-strings filter was never written.  led has that filter, so it
+  can do what the preference page promises. }
+const
+  LedProseLanguages: array[0..5] of string =
+    ('markdown', 'latex', 'rst', 't2t', 'bibtex', 'gtk-doc');
+
+function TLedDocument.SpellScopeForDocument: TLedSpellScope;
+var
+  i: Integer;
+  Id: string;
+begin
+  if not LedPrefs.GetBool('Editor/spell_enabled', True) then Exit(lssOff);
+
+  Id := LowerCase(LedPrefs.GetStr('Editor/spell_scope', 'auto'));
+  if Id = 'all' then Exit(lssAll);
+  if Id = 'code' then Exit(lssCode);
+
+  { auto: no language means plain text, which is prose. }
+  if LangInfo = nil then Exit(lssAll);
+  Id := LowerCase(LangInfo.Id);
+  for i := Low(LedProseLanguages) to High(LedProseLanguages) do
+    if Id = LedProseLanguages[i] then Exit(lssAll);
+  Result := lssCode;
 end;
 
 procedure TLedDocument.ApplyConfigToViews;

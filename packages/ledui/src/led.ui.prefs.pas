@@ -253,10 +253,10 @@ const
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/spell_enabled';
      Caption: 'Check spelling as you type'; DefStr: '';
-     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+     DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkChoice; Key: 'Editor/spell_scope';
-     Caption: 'Check'; DefStr: 'code';
-     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'code,all'),
+     Caption: 'Check'; DefStr: 'auto';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'auto,code,all'),
     (Category: 'Languages'; Kind: pkCustom; Key: '@languages';
      Caption: ''; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
