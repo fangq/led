@@ -58,16 +58,26 @@ jobs:
       # portable tarball install from bin/led, so packing it here covers
       # both.  apt's lists were refreshed by the lazarus-apt step above.
       #
-      # -t proves the packed file unpacks; --version proves the result
-      # actually starts, which -t does not.  led answers --version before it
-      # initialises the LCL, so this needs no display.
+      # Three checks, because none of them alone is enough.  -t reads the
+      # packed file back; -d into a copy and cmp against the original proves
+      # it restores the exact bytes that were tested; running it proves the
+      # unpacking stub works, which neither of the others touches.
+      #
+      # Under xvfb, despite --version being answered before the command line
+      # reaches the LCL: the gtk2 widgetset opens the display in its unit
+      # initialisation, so a bare --version exits 1 with "cannot open
+      # display" on a headless runner.  It passes on a desktop, which is
+      # exactly how this got committed broken.
       - name: Compress the binary (UPX)
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y upx-ucl
           before=$(stat -c%s bin/led)
+          cp bin/led "$RUNNER_TEMP/led.orig"
           upx --best --lzma bin/led
           upx -t bin/led
-          ./bin/led --version
+          upx -d -o "$RUNNER_TEMP/led.back" bin/led
+          cmp "$RUNNER_TEMP/led.orig" "$RUNNER_TEMP/led.back"
+          xvfb-run -a ./bin/led --version
           echo "led: $before -> $(stat -c%s bin/led) bytes"
 
       - name: Compute version
@@ -150,17 +160,27 @@ jobs:
       # As on Linux, and for the same reason: the Inno installer and the
       # portable zip both take bin\led.exe.
       #
-      # No --version check here.  A Lazarus win32 binary is built for the GUI
-      # subsystem and gets no console, so WriteLn has nowhere to go and the
-      # check would fail on a perfectly good executable.  upx -t still
-      # verifies the packed file.
+      # Pinned to UPX 3.96.  Chocolatey's current 5.2.1 refuses this binary
+      # outright -- "CantPackException: TLS empty region" -- because FPC
+      # emits a TLS directory whose region is empty and the newer PE packer
+      # rejects it.  --force would get past that, but a forced pack of a
+      # structure the packer does not understand is not something to put in
+      # an installer.
+      #
+      # No run check: a Lazarus win32 binary is built for the GUI subsystem
+      # and gets no console, so WriteLn has nowhere to go and the check
+      # would fail on a good executable.  -t and the decompress-and-compare
+      # are what stand in for it.
       - name: Compress the binary (UPX)
         shell: bash
         run: |
-          choco install upx -y --no-progress
+          choco install upx -y --no-progress --version=3.96
           before=$(stat -c%s bin/led.exe)
+          cp bin/led.exe "$RUNNER_TEMP/led.orig.exe"
           upx --best --lzma bin/led.exe
           upx -t bin/led.exe
+          upx -d -o "$RUNNER_TEMP/led.back.exe" bin/led.exe
+          cmp "$RUNNER_TEMP/led.orig.exe" "$RUNNER_TEMP/led.back.exe"
           echo "led.exe: $before -> $(stat -c%s bin/led.exe) bytes"
 
       - name: Compute version
