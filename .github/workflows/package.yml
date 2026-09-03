@@ -171,6 +171,13 @@ jobs:
       # and gets no console, so WriteLn has nowhere to go and the check
       # would fail on a good executable.  -t and the decompress-and-compare
       # are what stand in for it.
+      #
+      # The compare skips the first 1024 bytes, unlike the Linux one, which
+      # compares every byte.  UPX restores an ELF exactly but not a PE: the
+      # unpacked file comes back the right size to the byte and then differs
+      # at offset 214, inside the optional header, where the packer has not
+      # put every field back as it found it.  Everything past the headers --
+      # all the code and data -- still has to match exactly.
       - name: Compress the binary (UPX)
         shell: bash
         run: |
@@ -180,7 +187,9 @@ jobs:
           upx --best --lzma bin/led.exe
           upx -t bin/led.exe
           upx -d -o "$RUNNER_TEMP/led.back.exe" bin/led.exe
-          cmp "$RUNNER_TEMP/led.orig.exe" "$RUNNER_TEMP/led.back.exe"
+          back=$(stat -c%s "$RUNNER_TEMP/led.back.exe")
+          [ "$before" = "$back" ] || { echo "unpacked size $back, expected $before" >&2; exit 1; }
+          cmp -i 1024:1024 "$RUNNER_TEMP/led.orig.exe" "$RUNNER_TEMP/led.back.exe"
           echo "led.exe: $before -> $(stat -c%s bin/led.exe) bytes"
 
       - name: Compute version
