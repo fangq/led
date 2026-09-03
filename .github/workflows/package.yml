@@ -99,11 +99,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # setup-lazarus fetches the installer from SourceForge, and a stalled
+      # mirror is the single commonest reason a packaging run fails -- it took
+      # this one out fifteen minutes into a download.  Cache the install so
+      # most runs never reach SourceForge at all, and give a stall one more
+      # go rather than losing the run to it.  There is no apt here to fall
+      # back on, which is what the Linux job does instead.
       - name: Install Lazarus + FPC
+        id: lazarus
+        uses: gcarreno/setup-lazarus@v3.4.1
+        continue-on-error: true
+        timeout-minutes: 15
+        with:
+          lazarus-version: stable
+          with-cache: true
+
+      - name: Install Lazarus + FPC (second attempt)
+        if: steps.lazarus.outcome == 'failure'
         uses: gcarreno/setup-lazarus@v3.4.1
         timeout-minutes: 15
         with:
           lazarus-version: stable
+          with-cache: true
 
       - name: Build editor (Release)
         shell: bash
@@ -188,11 +205,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # setup-lazarus fetches the installer from SourceForge, and a stalled
+      # mirror is the single commonest reason a packaging run fails -- it took
+      # this one out fifteen minutes into a download.  Cache the install so
+      # most runs never reach SourceForge at all, and give a stall one more
+      # go rather than losing the run to it.  There is no apt here to fall
+      # back on, which is what the Linux job does instead.
       - name: Install Lazarus + FPC
+        id: lazarus
+        uses: gcarreno/setup-lazarus@v3.4.1
+        continue-on-error: true
+        timeout-minutes: 15
+        with:
+          lazarus-version: stable
+          with-cache: true
+
+      - name: Install Lazarus + FPC (second attempt)
+        if: steps.lazarus.outcome == 'failure'
         uses: gcarreno/setup-lazarus@v3.4.1
         timeout-minutes: 15
         with:
           lazarus-version: stable
+          with-cache: true
 
       - name: Build editor (Release)
         run: lazbuild --widgetset=cocoa --build-mode=Release app/led.lpi
