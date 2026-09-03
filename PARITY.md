@@ -173,17 +173,17 @@ checked off by the presence of a menu entry.
 | Sort Lines | yes | yes | done |
 | Sort | Uniq | yes | yes | done |
 | Diff to Disk | yes | yes | done |
-| Bison | yes | | phase-4 |
-| LaTeX | yes | | phase-4 |
-| Make PDF | yes | | phase-4 |
-| LaTeX | yes | | phase-4 |
-| PdfLaTeX | yes | | phase-4 |
-| View DVI | yes | | phase-4 |
-| View PDF | yes | | phase-4 |
-| Math | yes | | phase-4 |
+| Bison | yes | done | |
+| LaTeX | yes | done | |
+| Make PDF | yes | done | |
+| LaTeX | yes | done; shipped as BibTeX, which is what it runs -- medit had two menu entries both called LaTeX | |
+| PdfLaTeX | yes | done | |
+| View DVI | yes | done | |
+| View PDF | yes | done | |
+| Math | yes | done; the selection is wrapped, but with none selected a shell tool cannot place the caret between the dollars | |
 | Insert Date and Time | yes | yes | done |
-| Switch _Header and Implementation | yes | | phase-4 |
-| DVI Forward Search | yes | | phase-4 |
+| Switch _Header and Implementation | yes | done; a shell tool that hands the counterpart back to the running instance, since there is no script engine | |
+| DVI Forward Search | yes | done; okular or evince, since medit drove kdvi over dcop | |
 
 ## Reversed
 

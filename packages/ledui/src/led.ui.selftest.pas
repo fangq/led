@@ -2105,6 +2105,20 @@ var
   Pane: TLedOutputPane;
   V: TLedEdit;
   Waited: Integer;
+  ToolPath: string;
+  L: TStringList;
+
+  { True when a menu, or any submenu of it, offers ACaption. }
+  function MenuHas(AItem: TMenuItem; const ACaption: string): Boolean;
+  var
+    n: Integer;
+  begin
+    Result := False;
+    if AItem = nil then Exit;
+    for n := 0 to AItem.Count - 1 do
+      if (StringReplace(AItem[n].Caption, '&', '', [rfReplaceAll]) = ACaption)
+         or MenuHas(AItem[n], ACaption) then Exit(True);
+  end;
 begin
   Say('user tools');
   {$IFDEF WINDOWS}
@@ -2166,6 +2180,52 @@ begin
     Tool.Free;
     Probe.Free;
   end;
+  { The tools ported from medit have to reach the menus, not just parse.
+    PopulateToolMenu filters by language and by file name, so a tool with a
+    files= or langs= line that does not match is loaded and then invisible --
+    which is indistinguishable from not shipping it. }
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  ToolPath := TempName('paper.tex');
+  L := TStringList.Create;
+  try
+    L.Add('\\documentclass{article}');
+    L.SaveToFile(ToolPath);
+  finally
+    L.Free;
+  end;
+  F.ActiveTab.Document.LoadFromFile(ToolPath);
+  Pump;
+  F.PopulateToolMenu;
+  Check('LaTeX reaches the Tools menu for a .tex file',
+    MenuHas(F.miToolList, 'LaTeX'));
+  Check('and so does PdfLaTeX', MenuHas(F.miToolList, 'PdfLaTeX'));
+  Check('and Make PDF', MenuHas(F.miToolList, 'Make PDF'));
+  Check('and View DVI', MenuHas(F.miToolList, 'View DVI'));
+  Check('BibTeX is named for what it runs, not "LaTeX" twice',
+    MenuHas(F.miToolList, 'BibTeX'));
+
+  F.PopulateContextTools;
+  Check('DVI Forward Search is on the context menu, not the Tools menu',
+    MenuHas(F.miCtxTools, 'DVI Forward Search'));
+  Check('and it is not on the Tools menu',
+    not MenuHas(F.miToolList, 'DVI Forward Search'));
+
+  { A C file gets the header switch and none of the LaTeX ones. }
+  F.ActiveTab.Document.SaveToFile(TempName('unit.c'));
+  Pump;
+  F.PopulateToolMenu;
+  F.PopulateContextTools;
+  Check('Switch Header and Implementation appears for C',
+    MenuHas(F.miCtxTools, 'Switch Header and Implementation'));
+  Check('and LaTeX does not', not MenuHas(F.miToolList, 'LaTeX'));
+
+  F.ActiveTab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(ToolPath);
+  DeleteFile(TempName('unit.c'));
+
 end;
 
 procedure TestFileBrowser(F: TLedMainForm);

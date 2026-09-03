@@ -6,7 +6,7 @@ unit Led.Core.Tests.Tools;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry,
+  Classes, SysUtils, fpcunit, testregistry, Led.Core.Paths,
   Led.Core.Tools, Led.Core.OutputFilter;
 
 type
@@ -26,6 +26,8 @@ type
     procedure AppliesToByGlob;
     procedure DisabledToolNeverApplies;
     procedure DirectoryLoadIsSorted;
+    procedure ShippedToolsAllLoad;
+    procedure ShippedToolsHaveWorkingShapes;
   end;
 
   TTestOutputFilter = class(TTestCase)
@@ -351,6 +353,94 @@ begin
   F.Reset('');
   M := F.Process('a.c:1: error: x');
   AssertTrue(M.Kind = lmkNone);
+end;
+
+
+{ Every tool in data/tools, loaded the way the editor loads them.  A typo in
+  one of these files does not fail a build and does not raise: the loader
+  falls back to a default, so a mistyped "output=pain" silently becomes a
+  tool that discards its output.  The only way to notice is to read the
+  values back. }
+procedure TTestToolFile.ShippedToolsAllLoad;
+var
+  Tools: TLedTools;
+  Dir: string;
+begin
+  Dir := LedDataDir + 'tools';
+  Tools := TLedTools.Create;
+  try
+    AssertTrue('data/tools exists at ' + Dir, DirectoryExists(Dir));
+    Tools.LoadDirectory(Dir);
+    { medit shipped fourteen; led carries those plus Make. }
+    AssertTrue('all the shipped tools loaded (got ' +
+      IntToStr(Tools.Count) + ')', Tools.Count >= 14);
+  finally
+    Tools.Free;
+  end;
+end;
+
+procedure TTestToolFile.ShippedToolsHaveWorkingShapes;
+var
+  Tools: TLedTools;
+  i: Integer;
+  T: TLedTool;
+  Ids: TStringList;
+begin
+  Tools := TLedTools.Create;
+  Ids := TStringList.Create;
+  try
+    Tools.LoadDirectory(LedDataDir + 'tools');
+    for i := 0 to Tools.Count - 1 do
+    begin
+      T := Tools[i];
+      AssertTrue('tool ' + T.Id + ' has a name', T.Name <> '');
+      AssertTrue('tool ' + T.Id + ' has a body', Trim(T.Code) <> '');
+      { Only shell tools run today, so a shipped tool that is not one would
+        appear in the menu and then refuse. }
+      AssertTrue('tool ' + T.Id + ' is a shell tool', T.Kind = ltkExe);
+      { Duplicate ids silently replace each other. }
+      AssertTrue('tool id ' + T.Id + ' is unique', Ids.IndexOf(T.Id) < 0);
+      Ids.Add(T.Id);
+      { A tool that reads the document has to require one, or it runs with
+        nothing to read.  (The reverse is not a rule: output=insert with
+        input=none is how "insert the date here" works -- SelText inserts at
+        the caret when there is no selection.) }
+      if T.Input in [ltiLines, ltiSelection, ltiDoc, ltiDocCopy] then
+        AssertTrue('tool ' + T.Id + ' reads the document, so it needs one',
+          (ltoNeedDoc in T.Options) or (ltoNeedFile in T.Options));
+    end;
+
+    { The ones ported from medit this round, by id. }
+    AssertTrue('bison', Tools.FindById('bison') <> nil);
+    AssertTrue('latex', Tools.FindById('latex') <> nil);
+    AssertTrue('bibtex', Tools.FindById('bibtex') <> nil);
+    AssertTrue('pdflatex', Tools.FindById('pdflatex') <> nil);
+    AssertTrue('make-pdf', Tools.FindById('make-pdf') <> nil);
+    AssertTrue('view-dvi', Tools.FindById('view-dvi') <> nil);
+    AssertTrue('view-pdf', Tools.FindById('view-pdf') <> nil);
+    AssertTrue('math', Tools.FindById('math') <> nil);
+    AssertTrue('dvi-forward-search', Tools.FindById('dvi-forward-search') <> nil);
+    AssertTrue('switch-header', Tools.FindById('switch-header') <> nil);
+
+    { The two that belong on the context menu rather than the Tools menu. }
+    AssertTrue('switch-header is a context tool',
+      Tools.FindById('switch-header').Place = ltpContext);
+    AssertTrue('dvi forward search is a context tool',
+      Tools.FindById('dvi-forward-search').Place = ltpContext);
+
+    { And the file filters actually select. }
+    AssertTrue('latex applies to a .tex file',
+      Tools.FindById('latex').AppliesTo('latex', '/tmp/paper.tex'));
+    AssertFalse('but not to a .c file',
+      Tools.FindById('latex').AppliesTo('c', '/tmp/main.c'));
+    AssertTrue('switch-header applies to C',
+      Tools.FindById('switch-header').AppliesTo('c', '/tmp/main.c'));
+    AssertFalse('but not to LaTeX',
+      Tools.FindById('switch-header').AppliesTo('latex', '/tmp/paper.tex'));
+  finally
+    Ids.Free;
+    Tools.Free;
+  end;
 end;
 
 initialization
