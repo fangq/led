@@ -23,17 +23,10 @@
   {
    "begin": "^\\s+(\\*)",
    "end": "\\:|^(?!\\S)",
+   "name": "def.comment",
    "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    },
     "1": {
      "name": "def.type"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
     }
    }
   },

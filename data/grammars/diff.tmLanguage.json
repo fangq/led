@@ -5,16 +5,7 @@
   {
    "begin": "(?:^(diff |\\+\\+\\+ |Index: |==== |\\*\\*\\* |--- ))",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "diff.diff-file"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "diff.diff-file"
-    }
-   }
+   "name": "diff.diff-file"
   },
   {
    "match": "^(<|-).*$",
@@ -31,16 +22,7 @@
   {
    "begin": "^((@@)|[0-9]|\\*\\*\\*\\*)",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "diff.location"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "diff.location"
-    }
-   },
+   "name": "diff.location",
    "patterns": [
     {
      "match": "\\\\.",
@@ -55,16 +37,7 @@
   {
    "begin": "^\\S",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   }
  ],
  "fileTypes": [

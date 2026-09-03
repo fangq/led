@@ -336,16 +336,7 @@
           {
            "begin": "<!--",
            "end": "-->",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "match": "--+",
@@ -390,16 +381,7 @@
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -430,16 +412,7 @@
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -463,16 +436,7 @@
               {
                "begin": "\"",
                "end": "\"",
-               "beginCaptures": {
-                "0": {
-                 "name": "xml.attribute-value"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "xml.attribute-value"
-                }
-               },
+               "name": "xml.attribute-value",
                "patterns": [
                 {
                  "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -535,16 +499,7 @@
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -579,16 +534,7 @@
             {
              "begin": "\"",
              "end": "\"",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "[%&](?:[a-zA-Z_][a-zA-Z0-9.:_-]*);",
@@ -633,16 +579,7 @@
     {
      "begin": "<!--",
      "end": "--\\s*>",
-     "beginCaptures": {
-      "0": {
-       "name": "xml.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "xml.comment"
-      }
-     },
+     "name": "xml.comment",
      "patterns": [
       {
        "patterns": [
@@ -665,23 +602,14 @@
     {
      "begin": "<!",
      "end": ">",
-     "beginCaptures": {
-      "0": {
-       "name": "xml.doctype"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "xml.doctype"
-      }
-     }
+     "name": "xml.doctype"
     },
     {
      "patterns": [
       {
        "begin": "<title>",
        "end": "(?:</title>)|$",
-       "name": "def.heading0",
+       "contentName": "def.heading0",
        "beginCaptures": {
         "0": {
          "name": "xml.element-name"
@@ -730,16 +658,7 @@
             {
              "begin": "\\%{def:always-match}",
              "end": "(?:\\\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -760,14 +679,10 @@
           {
            "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
            "end": "(?=>|\\s)",
+           "name": "xml.attribute-value",
            "beginCaptures": {
             "0": {
              "name": "xml.attribute-name"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
             }
            },
            "patterns": [
@@ -798,7 +713,7 @@
         {
          "begin": ">",
          "end": "(?:<\\s*/h1\\s*>)|$",
-         "name": "def.heading1",
+         "contentName": "def.heading1",
          "beginCaptures": {
           "0": {
            "name": "xml.element-name"
@@ -849,16 +764,7 @@
             {
              "begin": "\\%{def:always-match}",
              "end": "(?:\\\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -879,14 +785,10 @@
           {
            "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
            "end": "(?=>|\\s)",
+           "name": "xml.attribute-value",
            "beginCaptures": {
             "0": {
              "name": "xml.attribute-name"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
             }
            },
            "patterns": [
@@ -917,7 +819,7 @@
         {
          "begin": ">",
          "end": "(?:<\\s*/h2\\s*>)|$",
-         "name": "def.heading2",
+         "contentName": "def.heading2",
          "beginCaptures": {
           "0": {
            "name": "xml.element-name"
@@ -968,16 +870,7 @@
             {
              "begin": "\\%{def:always-match}",
              "end": "(?:\\\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -998,14 +891,10 @@
           {
            "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
            "end": "(?=>|\\s)",
+           "name": "xml.attribute-value",
            "beginCaptures": {
             "0": {
              "name": "xml.attribute-name"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
             }
            },
            "patterns": [
@@ -1036,7 +925,7 @@
         {
          "begin": ">",
          "end": "(?:<\\s*/h3\\s*>)|$",
-         "name": "def.heading3",
+         "contentName": "def.heading3",
          "beginCaptures": {
           "0": {
            "name": "xml.element-name"
@@ -1087,16 +976,7 @@
             {
              "begin": "\\%{def:always-match}",
              "end": "(?:\\\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -1117,14 +997,10 @@
           {
            "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
            "end": "(?=>|\\s)",
+           "name": "xml.attribute-value",
            "beginCaptures": {
             "0": {
              "name": "xml.attribute-name"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
             }
            },
            "patterns": [
@@ -1155,7 +1031,7 @@
         {
          "begin": ">",
          "end": "(?:<\\s*/h4\\s*>)|$",
-         "name": "def.heading4",
+         "contentName": "def.heading4",
          "beginCaptures": {
           "0": {
            "name": "xml.element-name"
@@ -1206,16 +1082,7 @@
             {
              "begin": "\\%{def:always-match}",
              "end": "(?:\\\")|$",
-             "beginCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "xml.attribute-value"
-              }
-             },
+             "name": "xml.attribute-value",
              "patterns": [
               {
                "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -1236,14 +1103,10 @@
           {
            "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
            "end": "(?=>|\\s)",
+           "name": "xml.attribute-value",
            "beginCaptures": {
             "0": {
              "name": "xml.attribute-name"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
             }
            },
            "patterns": [
@@ -1274,7 +1137,7 @@
         {
          "begin": ">",
          "end": "(?:<\\s*/h5\\s*>)|$",
-         "name": "def.heading5",
+         "contentName": "def.heading5",
          "beginCaptures": {
           "0": {
            "name": "xml.element-name"
@@ -1327,16 +1190,7 @@
           {
            "begin": "\\%{def:always-match}",
            "end": "(?:\\\")|$",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -1357,14 +1211,10 @@
         {
          "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
          "end": "(?=>|\\s)",
+         "name": "xml.attribute-value",
          "beginCaptures": {
           "0": {
            "name": "xml.attribute-name"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "xml.attribute-value"
           }
          },
          "patterns": [
@@ -1419,16 +1269,7 @@
           {
            "begin": "\"",
            "end": "(?:\")|$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
+           "name": "def.constant",
            "patterns": [
             {
              "match": "\\\\.",
@@ -1437,32 +1278,14 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           },
           {
            "begin": "'",
            "end": "(?:')|$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
+           "name": "def.constant",
            "patterns": [
             {
              "match": "\\\\.",
@@ -1471,32 +1294,14 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           },
           {
            "begin": "/\\*",
            "end": "\\*/",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -1547,16 +1352,7 @@
             {
              "begin": "/\\*",
              "end": "\\*/",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -1617,16 +1413,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               },
               {
                "match": "#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{4}|[a-fA-F0-9]{3})\\b",
@@ -1809,16 +1596,7 @@
           {
            "begin": "\\%{def:always-match}",
            "end": "(?:\\\")|$",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -1839,14 +1617,10 @@
         {
          "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
          "end": "(?=>|\\s)",
+         "name": "xml.attribute-value",
          "beginCaptures": {
           "0": {
            "name": "xml.attribute-name"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "xml.attribute-value"
           }
          },
          "patterns": [
@@ -1901,32 +1675,14 @@
           {
            "begin": "//",
            "end": "$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               },
               {
                "patterns": [
@@ -1951,16 +1707,7 @@
           {
            "begin": "/\\*",
            "end": "\\*/",
-           "beginCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.comment"
-            }
-           },
+           "name": "def.comment",
            "patterns": [
             {
              "patterns": [
@@ -1987,16 +1734,7 @@
           {
            "begin": "\"",
            "end": "(?:\")|$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
+           "name": "def.constant",
            "patterns": [
             {
              "match": "\\\\.",
@@ -2005,32 +1743,14 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           },
           {
            "begin": "'",
            "end": "(?:')|$",
-           "beginCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.constant"
-            }
-           },
+           "name": "def.constant",
            "patterns": [
             {
              "match": "\\\\.",
@@ -2039,46 +1759,19 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           },
           {
            "begin": "`",
            "end": "`",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "begin": "\\$\\{",
              "end": "\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.builtin"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.builtin"
-              }
-             }
+             "name": "def.builtin"
             }
            ]
           },
@@ -2141,16 +1834,7 @@
           {
            "begin": "((?<=([(]|\\s))|^)\\/(?=([^/\\\\]*(\\\\.))*[^/]*\\/(?:[gim]*)\\s*([),;.\\/\\]:}]|$))",
            "end": "\\/(?:[gim]*)",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "\\\\((0-7){3}|(x[a-fA-F0-9]{2})|(c\\S)|([CM]-\\S)|(M-C-\\S)|.)",
@@ -2159,21 +1843,12 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             },
             {
              "begin": "(?<!\\\\)[[]",
              "end": "(?<!\\\\)]",
-             "name": "def.special-char"
+             "contentName": "def.special-char"
             }
            ]
           }
@@ -2214,16 +1889,7 @@
           {
            "begin": "\\%{def:always-match}",
            "end": "(?:\\\")|$",
-           "beginCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "xml.attribute-value"
-            }
-           },
+           "name": "xml.attribute-value",
            "patterns": [
             {
              "match": "&(?:[[:alpha:]_][[:alnum:].:_-]*);",
@@ -2244,14 +1910,10 @@
         {
          "begin": "(?:[a-z0-9:_-]+)\\s*=\\s*",
          "end": "(?=>|\\s)",
+         "name": "xml.attribute-value",
          "beginCaptures": {
           "0": {
            "name": "xml.attribute-name"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "xml.attribute-value"
           }
          },
          "patterns": [

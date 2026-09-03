@@ -16,30 +16,12 @@
       {
        "begin": "^#!",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       }
+       "name": "def.comment"
       },
       {
        "begin": "#",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "patterns": [
@@ -62,16 +44,7 @@
       {
        "begin": "(?:(u|U)?)\"\"\"",
        "end": "\"\"\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -86,16 +59,7 @@
       {
        "begin": "(?:(u|U)?)'''",
        "end": "'''",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -110,16 +74,7 @@
       {
        "begin": "(?:(u|U)?)\"",
        "end": "(?:\")|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -132,32 +87,14 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "(?:(u|U)?)'",
        "end": "(?:')|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -170,32 +107,14 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "(?:(r|ur|R|UR|Ur|uR))\"\"\"",
        "end": "\"\"\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -206,16 +125,7 @@
       {
        "begin": "(?:(r|ur|R|UR|Ur|uR))'''",
        "end": "'''",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -226,16 +136,7 @@
       {
        "begin": "(?:(r|ur|R|UR|Ur|uR))\"",
        "end": "(?:\")|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -244,32 +145,14 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "(?:(r|ur|R|UR|Ur|uR))'",
        "end": "(?:')|$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "%\\((?:[_a-zA-Z][_a-zA-Z0-9]*)\\)?[#0\\-\\ \\+]*(\\-?(?:[1-9][0-9]*)|\\*)?(\\.(\\-?(?:[1-9][0-9]*)|\\*))?(hlL)?[diouxXeEfFgGcrs%]",
@@ -278,32 +161,14 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         }
        ]
       },
       {
        "begin": "`",
        "end": "(?:`)|$",
-       "beginCaptures": {
-        "0": {
-         "name": "python.string-conversion"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "python.string-conversion"
-        }
-       }
+       "name": "python.string-conversion"
       },
       {
        "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:self|__name__|__debug__)\\b",

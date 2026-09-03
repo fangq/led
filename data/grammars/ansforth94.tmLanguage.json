@@ -5,6 +5,7 @@
   {
    "begin": "\\b\\(\\b",
    "end": "\\)",
+   "name": "def.comment",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
@@ -37,14 +38,10 @@
   {
    "begin": "\\b\\\\\\b",
    "end": "$",
+   "name": "def.comment",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
     }
    },
    "patterns": [
@@ -87,6 +84,7 @@
   {
    "begin": "\\b([.]\"|ABORT\"|S\")\\b",
    "end": "\"",
+   "name": "def.string",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
@@ -128,14 +126,10 @@
   {
    "begin": "\\b\\\\\\b",
    "end": "$",
+   "name": "def.comment",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
     }
    },
    "patterns": [
@@ -169,6 +163,7 @@
   {
    "begin": "\\bC\"\\b",
    "end": "\"",
+   "name": "def.string",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
@@ -192,6 +187,7 @@
   {
    "begin": "\\b[.]\\(\\b",
    "end": "\\)",
+   "name": "def.string",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
@@ -251,6 +247,7 @@
   {
    "begin": "\\bLOCALS\\|\\b",
    "end": "\\|",
+   "name": "def.type",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"

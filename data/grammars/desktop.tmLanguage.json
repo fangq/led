@@ -5,16 +5,7 @@
   {
    "begin": "#",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -37,16 +28,7 @@
   {
    "begin": "^\\[",
    "end": "\\]$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.keyword"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.keyword"
-    }
-   }
+   "name": "def.keyword"
   },
   {
    "patterns": [

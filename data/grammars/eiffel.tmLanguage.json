@@ -5,44 +5,17 @@
   {
    "begin": "'",
    "end": "'",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "\"\\[",
    "end": "\\]\"",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "\"",
    "end": "\"",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
+   "name": "def.string",
    "patterns": [
     {
      "match": "(\\%\\\"|\\%N|\\%\\%)",
@@ -53,16 +26,7 @@
   {
    "begin": "--",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -85,30 +49,12 @@
   {
    "begin": "(^|\\s)debug(\\s|$)",
    "end": "(^|\\s)end(\\s|$)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   }
+   "name": "def.preprocessor"
   },
   {
    "begin": "(^|\\s)check(\\s|$)",
    "end": "(^|\\s)end(\\s|$)",
-   "beginCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.preprocessor"
-    }
-   }
+   "name": "def.preprocessor"
   },
   {
    "match": "\\b(?:indexing|deferred|expanded|class|obsolete|inherit|insert|rename|as|export|all|undefine|redefine|select|end|\\(create\\|creation\\)|feature|frozen|prefix|infix|is|obsolete|require\\\\s\\*\\(else\\)\\?|local|deferred|do|once|external|alias|ensure\\\\s\\*\\(then\\)\\?|rescue|end|unique|invariant|end|and\\\\s\\*\\(then\\)\\?|or\\\\s\\*\\(else\\)\\?|xor|implies|not|retry|if|then|elseif|else|end|inspect|when|end|from|invariant|variant|until|loop|do|end|strip|old|separate|expanded|like)\\b",

@@ -85,16 +85,7 @@
   {
    "begin": "^%",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "t2t.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "t2t.comment"
-    }
-   }
+   "name": "t2t.comment"
   },
   {
    "match": "//(.*?)//",
@@ -123,7 +114,7 @@
   {
    "begin": "^```$",
    "end": "^```$",
-   "name": "t2t.verbatim-block"
+   "contentName": "t2t.verbatim-block"
   }
  ],
  "fileTypes": [

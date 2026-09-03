@@ -5,16 +5,7 @@
   {
    "begin": "^#!",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   }
+   "name": "def.comment"
   },
   {
    "match": "^\\#\\s*(line\\s+(\\d+))\\s*(?:(\\s\"([^\"]+)\"|[^\"]+))?\\s*$",
@@ -28,16 +19,7 @@
   {
    "begin": "#",
    "end": "$",
-   "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    }
-   },
+   "name": "def.comment",
    "patterns": [
     {
      "patterns": [
@@ -60,18 +42,13 @@
   {
    "begin": "^(?=(=[a-z]))",
    "end": "^=(cut)$",
+   "name": "def.comment",
    "beginCaptures": {
-    "0": {
-     "name": "def.comment"
-    },
     "1": {
      "name": "def.keyword"
     }
    },
    "endCaptures": {
-    "0": {
-     "name": "def.comment"
-    },
     "1": {
      "name": "def.keyword"
     }
@@ -80,7 +57,7 @@
     {
      "begin": "^=(head[1-4])",
      "end": "$",
-     "name": "def.doc-comment-element",
+     "contentName": "def.doc-comment-element",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -332,14 +309,10 @@
   {
    "begin": "__(DATA|END)__",
    "end": "$",
+   "name": "def.comment",
    "beginCaptures": {
     "0": {
      "name": "def.keyword"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.comment"
     }
    }
   },
@@ -348,16 +321,7 @@
     {
      "begin": "\"",
      "end": "\"",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "patterns": [
@@ -370,16 +334,7 @@
           {
            "begin": "[$@%]{",
            "end": "}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           }
+           "name": "def.type"
           },
           {
            "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -407,30 +362,12 @@
     {
      "begin": "(?:(?<![a-zA-Z0-9@%{(]))qq\\b",
      "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "begin": "(?<![^\\s])#",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
+       "name": "def.comment",
        "patterns": [
         {
          "patterns": [
@@ -471,16 +408,7 @@
               {
                "begin": "[$@%]{",
                "end": "}",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               }
+               "name": "def.type"
               },
               {
                "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -528,16 +456,7 @@
               {
                "begin": "[$@%]{",
                "end": "}",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               }
+               "name": "def.type"
               },
               {
                "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -585,16 +504,7 @@
               {
                "begin": "[$@%]{",
                "end": "}",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               }
+               "name": "def.type"
               },
               {
                "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -642,16 +552,7 @@
               {
                "begin": "[$@%]{",
                "end": "}",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.type"
-                }
-               }
+               "name": "def.type"
               },
               {
                "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -693,16 +594,7 @@
             {
              "begin": "[$@%]{",
              "end": "}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             }
+             "name": "def.type"
             },
             {
              "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -740,16 +632,7 @@
     {
      "begin": "'",
      "end": "'",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "\\\\\\\\|\\\\'",
@@ -760,16 +643,7 @@
     {
      "begin": "(?:(?<![a-zA-Z0-9@%{(]))q\\b",
      "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     }
    ]
   },
@@ -778,16 +652,7 @@
     {
      "begin": "`",
      "end": "`",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "patterns": [
@@ -800,16 +665,7 @@
           {
            "begin": "[$@%]{",
            "end": "}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           }
+           "name": "def.type"
           },
           {
            "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -837,95 +693,41 @@
     {
      "begin": "(?:(?<![a-zA-Z0-9@%{(]))qx\\b",
      "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     }
    ]
   },
   {
    "begin": "(?:(?<![a-zA-Z0-9@%{(]))qw\\b",
    "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "(?:(?<![a-zA-Z0-9@%{(]))qr\\b",
    "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[imosx]*",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "(?:(?<![a-zA-Z0-9@%{(]))m\\b",
    "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[cgimosx]*",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "(?:(?<![a-zA-Z0-9@%{(]))s\\b",
    "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[ecgimosx]*",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "begin": "(?:(?<![a-zA-Z0-9@%{(]))(tr|y)\\b",
    "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[cds]*",
-   "beginCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   },
-   "endCaptures": {
-    "0": {
-     "name": "def.string"
-    }
-   }
+   "name": "def.string"
   },
   {
    "patterns": [
     {
      "begin": "(^|[^$@%&])(split|while|if)\\s+(/)",
      "end": "/[cgimosx]*",
-     "name": "def.string",
+     "contentName": "def.string",
      "beginCaptures": {
       "2": {
        "name": "def.builtin"
@@ -951,16 +753,7 @@
           {
            "begin": "[$@%]{",
            "end": "}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           }
+           "name": "def.type"
           },
           {
            "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -988,7 +781,7 @@
     {
      "begin": "(^|(?<=[\\(\\{]))\\s*(/)",
      "end": "/[cgimosx]*",
-     "name": "def.string",
+     "contentName": "def.string",
      "beginCaptures": {
       "2": {
        "name": "def.string"
@@ -1011,16 +804,7 @@
           {
            "begin": "[$@%]{",
            "end": "}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           }
+           "name": "def.type"
           },
           {
            "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1048,7 +832,7 @@
     {
      "begin": "([!=]\\~)\\s*(/)",
      "end": "/[cgimosx]*",
-     "name": "def.string",
+     "contentName": "def.string",
      "beginCaptures": {
       "1": {
        "name": "def.keyword"
@@ -1074,16 +858,7 @@
           {
            "begin": "[$@%]{",
            "end": "}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           }
+           "name": "def.type"
           },
           {
            "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1153,16 +928,7 @@
       {
        "begin": "[$@%]{",
        "end": "}",
-       "beginCaptures": {
-        "0": {
-         "name": "def.type"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.type"
-        }
-       }
+       "name": "def.type"
       },
       {
        "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1200,16 +966,7 @@
         {
          "begin": "^#!",
          "end": "$",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         }
+         "name": "def.comment"
         },
         {
          "match": "^\\#\\s*(line\\s+(\\d+))\\s*(?:(\\s\"([^\"]+)\"|[^\"]+))?\\s*$",
@@ -1223,16 +980,7 @@
         {
          "begin": "#",
          "end": "$",
-         "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          }
-         },
+         "name": "def.comment",
          "patterns": [
           {
            "patterns": [
@@ -1255,18 +1003,13 @@
         {
          "begin": "^(?=(=[a-z]))",
          "end": "^=(cut)$",
+         "name": "def.comment",
          "beginCaptures": {
-          "0": {
-           "name": "def.comment"
-          },
           "1": {
            "name": "def.keyword"
           }
          },
          "endCaptures": {
-          "0": {
-           "name": "def.comment"
-          },
           "1": {
            "name": "def.keyword"
           }
@@ -1275,7 +1018,7 @@
           {
            "begin": "^=(head[1-4])",
            "end": "$",
-           "name": "def.doc-comment-element",
+           "contentName": "def.doc-comment-element",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -1527,14 +1270,10 @@
         {
          "begin": "__(DATA|END)__",
          "end": "$",
+         "name": "def.comment",
          "beginCaptures": {
           "0": {
            "name": "def.keyword"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.comment"
           }
          }
         },
@@ -1543,16 +1282,7 @@
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "patterns": [
@@ -1565,16 +1295,7 @@
                 {
                  "begin": "[$@%]{",
                  "end": "}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 }
+                 "name": "def.type"
                 },
                 {
                  "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1602,30 +1323,12 @@
           {
            "begin": "(?:(?<![a-zA-Z0-9@%{(]))qq\\b",
            "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "begin": "(?<![^\\s])#",
              "end": "$",
-             "beginCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.comment"
-              }
-             },
+             "name": "def.comment",
              "patterns": [
               {
                "patterns": [
@@ -1666,16 +1369,7 @@
                     {
                      "begin": "[$@%]{",
                      "end": "}",
-                     "beginCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     },
-                     "endCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     }
+                     "name": "def.type"
                     },
                     {
                      "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1723,16 +1417,7 @@
                     {
                      "begin": "[$@%]{",
                      "end": "}",
-                     "beginCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     },
-                     "endCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     }
+                     "name": "def.type"
                     },
                     {
                      "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1780,16 +1465,7 @@
                     {
                      "begin": "[$@%]{",
                      "end": "}",
-                     "beginCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     },
-                     "endCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     }
+                     "name": "def.type"
                     },
                     {
                      "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1837,16 +1513,7 @@
                     {
                      "begin": "[$@%]{",
                      "end": "}",
-                     "beginCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     },
-                     "endCaptures": {
-                      "0": {
-                       "name": "def.type"
-                      }
-                     }
+                     "name": "def.type"
                     },
                     {
                      "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1888,16 +1555,7 @@
                   {
                    "begin": "[$@%]{",
                    "end": "}",
-                   "beginCaptures": {
-                    "0": {
-                     "name": "def.type"
-                    }
-                   },
-                   "endCaptures": {
-                    "0": {
-                     "name": "def.type"
-                    }
-                   }
+                   "name": "def.type"
                   },
                   {
                    "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1935,16 +1593,7 @@
           {
            "begin": "'",
            "end": "'",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "\\\\\\\\|\\\\'",
@@ -1955,16 +1604,7 @@
           {
            "begin": "(?:(?<![a-zA-Z0-9@%{(]))q\\b",
            "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           }
          ]
         },
@@ -1973,16 +1613,7 @@
           {
            "begin": "`",
            "end": "`",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "patterns": [
@@ -1995,16 +1626,7 @@
                 {
                  "begin": "[$@%]{",
                  "end": "}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 }
+                 "name": "def.type"
                 },
                 {
                  "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -2032,95 +1654,41 @@
           {
            "begin": "(?:(?<![a-zA-Z0-9@%{(]))qx\\b",
            "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           }
          ]
         },
         {
          "begin": "(?:(?<![a-zA-Z0-9@%{(]))qw\\b",
          "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "begin": "(?:(?<![a-zA-Z0-9@%{(]))qr\\b",
          "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[imosx]*",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "begin": "(?:(?<![a-zA-Z0-9@%{(]))m\\b",
          "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[cgimosx]*",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "begin": "(?:(?<![a-zA-Z0-9@%{(]))s\\b",
          "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[ecgimosx]*",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "begin": "(?:(?<![a-zA-Z0-9@%{(]))(tr|y)\\b",
          "end": "(?:(?<=[}\\]\\)>]|(?:[&+|!/@#\\^\\-=:;,.?*\\\\%`\"'])))[cds]*",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "patterns": [
           {
            "begin": "(^|[^$@%&])(split|while|if)\\s+(/)",
            "end": "/[cgimosx]*",
-           "name": "def.string",
+           "contentName": "def.string",
            "beginCaptures": {
             "2": {
              "name": "def.builtin"
@@ -2146,16 +1714,7 @@
                 {
                  "begin": "[$@%]{",
                  "end": "}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 }
+                 "name": "def.type"
                 },
                 {
                  "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -2183,7 +1742,7 @@
           {
            "begin": "(^|(?<=[\\(\\{]))\\s*(/)",
            "end": "/[cgimosx]*",
-           "name": "def.string",
+           "contentName": "def.string",
            "beginCaptures": {
             "2": {
              "name": "def.string"
@@ -2206,16 +1765,7 @@
                 {
                  "begin": "[$@%]{",
                  "end": "}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 }
+                 "name": "def.type"
                 },
                 {
                  "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -2243,7 +1793,7 @@
           {
            "begin": "([!=]\\~)\\s*(/)",
            "end": "/[cgimosx]*",
-           "name": "def.string",
+           "contentName": "def.string",
            "beginCaptures": {
             "1": {
              "name": "def.keyword"
@@ -2269,16 +1819,7 @@
                 {
                  "begin": "[$@%]{",
                  "end": "}",
-                 "beginCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 },
-                 "endCaptures": {
-                  "0": {
-                   "name": "def.type"
-                  }
-                 }
+                 "name": "def.type"
                 },
                 {
                  "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",
@@ -2348,16 +1889,7 @@
             {
              "begin": "[$@%]{",
              "end": "}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             }
+             "name": "def.type"
             },
             {
              "match": "(?:([$@%]|\\$\\#)\\$*[a-zA-Z_][a-zA-Z0-9_]*)",

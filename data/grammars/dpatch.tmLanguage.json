@@ -7,30 +7,12 @@
     {
      "begin": "^#!",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     }
+     "name": "def.comment"
     },
     {
      "begin": "(?<!\\S)#",
      "end": "$",
-     "beginCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.comment"
-      }
-     },
+     "name": "def.comment",
      "patterns": [
       {
        "patterns": [
@@ -57,30 +39,12 @@
     {
      "begin": "'",
      "end": "'",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     }
+     "name": "def.string"
     },
     {
      "begin": "\"",
      "end": "\"",
-     "beginCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.string"
-      }
-     },
+     "name": "def.string",
      "patterns": [
       {
        "match": "\\\\[$`\"\\\\]",
@@ -92,16 +56,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "patterns": [
@@ -112,44 +67,17 @@
         {
          "begin": "\\$\\{",
          "end": "\\}",
-         "beginCaptures": {
-          "0": {
-           "name": "def.type"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.type"
-          }
-         },
+         "name": "def.type",
          "patterns": [
           {
            "begin": "'",
            "end": "'",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           },
           {
            "begin": "`",
            "end": "`",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
+           "name": "def.preprocessor",
            "patterns": [
             {
              "match": "\\\\.",
@@ -158,16 +86,7 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             },
             {
              "patterns": [
@@ -208,16 +127,7 @@
             {
              "begin": "'",
              "end": "'",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             }
+             "name": "def.string"
             }
            ]
           }
@@ -228,16 +138,7 @@
       {
        "begin": "`",
        "end": "`",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
+       "name": "def.preprocessor",
        "patterns": [
         {
          "match": "\\\\.",
@@ -246,16 +147,7 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         },
         {
          "patterns": [
@@ -266,30 +158,12 @@
           {
            "begin": "\\$\\{",
            "end": "\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
+           "name": "def.type",
            "patterns": [
             {
              "begin": "'",
              "end": "'",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             }
+             "name": "def.string"
             }
            ]
           }
@@ -334,16 +208,7 @@
         {
          "begin": "'",
          "end": "'",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         }
        ]
       }
@@ -366,16 +231,7 @@
     {
      "begin": "`",
      "end": "`",
-     "beginCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
-     "endCaptures": {
-      "0": {
-       "name": "def.preprocessor"
-      }
-     },
+     "name": "def.preprocessor",
      "patterns": [
       {
        "match": "\\\\.",
@@ -384,16 +240,7 @@
       {
        "begin": "\\\\$",
        "end": "^",
-       "beginCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.preprocessor"
-        }
-       }
+       "name": "def.preprocessor"
       },
       {
        "patterns": [
@@ -404,44 +251,17 @@
         {
          "begin": "\\$\\{",
          "end": "\\}",
-         "beginCaptures": {
-          "0": {
-           "name": "def.type"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.type"
-          }
-         },
+         "name": "def.type",
          "patterns": [
           {
            "begin": "'",
            "end": "'",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           },
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "\\\\[$`\"\\\\]",
@@ -453,16 +273,7 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           }
@@ -509,30 +320,12 @@
       {
        "begin": "'",
        "end": "'",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "\\\\[$`\"\\\\]",
@@ -544,16 +337,7 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         },
         {
          "patterns": [
@@ -564,30 +348,12 @@
           {
            "begin": "\\$\\{",
            "end": "\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
+           "name": "def.type",
            "patterns": [
             {
              "begin": "'",
              "end": "'",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             }
+             "name": "def.string"
             }
            ]
           }
@@ -614,16 +380,7 @@
       {
        "begin": "\"",
        "end": "\"",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
+       "name": "def.string",
        "patterns": [
         {
          "match": "\\\\[$`\"\\\\]",
@@ -635,16 +392,7 @@
         {
          "begin": "\\\\$",
          "end": "^",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         }
+         "name": "def.preprocessor"
         },
         {
          "patterns": [
@@ -655,44 +403,17 @@
           {
            "begin": "\\$\\{",
            "end": "\\}",
-           "beginCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.type"
-            }
-           },
+           "name": "def.type",
            "patterns": [
             {
              "begin": "'",
              "end": "'",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             }
+             "name": "def.string"
             },
             {
              "begin": "`",
              "end": "`",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
+             "name": "def.preprocessor",
              "patterns": [
               {
                "match": "\\\\.",
@@ -701,16 +422,7 @@
               {
                "begin": "\\\\$",
                "end": "^",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.preprocessor"
-                }
-               }
+               "name": "def.preprocessor"
               },
               {
                "patterns": [
@@ -751,16 +463,7 @@
               {
                "begin": "'",
                "end": "'",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.string"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.string"
-                }
-               }
+               "name": "def.string"
               }
              ]
             }
@@ -771,16 +474,7 @@
         {
          "begin": "`",
          "end": "`",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
+         "name": "def.preprocessor",
          "patterns": [
           {
            "match": "\\\\.",
@@ -789,16 +483,7 @@
           {
            "begin": "\\\\$",
            "end": "^",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           }
+           "name": "def.preprocessor"
           },
           {
            "patterns": [
@@ -809,30 +494,12 @@
             {
              "begin": "\\$\\{",
              "end": "\\}",
-             "beginCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.type"
-              }
-             },
+             "name": "def.type",
              "patterns": [
               {
                "begin": "'",
                "end": "'",
-               "beginCaptures": {
-                "0": {
-                 "name": "def.string"
-                }
-               },
-               "endCaptures": {
-                "0": {
-                 "name": "def.string"
-                }
-               }
+               "name": "def.string"
               }
              ]
             }
@@ -877,16 +544,7 @@
           {
            "begin": "'",
            "end": "'",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           }
          ]
         }
@@ -895,16 +553,7 @@
       {
        "begin": "'",
        "end": "'",
-       "beginCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.string"
-        }
-       }
+       "name": "def.string"
       },
       {
        "match": "[^\\)\\s]+\\s*\\)|;;",
@@ -951,44 +600,17 @@
       {
        "begin": "\\$\\{",
        "end": "\\}",
-       "beginCaptures": {
-        "0": {
-         "name": "def.type"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.type"
-        }
-       },
+       "name": "def.type",
        "patterns": [
         {
          "begin": "'",
          "end": "'",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         }
+         "name": "def.string"
         },
         {
          "begin": "\"",
          "end": "\"",
-         "beginCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.string"
-          }
-         },
+         "name": "def.string",
          "patterns": [
           {
            "match": "\\\\[$`\"\\\\]",
@@ -1000,30 +622,12 @@
           {
            "begin": "\\\\$",
            "end": "^",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           }
+           "name": "def.preprocessor"
           },
           {
            "begin": "`",
            "end": "`",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
+           "name": "def.preprocessor",
            "patterns": [
             {
              "match": "\\\\.",
@@ -1032,16 +636,7 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             },
             {
              "patterns": [
@@ -1082,16 +677,7 @@
             {
              "begin": "'",
              "end": "'",
-             "beginCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.string"
-              }
-             }
+             "name": "def.string"
             }
            ]
           }
@@ -1100,16 +686,7 @@
         {
          "begin": "`",
          "end": "`",
-         "beginCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
-         "endCaptures": {
-          "0": {
-           "name": "def.preprocessor"
-          }
-         },
+         "name": "def.preprocessor",
          "patterns": [
           {
            "match": "\\\\.",
@@ -1118,16 +695,7 @@
           {
            "begin": "\\\\$",
            "end": "^",
-           "beginCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.preprocessor"
-            }
-           }
+           "name": "def.preprocessor"
           },
           {
            "patterns": [
@@ -1168,30 +736,12 @@
           {
            "begin": "'",
            "end": "'",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           }
+           "name": "def.string"
           },
           {
            "begin": "\"",
            "end": "\"",
-           "beginCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
-           "endCaptures": {
-            "0": {
-             "name": "def.string"
-            }
-           },
+           "name": "def.string",
            "patterns": [
             {
              "match": "\\\\[$`\"\\\\]",
@@ -1203,16 +753,7 @@
             {
              "begin": "\\\\$",
              "end": "^",
-             "beginCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             },
-             "endCaptures": {
-              "0": {
-               "name": "def.preprocessor"
-              }
-             }
+             "name": "def.preprocessor"
             }
            ]
           }
@@ -1282,16 +823,7 @@
       {
        "begin": "(?:^(diff |\\+\\+\\+ |Index: |==== |\\*\\*\\* |--- ))",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "diff.diff-file"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "diff.diff-file"
-        }
-       }
+       "name": "diff.diff-file"
       },
       {
        "match": "^(<|-).*$",
@@ -1308,16 +840,7 @@
       {
        "begin": "^((@@)|[0-9]|\\*\\*\\*\\*)",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "diff.location"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "diff.location"
-        }
-       },
+       "name": "diff.location",
        "patterns": [
         {
          "match": "\\\\.",
@@ -1332,16 +855,7 @@
       {
        "begin": "^\\S",
        "end": "$",
-       "beginCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       },
-       "endCaptures": {
-        "0": {
-         "name": "def.comment"
-        }
-       }
+       "name": "def.comment"
       }
      ]
     }
