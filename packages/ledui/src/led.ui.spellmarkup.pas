@@ -19,21 +19,36 @@ interface
 uses
   Classes, SysUtils, Graphics, SynEdit, SynEditMarkup, SynEditMiscClasses,
   SynEditTypes, SynEditHighlighter, LazSynEditText,
+  SynTextMateSyn, TextMateGrammar,
   Led.Core.Spell;
 
 type
+  { How much of a document to check.  lssAuto is resolved to one of the
+    others by the caller, which knows the document's language -- see
+    Led.UI.Document.ApplyConfigToView. }
   TLedSpellScope = (lssAll, lssCode, lssOff);
 
   TLedSpellMarkup = class(TSynEditMarkup)
   private
     FScope: TLedSpellScope;
-    FCachedRow: Integer;
+    { The row scanned for the paint in progress, and the misspellings found
+      on it.  Valid only between PrepareMarkupForRow and EndMarkup; -1 means
+      nothing scanned. }
+    FCurrentRow: Integer;
     FStarts, FEnds: array of Integer;   // 1-based logical, [start, end)
     FCount: Integer;
+    { Column ranges on the current row that are worth checking -- comments
+      and strings under lssCode, the whole line under lssAll.  Collected in
+      one pass over the highlighter rather than one query per word. }
+    FProseFrom, FProseTo: array of Integer;
+    FProseCount: Integer;
     procedure ScanRow(ARow: Integer);
-    function InSpellableToken(ARow, ACol: Integer): Boolean;
+    procedure CollectProseRuns(ARow: Integer; const ALine: string);
+    function InProse(ACol: Integer): Boolean;
   public
     constructor Create(ASynEdit: TSynEditBase);
+    procedure PrepareMarkupForRow(aRow: Integer); override;
+    procedure EndMarkup; override;
     function GetMarkupAttributeAtRowCol(const aRow: Integer;
       const aStartCol: TLazSynDisplayTokenBound;
       const AnRtlInfo: TLazSynDisplayRtlInfo): TSynSelectedColor; override;
@@ -42,8 +57,13 @@ type
       const AnRtlInfo: TLazSynDisplayRtlInfo;
       out ANextPhys, ANextLog: Integer); override;
 
-    { Forces the next paint to re-check, after the dictionary changes. }
+    { Drops the scan, so the next paint re-checks.  Needed after a word is
+      added to the dictionary or ignored; ordinary edits need nothing,
+      because every paint rescans the rows it draws. }
     procedure Invalidate;
+
+    { Exposed for the self-test: the misspellings found on ARow. }
+    function MarksOnRow(ARow: Integer): Integer;
 
     property Scope: TLedSpellScope read FScope write FScope;
   end;
@@ -92,7 +112,7 @@ constructor TLedSpellMarkup.Create(ASynEdit: TSynEditBase);
 begin
   inherited Create(ASynEdit);
   FScope := lssOff;
-  FCachedRow := -1;
+  FCurrentRow := -1;
   { No foreground or background of its own: only the wavy underline, so the
     syntax colours underneath are untouched. }
   MarkupInfo.Foreground := clNone;
@@ -104,27 +124,155 @@ end;
 
 procedure TLedSpellMarkup.Invalidate;
 begin
-  FCachedRow := -1;
+  FCurrentRow := -1;
 end;
 
-{ In code, only comments and strings are prose; everything else is
-  identifiers and keywords, and underlining those makes the feature
-  unusable.  With no highlighter there is nothing to ask, so everything
-  counts as prose -- which is right for a plain text file. }
-function TLedSpellMarkup.InSpellableToken(ARow, ACol: Integer): Boolean;
-var
-  Attr: TSynHighlighterAttributes;
-  Stored, Token: string;
-begin
-  if FScope = lssAll then Exit(True);
-  if TCustomSynEdit(SynEdit).Highlighter = nil then Exit(True);
+{ Called once per display row before any token of it is drawn, which is why
+  there is no staleness test anywhere else: the scan cannot outlive the paint
+  that made it.  The previous version keyed a cache on the row number and
+  rescanned only when that changed -- so typing on one line, which repaints
+  only that line, reused the scan from the first keystroke and never noticed
+  anything typed after it.
 
-  if not TCustomSynEdit(SynEdit).GetHighlighterAttriAtRowCol(
-       Point(ACol, ARow), Token, Attr) then Exit(False);
-  if Attr = nil then Exit(False);
-  Stored := LowerCase(Attr.StoredName);
-  Result := (Pos('comment', Stored) > 0) or (Pos('string', Stored) > 0) or
-            (Pos('text', Stored) > 0) or (Pos('doc', Stored) > 0);
+  The guard is for word wrap, where one text line covers several display rows
+  and Prepare is called for each. }
+procedure TLedSpellMarkup.PrepareMarkupForRow(aRow: Integer);
+begin
+  if FScope = lssOff then Exit;
+  if aRow = FCurrentRow then Exit;
+  FCurrentRow := aRow;
+  ScanRow(aRow);
+end;
+
+procedure TLedSpellMarkup.EndMarkup;
+begin
+  inherited EndMarkup;
+  FCurrentRow := -1;
+end;
+
+{ For the self-test, which has no paint to hang a Prepare off. }
+function TLedSpellMarkup.MarksOnRow(ARow: Integer): Integer;
+begin
+  FCurrentRow := -1;
+  PrepareMarkupForRow(ARow);
+  Result := FCount;
+end;
+
+{ The stretches of a line worth checking.
+
+  Under lssAll that is the whole line.  Under lssCode it is the comments and
+  strings, which is what makes the feature usable over source: without it,
+  every identifier is a misspelling.
+
+  Collected in one walk over the highlighter.  The previous version asked
+  GetHighlighterAttriAtRowCol per candidate word, and each of those re-runs
+  the highlighter from the start of the line -- affordable when the scan
+  happened once, not now that it happens on every paint. }
+{ Does an attribute or pattern name denote prose?  Comments, strings and doc
+  comments -- and deliberately not 'text', because every highlighter calls
+  its default attribute "Text", so matching that made all ordinary code count
+  as prose.  Files that really are prose never get here: they are lssAll. }
+function LedNameIsProse(const AName: string): Boolean;
+var
+  S: string;
+begin
+  S := LowerCase(AName);
+  Result := (Pos('comment', S) > 0) or (Pos('string', S) > 0) or
+            (Pos('doc', S) > 0);
+end;
+
+procedure TLedSpellMarkup.CollectProseRuns(ARow: Integer; const ALine: string);
+var
+  HL: TSynCustomHighlighter;
+  Attr: TSynHighlighterAttributes;
+  Col, Len: Integer;
+
+  { A TextMate grammar names only the delimiters of a comment or string; the
+    body between them carries the default attribute, so the attribute alone
+    cannot tell a comment from code, and a comment continued onto a second
+    line has no delimiter at all.  The enclosing pattern is still on the
+    grammar's state stack, so ask that.
+
+    The catch is that the grammar pushes a pattern as soon as it *finds* the
+    upcoming begin-match, before emitting the text in front of it: while
+    `char *s = ` is being emitted the string pattern is already on the stack.
+    psfMatchBeginDone, set once a begin-match has actually been consumed,
+    is what separates "inside it" from "about to enter it". }
+  function InsideProsePattern: Boolean;
+  var
+    St: TTextMatePatternState;
+    i, k: Integer;
+  begin
+    Result := False;
+    if not (HL is TSynTextMateSyn) then Exit;
+    St := TSynTextMateSyn(HL).TextMateGrammar.CurrentState;
+    for k := St.StateIdx downto 0 do
+      if (St.StateList[k].Pattern <> nil) and
+         LedNameIsProse(St.StateList[k].Pattern.Name) then
+      begin
+        for i := k downto 0 do
+          if psfMatchBeginDone in St.StateList[i].Flags then Exit(True);
+        Exit(False);
+      end;
+  end;
+
+  procedure Add(AFrom, ATo: Integer);
+  begin
+    if ATo <= AFrom then Exit;
+    { Runs arrive in order, so a run touching the previous one extends it
+      rather than starting another -- an apostrophe splitting a comment into
+      two tokens must not split a word. }
+    if (FProseCount > 0) and (FProseTo[FProseCount - 1] >= AFrom) then
+    begin
+      if ATo > FProseTo[FProseCount - 1] then FProseTo[FProseCount - 1] := ATo;
+      Exit;
+    end;
+    if FProseCount >= Length(FProseFrom) then
+    begin
+      SetLength(FProseFrom, FProseCount + 16);
+      SetLength(FProseTo, FProseCount + 16);
+    end;
+    FProseFrom[FProseCount] := AFrom;
+    FProseTo[FProseCount] := ATo;
+    Inc(FProseCount);
+  end;
+
+begin
+  FProseCount := 0;
+  HL := TCustomSynEdit(SynEdit).Highlighter;
+
+  { Everything, when asked for everything or when there is no highlighter to
+    ask -- a plain text file is prose end to end. }
+  if (FScope = lssAll) or (HL = nil) then
+  begin
+    Add(1, Length(ALine) + 1);
+    Exit;
+  end;
+
+  HL.StartAtLineIndex(ARow - 1);
+  while not HL.GetEol do
+  begin
+    Attr := HL.GetTokenAttribute;
+    { The attribute covers the native highlighters, which colour a whole
+      comment or string in one go; the state stack covers TextMate. }
+    if ((Attr <> nil) and LedNameIsProse(Attr.StoredName)) or
+       InsideProsePattern then
+    begin
+      Col := HL.GetTokenPos + 1;              { GetTokenPos is 0-based }
+      Len := Length(HL.GetToken);
+      Add(Col, Col + Len);
+    end;
+    HL.Next;
+  end;
+end;
+
+function TLedSpellMarkup.InProse(ACol: Integer): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to FProseCount - 1 do
+    if (ACol >= FProseFrom[i]) and (ACol < FProseTo[i]) then Exit(True);
+  Result := False;
 end;
 
 procedure TLedSpellMarkup.ScanRow(ARow: Integer);
@@ -133,12 +281,15 @@ var
   i, S, L: Integer;
 begin
   FCount := 0;
-  FCachedRow := ARow;
+  FProseCount := 0;
   if FScope = lssOff then Exit;
   if (ARow < 1) or (ARow > TCustomSynEdit(SynEdit).Lines.Count) then Exit;
 
   Line := TCustomSynEdit(SynEdit).Lines[ARow - 1];
   if Line = '' then Exit;
+
+  CollectProseRuns(ARow, Line);
+  if FProseCount = 0 then Exit;
 
   i := 1;
   while i <= Length(Line) do
@@ -149,7 +300,7 @@ begin
       Inc(i);
       Continue;
     end;
-    if (not LedSpell.Check(W)) and InSpellableToken(ARow, S) then
+    if InProse(S) and (not LedSpell.Check(W)) then
     begin
       if FCount >= Length(FStarts) then
       begin
@@ -171,8 +322,7 @@ var
   i: Integer;
 begin
   Result := nil;
-  if FScope = lssOff then Exit;
-  if aRow <> FCachedRow then ScanRow(aRow);
+  if (FScope = lssOff) or (aRow <> FCurrentRow) then Exit;
 
   for i := 0 to FCount - 1 do
     if (aStartCol.Logical >= FStarts[i]) and (aStartCol.Logical < FEnds[i]) then
@@ -191,8 +341,7 @@ var
 begin
   ANextPhys := -1;
   ANextLog := -1;
-  if FScope = lssOff then Exit;
-  if aRow <> FCachedRow then ScanRow(aRow);
+  if (FScope = lssOff) or (aRow <> FCurrentRow) then Exit;
 
   { The next boundary at or after the caller's column: either the start of a
     misspelling or the end of the one we are inside. }

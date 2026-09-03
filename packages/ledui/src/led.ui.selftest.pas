@@ -18,7 +18,7 @@ function LedRunSelfTest: Integer;
 implementation
 
 uses
-  Classes, SysUtils, Forms, ComCtrls,
+  Classes, SysUtils, DateUtils, Forms, ComCtrls,
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
@@ -200,6 +200,9 @@ var
   Bound: TLazSynDisplayTokenBound;
   Rtl: TLazSynDisplayRtlInfo;
   Attr: TSynSelectedColor;
+  L: TStringList;
+  i, Ms: Integer;
+  T0: TDateTime;
 begin
   Say('spelling');
 
@@ -258,6 +261,12 @@ begin
   Bound := Default(TLazSynDisplayTokenBound);
   Rtl := Default(TLazSynDisplayRtlInfo);
 
+  { PrepareMarkupForRow first, because that is the order SynEdit uses: it
+    prepares a row, then asks about each token on it.  Querying without
+    preparing is not a case the editor produces, and the markup answers
+    nothing for it rather than scanning behind the caller's back. }
+  V.SpellMarkup.PrepareMarkupForRow(1);
+
   Bound.Logical := 3;          { inside "recieve", which spans 3..9 }
   Attr := V.SpellMarkup.GetMarkupAttributeAtRowCol(1, Bound, Rtl);
   Check('the markup claims a column inside the misspelling', Attr <> nil);
@@ -276,6 +285,44 @@ begin
   Attr := V.SpellMarkup.GetMarkupAttributeAtRowCol(1, Bound, Rtl);
   Check('nor on a short common one', Attr = nil);
 
+  { --- the bug this was reported for -------------------------------------
+
+    Typing a misspelling one character at a time.  The old markup cached its
+    scan against the row number and rescanned only when that changed, so
+    typing on one line -- which repaints only that line -- reused the scan
+    from the first keystroke.  The first assertion below passed and every
+    later one failed.  Scanning happens per paint now, so each keystroke is
+    seen. }
+  V.Lines.Text := 'ready ';
+  V.CaretXY := Point(7, 1);
+  Pump;
+  CheckEqInt('nothing wrong before typing', 0, V.SpellMarkup.MarksOnRow(1));
+
+  V.CommandProcessor(ecChar, 'z', nil);
+  V.CommandProcessor(ecChar, 'q', nil);
+  Pump;
+  CheckEqInt('two letters is too short to judge', 0,
+    V.SpellMarkup.MarksOnRow(1));
+
+  V.CommandProcessor(ecChar, 'x', nil);
+  Pump;
+  CheckEqInt('a third letter makes it a word, and a wrong one', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  V.CommandProcessor(ecChar, 'j', nil);
+  Pump;
+  CheckEqInt('and it stays flagged as more is typed', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  { Typing it into a real word must clear the mark again. }
+  V.Lines.Text := 'recieve';
+  Pump;
+  CheckEqInt('a misspelling is flagged', 1, V.SpellMarkup.MarksOnRow(1));
+  V.Lines.Text := 'receive';
+  Pump;
+  CheckEqInt('and correcting it clears the mark', 0,
+    V.SpellMarkup.MarksOnRow(1));
+
   { Adding a word silences it everywhere, not just here. }
   LedSpell.Ignore('recieve');
   Check('an ignored word is accepted', LedSpell.Check('recieve'));
@@ -284,6 +331,107 @@ begin
   Check('and the menu stops offering corrections for it',
     Pos('recieve', F.miSpelling.Caption) = 0);
 
+  { --- the "auto" scope, which is the default ---------------------------
+
+    medit's preference page promises "everything in prose, comments and
+    strings in code" and its implementation does neither -- it switches
+    checking off for any file with a language, Markdown and LaTeX included.
+    led does what the label says, so this pins down both halves.
+
+    Note the word: an earlier check above ignores "recieve" for the session,
+    so reusing it here would test nothing. }
+  LedPrefs.SetStr('Editor/spell_scope', 'auto');
+
+  { Prose: a Markdown document is checked end to end. }
+  V.Lines.Text := 'A paragraph with seperate spelled wrong.';
+  F.ActiveTab.Document.SetLanguage('markdown');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  Pump;
+  CheckEqInt('auto checks prose in a Markdown document', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  { Source: the same word is checked in a comment and left alone as code. }
+  F.ActiveTab.Document.SetLanguage('c');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  V.Lines.Text := '/* seperate this */';
+  Pump;
+  CheckEqInt('auto checks comments in source', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  { A block comment continued onto a second line: that line carries no
+    delimiter of its own, so the scan has to know it starts inside one. }
+  V.Lines.Text := '/* seperate here' + LineEnding + '   seperate there */';
+  Pump;
+  CheckEqInt('and a continuation line of a block comment', 1,
+    V.SpellMarkup.MarksOnRow(2));
+  CheckEqInt('and the line the block comment opens on', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  V.Lines.Text := 'int seperate = 0;';
+  Pump;
+  CheckEqInt('but leaves identifiers alone', 0,
+    V.SpellMarkup.MarksOnRow(1));
+
+  V.Lines.Text := 'char *s = "seperate";';
+  Pump;
+  CheckEqInt('and checks strings too', 1, V.SpellMarkup.MarksOnRow(1));
+
+  { An escape splits the string into three tokens; the word after it still
+    has to be checked. }
+  V.Lines.Text := 'char *s = "one\nseperate word";';
+  Pump;
+  CheckEqInt('and a string broken up by an escape', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  { "all" overrides the language and checks the identifier as well. }
+  LedPrefs.SetStr('Editor/spell_scope', 'all');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  V.Lines.Text := 'int seperate = 0;';
+  Pump;
+  CheckEqInt('"all" checks even an identifier', 1,
+    V.SpellMarkup.MarksOnRow(1));
+
+  { Defaults: with nothing in prefs.ini at all, checking is on and scoped
+    to auto.  Read them the way the editor reads them, so a call site that
+    passed the wrong fallback would show up here. }
+  LedPrefs.Remove('Editor/spell_enabled');
+  LedPrefs.Remove('Editor/spell_scope');
+  F.ActiveTab.Document.SetLanguage('c');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  Check('spell checking defaults to on',
+    LedPrefs.GetBool('Editor/spell_enabled', True));
+  Check('and the default scope resolves to code for a source file',
+    F.ActiveTab.Document.SpellScopeForDocument = lssCode);
+  F.ActiveTab.Document.SetLanguage('markdown');
+  Check('and to all for prose',
+    F.ActiveTab.Document.SpellScopeForDocument = lssAll);
+
+  { Cost: the scan now runs on every paint of every row, so it has to stay
+    far below a frame.  Forty rows is a screenful. }
+  F.ActiveTab.Document.SetLanguage('c');
+  F.ActiveTab.Document.ApplyConfigToViews;
+  L := TStringList.Create;
+  try
+    for i := 1 to 10 do
+    begin
+      L.Add('/* Collect the runs of prose on this row, and nothing else. */');
+      L.Add('static int count_words (const char *text, size_t len)');
+      L.Add('  { return moo_str_count (text, len, "a seperate word"); }');
+      L.Add('');
+    end;
+    V.Lines.Assign(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  T0 := Now;
+  for i := 1 to 40 do
+    V.SpellMarkup.MarksOnRow(i);
+  Ms := MilliSecondsBetween(Now, T0);
+  Check('scanning a screenful of source costs under 20 ms, took ' +
+    IntToStr(Ms) + ' ms', Ms < 20);
+
+  LedPrefs.SetStr('Editor/spell_scope', 'auto');
   LedPrefs.SetBool('Editor/spell_enabled', False);
   F.ActiveTab.Document.Master.Modified := False;
   while F.Notebook.PageCount > Before do
