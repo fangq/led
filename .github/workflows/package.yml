@@ -100,11 +100,17 @@ jobs:
       - uses: actions/checkout@v5
 
       # setup-lazarus fetches the installer from SourceForge, and a stalled
-      # mirror is the single commonest reason a packaging run fails -- it took
-      # this one out fifteen minutes into a download.  Cache the install so
-      # most runs never reach SourceForge at all, and give a stall one more
-      # go rather than losing the run to it.  There is no apt here to fall
-      # back on, which is what the Linux job does instead.
+      # mirror is the single commonest reason a packaging run fails -- it
+      # took one out fifteen minutes into a download.  There is no apt here
+      # to fall back on, which is what the Linux job does instead, so give a
+      # stall one more go rather than losing the run to it.  The first
+      # attempt is continue-on-error so its failure is recorded rather than
+      # fatal; the second is not, so a genuinely broken install still fails.
+      #
+      # Not with-cache: true.  On a cache miss the action logs the download
+      # and then mounts the file it did not fetch -- "hdiutil: attach failed
+      # - No such file or directory" -- so caching turns a slow macOS job
+      # into a broken one.
       - name: Install Lazarus + FPC
         id: lazarus
         uses: gcarreno/setup-lazarus@v3.4.1
@@ -112,7 +118,6 @@ jobs:
         timeout-minutes: 15
         with:
           lazarus-version: stable
-          with-cache: true
 
       - name: Install Lazarus + FPC (second attempt)
         if: steps.lazarus.outcome == 'failure'
@@ -120,7 +125,6 @@ jobs:
         timeout-minutes: 15
         with:
           lazarus-version: stable
-          with-cache: true
 
       - name: Build editor (Release)
         shell: bash
@@ -206,11 +210,17 @@ jobs:
       - uses: actions/checkout@v5
 
       # setup-lazarus fetches the installer from SourceForge, and a stalled
-      # mirror is the single commonest reason a packaging run fails -- it took
-      # this one out fifteen minutes into a download.  Cache the install so
-      # most runs never reach SourceForge at all, and give a stall one more
-      # go rather than losing the run to it.  There is no apt here to fall
-      # back on, which is what the Linux job does instead.
+      # mirror is the single commonest reason a packaging run fails -- it
+      # took one out fifteen minutes into a download.  There is no apt here
+      # to fall back on, which is what the Linux job does instead, so give a
+      # stall one more go rather than losing the run to it.  The first
+      # attempt is continue-on-error so its failure is recorded rather than
+      # fatal; the second is not, so a genuinely broken install still fails.
+      #
+      # Not with-cache: true.  On a cache miss the action logs the download
+      # and then mounts the file it did not fetch -- "hdiutil: attach failed
+      # - No such file or directory" -- so caching turns a slow macOS job
+      # into a broken one.
       - name: Install Lazarus + FPC
         id: lazarus
         uses: gcarreno/setup-lazarus@v3.4.1
@@ -218,7 +228,6 @@ jobs:
         timeout-minutes: 15
         with:
           lazarus-version: stable
-          with-cache: true
 
       - name: Install Lazarus + FPC (second attempt)
         if: steps.lazarus.outcome == 'failure'
@@ -226,7 +235,6 @@ jobs:
         timeout-minutes: 15
         with:
           lazarus-version: stable
-          with-cache: true
 
       - name: Build editor (Release)
         run: lazbuild --widgetset=cocoa --build-mode=Release app/led.lpi
