@@ -18,6 +18,9 @@ interface
 uses
   Classes, SysUtils, Graphics, Controls, ImgList;
 
+const
+  LedWindowIconRes = 'LEDICONPNG';   { see packaging/windows/led.rc }
+
 type
   { The names are the action ids they belong to, lower-cased, so a caller can
     ask for an icon by action name and get nil-safe behaviour when there is
@@ -36,6 +39,17 @@ function LedIconIndex(const AName: string): Integer;
   list the application builds at startup. }
 function LedIconNames: TStringArray;
 
+{ Puts the application's own logo on the window and the task bar entry.
+
+  It reads the PNG copy of the artwork that packaging/windows/led.rc embeds,
+  rather than the MAINICON in the same binary.  MAINICON is the same picture
+  and the LCL reads it back correctly in process -- all seven sizes -- but
+  what reaches the window manager from it has its colour channels striped
+  and its alpha forced opaque.  A PNG assigned to Application.Icon arrives
+  intact.  Does nothing if the resource is missing, because a build without
+  it should start with no icon rather than not start. }
+procedure LedApplyWindowIcon;
+
 { Draws one icon into ABitmap, which must already be sized. }
 procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
 
@@ -46,6 +60,9 @@ procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
 function LedIconBitmap(const AName: string; AColour: TColor): TBitmap;
 
 implementation
+
+uses
+  Forms, LCLType;
 
 const
   { The background the icons are drawn on and then masked out.  Magenta
@@ -67,6 +84,28 @@ const
     { File-browser navigation. }
     'back', 'forward', 'up', 'home'
   );
+
+procedure LedApplyWindowIcon;
+var
+  Stream: TResourceStream;
+  Png: TPortableNetworkGraphic;
+begin
+  Stream := nil;
+  Png := nil;
+  try
+    try
+      Stream := TResourceStream.Create(HInstance, LedWindowIconRes, RT_RCDATA);
+      Png := TPortableNetworkGraphic.Create;
+      Png.LoadFromStream(Stream);
+      Application.Icon.Assign(Png);
+    except
+      { A missing or unreadable resource is not worth failing startup over. }
+    end;
+  finally
+    Png.Free;
+    Stream.Free;
+  end;
+end;
 
 function LedIconNames: TStringArray;
 var
