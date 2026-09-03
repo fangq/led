@@ -33,12 +33,19 @@ checked off by the presence of a menu entry.
 
 ## Actions (80)
 
+The denominator is every `action=` in `medit.xml`, which is how the list was
+built -- and three of those name actions medit never registers
+(`NextPlaceholder`, `PrevPlaceholder`, `PrintOptions`).  They are kept in the
+table, marked `no` under medit, so the count still reconciles against the file
+and nobody re-derives them later as missing work.  A fourth, `PrintPreview`,
+is registered but commented out of medit's own menu.
+
 | Feature | medit | led | Decision |
 |---|---|---|---|
 | `About` | yes | yes | done |
 | `AddBookmark` | yes | done | |
 | `BookmarksMenu` | yes | done | |
-| `CaseSensitiveSort` | yes | | |
+| `CaseSensitiveSort` | yes | | a property on the browser, but TShellListView sorts case-insensitively regardless |
 | `Close` | yes | yes | done |
 | `CloseAll` | yes | yes | done |
 | `Comment` | yes | yes | done |
@@ -63,7 +70,7 @@ checked off by the presence of a menu entry.
 | `GotoMatchingBracket` | yes | yes | done |
 | `Help` | yes | yes | done |
 | `Indent` | yes | yes | done |
-| `InputMethods` | yes | | |
+| `InputMethods` | yes | no | a GTK input-method menu; the LCL has no counterpart to expose |
 | `LanguageMenu` | yes | yes | done |
 | `LineEndMenu` | yes | yes | done |
 | `LineNumbers` | yes | yes | done |
@@ -72,7 +79,7 @@ checked off by the presence of a menu entry.
 | `NewFolder` | yes | done; on the file browser context menu | |
 | `NewWindow` | yes | yes | done |
 | `NextBookmark` | yes | yes | done |
-| `NextPlaceholder` | yes | | |
+| `NextPlaceholder` | no | n/a | not an action: `medit.xml` names it, but nothing in medit registers it |
 | `NextTab` | yes | yes | done |
 | `NoDocuments` | yes | done; the Window menu says so when there are none | |
 | `Open` | yes | yes | done |
@@ -80,13 +87,13 @@ checked off by the presence of a menu entry.
 | `PageSetup` | yes | yes | done |
 | `Paste` | yes | yes | done |
 | `Preferences` | yes | yes | done |
-| `PrevPlaceholder` | yes | | |
+| `PrevPlaceholder` | no | n/a | as above -- a dangling reference in the menu XML |
 | `PreviousBookmark` | yes | yes | done |
 | `PreviousTab` | yes | yes | done |
 | `Print` | yes | yes | done |
-| `PrintOptions` | yes | | |
+| `PrintOptions` | no | n/a | as above; medit's own File menu points at an action that does not exist |
 | `PrintPdf` | yes | yes | done |
-| `PrintPreview` | yes | | |
+| `PrintPreview` | registered | no | medit registers it and then comments the menu item out, so it is unreachable there too |
 | `Properties` | yes | done | |
 | `QuickSearch` | yes | yes | done |
 | `Quit` | yes | yes | done |
@@ -102,15 +109,15 @@ checked off by the presence of a menu entry.
 | `ShowHiddenFiles` | yes | done; a checkbox on the file browser rather than an action | |
 | `ShowParentFolder` | yes | done; the crumb trail and the Up button | |
 | `ShowToolbar` | yes | yes | done |
-| `SortFoldersFirst` | yes | | |
-| `SpecialChars` | yes | | |
+| `SortFoldersFirst` | yes | | a property on the browser, but TShellListView always groups folders first |
+| `SpecialChars` | yes | no | GTK's Unicode control-character menu; same, no LCL counterpart |
 | `SpellAddToDict` | yes | done | |
 | `SpellIgnoreWord` | yes | done; for the session | |
 | `SplitViewHorizontal` | yes | yes | done |
 | `SplitViewVertical` | yes | yes | done |
 | `StopJob` | yes | yes | done |
 | `ToggleBookmark` | yes | yes | done |
-| `ToolbarStyle` | yes | | |
+| `ToolbarStyle` | yes | | medit's submenu of icons / text / both; led's toolbar is icons only |
 | `Uncomment` | yes | yes | done |
 | `Undo` | yes | yes | done |
 | `Unindent` | yes | yes | done |
@@ -171,7 +178,7 @@ checked off by the presence of a menu entry.
 | Feature | medit | led | Decision |
 |---|---|---|---|
 | Sort Lines | yes | yes | done |
-| Sort | Uniq | yes | yes | done |
+| Sort \| Uniq | yes | yes | done |
 | Diff to Disk | yes | yes | done |
 | Bison | yes | done | |
 | LaTeX | yes | done | |
@@ -193,6 +200,17 @@ One decision taken up front turned out to be wrong and has been undone.
 |---|---|
 | Detachable floating panes | dropped as "a large share of the original complexity", then asked for from real use.  AnchorDocking supplies drag-between-edges, tear-off, redock and a persisted layout, so the cost is a package reference rather than 7,200 lines |
 
+## Checked for and not there
+
+Asked about, looked for in medit, and absent -- recorded so the question is
+not reopened from the feature's name alone.
+
+| Feature | Finding |
+|---|---|
+| Project / workspace subsystem | none.  `git log --all --diff-filter=AD` over every ref finds no such file and there is no `MooProject` API.  What looks like project support is three separate things led already has: user tools, output filters, and the File List plugin (led's Project pane) |
+| Compiler / makefile / builder integration | none beyond the shipped user tools.  Building is a `type=exe` tool whose output goes through an output filter to become clickable `file:line`; there is no build model, target list or dependency handling to port |
+| gcc/gdb debugger | not in medit.  Checked `git@github.com:fangq/medit.git` on all four refs -- `main`, `gtk3`, `python3`, `HEAD`, newest commit 2026-08-31 -- with no `gdb` string, no debugger source, and no matching commit message.  If it exists it is somewhere not fetched here |
+
 ## Dropped, agreed up front
 
 | Feature | Why |
@@ -212,8 +230,9 @@ An honest list, so nothing here is mistaken for an oversight.
 | Feature | Status |
 |---|---|
 | CJK text sits below the Latin baseline | when the editor font lacks CJK glyphs, GTK's fallback font has a larger ascent and SynEdit draws each run from the row top rather than a shared baseline.  `TheTextDrawer.NewTextOut` is not virtual and the drawer is not replaceable, so a fix means vendoring it.  A monospace font with CJK coverage avoids the fallback entirely |
-| Snippet placeholders | not started; medit's NextPlaceholder / PrevPlaceholder |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
+| Toolbar style | medit offered icons / text / both as a submenu; led's toolbar is icons with tooltips, and `ToolbarStyle` has no counterpart |
+| GTK input-method and Unicode menus | `InputMethods` and `SpecialChars` expose GTK machinery the LCL does not surface; not portable rather than not done |
 | PascalScript engine and the scripting API | not started; user tools run shell commands only |
 | Indentation-based folding (Python, YAML) | TextMate fold markers are line regexes and cannot express it |
 | System icons in the file browser | LCL's shell icons are implemented only in the win32 widgetset -- `GetBuiltInImageIndex` returns -1 everywhere else -- so Linux needs led's own glyphs |
