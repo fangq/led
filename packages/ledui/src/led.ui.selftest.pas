@@ -2195,6 +2195,22 @@ begin
     CheckEqInt('every preference page is present', 6, Dlg.PageCount);
     Check('and the list pages built their contents', Dlg.ListPagesReady);
 
+    { Laid out before the dialog has its real size, so every anchor that
+      measured a gap to the right or bottom edge measured the wrong one:
+      OK, Cancel and Apply sat off the right of the window where they could
+      not be clicked, and the pages' edits ran past their right border.
+      Nothing may stick out of its parent, on any page. }
+    Dlg.Show;
+    Pump;
+    for Before := 0 to Dlg.PageCount - 1 do
+    begin
+      Dlg.ShowPage(Before);
+      Pump;
+      CheckEqInt('page ' + IntToStr(Before + 1) + ' fits inside the dialog',
+        0, Dlg.WorstOverflow);
+    end;
+    Dlg.Hide;
+
     { A filter edited on the page has to survive the trip through prefs.ini,
       because that is the whole point of the page. }
     Dlg.AddFilterRow('globs:*.selftest', 'indent-width: 7');

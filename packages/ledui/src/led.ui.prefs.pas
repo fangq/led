@@ -65,14 +65,14 @@ type
     FTools: TLedTools;
     FToolLoading: Boolean;
     procedure Build;
-    function PageFor(const ACategory: string): TPanel;
+    function PageFor(const ACategory: string): TScrollBox;
 
     { The three pages whose content is a list rather than a set of scalars.
       Each owns its own controls and its own load/apply, because a table
       that could describe them would be harder to read than the code. }
-    procedure BuildLanguagesPage(APage: TPanel);
-    procedure BuildFiltersPage(APage: TPanel);
-    procedure BuildToolsPage(APage: TPanel);
+    procedure BuildLanguagesPage(APage: TScrollBox);
+    procedure BuildFiltersPage(APage: TScrollBox);
+    procedure BuildToolsPage(APage: TScrollBox);
     procedure LangSelected(Sender: TObject);
     procedure FilterRowChanged(Sender: TObject);
     procedure FilterAdd(Sender: TObject);
@@ -103,6 +103,8 @@ type
     { For the self-test: how many pages the dialog built, whether the three
       list pages produced their controls, and a way to add a filter row
       without driving the grid by hand. }
+    procedure ShowPage(AIndex: Integer);
+    function WorstOverflow: Integer;
     function PageCount: Integer;
     function ListPagesReady: Boolean;
     procedure AddFilterRow(const AFilter, AConfig: string);
@@ -268,6 +270,30 @@ const
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: '')
   );
 
+{ Anchoring by side rather than by a measured offset.  akRight and akBottom
+  remember the gap to the parent's edge as it stands at the moment the anchor
+  is set, and everything in this dialog is built before it has its real size
+  -- which is how the OK button came to sit off the right of the dialog and
+  the pages' edits to run past their right border.  Naming the side states
+  the gap instead of measuring it, so it survives the resize. }
+procedure PinRight(AControl, ATo: TControl; ASide: TAnchorSideReference;
+  AGap: Integer);
+begin
+  AControl.Anchors := AControl.Anchors + [akRight];
+  AControl.AnchorSideRight.Control := ATo;
+  AControl.AnchorSideRight.Side := ASide;
+  AControl.BorderSpacing.Right := AGap;
+end;
+
+procedure PinBottom(AControl, ATo: TControl; ASide: TAnchorSideReference;
+  AGap: Integer);
+begin
+  AControl.Anchors := AControl.Anchors + [akBottom];
+  AControl.AnchorSideBottom.Control := ATo;
+  AControl.AnchorSideBottom.Side := ASide;
+  AControl.BorderSpacing.Bottom := AGap;
+end;
+
 constructor TLedPrefsDialog.CreateDialog(AOwner: TComponent);
 begin
   inherited CreateNew(AOwner);
@@ -288,20 +314,24 @@ begin
   inherited Destroy;
 end;
 
-function TLedPrefsDialog.PageFor(const ACategory: string): TPanel;
+function TLedPrefsDialog.PageFor(const ACategory: string): TScrollBox;
 var
   i: Integer;
-  P: TPanel;
+  P: TScrollBox;
   Node: TTreeNode;
 begin
   i := FCategories.IndexOf(ACategory);
-  if i >= 0 then Exit(TPanel(FCategories.Objects[i]));
+  if i >= 0 then Exit(TScrollBox(FCategories.Objects[i]));
 
-  P := TPanel.Create(Self);
+  { A scroll box, not a panel: the pages are laid out at fixed offsets and
+    the longest of them is taller than any sensible dialog, so without one
+    the bottom settings are simply unreachable. }
+  P := TScrollBox.Create(Self);
   P.Parent := FPages;
   P.Align := alClient;
-  P.BevelOuter := bvNone;
-  P.Caption := '';
+  P.BorderStyle := bsNone;
+  P.HorzScrollBar.Tracking := True;
+  P.VertScrollBar.Tracking := True;
   P.Visible := FCategories.Count = 0;
   FCategories.AddObject(ACategory, P);
 
@@ -315,14 +345,14 @@ end;
 procedure TLedPrefsDialog.Build;
 var
   i, Y: Integer;
-  Page: TPanel;
+  Page: TScrollBox;
   Item: TLedPrefItem;
   Lbl: TLabel;
   Chk: TCheckBox;
   Spn: TSpinEdit;
   Edt: TEdit;
   Cbo: TComboBox;
-  Btn: TButton;
+  Btn, Apply, Cancel: TButton;
   Bottom: TPanel;
   Tops: TStringList;
   j: Integer;
@@ -340,8 +370,12 @@ var
 begin
   Caption := 'Preferences';
   Position := poMainFormCenter;
-  Width := 640;
-  Height := 480;
+  { Wide enough for the value column at x=300 plus the 150px category tree,
+    tall enough that the longest page needs little scrolling. }
+  Width := 800;
+  Height := 620;
+  Constraints.MinWidth := 620;
+  Constraints.MinHeight := 400;
   BorderStyle := bsSizeable;
 
   Bottom := TPanel.Create(Self);
@@ -351,26 +385,35 @@ begin
   Bottom.BevelOuter := bvNone;
   Bottom.Caption := '';
 
+  { Anchored to each other rather than placed at a measured Left: akRight
+    records the gap to the parent's right edge at the moment it is set, and
+    at that moment the panel is still its default width, so a fixed Left put
+    all three buttons off the right of the dialog where they could never be
+    seen or clicked. }
+  Apply := TButton.Create(Self);
+  Apply.Parent := Bottom; Apply.Caption := 'Apply'; Apply.Width := 90;
+  Apply.Anchors := [akTop]; Apply.Top := 8;
+  PinRight(Apply, Bottom, asrRight, 12);
+  Apply.OnClick := @DoApply;
+
+  Cancel := TButton.Create(Self);
+  Cancel.Parent := Bottom; Cancel.Caption := 'Cancel'; Cancel.Width := 90;
+  Cancel.Anchors := [akTop]; Cancel.Top := 8;
+  PinRight(Cancel, Apply, asrLeft, 8);
+  Cancel.OnClick := @DoCancel; Cancel.Cancel := True;
+
   Btn := TButton.Create(Self);
   Btn.Parent := Bottom; Btn.Caption := 'OK'; Btn.Width := 90;
-  Btn.Anchors := [akRight, akTop]; Btn.Left := 340; Btn.Top := 8;
+  Btn.Anchors := [akTop]; Btn.Top := 8;
+  PinRight(Btn, Cancel, asrLeft, 8);
   Btn.OnClick := @DoOK; Btn.Default := True;
-
-  Btn := TButton.Create(Self);
-  Btn.Parent := Bottom; Btn.Caption := 'Cancel'; Btn.Width := 90;
-  Btn.Anchors := [akRight, akTop]; Btn.Left := 438; Btn.Top := 8;
-  Btn.OnClick := @DoCancel; Btn.Cancel := True;
-
-  Btn := TButton.Create(Self);
-  Btn.Parent := Bottom; Btn.Caption := 'Apply'; Btn.Width := 90;
-  Btn.Anchors := [akRight, akTop]; Btn.Left := 536; Btn.Top := 8;
-  Btn.OnClick := @DoApply;
 
   FTree := TTreeView.Create(Self);
   FTree.Parent := Self;
   FTree.Align := alLeft;
   FTree.Width := 150;
   FTree.ReadOnly := True;
+  FTree.ScrollBars := ssAutoVertical;
   FTree.ShowRoot := False;
   FTree.ShowLines := False;
   FTree.OnChange := @TreeChange;
@@ -433,7 +476,7 @@ begin
             Edt := TEdit.Create(Self);
             Edt.Parent := Page;
             Edt.Left := 300; Edt.Top := Y; Edt.Width := 300;
-            Edt.Anchors := [akLeft, akTop, akRight];
+            PinRight(Edt, Page, asrRight, 24);
             FControls.AddObject(Item.Key, Edt);
             FKinds.AddObject(Item.Key, TObject(PtrInt(Ord(Item.Kind))));
           end;
@@ -478,7 +521,9 @@ begin
             FFontLabels.AddObject(Item.Key, Lbl);
             Btn := TButton.Create(Self);
             Btn.Parent := Page; Btn.Caption := 'Choose...';
-            Btn.Left := 510; Btn.Top := Y; Btn.Width := 90;
+            Btn.Top := Y; Btn.Width := 90;
+            Btn.Anchors := [akTop];
+            PinRight(Btn, Page, asrRight, 24);
             Btn.Hint := Item.Key;
             Btn.OnClick := @PickFont;
             FControls.AddObject(Item.Key, Lbl);
@@ -496,7 +541,7 @@ var
   i: Integer;
 begin
   for i := 0 to FCategories.Count - 1 do
-    TPanel(FCategories.Objects[i]).Visible :=
+    TScrollBox(FCategories.Objects[i]).Visible :=
       (Node <> nil) and (FCategories.Objects[i] = TObject(Node.Data));
 end;
 
@@ -635,7 +680,7 @@ end;
   settings.  The globs drive detection, so this is the page people reach for
   when a project uses .inc for C rather than Pascal. }
 
-procedure TLedPrefsDialog.BuildLanguagesPage(APage: TPanel);
+procedure TLedPrefsDialog.BuildLanguagesPage(APage: TScrollBox);
 var
   Lbl: TLabel;
 
@@ -646,8 +691,8 @@ var
     Lbl.Left := 24; Lbl.Top := ATop + 4;
     Result := TEdit.Create(Self);
     Result.Parent := APage;
-    Result.Left := 140; Result.Top := ATop; Result.Width := 420;
-    Result.Anchors := [akLeft, akTop, akRight];
+    Result.Left := 140; Result.Top := ATop;
+    PinRight(Result, APage, asrRight, 24);
     Result.OnChange := @LangSelected;
   end;
 
@@ -664,8 +709,8 @@ begin
 
   FLangList := TComboBox.Create(Self);
   FLangList.Parent := APage;
-  FLangList.Left := 140; FLangList.Top := 42; FLangList.Width := 420;
-  FLangList.Anchors := [akLeft, akTop, akRight];
+  FLangList.Left := 140; FLangList.Top := 42;
+  PinRight(FLangList, APage, asrRight, 24);
   FLangList.Style := csDropDownList;
   FLangList.OnChange := @LangSelected;
 
@@ -753,7 +798,7 @@ end;
   whose name or language matches.  Two editable columns and four buttons,
   which is what medit had. }
 
-procedure TLedPrefsDialog.BuildFiltersPage(APage: TPanel);
+procedure TLedPrefsDialog.BuildFiltersPage(APage: TScrollBox);
 var
   Lbl: TLabel;
   Btn: TButton;
@@ -786,10 +831,17 @@ begin
     'tab-width: 8';
   Lbl.Left := 12; Lbl.Top := 34;
 
+  { The page fills itself, so it does not scroll -- an alBottom child inside
+    a scrolling box sits at the bottom of the scrollable area, not the
+    visible one, which is where these buttons went to hide. }
+  APage.AutoScroll := False;
+
   Bar := TPanel.Create(Self);
   Bar.Parent := APage;
-  Bar.Align := alBottom;
-  Bar.Height := 34;
+  Bar.Left := 0; Bar.Height := 34;
+  Bar.Anchors := [akLeft];
+  PinRight(Bar, APage, asrRight, 0);
+  PinBottom(Bar, APage, asrBottom, 0);
   Bar.BevelOuter := bvNone;
   Bar.Caption := '';
 
@@ -801,9 +853,9 @@ begin
   FFilterGrid := TStringGrid.Create(Self);
   FFilterGrid.Parent := APage;
   FFilterGrid.Left := 12; FFilterGrid.Top := 80;
-  FFilterGrid.Width := APage.Width - 24;
-  FFilterGrid.Height := 260;
-  FFilterGrid.Anchors := [akLeft, akTop, akRight, akBottom];
+  FFilterGrid.Anchors := [akLeft, akTop];
+  PinRight(FFilterGrid, APage, asrRight, 12);
+  PinBottom(FFilterGrid, Bar, asrTop, 6);
   FFilterGrid.ColCount := 2;
   FFilterGrid.FixedCols := 0;
   FFilterGrid.RowCount := 1;
@@ -878,7 +930,7 @@ end;
   to is just another field, which is one control instead of a duplicated
   page. }
 
-procedure TLedPrefsDialog.BuildToolsPage(APage: TPanel);
+procedure TLedPrefsDialog.BuildToolsPage(APage: TScrollBox);
 var
   Lbl: TLabel;
   Right: TPanel;
@@ -890,8 +942,8 @@ var
     Lbl.Left := 0; Lbl.Top := ATop + 4;
     Result := TEdit.Create(Self);
     Result.Parent := Right;
-    Result.Left := 90; Result.Top := ATop; Result.Width := 260;
-    Result.Anchors := [akLeft, akTop, akRight];
+    Result.Left := 90; Result.Top := ATop;
+    PinRight(Result, Right, asrRight, 0);
     Result.OnChange := @ToolFieldChanged;
   end;
 
@@ -915,18 +967,21 @@ begin
   Lbl.Font.Style := [fsBold];
   Lbl.Left := 12; Lbl.Top := 12;
 
+  APage.AutoScroll := False;   { as on the filters page }
+
   FToolList := TListBox.Create(Self);
   FToolList.Parent := APage;
-  FToolList.Left := 12; FToolList.Top := 40;
-  FToolList.Width := 180; FToolList.Height := 320;
-  FToolList.Anchors := [akLeft, akTop, akBottom];
+  FToolList.Left := 12; FToolList.Top := 40; FToolList.Width := 210;
+  FToolList.Anchors := [akLeft, akTop];
+  PinBottom(FToolList, APage, asrBottom, 12);
   FToolList.OnClick := @ToolSelected;
 
   Right := TPanel.Create(Self);
   Right.Parent := APage;
-  Right.Left := 204; Right.Top := 40;
-  Right.Width := APage.Width - 216; Right.Height := 320;
-  Right.Anchors := [akLeft, akTop, akRight, akBottom];
+  Right.Left := 234; Right.Top := 40;
+  Right.Anchors := [akLeft, akTop];
+  PinRight(Right, APage, asrRight, 12);
+  PinBottom(Right, APage, asrBottom, 12);
   Right.BevelOuter := bvNone;
   Right.Caption := '';
 
@@ -956,8 +1011,9 @@ begin
   FToolCode := TMemo.Create(Self);
   FToolCode.Parent := Right;
   FToolCode.Left := 90; FToolCode.Top := 278;
-  FToolCode.Width := 260; FToolCode.Height := 42;
-  FToolCode.Anchors := [akLeft, akTop, akRight, akBottom];
+  FToolCode.Anchors := [akLeft, akTop];
+  PinRight(FToolCode, Right, asrRight, 0);
+  PinBottom(FToolCode, Right, asrBottom, 0);
   FToolCode.ScrollBars := ssAutoBoth;
   FToolCode.WordWrap := False;
   FToolCode.Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
@@ -1070,6 +1126,47 @@ begin
   ForceDirectories(Dir);
   for i := 0 to FTools.Count - 1 do
     FTools[i].SaveToFile(Dir + FTools[i].Id + '.ini');
+end;
+
+{ Bring a page to the front, as clicking its row in the tree would. }
+procedure TLedPrefsDialog.ShowPage(AIndex: Integer);
+begin
+  if (AIndex >= 0) and (AIndex < FTree.Items.Count) then
+    FTree.Selected := FTree.Items[AIndex];
+end;
+
+{ How far the worst-placed control sticks out past its parent, in pixels;
+  zero when everything fits.  A page that scrolls is allowed to be taller
+  than its box -- that is what the scrollbar is for -- so only the pages
+  that do not scroll are measured downwards. }
+function TLedPrefsDialog.WorstOverflow: Integer;
+var
+  Worst: Integer;
+
+  procedure Walk(AParent: TWinControl);
+  var
+    i: Integer;
+    C: TControl;
+    Scrolls: Boolean;
+  begin
+    Scrolls := (AParent is TScrollBox) and TScrollBox(AParent).AutoScroll;
+    for i := 0 to AParent.ControlCount - 1 do
+    begin
+      C := AParent.Controls[i];
+      if not C.Visible then Continue;
+      if C.Left + C.Width - AParent.ClientWidth > Worst then
+        Worst := C.Left + C.Width - AParent.ClientWidth;
+      if (not Scrolls) and
+         (C.Top + C.Height - AParent.ClientHeight > Worst) then
+        Worst := C.Top + C.Height - AParent.ClientHeight;
+      if C is TWinControl then Walk(TWinControl(C));
+    end;
+  end;
+
+begin
+  Worst := 0;
+  Walk(Self);
+  Result := Worst;
 end;
 
 function TLedPrefsDialog.PageCount: Integer;
