@@ -88,6 +88,11 @@ begin
     { Windows and macOS report a true per-monitor DPI; LCL is right there. }
     Application.Scaled := True;
     {$ENDIF}
+    { Before the form, because building it reads a preference and TLedPrefs
+      resolves its file name once, in its constructor. }
+    if Cmd.SelfTest then
+      LedPrepareSelfTestSandbox;
+
     Application.Initialize;
     Application.CreateForm(TLedMainForm, LedMainForm);
     LedApplyAdaptiveScale;

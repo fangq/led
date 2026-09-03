@@ -13,6 +13,11 @@ unit Led.UI.SelfTest;
 
 interface
 
+{ Points the whole process at a private, empty configuration directory.
+  Must be called before anything reads a preference, which in practice means
+  before the main form is constructed. }
+procedure LedPrepareSelfTestSandbox;
+
 function LedRunSelfTest: Integer;
 
 implementation
@@ -42,6 +47,9 @@ uses
 var
   Failures: Integer = 0;
   Checks: Integer = 0;
+  { The configuration directory the run is meant to be using.  Empty means
+    LedPrepareSelfTestSandbox never ran, which is itself the failure. }
+  FSandboxDir: string = '';
 
 { Flushed after every line.  Output to a file is block-buffered, so without
   this the log stops well short of wherever a hang actually is -- which cost
@@ -2218,6 +2226,18 @@ begin
     LedFilters.LoadFromPrefs;
     Check('a filter added on the page is saved',
       LedFilters.FindByDefinition('globs:*.selftest') <> nil);
+
+    { The same rule twice is one rule.  Until the sandbox above worked, every
+      self-test run appended this scratch rule to the developer's own
+      prefs.ini; a hundred copies had piled up, and that is what a filters
+      page full of repeated rows was.  Reading the file heals it. }
+    Dlg.AddFilterRow('globs:*.selftest', 'indent-width: 7');
+    Dlg.ApplyToPrefs;
+    LedFilters.LoadFromPrefs;
+    After := 0;
+    for Before := 0 to LedFilters.Count - 1 do
+      if LedFilters[Before].Definition = 'globs:*.selftest' then Inc(After);
+    CheckEqInt('and a rule repeated in prefs.ini loads once', 1, After);
   finally
     Dlg.Free;
   end;
@@ -3929,11 +3949,13 @@ begin
   Halt(1);
 end;
 
-function LedRunSelfTest: Integer;
+procedure LedPrepareSelfTestSandbox;
 var
-  F: TLedMainForm;
   Sandbox: string;
 begin
+  FSandboxDir := GetEnvironmentVariable(LedConfigDirEnv);
+  if FSandboxDir <> '' then
+    FSandboxDir := IncludeTrailingPathDelimiter(FSandboxDir);
   { The self-test gets a configuration directory of its own.  Reading the
     developer's real prefs.ini made the results depend on whoever ran it:
     one machine had spaces_instead_of_tabs=1 set from ordinary use, which
@@ -3955,7 +3977,25 @@ begin
       DeleteDirectory(Sandbox, False);
     ForceDirectories(Sandbox);
     LedForceConfigDir(Sandbox);
+    FSandboxDir := IncludeTrailingPathDelimiter(Sandbox);
   end;
+end;
+
+function LedRunSelfTest: Integer;
+var
+  F: TLedMainForm;
+  Sandbox: string;
+begin
+  { The sandbox is set up by LedPrepareSelfTestSandbox before the main form
+    exists.  Doing it here was too late and silently useless: constructing
+    the form reads a preference, TLedPrefs resolves its file name once in
+    its constructor, and so the singleton stayed bound to the real
+    prefs.ini.  Every run then wrote its scratch filter rule into the
+    developer's own configuration -- one machine had accumulated a hundred
+    copies of globs:*.selftest, which showed up as a filters page full of
+    repeated rows. }
+  Check('the self-test is not writing to your own configuration',
+    (FSandboxDir <> '') and (Pos(FSandboxDir, LedPrefs.FileName) = 1));
 
   { An unhandled exception must fail the run, not stop it.
 

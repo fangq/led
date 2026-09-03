@@ -280,6 +280,7 @@ procedure TLedFilterSettings.LoadFromPrefs;
 var
   N, i: Integer;
   Filter, Cfg: string;
+  Seen: TStringList;
 begin
   Clear;
   N := LedPrefs.GetInt('FilterSettings/count', -1);
@@ -291,12 +292,26 @@ begin
     Exit;
   end;
 
-  for i := 1 to N do
-  begin
-    Filter := LedPrefs.GetStr(Format('FilterSettings/%d.filter', [i]), '');
-    Cfg := LedPrefs.GetStr(Format('FilterSettings/%d.config', [i]), '');
-    if (Filter <> '') and (Cfg <> '') then
+  { An identical rule twice does nothing a single one does not, so drop the
+    repeats.  This is not tidiness: the self-test used to append its scratch
+    rule to the real prefs.ini on every run, and one profile had a hundred
+    copies of it filling the filters page.  Reading the file heals it; the
+    next save writes the short list back. }
+  Seen := TStringList.Create;
+  try
+    Seen.Sorted := True;
+    Seen.Duplicates := dupIgnore;
+    for i := 1 to N do
+    begin
+      Filter := LedPrefs.GetStr(Format('FilterSettings/%d.filter', [i]), '');
+      Cfg := LedPrefs.GetStr(Format('FilterSettings/%d.config', [i]), '');
+      if (Filter = '') or (Cfg = '') then Continue;
+      if Seen.IndexOf(Filter + #1 + Cfg) >= 0 then Continue;
+      Seen.Add(Filter + #1 + Cfg);
       Add(Filter, Cfg);
+    end;
+  finally
+    Seen.Free;
   end;
 end;
 
