@@ -15,7 +15,7 @@ uses
   {$ENDIF}
   Interfaces, Forms, Classes, SysUtils,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
-  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi;
+  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons;
 
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every
@@ -97,6 +97,18 @@ begin
 
     Application.Initialize;
     Application.CreateForm(TLedMainForm, LedMainForm);
+    { The window icon, from the PNG copy of the artwork embedded by
+      packaging/windows/led.rc.
+
+      Not from MAINICON, which is the same picture in the same binary.  The
+      LCL reads that icon back correctly in process -- all seven sizes, the
+      right image -- and then hands gtk2 something it publishes to the window
+      manager with its colour channels striped and its alpha forced opaque,
+      which is what a garbled title bar and task bar entry look like.  The
+      PNG goes out intact, transparency and all.  MAINICON stays in the
+      resource because Explorer and the installer read it off the file. }
+    LedApplyWindowIcon;
+
     LedApplyAdaptiveScale;
     LedMainForm.AdoptInstance(Inst);
 

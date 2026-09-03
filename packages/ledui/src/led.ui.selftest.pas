@@ -1158,11 +1158,19 @@ begin
     writes into app/led.res.  Worth asserting rather than assuming: the
     resource is a Windows .res, and whether it reaches the LCL on a gtk2
     build is not obvious from the fact that it linked. }
-  { Verified against the X server too: with this in place the window's
-    _NET_WM_ICON property carries the icon at 16 and 128 pixels.  The form's
-    own Icon stays empty on purpose -- that is how the LCL is told to fall
-    back to the application's. }
+  { The window icon, and where it came from.
+
+    Size is the tell.  MAINICON is a multi-size .ico whose first entry is
+    16x16, and taking the window icon from it is the bug this replaced: the
+    picture survives in process and reaches the window manager with striped
+    colour channels and no transparency.  LedApplyWindowIcon assigns the
+    256x256 PNG instead, so a width of 256 says the right source won.  If
+    this ever reads 16 again, the title bar is garbled. }
   Check('the application has a window icon', not Application.Icon.Empty);
+  CheckEqInt('taken from the PNG resource, not MAINICON', 256,
+    Application.Icon.Width);
+  { The form's own Icon stays empty on purpose -- that is how the LCL is
+    told to fall back to the application's. }
   CheckEq('the title names the editor', 'LED - a lightweight editor',
     LedAppTitle);
 

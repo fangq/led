@@ -1,2 +1,9 @@
 1 24 "led.manifest"
 MAINICON ICON "../icons/led.ico"
+/* The same artwork again, as a PNG, for the window icon at run time.
+   MAINICON stays because Explorer and the installer read it off the
+   executable, but the LCL cannot hand it to gtk2 intact: the icon reads
+   back correctly in process and then reaches the window manager with its
+   colour channels striped and its alpha forced opaque.  A PNG assigned to
+   Application.Icon publishes cleanly, alpha and all. */
+LEDICONPNG RCDATA "../icons/hicolor/256x256/apps/led.png"
