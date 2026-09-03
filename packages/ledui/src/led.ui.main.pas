@@ -455,7 +455,6 @@ type
     procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
-    procedure PopulateToolMenu;
     procedure ToolItemClick(Sender: TObject);
     procedure OutputJump(const AFileName: string; ALine, AColumn: Integer);
     procedure PrefsApplied(Sender: TObject);
@@ -538,7 +537,6 @@ type
     procedure DocItemClick(Sender: TObject);
     function TabOnPage(AIndex: Integer): TLedTab;
     procedure FindWordAtCursor(ABackwards: Boolean);
-    procedure PopulateContextTools;
     procedure BuildIcons;
   public
     { Every message the window shows goes through these two, so that
@@ -576,6 +574,8 @@ type
     function SaveDocument(ADoc: TLedDocument): Boolean;
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
+    procedure PopulateToolMenu;
+    procedure PopulateContextTools;
     { Public alongside PopulateBookmarkMenu, for the same reason: a check has
       to be able to build the menu and then read what a user would see. }
     procedure PopulateDocMenu;
