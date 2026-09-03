@@ -4,14 +4,15 @@ name: Package
 #   Linux   -> .deb + a portable .tar.gz
 #   Windows -> Inno Setup .exe (unsigned) + a portable .zip
 #   macOS   -> .dmg holding led.app
-# Runs on version tags and on demand.  Tag pushes (v*) additionally attach
-# the installers to a GitHub Release.
+# Runs on every push to main, on pull requests, on version tags and on
+# demand, so an installer for any commit is always one click away in the
+# Actions tab.  Untagged builds are versioned 2.0.0~git<sha>.  Tag pushes
+# (v*) additionally attach the installers to a GitHub Release.
 #
-# Not on every push to main.  Three installers is roughly six runner-minutes
-# a commit for artifacts nobody downloads between releases, and CI already
-# compiles the same Release build on all three platforms -- so a break here
-# shows up there anyway, without the packaging on top.  Use the Actions tab
-# when you want an installer from an untagged commit.
+# This costs roughly six runner-minutes a commit.  That is the price of
+# never having to tag, or remember to dispatch, in order to hand someone a
+# build -- and packaging breaks in a way compiling does not, so it is worth
+# finding on the commit that caused it rather than at release time.
 #
 # led reads its grammars, themes and shipped tools from a data directory at
 # run time, so every package here has to carry data/ as well as the binary --
@@ -20,7 +21,10 @@ name: Package
 
 on:
   push:
+    branches: [ main ]
     tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 # needed for the tag-only "attach to release" steps
