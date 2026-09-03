@@ -75,7 +75,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # One retry, for the SourceForge stall described at the top of this
+      # file.  It took out this job on a push whose code was fine as
+      # recently as run 33718766516, where the same commit's Windows
+      # packaging build compiled without trouble.  The first attempt is
+      # continue-on-error so a stall is recorded rather than fatal; the
+      # second is not, so a genuinely broken install still fails the job.
       - name: Install Lazarus + FPC
+        id: lazarus
+        uses: gcarreno/setup-lazarus@v3.4.1
+        continue-on-error: true
+        timeout-minutes: 15
+        with:
+          lazarus-version: stable
+
+      - name: Install Lazarus + FPC (second attempt)
+        if: steps.lazarus.outcome == 'failure'
         uses: gcarreno/setup-lazarus@v3.4.1
         timeout-minutes: 15
         with:
@@ -184,6 +199,7 @@ jobs:
         timeout-minutes: 15
         with:
           lazarus-version: stable
+
       - name: Tool versions
         run: |
           fpc -iV
