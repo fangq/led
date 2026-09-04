@@ -129,6 +129,9 @@ type
     procedure ReflectState(AState: TLedGdbState; AHasProject: Boolean);
 
     function ConfigIndex: Integer;
+    { The toolbar itself, so a test can press the button rather than raise
+      the event the button happens to raise. }
+    property Bar: TToolBar read FBar;
     property Locals: TTreeView read FLocals;
     property Stack: TListView read FStack;
     property Watches: TListView read FWatches;
@@ -249,6 +252,7 @@ type
     FOnStateChanged: TNotifyEvent;
     FOnEditCondition: TLedDebugJumpEvent;
     FOnToggleBreakpoint: TNotifyEvent;
+    FOnCommand: TLedDebugCommandEvent;
 
     procedure Tick(Sender: TObject);
     procedure SessionStopped(Sender: TObject; const AReason, AFileName: string;
@@ -375,6 +379,10 @@ type
       as OnEditCondition: it is a question about the caret. }
     property OnToggleBreakpoint: TNotifyEvent
       read FOnToggleBreakpoint write FOnToggleBreakpoint;
+    { A toolbar button in the pane was pressed.  When the window takes this
+      the button does exactly what the menu item does; when nothing does, it
+      falls back to running the command directly. }
+    property OnCommand: TLedDebugCommandEvent read FOnCommand write FOnCommand;
   end;
 
 implementation
@@ -1793,9 +1801,21 @@ end;
 
 { --- pane events --- }
 
+{ The pane's toolbar.  Handed to the window rather than run here when the
+  window is listening, because pressing Start is more than starting: the
+  active file has to be noted first -- which is what finds the project, and
+  therefore what there is to debug -- the Output pane has to be shown, and a
+  binary older than its sources has to be rebuilt.
+
+  All of that lived in the form's DebugCommand, so the menu and Ctrl+F5 got
+  it and the pane's own buttons did not: Start there reported "nothing to
+  debug" in a project the same key debugged fine. }
 procedure TLedDebugger.PaneCommand(Sender: TObject; ACommand: TLedDebugCommand);
 begin
-  Command(ACommand);
+  if Assigned(FOnCommand) then
+    FOnCommand(Self, ACommand)
+  else
+    Command(ACommand);
 end;
 
 procedure TLedDebugger.PaneSelectFrame(Sender: TObject; ALevel: Integer);
@@ -1960,8 +1980,15 @@ begin
   Target := ResolvedTarget;
   if Target = '' then
   begin
-    Say('[gdb] nothing to debug: name a program in .led/launch.json, ' +
-        'or open the source you built');
+    { Two different problems, and the same sentence for both said nothing
+      useful for either.  A project is found by walking up from the open
+      file, so with nothing open there is nowhere to look. }
+    if FActiveFile = '' then
+      Say('[gdb] nothing to debug: open the source file first -- the ' +
+          'project is found by walking up from it')
+    else
+      Say('[gdb] nothing to debug: name a program in .led/launch.json, ' +
+          'or open the source you built');
     Exit;
   end;
   if not FileExists(Target) then

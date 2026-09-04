@@ -3687,6 +3687,7 @@ var
   C: TFPColor;
   x, y, Reds, Rings, Greys, Watch: Integer;
   Row: TTreeNode;
+  Btn: TToolButton;
 begin
   Say('debugger');
 
@@ -3885,6 +3886,42 @@ begin
   Pump;
   CheckEq('switching it back on says so', 'yes', F.BreakPane.RowText(0, 1));
   CheckEqInt('and the red dot returns', Reds, GutterRed(V));
+
+  { The pane's own Start button must do what Ctrl+F5 does.  It did not:
+    everything that makes Start work -- noting the active file, which is what
+    finds the project and therefore what there is to debug; showing the
+    Output pane; rebuilding a stale binary -- lived in the window, and the
+    pane's buttons went straight to the debugger instead.  Pressing Start
+    there answered "nothing to debug" in a project the key debugged fine.
+
+    Checked by pressing the button and looking for a side effect only the
+    window's path produces. }
+  F.Dock.HidePane('output');
+  { Forgotten on purpose: the error the user saw was "nothing to debug", and
+    it came from the project never being looked for.  Pointing the project at
+    a folder that has none puts it back in that state, so the check is of the
+    button finding it and not of it having been found earlier. }
+  F.Debugger.Project.LoadFrom(GetTempDir);
+  Pump;
+  Check('the output pane starts hidden', not F.Dock.PaneVisible('output'));
+  CheckEqInt('and the project has been forgotten', 0,
+    F.Debugger.Project.ConfigCount);
+  Btn := nil;
+  for x := 0 to F.DebugPane.Bar.ButtonCount - 1 do
+    if F.DebugPane.Bar.Buttons[x].Tag = Ord(ldcStart) then
+      Btn := F.DebugPane.Bar.Buttons[x];
+  Check('the pane has a Start button', Btn <> nil);
+  if Btn <> nil then
+  begin
+    Btn.Click;
+    Pump;
+    Check('pressing it goes through the window, which shows Output',
+      F.Dock.PaneVisible('output'));
+    Check('and notes the active file, so the project is found',
+      F.Debugger.Project.ConfigCount > 0);
+  end;
+  F.Debugger.Stop;
+  Pump;
 
   { And now actually debug it. }
   Check('the session starts', F.Debugger.Start);
