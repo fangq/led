@@ -12,10 +12,10 @@
 ; Defender reputation heuristics treat far more kindly.
 
 #ifndef AppVersion
-  #define AppVersion "2.0.0"
+  #define AppVersion "0.5.0"
 #endif
 #ifndef AppVerNumeric
-  #define AppVerNumeric "2.0.0.0"
+  #define AppVerNumeric "0.5.0.0"
 #endif
 #ifndef SrcDir
   #define SrcDir SourcePath + "..\.."

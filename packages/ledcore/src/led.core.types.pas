@@ -39,7 +39,7 @@ function LedNativeLineEnd: TLedLineEnd;
 { The version, in one place.  led.lpr prints it for --version, the About
   box shows it and the bug-report text quotes it. }
 const
-  LedVersion = '2.0.0-dev';
+  LedVersion = '0.5.0-dev';
 
 { What the editor calls itself.  The name is upper-case because it is one --
   the pun the icon draws; the binary, the configuration directory and the
