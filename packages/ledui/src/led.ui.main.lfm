@@ -453,6 +453,13 @@ object LedMainForm: TLedMainForm
       ShortCut = 24696
       OnExecute = actBreakpointConditionExecute
     end
+    object actAddWatchpoint: TAction
+      Caption = 'Add &Watchpoint...'
+      Hint = 'Stop when an expression changes'
+      ImageIndex = 49
+      ShortCut = 24697
+      OnExecute = actAddWatchpointExecute
+    end
     object actToggleBreakpoint: TAction
       Caption = 'Toggle &Breakpoint'
       Hint = 'Or click the gutter beside the line'
@@ -464,6 +471,11 @@ object LedMainForm: TLedMainForm
       Caption = 'Debu&gger'
       ImageIndex = 44
       OnExecute = actToggleDebugPaneExecute
+    end
+    object actToggleBreakPane: TAction
+      Caption = 'Brea&kpoints'
+      ImageIndex = 49
+      OnExecute = actToggleBreakPaneExecute
     end
     object actToggleProject: TAction
       Caption = '&Project Files'
@@ -801,6 +813,9 @@ object LedMainForm: TLedMainForm
         object mi_BreakpointCondition: TMenuItem
           Action = actBreakpointCondition
         end
+        object mi_AddWatchpoint: TMenuItem
+          Action = actAddWatchpoint
+        end
       end
       object miSepDbg0: TMenuItem
         Caption = '-'
@@ -927,6 +942,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleDebugPane: TMenuItem
         Action = actToggleDebugPane
+      end
+      object mi_ToggleBreakPane: TMenuItem
+        Action = actToggleBreakPane
       end
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview

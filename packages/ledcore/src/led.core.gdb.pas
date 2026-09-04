@@ -45,8 +45,34 @@ type
     reason about than an array of anonymous methods -- and every request led
     makes is one of a fixed handful. }
   TLedGdbRequest = (lgrNone, lgrVersion, lgrBreakInsert, lgrBreakDelete,
-                    lgrLocals, lgrFrames, lgrEval, lgrExec,
+                    lgrWatchInsert, lgrLocals, lgrFrames, lgrEval, lgrExec,
                     lgrVarCreate, lgrVarChildren);
+
+  { A line breakpoint or one of the three kinds of watchpoint.
+
+    One type rather than two lists, because gdb makes no distinction where it
+    matters: they share a number space, -break-delete, -break-enable and
+    -break-condition take any of them, and =breakpoint-created reports them
+    all.  What differs is where they are shown -- a breakpoint has a line to
+    draw a dot beside, a watchpoint has only an expression. }
+  TLedGdbBreakKind = (lgbLine, lgbWatch, lgbReadWatch, lgbAccessWatch);
+
+  TLedGdbBreakInfo = record
+    Number: Integer;
+    Kind: TLedGdbBreakKind;
+    FileName: string;
+    Line: Integer;
+    Expression: string;   // what a watchpoint watches; '' for a line breakpoint
+    Condition: string;
+    Enabled: Boolean;
+    HitCount: Integer;
+    { True when this came from a full bkpt tuple -- the reply to
+      -break-insert, or =breakpoint-created/-modified -- so every field is
+      gdb's own answer.  False for the reply to -break-watch, which carries a
+      number and an expression and nothing else: taking Condition, Enabled or
+      HitCount from one of those would clear what is already known. }
+    Complete: Boolean;
+  end;
 
   TLedGdbLocal = record
     Name: string;
@@ -84,12 +110,19 @@ type
   TLedGdbTextEvent = procedure(Sender: TObject; const AText: string) of object;
   TLedGdbStopEvent = procedure(Sender: TObject;
     const AReason, AFileName: string; ALine: Integer; const AFunc: string) of object;
-  { ACondition is the expression the breakpoint waits for, or '' for one
-    that always fires.  Carried on the event because gdb echoes it back in
-    the reply and the gutter draws a conditional breakpoint differently. }
-  TLedGdbBreakEvent = procedure(Sender: TObject; ANumber: Integer;
-    const AFileName: string; ALine: Integer;
-    const ACondition: string) of object;
+  { A breakpoint or watchpoint gdb has told us about.  One record rather than
+    six parameters: gdb reports the condition, the enabled flag and the hit
+    count in the same tuple it reports the location in, and a list pane that
+    shows all of them needs all of them. }
+  TLedGdbBreakEvent = procedure(Sender: TObject;
+    const AInfo: TLedGdbBreakInfo) of object;
+  TLedGdbBreakGoneEvent = procedure(Sender: TObject; ANumber: Integer) of object;
+  { A watchpoint fired.  AOldValue is '' for a read watchpoint, which reports
+    only what was read; both are given for a write or access watchpoint.
+    Fired before OnStopped, so a listener can say what changed and then deal
+    with the stop as it would any other. }
+  TLedGdbWatchHitEvent = procedure(Sender: TObject; ANumber: Integer;
+    const AExpression, AOldValue, ANewValue: string) of object;
   TLedGdbEvalEvent = procedure(Sender: TObject; const ATag, AValue: string;
     AIsError: Boolean) of object;
   TLedGdbNotify = procedure(Sender: TObject) of object;
@@ -130,7 +163,8 @@ type
     FOnRunning: TLedGdbNotify;
     FOnStateChanged: TLedGdbNotify;
     FOnBreakAdded: TLedGdbBreakEvent;
-    FOnBreakRemoved: TLedGdbBreakEvent;
+    FOnBreakRemoved: TLedGdbBreakGoneEvent;
+    FOnWatchHit: TLedGdbWatchHitEvent;
     FOnLocals: TLedGdbNotify;
     FOnFrames: TLedGdbNotify;
     FOnEval: TLedGdbEvalEvent;
@@ -150,6 +184,8 @@ type
     procedure ReadFrames(ARec: TLedMIRecord);
     procedure ReadVarChildren(ARec: TLedMIRecord; const ATag: string);
     procedure EmitBreakpoint(AValue: TLedMIValue);
+    procedure EmitWatchpoint(ARec: TLedMIRecord; const AExpression: string);
+    procedure EmitWatchHit(ARec: TLedMIRecord; const AReason: string);
     procedure Send(const ACommand: string; AKind: TLedGdbRequest = lgrNone;
       const ATag: string = '');
   public
@@ -198,6 +234,21 @@ type
     { Changes or -- with an empty expression -- clears the condition on a
       breakpoint gdb already knows about. }
     procedure BreakCondition(ANumber: Integer; const ACondition: string);
+    { Turns a breakpoint or watchpoint off without forgetting it.  gdb sends
+      no notification for this -- checked against 12.1, where -break-disable
+      answers a bare ^done -- so the caller keeps the flag itself. }
+    procedure BreakEnable(ANumber: Integer; AEnabled: Boolean);
+
+    { --- watchpoints --- }
+    { Stops the program when AExpression changes (lgbWatch), is read
+      (lgbReadWatch), or either (lgbAccessWatch).
+
+      Unlike a breakpoint this cannot be set ahead of time on anything but a
+      global: gdb answers `No symbol "total" in current context.` for a local
+      until there is a frame to find it in, which is reported on OnError with
+      the expression named rather than swallowed. }
+    procedure WatchInsert(const AExpression: string;
+      AKind: TLedGdbBreakKind = lgbWatch);
 
     { --- inspection --- }
     procedure RequestLocals;
@@ -232,7 +283,8 @@ type
     property OnRunning: TLedGdbNotify read FOnRunning write FOnRunning;
     property OnStateChanged: TLedGdbNotify read FOnStateChanged write FOnStateChanged;
     property OnBreakAdded: TLedGdbBreakEvent read FOnBreakAdded write FOnBreakAdded;
-    property OnBreakRemoved: TLedGdbBreakEvent read FOnBreakRemoved write FOnBreakRemoved;
+    property OnBreakRemoved: TLedGdbBreakGoneEvent read FOnBreakRemoved write FOnBreakRemoved;
+    property OnWatchHit: TLedGdbWatchHitEvent read FOnWatchHit write FOnWatchHit;
     property OnLocals: TLedGdbNotify read FOnLocals write FOnLocals;
     property OnFrames: TLedGdbNotify read FOnFrames write FOnFrames;
     property OnEval: TLedGdbEvalEvent read FOnEval write FOnEval;
@@ -669,6 +721,11 @@ begin
       if Assigned(FOnEval) then FOnEval(Self, Tag, Msg, True);
       Exit;
     end;
+    { A watchpoint that could not be set is reported with the expression in
+      it: gdb's own `No symbol "total" in current context.` does not say
+      which of the things one just asked for it was talking about. }
+    if Known and (Kind = lgrWatchInsert) then
+      Msg := Format('cannot watch %s: %s', [Tag, Msg]);
     FLastError := Msg;
     if Assigned(FOnError) then FOnError(Self, Msg);
     Exit;
@@ -684,6 +741,8 @@ begin
         FVersion := Trim(ARec.Results.Str('version', ''));
     lgrBreakInsert:
       EmitBreakpoint(ARec.Results.ByName('bkpt'));
+    lgrWatchInsert:
+      EmitWatchpoint(ARec, Tag);
     lgrLocals:
       ReadLocals(ARec);
     lgrFrames:
@@ -738,6 +797,11 @@ begin
   if Copy(Reason, 1, 6) = 'exited' then
     FInferiorAlive := False;
 
+  { Announced before the stop, so a listener can say what changed while it
+    still has both values, then handle the stop like any other. }
+  if Pos('watchpoint-trigger', Reason) > 0 then
+    EmitWatchHit(ARec, Reason);
+
   SetState(lgsStopped);
   if Assigned(FOnStopped) then FOnStopped(Self, Reason, FileName, Line, Func);
 end;
@@ -753,38 +817,123 @@ begin
   begin
     Num := ARec.Results.Int('id', -1);
     if (Num >= 0) and Assigned(FOnBreakRemoved) then
-      FOnBreakRemoved(Self, Num, '', 0, '');
+      FOnBreakRemoved(Self, Num);
   end;
+end;
+
+{ The kind gdb names in a bkpt tuple.  Its words, checked against 12.1:
+  "breakpoint", "hw watchpoint", "read watchpoint", "acc watchpoint" -- and
+  matched on the tail rather than in full, because a software watchpoint is
+  plain "watchpoint" where a hardware one is "hw watchpoint". }
+function BreakKindOf(const AType: string): TLedGdbBreakKind;
+begin
+  if Pos('read watchpoint', AType) > 0 then Result := lgbReadWatch
+  else if Pos('acc watchpoint', AType) > 0 then Result := lgbAccessWatch
+  else if Pos('watchpoint', AType) > 0 then Result := lgbWatch
+  else Result := lgbLine;
 end;
 
 procedure TLedGdbSession.EmitBreakpoint(AValue: TLedMIValue);
 var
-  Num, Line, p: Integer;
-  FileName, Loc, Cond: string;
+  Loc: string;
+  p: Integer;
+  Info: TLedGdbBreakInfo;
 begin
   if AValue = nil then Exit;
-  Num := AValue.Int('number', -1);
-  if Num < 0 then Exit;
+  Info.Number := AValue.Int('number', -1);
+  if Info.Number < 0 then Exit;
 
-  FileName := AValue.Str('fullname', AValue.Str('file', ''));
-  Line := AValue.Int('line', 0);
-  Cond := AValue.Str('cond', '');
+  Info.Kind := BreakKindOf(AValue.Str('type', ''));
+  Info.FileName := AValue.Str('fullname', AValue.Str('file', ''));
+  Info.Line := AValue.Int('line', 0);
+  { A watchpoint's expression is in what=, which is also where a breakpoint on
+    a function would put its name -- so it is only read for a watchpoint. }
+  if Info.Kind = lgbLine then
+    Info.Expression := ''
+  else
+    Info.Expression := AValue.Str('what', AValue.Str('original-location', ''));
+  Info.Condition := AValue.Str('cond', '');
+  Info.Enabled := AValue.Str('enabled', 'y') <> 'n';
+  Info.HitCount := AValue.Int('times', 0);
+  Info.Complete := True;
 
   { A pending breakpoint -- set before any binary was loaded -- has no file
-    or line of its own; gdb only echoes back what was asked for. }
-  if (FileName = '') or (Line = 0) then
+    or line of its own; gdb only echoes back what was asked for.  Watchpoints
+    are exempt: their original-location is the expression, not a place. }
+  if (Info.Kind = lgbLine) and ((Info.FileName = '') or (Info.Line = 0)) then
   begin
     Loc := AValue.Str('original-location', '');
     p := LastDelimiter(':', Loc);
     if p > 1 then
     begin
-      FileName := Copy(Loc, 1, p - 1);
-      Line := StrToIntDef(Copy(Loc, p + 1, Length(Loc)), 0);
+      Info.FileName := Copy(Loc, 1, p - 1);
+      Info.Line := StrToIntDef(Copy(Loc, p + 1, Length(Loc)), 0);
     end;
   end;
 
-  if Assigned(FOnBreakAdded) then
-    FOnBreakAdded(Self, Num, FileName, Line, Cond);
+  if Assigned(FOnBreakAdded) then FOnBreakAdded(Self, Info);
+end;
+
+{ The reply to -break-watch, which is not a bkpt tuple: gdb answers
+  ^done,wpt={number,exp} for a write watchpoint and names the field
+  hw-rwpt or hw-awpt for the other two -- so the field name is the kind.
+
+  It carries nothing else, which is why Complete is False: the full record
+  arrives later, in the =breakpoint-modified that the first hit produces. }
+procedure TLedGdbSession.EmitWatchpoint(ARec: TLedMIRecord;
+  const AExpression: string);
+var
+  V: TLedMIValue;
+  Info: TLedGdbBreakInfo;
+begin
+  Info.Kind := lgbWatch;
+  V := ARec.Results.ByName('wpt');
+  if V = nil then
+  begin
+    V := ARec.Results.ByName('hw-rwpt');
+    Info.Kind := lgbReadWatch;
+  end;
+  if V = nil then
+  begin
+    V := ARec.Results.ByName('hw-awpt');
+    Info.Kind := lgbAccessWatch;
+  end;
+  if V = nil then Exit;
+
+  Info.Number := V.Int('number', -1);
+  if Info.Number < 0 then Exit;
+  Info.FileName := '';
+  Info.Line := 0;
+  Info.Expression := V.Str('exp', AExpression);
+  Info.Condition := '';
+  Info.Enabled := True;
+  Info.HitCount := 0;
+  Info.Complete := False;
+
+  if Assigned(FOnBreakAdded) then FOnBreakAdded(Self, Info);
+end;
+
+{ A watchpoint stop.  The tuple naming the watchpoint is called wpt, hw-rwpt
+  or hw-awpt exactly as in the insert reply, and the values arrive as
+  value={old,new} for a write, value={value} for a read. }
+procedure TLedGdbSession.EmitWatchHit(ARec: TLedMIRecord;
+  const AReason: string);
+var
+  V: TLedMIValue;
+  Num: Integer;
+  Expr, Old, New_: string;
+begin
+  if not Assigned(FOnWatchHit) then Exit;
+  V := ARec.Results.ByName('wpt');
+  if V = nil then V := ARec.Results.ByName('hw-rwpt');
+  if V = nil then V := ARec.Results.ByName('hw-awpt');
+  if V = nil then Exit;
+
+  Num := V.Int('number', -1);
+  Expr := V.Str('exp', '');
+  Old := ARec.Results.Str('value.old', '');
+  New_ := ARec.Results.Str('value.new', ARec.Results.Str('value.value', ''));
+  FOnWatchHit(Self, Num, Expr, Old, New_);
 end;
 
 procedure TLedGdbSession.ReadLocals(ARec: TLedMIRecord);
@@ -969,13 +1118,40 @@ begin
     Send(Format('-break-condition %d %s', [ANumber, ACondition]));
 end;
 
+procedure TLedGdbSession.BreakEnable(ANumber: Integer; AEnabled: Boolean);
+begin
+  if ANumber <= 0 then Exit;
+  if AEnabled then
+    Send(Format('-break-enable %d', [ANumber]))
+  else
+    Send(Format('-break-disable %d', [ANumber]));
+end;
+
+{ Unquoted, like -break-condition and for the same reason: -break-watch takes
+  the rest of the line as the expression, so quotes would become part of what
+  is watched and gdb would answer that there is no such symbol. }
+procedure TLedGdbSession.WatchInsert(const AExpression: string;
+  AKind: TLedGdbBreakKind);
+var
+  Opt: string;
+begin
+  if AExpression = '' then Exit;
+  case AKind of
+    lgbReadWatch:   Opt := ' -r';
+    lgbAccessWatch: Opt := ' -a';
+  else
+    Opt := '';
+  end;
+  Send('-break-watch' + Opt + ' ' + AExpression, lgrWatchInsert, AExpression);
+end;
+
 procedure TLedGdbSession.BreakDelete(ANumber: Integer);
 begin
   Send(Format('-break-delete %d', [ANumber]), lgrBreakDelete);
   { Reported locally as well as from =breakpoint-deleted: the notify does not
     always arrive, and a duplicate removal is harmless. }
   if Assigned(FOnBreakRemoved) then
-    FOnBreakRemoved(Self, ANumber, '', 0, '');
+    FOnBreakRemoved(Self, ANumber);
 end;
 
 procedure TLedGdbSession.RequestLocals;

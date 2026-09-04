@@ -82,6 +82,8 @@ type
     actBreakpointCondition: TAction;
     actToggleBreakpoint: TAction;
     actToggleDebugPane: TAction;
+    actToggleBreakPane: TAction;
+    actAddWatchpoint: TAction;
     miDebug: TMenuItem;
     mi_BuildProject: TMenuItem;
     miSepDbg3: TMenuItem;
@@ -420,6 +422,8 @@ type
     procedure actBreakpointConditionExecute(Sender: TObject);
     procedure actToggleBreakpointExecute(Sender: TObject);
     procedure actToggleDebugPaneExecute(Sender: TObject);
+    procedure actToggleBreakPaneExecute(Sender: TObject);
+    procedure actAddWatchpointExecute(Sender: TObject);
     procedure actToggleProjectExecute(Sender: TObject);
     procedure actAddToProjectExecute(Sender: TObject);
     procedure actAddBookmarkExecute(Sender: TObject);
@@ -491,6 +495,7 @@ type
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTerminalPane;
     FDebugPane: TLedDebugPane;
+    FBreakPane: TLedBreakPane;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
       whether a debug session should follow it. }
@@ -507,6 +512,9 @@ type
     procedure ToolItemClick(Sender: TObject);
     procedure OutputJump(const AFileName: string; ALine, AColumn: Integer);
     procedure DebugJump(Sender: TObject; const AFileName: string; ALine: Integer);
+    procedure DebugEditCondition(Sender: TObject; const AFileName: string;
+      ALine: Integer);
+    procedure DebugToggleBreakpoint(Sender: TObject);
     procedure DebugConsole(Sender: TObject; const AText: string);
     procedure DebugStateChanged(Sender: TObject);
     function DebugViewFor(const AFileName: string): TLedEdit;
@@ -626,6 +634,7 @@ type
     function BuildProjectNow(AThenDebug: Boolean): Boolean;
     function ToolRunning: Boolean;
     property DebugPane: TLedDebugPane read FDebugPane;
+    property BreakPane: TLedBreakPane read FBreakPane;
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
     property DocListMenu: TMenuItem read miDocList;
@@ -925,8 +934,20 @@ begin
      LedIconIndex('run')]);
   FDock.AddPane(ledRight, 'debug', 'Debugger', FDebugPane, 'debug');
 
+  { The breakpoint list goes at the bottom rather than beside the debugger:
+    it is a wide table one goes to in order to change something, not one of
+    the three panels one glances at while stepping. }
+  FBreakPane := TLedBreakPane.Create(Self);
+  FBreakPane.SetImages(ImageList1,
+    [LedIconIndex('breakpoint'), LedIconIndex('breakpoint'),
+     LedIconIndex('close'), LedIconIndex('close')]);
+  FDock.AddPane(ledBottom, 'breaks', 'Breakpoints', FBreakPane, 'breakpoint');
+
   FDebugger := TLedDebugger.Create(Self);
   FDebugger.Attach(FDebugPane);
+  FDebugger.AttachBreakPane(FBreakPane);
+  FDebugger.OnEditCondition := @DebugEditCondition;
+  FDebugger.OnToggleBreakpoint := @DebugToggleBreakpoint;
   FDebugger.OnJump := @DebugJump;
   FDebugger.OnConsole := @DebugConsole;
   FDebugger.OnViewFor := @DebugViewFor;
@@ -1313,6 +1334,56 @@ end;
 procedure TLedMainForm.actToggleDebugPaneExecute(Sender: TObject);
 begin
   FDock.TogglePane('debug');
+end;
+
+procedure TLedMainForm.DebugToggleBreakpoint(Sender: TObject);
+begin
+  actToggleBreakpoint.Execute;
+end;
+
+procedure TLedMainForm.actToggleBreakPaneExecute(Sender: TObject);
+begin
+  FDock.TogglePane('breaks');
+end;
+
+{ Watches an expression, defaulting to whatever the caret is in -- which is
+  almost always the variable one has just been looking at. }
+procedure TLedMainForm.actAddWatchpointExecute(Sender: TObject);
+var
+  Expr: string;
+  V: TLedEdit;
+begin
+  Expr := '';
+  V := ActiveView;
+  if V <> nil then
+  begin
+    if V.SelAvail then
+      Expr := Trim(V.SelText)
+    else
+      Expr := LedExpressionAt(V.LineText, V.CaretX);
+  end;
+  if Silent then Exit;      { no dialog during a scripted run }
+  if not InputQuery('Add Watchpoint',
+    'Stop the program when this expression changes:', Expr) then Exit;
+  if Trim(Expr) = '' then Exit;
+  FDock.ShowPane('breaks');
+  FDock.EdgeVisible[ledBottom] := True;
+  FDebugger.AddWatchpoint(Trim(Expr));
+end;
+
+{ The breakpoint list asked for a condition.  Routed back here because the
+  prompt is the same one Debug > Breakpoint Condition uses. }
+procedure TLedMainForm.DebugEditCondition(Sender: TObject;
+  const AFileName: string; ALine: Integer);
+var
+  Cond: string;
+begin
+  Cond := FDebugger.BreakpointCondition(AFileName, ALine);
+  if Silent then Exit;
+  if not InputQuery('Breakpoint Condition',
+    Format('Stop at line %d only when this is true (empty: always):', [ALine]),
+    Cond) then Exit;
+  FDebugger.SetBreakpointCondition(AFileName, ALine, Trim(Cond));
 end;
 
 
@@ -3535,9 +3606,13 @@ begin
   actToggleBreakpoint.Enabled := LedGdbAvailable and HasDoc and
                                  (Tab <> nil) and (Tab.Document.FileName <> '');
   actBreakpointCondition.Enabled := actToggleBreakpoint.Enabled;
+  { A watchpoint needs no file of its own -- it watches an expression -- so
+    it is offered wherever gdb is. }
+  actAddWatchpoint.Enabled := LedGdbAvailable;
   actRunToCursor.Enabled := FDebugger.CanStep and (Tab <> nil) and
                             (Tab.Document.FileName <> '');
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
+  actToggleBreakPane.Checked := FDock.PaneVisible('breaks');
   actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
   actComplete.Enabled := HasDoc;
   actPrint.Enabled := HasDoc and LedPrinterAvailable;
