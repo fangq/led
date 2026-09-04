@@ -29,6 +29,21 @@ uses
   Led.Core.Gdb, Led.Core.Project, Led.UI.Edit;
 
 type
+  { One row of the Locals tree.
+
+    Held in an object hung off the node rather than in the node's text,
+    because a drill-down is answered asynchronously and the answer has to
+    find the row that asked.  Serial is what the request carries: the tree is
+    rebuilt on every stop, so a reply for a serial that is no longer listed is
+    a reply about a frame that has gone, and is dropped. }
+  TLedLocalNode = class
+    Serial: Integer;
+    VarObj: string;       // gdb's handle, once one has been made
+    Expr: string;         // what to ask gdb about, for a top-level row
+    Loaded: Boolean;      // children already fetched
+    Requested: Boolean;   // ...or on their way
+  end;
+
   { What the toolbar asked for.  One event with a verb rather than eight
     events, because the main form's actions want the same list. }
   TLedDebugCommand = (ldcStart, ldcContinue, ldcPause, ldcStop,
@@ -43,6 +58,10 @@ type
   { How the debugger reaches an open document, or nil when the file is not
     open.  Supplied by the main form; this unit does not know how tabs work. }
   TLedDebugViewLookup = function(const AFileName: string): TLedEdit of object;
+  { ASerial identifies the row; AVarObj is '' when gdb has no handle for it
+    yet and AExpr must be used to make one. }
+  TLedDebugExpandEvent = procedure(Sender: TObject; ASerial: Integer;
+    const AExpr, AVarObj: string) of object;
 
   { TLedDebugPane }
 
@@ -50,7 +69,9 @@ type
   private
     FBar: TToolBar;
     FConfigs: TComboBox;
-    FLocals: TListView;
+    FLocals: TTreeView;
+    FLocalNodes: TFPList;      // of TLedLocalNode, owned
+    FNextSerial: Integer;
     FStack: TListView;
     FWatches: TListView;
     FWatchEntry: TEdit;
@@ -61,12 +82,18 @@ type
     FOnRemoveWatch: TLedDebugFrameEvent;
     FOnRawCommand: TLedDebugTextEvent;
     FOnConfigChanged: TNotifyEvent;
+    FOnExpandLocal: TLedDebugExpandEvent;
     procedure BarClick(Sender: TObject);
     procedure StackDouble(Sender: TObject);
     procedure WatchKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure WatchEntryKey(Sender: TObject; var Key: Char);
     procedure CmdEntryKey(Sender: TObject; var Key: Char);
     procedure ConfigChange(Sender: TObject);
+    procedure LocalsExpanding(Sender: TObject; Node: TTreeNode;
+      var AllowExpansion: Boolean);
+    function NewLocalNode(const AExpr, AVarObj: string): TLedLocalNode;
+    function LocalNodeBySerial(ASerial: Integer): TLedLocalNode;
+    procedure ClearLocalNodes;
     function AddButton(const ACaption, AHint: string; ACommand: TLedDebugCommand;
       AImage: Integer): TToolButton;
     function AddList(const ACols: array of string;
@@ -79,6 +106,13 @@ type
     procedure SetImages(AImages: TCustomImageList; const AIndexes: array of Integer);
 
     procedure ShowLocals(const ALocals: TLedGdbLocals);
+    { Fills in a row's children once gdb has answered.  ASerial identifies the
+      row; an unknown one is ignored. }
+    procedure SetLocalChildren(ASerial: Integer;
+      const AChildren: TLedGdbVarChildren);
+    procedure SetLocalVarObj(ASerial: Integer; const AVarObj: string;
+      ANumChild: Integer);
+    function LocalRowCount: Integer;
     procedure ShowFrames(const AFrames: TLedGdbFrames);
     procedure SetConfigNames(AList: TStrings; AActive: Integer);
     procedure SetWatch(AIndex: Integer; const AExpr, AValue: string;
@@ -94,7 +128,7 @@ type
     procedure ReflectState(AState: TLedGdbState; AHasProject: Boolean);
 
     function ConfigIndex: Integer;
-    property Locals: TListView read FLocals;
+    property Locals: TTreeView read FLocals;
     property Stack: TListView read FStack;
     property Watches: TListView read FWatches;
 
@@ -104,6 +138,10 @@ type
     property OnRemoveWatch: TLedDebugFrameEvent read FOnRemoveWatch write FOnRemoveWatch;
     property OnRawCommand: TLedDebugTextEvent read FOnRawCommand write FOnRawCommand;
     property OnConfigChanged: TNotifyEvent read FOnConfigChanged write FOnConfigChanged;
+    { A row was opened and needs filling.  Carries the serial, and either the
+      expression (no varobj yet) or the varobj. }
+    property OnExpandLocal: TLedDebugExpandEvent
+      read FOnExpandLocal write FOnExpandLocal;
   end;
 
   { TLedDebugger }
@@ -123,6 +161,11 @@ type
     FPane: TLedDebugPane;
     FBreaks: TLedBreakpoints;
     FWatchExprs: TStringList;
+    { What has already been asked about at this stop, so moving the pointer
+      back over something does not ask again.  Emptied on every resume,
+      because the values belong to the frame. }
+    FHoverCache: TStringList;
+    FHoverView: TLedEdit;
     FCurrentFile: string;
     FCurrentLine: Integer;
     FActiveFile: string;
@@ -157,6 +200,12 @@ type
     procedure PaneRemoveWatch(Sender: TObject; ALevel: Integer);
     procedure PaneRaw(Sender: TObject; const AText: string);
     procedure PaneConfigChanged(Sender: TObject);
+    procedure PaneExpandLocal(Sender: TObject; ASerial: Integer;
+      const AExpr, AVarObj: string);
+    procedure SessionVarCreated(Sender: TObject; const ATag, AVarObj,
+      ATypeName, AValue: string; ANumChild: Integer);
+    procedure SessionVarChildren(Sender: TObject; const ATag: string;
+      const AChildren: TLedGdbVarChildren);
 
     function IndexOfBreak(const AFileName: string; ALine: Integer): Integer;
     procedure PushMarksFor(const AFileName: string);
@@ -180,6 +229,9 @@ type
     procedure Stop;
     procedure Command(ACommand: TLedDebugCommand);
     procedure ToggleBreakpoint(const AFileName: string; ALine: Integer);
+    { Hover-to-inspect.  Answers from the cache at once when it can, so a
+      value the pointer has already been over appears without a round trip. }
+    procedure HoverExpression(AView: TLedEdit; const AExpr: string);
     function BreakpointCount: Integer;
     function HasBreakpoint(const AFileName: string; ALine: Integer): Boolean;
 
@@ -259,10 +311,18 @@ begin
   Body.Align := alClient;
   Body.BevelOuter := bvNone;
 
-  FLocals := AddList(['Name', 'Type', 'Value'], [90, 70, 120]);
+  { A tree rather than a list, because a struct has to open.  LCL's TTreeView
+    has no columns, so a row reads "name = value" for a leaf and "name: type"
+    for something that can be opened -- which is also the cue that it can. }
+  FLocals := TTreeView.Create(Self);
   FLocals.Parent := Body;
   FLocals.Align := alTop;
   FLocals.Height := 150;
+  FLocals.ReadOnly := True;
+  FLocals.RowSelect := True;
+  FLocals.HideSelection := False;
+  FLocals.OnExpanding := @LocalsExpanding;
+  FLocalNodes := TFPList.Create;
 
   Sp := TSplitter.Create(Self);
   Sp.Parent := Body;
@@ -405,24 +465,161 @@ begin
   if Assigned(FOnConfigChanged) then FOnConfigChanged(Self);
 end;
 
+procedure TLedDebugPane.ClearLocalNodes;
+var
+  i: Integer;
+begin
+  for i := 0 to FLocalNodes.Count - 1 do
+    TLedLocalNode(FLocalNodes[i]).Free;
+  FLocalNodes.Clear;
+end;
+
+function TLedDebugPane.NewLocalNode(const AExpr, AVarObj: string): TLedLocalNode;
+begin
+  Result := TLedLocalNode.Create;
+  Inc(FNextSerial);
+  Result.Serial := FNextSerial;
+  Result.Expr := AExpr;
+  Result.VarObj := AVarObj;
+  FLocalNodes.Add(Result);
+end;
+
+function TLedDebugPane.LocalNodeBySerial(ASerial: Integer): TLedLocalNode;
+var
+  i: Integer;
+begin
+  for i := 0 to FLocalNodes.Count - 1 do
+    if TLedLocalNode(FLocalNodes[i]).Serial = ASerial then
+      Exit(TLedLocalNode(FLocalNodes[i]));
+  Result := nil;
+end;
+
+{ A row that can be opened gets one placeholder child, because a TTreeView
+  draws no expander for a node with no children -- so without it there is
+  nothing to click and the struct looks like a leaf. }
+procedure AddPlaceholder(ATree: TTreeView; ANode: TTreeNode);
+begin
+  ATree.Items.AddChild(ANode, '...');
+end;
+
 procedure TLedDebugPane.ShowLocals(const ALocals: TLedGdbLocals);
 var
   i: Integer;
-  It: TListItem;
+  N: TTreeNode;
+  Info: TLedLocalNode;
+  Aggregate: Boolean;
 begin
   FLocals.BeginUpdate;
   try
     FLocals.Items.Clear;
+    ClearLocalNodes;
     for i := 0 to High(ALocals) do
     begin
-      It := FLocals.Items.Add;
-      It.Caption := ALocals[i].Name;
-      It.SubItems.Add(ALocals[i].TypeName);
-      It.SubItems.Add(ALocals[i].Value);
+      { --simple-values leaves a struct or an array without a value, which is
+        how one is told from a scalar without parsing C types. }
+      Aggregate := (ALocals[i].Value = '') or (ALocals[i].Value = '{...}');
+      if Aggregate then
+        N := FLocals.Items.AddChild(nil,
+          ALocals[i].Name + ': ' + ALocals[i].TypeName)
+      else
+        N := FLocals.Items.AddChild(nil,
+          ALocals[i].Name + ' = ' + ALocals[i].Value);
+      Info := NewLocalNode(ALocals[i].Name, '');
+      N.Data := Info;
+      if Aggregate then AddPlaceholder(FLocals, N);
     end;
   finally
     FLocals.EndUpdate;
   end;
+end;
+
+procedure TLedDebugPane.LocalsExpanding(Sender: TObject; Node: TTreeNode;
+  var AllowExpansion: Boolean);
+var
+  Info: TLedLocalNode;
+begin
+  AllowExpansion := True;
+  if Node = nil then Exit;
+  Info := TLedLocalNode(Node.Data);
+  if Info = nil then Exit;
+  if Info.Loaded or Info.Requested then Exit;
+  Info.Requested := True;
+  if Assigned(FOnExpandLocal) then
+    FOnExpandLocal(Self, Info.Serial, Info.Expr, Info.VarObj);
+end;
+
+procedure TLedDebugPane.SetLocalVarObj(ASerial: Integer;
+  const AVarObj: string; ANumChild: Integer);
+var
+  Info: TLedLocalNode;
+begin
+  Info := LocalNodeBySerial(ASerial);
+  if Info = nil then Exit;
+  Info.VarObj := AVarObj;
+  if AVarObj = '' then
+  begin
+    { gdb would not make one -- nothing to open. }
+    Info.Loaded := True;
+    Info.Requested := False;
+  end;
+end;
+
+{ Replaces the placeholder with what gdb said is in there. }
+procedure TLedDebugPane.SetLocalChildren(ASerial: Integer;
+  const AChildren: TLedGdbVarChildren);
+var
+  Info, Kid: TLedLocalNode;
+  Owner_, N: TTreeNode;
+  i: Integer;
+  Aggregate: Boolean;
+begin
+  Info := LocalNodeBySerial(ASerial);
+  if Info = nil then Exit;
+  Info.Loaded := True;
+  Info.Requested := False;
+
+  Owner_ := nil;
+  for i := 0 to FLocals.Items.Count - 1 do
+    if FLocals.Items[i].Data = Pointer(Info) then
+    begin
+      Owner_ := FLocals.Items[i];
+      Break;
+    end;
+  if Owner_ = nil then Exit;
+
+  FLocals.BeginUpdate;
+  try
+    Owner_.DeleteChildren;
+    for i := 0 to High(AChildren) do
+    begin
+      Aggregate := (AChildren[i].Value = '') or (AChildren[i].Value = '{...}');
+      if Aggregate then
+        N := FLocals.Items.AddChild(Owner_,
+          AChildren[i].Expr + ': ' + AChildren[i].TypeName)
+      else
+        N := FLocals.Items.AddChild(Owner_,
+          AChildren[i].Expr + ' = ' + AChildren[i].Value);
+      Kid := NewLocalNode(AChildren[i].Expr, AChildren[i].VarObj);
+      N.Data := Kid;
+      { Its own children are fetched only if it is opened in turn, so a deep
+        structure costs one round trip per level the user actually looks at. }
+      if AChildren[i].NumChild > 0 then
+      begin
+        AddPlaceholder(FLocals, N);
+        Kid.Loaded := False;
+      end
+      else
+        Kid.Loaded := True;
+    end;
+    Owner_.Expand(False);
+  finally
+    FLocals.EndUpdate;
+  end;
+end;
+
+function TLedDebugPane.LocalRowCount: Integer;
+begin
+  Result := FLocals.Items.Count;
 end;
 
 procedure TLedDebugPane.ShowFrames(const AFrames: TLedGdbFrames);
@@ -521,6 +718,7 @@ end;
 procedure TLedDebugPane.Clear;
 begin
   FLocals.Items.Clear;
+  ClearLocalNodes;
   FStack.Items.Clear;
   ClearWatchValues;
 end;
@@ -567,6 +765,8 @@ begin
   FSession.OnLocals := @SessionLocals;
   FSession.OnFrames := @SessionFrames;
   FSession.OnEval := @SessionEval;
+  FSession.OnVarCreated := @SessionVarCreated;
+  FSession.OnVarChildren := @SessionVarChildren;
   FSession.OnConsole := @SessionText;
   FSession.OnTarget := @SessionText;
   FSession.OnLog := @SessionText;
@@ -574,6 +774,7 @@ begin
 
   FProject := TLedProject.Create;
   FWatchExprs := TStringList.Create;
+  FHoverCache := TStringList.Create;
 
   { 40 ms: fast enough that a step feels immediate, slow enough to cost
     nothing.  The protocol is drained here rather than waited on -- see the
@@ -590,6 +791,7 @@ begin
   FSession.Free;
   FProject.Free;
   FWatchExprs.Free;
+  FHoverCache.Free;
   inherited Destroy;
 end;
 
@@ -603,6 +805,7 @@ begin
   FPane.OnRemoveWatch := @PaneRemoveWatch;
   FPane.OnRawCommand := @PaneRaw;
   FPane.OnConfigChanged := @PaneConfigChanged;
+  FPane.OnExpandLocal := @PaneExpandLocal;
 end;
 
 procedure TLedDebugger.Say(const AText: string);
@@ -816,6 +1019,8 @@ end;
 
 procedure TLedDebugger.SessionRunning(Sender: TObject);
 begin
+  { The values belonged to the frame that has just been left. }
+  FHoverCache.Clear;
   ClearDebugLine;
   if FPane <> nil then FPane.Clear;
   if Assigned(FOnStateChanged) then FOnStateChanged(Self);
@@ -827,6 +1032,7 @@ var
   V: TLedEdit;
 begin
   ClearDebugLine;
+  FHoverCache.Clear;
 
   if Pos('exited', AReason) > 0 then
   begin
@@ -894,11 +1100,46 @@ begin
     FSession.Evaluate(FWatchExprs[i], 'w:' + IntToStr(i));
 end;
 
+procedure TLedDebugger.HoverExpression(AView: TLedEdit; const AExpr: string);
+var
+  i: Integer;
+begin
+  if (AView = nil) or (AExpr = '') then Exit;
+  FHoverView := AView;
+
+  i := FHoverCache.IndexOfName(AExpr);
+  if i >= 0 then
+  begin
+    AView.ShowHoverValue(AExpr, FHoverCache.ValueFromIndex[i]);
+    Exit;
+  end;
+
+  { Nothing to ask when the program is not sitting at a stop -- and saying
+    so beats leaving "= ..." on screen for ever. }
+  if not CanStep then
+  begin
+    AView.ShowHoverValue(AExpr, '(not stopped)');
+    Exit;
+  end;
+  FSession.Evaluate(AExpr, 'h:' + AExpr);
+end;
+
 procedure TLedDebugger.SessionEval(Sender: TObject; const ATag, AValue: string;
   AIsError: Boolean);
 var
   Idx: Integer;
+  Expr: string;
 begin
+  { Hover first: its tag carries the expression itself, because the answer
+    has to be matched to a place on screen rather than to a row. }
+  if Copy(ATag, 1, 2) = 'h:' then
+  begin
+    Expr := Copy(ATag, 3, Length(ATag));
+    FHoverCache.Values[Expr] := AValue;
+    if FHoverView <> nil then FHoverView.ShowHoverValue(Expr, AValue);
+    Exit;
+  end;
+
   if (FPane = nil) or (Copy(ATag, 1, 2) <> 'w:') then Exit;
   Idx := StrToIntDef(Copy(ATag, 3, Length(ATag)), -1);
   if (Idx < 0) or (Idx >= FWatchExprs.Count) then Exit;
@@ -958,6 +1199,49 @@ begin
     FSession.SendRaw(AText)
   else
     Say('[gdb] no session; press Start first');
+end;
+
+{ A Locals row was opened.
+
+  Two round trips the first time and one afterwards: a top-level row has no
+  variable object yet, so one is made and its children asked for when the
+  handle comes back; a row that already has a handle -- every row produced by
+  a previous expansion does -- goes straight to asking.
+
+  The serial travels in the tag, because by the time gdb answers the tree may
+  have been rebuilt by another stop, and a reply about a frame that has gone
+  must be dropped rather than written into whatever row now sits there. }
+procedure TLedDebugger.PaneExpandLocal(Sender: TObject; ASerial: Integer;
+  const AExpr, AVarObj: string);
+begin
+  if AVarObj <> '' then
+    FSession.VarChildren(AVarObj, 'x:' + IntToStr(ASerial))
+  else
+    FSession.VarCreate(AExpr, 'x:' + IntToStr(ASerial));
+end;
+
+procedure TLedDebugger.SessionVarCreated(Sender: TObject; const ATag, AVarObj,
+  ATypeName, AValue: string; ANumChild: Integer);
+var
+  Serial: Integer;
+begin
+  if (FPane = nil) or (Copy(ATag, 1, 2) <> 'x:') then Exit;
+  Serial := StrToIntDef(Copy(ATag, 3, Length(ATag)), -1);
+  if Serial < 0 then Exit;
+  FPane.SetLocalVarObj(Serial, AVarObj, ANumChild);
+  if AVarObj <> '' then
+    FSession.VarChildren(AVarObj, ATag);
+end;
+
+procedure TLedDebugger.SessionVarChildren(Sender: TObject; const ATag: string;
+  const AChildren: TLedGdbVarChildren);
+var
+  Serial: Integer;
+begin
+  if (FPane = nil) or (Copy(ATag, 1, 2) <> 'x:') then Exit;
+  Serial := StrToIntDef(Copy(ATag, 3, Length(ATag)), -1);
+  if Serial < 0 then Exit;
+  FPane.SetLocalChildren(Serial, AChildren);
 end;
 
 procedure TLedDebugger.PaneConfigChanged(Sender: TObject);

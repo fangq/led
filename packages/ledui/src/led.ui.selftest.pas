@@ -3612,6 +3612,7 @@ var
   Img: TLazIntfImage;
   C: TFPColor;
   x, y, Reds: Integer;
+  Row: TTreeNode;
 begin
   Say('debugger');
 
@@ -3642,14 +3643,16 @@ begin
   L := TStringList.Create;
   try
     L.Add('#include <stdio.h>');
+    L.Add('struct P { int x; int y; };');
     L.Add('int twice(int n)');
     L.Add('{');
-    L.Add('    int r = n * 2;');        { line 4 -- the breakpoint }
-    L.Add('    return r;');
+    L.Add('    struct P p = { n, n + 1 };');
+    L.Add('    int r = n * 2;');      { line 6 -- the breakpoint }
+    L.Add('    return r + p.x - p.y;');
     L.Add('}');
     L.Add('int main(void)');
     L.Add('{');
-    L.Add('    printf("%d\n", twice(21));');
+    L.Add('    printf("%d\\n", twice(21));');   { line 11 -- the call }
     L.Add('    return 0;');
     L.Add('}');
     L.SaveToFile(Src);
@@ -3696,15 +3699,15 @@ begin
     F.Debugger.Project.ConfigCount);
 
   { Exactly what a gutter click does. }
-  F.Debugger.ToggleBreakpoint(Src, 4);
+  F.Debugger.ToggleBreakpoint(Src, 6);
   Pump;
   CheckEqInt('one breakpoint', 1, F.Debugger.BreakpointCount);
-  Check('and the editor shows it in the gutter', V.HasBreakpoint(4));
-  F.Debugger.ToggleBreakpoint(Src, 4);
+  Check('and the editor shows it in the gutter', V.HasBreakpoint(6));
+  F.Debugger.ToggleBreakpoint(Src, 6);
   Pump;
   CheckEqInt('toggling again removes it', 0, F.Debugger.BreakpointCount);
-  Check('and the mark goes with it', not V.HasBreakpoint(4));
-  F.Debugger.ToggleBreakpoint(Src, 4);
+  Check('and the mark goes with it', not V.HasBreakpoint(6));
+  F.Debugger.ToggleBreakpoint(Src, 6);
   Pump;
 
   { And that the dot is actually drawn, not merely recorded.  The gutter is
@@ -3748,10 +3751,10 @@ begin
   Check('the program stops', F.Debugger.Stopped);
   if F.Debugger.Stopped then
   begin
-    CheckEqInt('on the line the breakpoint is on', 4, F.Debugger.CurrentLine);
+    CheckEqInt('on the line the breakpoint is on', 6, F.Debugger.CurrentLine);
     Check('in the file it was set in',
       Pos('main.c', F.Debugger.CurrentFile) > 0);
-    Check('the editor marks where execution is', V.DebugLine = 4);
+    Check('the editor marks where execution is', V.DebugLine = 6);
     Check('stepping is offered now', F.Debugger.CanStep);
 
     { Locals and the stack are asked for when the stop arrives and answered a
@@ -3769,6 +3772,80 @@ begin
     if F.DebugPane.Stack.Items.Count > 0 then
       CheckEq('whose innermost frame is the function stopped in', 'twice',
         F.DebugPane.Stack.Items[0].SubItems[0]);
+  end;
+
+  { --- drilling into a struct --- }
+  if F.Debugger.Stopped then
+  begin
+    { The struct row is the one shown as "name: type" -- an aggregate has no
+      value of its own under --simple-values, which is what tells it from a
+      scalar without led parsing C types. }
+    Row := nil;
+    for x := 0 to F.DebugPane.Locals.Items.Count - 1 do
+      if Copy(F.DebugPane.Locals.Items[x].Text, 1, 3) = 'p: ' then
+        Row := F.DebugPane.Locals.Items[x];
+    Check('the struct is listed as an aggregate', Row <> nil);
+
+    if Row <> nil then
+    begin
+      { One placeholder child, so the tree draws something to click. }
+      CheckEqInt('with a placeholder to make it openable', 1, Row.Count);
+      Check('and nothing real in it yet', Row.Items[0].Text = '...');
+
+      { Opening it is what asks gdb -- two round trips the first time, since
+        the row has no variable object yet. }
+      Row.Expand(False);
+      Waited := 0;
+      while (Row.Count < 2) and (Waited < 10000) do
+      begin
+        Pump; Sleep(20); Inc(Waited, 20);
+      end;
+      CheckEqInt('opening it fetches both fields', 2, Row.Count);
+      { p = { n, n + 1 } with n = 21. }
+      CheckEq('the first with its value', 'x = 21', Row.Items[0].Text);
+      CheckEq('and the second', 'y = 22', Row.Items[1].Text);
+      Check('leaves are not openable', Row.Items[0].Count = 0);
+    end;
+  end;
+
+  { --- hovering over one --- }
+  if F.Debugger.Stopped then
+  begin
+    { The fixture stops in twice(), whose only locals are scalars, so switch
+      to main's frame where the struct is. }
+    F.Debugger.Session.RequestFrames;
+    Waited := 0;
+    while (Length(F.Debugger.Session.Frames) < 2) and (Waited < 6000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+
+    { Hover: the editor decides what the pointer is over, the debugger says
+      what it is worth.  Driven through the same two calls the mouse makes. }
+    { Line 6 is "    int r = n * 2;" -- the parameter n is at column 13,
+      and r is not assigned until this line runs. }
+    CheckEq('the editor reads an expression off the line', 'n',
+      LedExpressionAt(V.Lines[5], 13));
+    CheckEq('and refuses the type keyword beside it', '',
+      LedExpressionAt(V.Lines[5], 6));
+    { Exactly what MouseMove does when the pointer comes to rest -- the
+      handler is already on the view, put there by the tab. }
+    Check('the view has a hover handler', Assigned(V.OnHoverExpression));
+    V.RequestHover('n');
+    Waited := 0;
+    { Until the placeholder is replaced.  Waiting for '=' finds the
+      placeholder itself, which RequestHover puts there at once. }
+    while (Pos(' = ...', V.Hint) > 0) and (Waited < 8000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    Check('hovering a local shows its value', Pos('n = 21', V.Hint) > 0);
+
+    { And a second hover over the same thing is answered from the cache,
+      which is what stops a round trip per pixel of mouse movement. }
+    V.RequestHover('');
+    V.RequestHover('n');
+    Check('and a repeat is answered at once', Pos('n = 21', V.Hint) > 0);
   end;
 
   F.Debugger.Stop;

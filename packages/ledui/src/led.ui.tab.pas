@@ -26,10 +26,12 @@ type
     FSheet: TTabSheet;          // the page this tab lives on
     FViewPopupMenu: TPopupMenu;
     FViewBreakpointClick: TLedBreakpointClick;
+    FViewHoverExpression: TLedHoverExpression;
     procedure ViewEnter(Sender: TObject);
     function AddView(AParent: TWinControl): TLedEdit;
     procedure SetViewPopupMenu(AValue: TPopupMenu);
     procedure SetViewBreakpointClick(AValue: TLedBreakpointClick);
+    procedure SetViewHoverExpression(AValue: TLedHoverExpression);
     function GetViewCount: Integer;
     function GetView(AIndex: Integer): TLedEdit;
   public
@@ -58,6 +60,8 @@ type
       document happens to be under the pointer. }
     property ViewBreakpointClick: TLedBreakpointClick
       read FViewBreakpointClick write SetViewBreakpointClick;
+    property ViewHoverExpression: TLedHoverExpression
+      read FViewHoverExpression write SetViewHoverExpression;
     property Sheet: TTabSheet read FSheet write FSheet;
   end;
 
@@ -142,6 +146,15 @@ begin
     TLedEdit(FViews[i]).OnBreakpointClick := AValue;
 end;
 
+procedure TLedTab.SetViewHoverExpression(AValue: TLedHoverExpression);
+var
+  i: Integer;
+begin
+  FViewHoverExpression := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).OnHoverExpression := AValue;
+end;
+
 function TLedTab.AddView(AParent: TWinControl): TLedEdit;
 begin
   Result := FDocument.CreateView(Self);
@@ -150,6 +163,7 @@ begin
   Result.OnEnter := @ViewEnter;
   Result.PopupMenu := FViewPopupMenu;
   Result.OnBreakpointClick := FViewBreakpointClick;
+  Result.OnHoverExpression := FViewHoverExpression;
   FViews.Add(Result);
   if FActiveView = nil then
     FActiveView := Result;
