@@ -78,6 +78,8 @@ type
     actDebugStepOver: TAction;
     actDebugStepInto: TAction;
     actDebugStepOut: TAction;
+    actRunToCursor: TAction;
+    actBreakpointCondition: TAction;
     actToggleBreakpoint: TAction;
     actToggleDebugPane: TAction;
     miDebug: TMenuItem;
@@ -90,6 +92,9 @@ type
     mi_DebugStepOver: TMenuItem;
     mi_DebugStepInto: TMenuItem;
     mi_DebugStepOut: TMenuItem;
+    mi_RunToCursor: TMenuItem;
+    mi_BreakpointCondition: TMenuItem;
+    miSepDbg4: TMenuItem;
     mi_ToggleBreakpoint: TMenuItem;
     mi_ToggleDebugPane: TMenuItem;
     miSepDbg0: TMenuItem;
@@ -411,6 +416,8 @@ type
     procedure actDebugStepOverExecute(Sender: TObject);
     procedure actDebugStepIntoExecute(Sender: TObject);
     procedure actDebugStepOutExecute(Sender: TObject);
+    procedure actRunToCursorExecute(Sender: TObject);
+    procedure actBreakpointConditionExecute(Sender: TObject);
     procedure actToggleBreakpointExecute(Sender: TObject);
     procedure actToggleDebugPaneExecute(Sender: TObject);
     procedure actToggleProjectExecute(Sender: TObject);
@@ -1254,6 +1261,40 @@ end;
 procedure TLedMainForm.actDebugStepOutExecute(Sender: TObject);
 begin
   DebugCommand(ldcStepOut);
+end;
+
+procedure TLedMainForm.actRunToCursorExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
+    Exit;
+  FDebugger.RunToCursor(Tab.Document.FileName, Tab.ActiveView.CaretY);
+end;
+
+{ Asks for the expression, showing whatever the breakpoint already waits for
+  so that changing one does not mean retyping it.  An empty answer clears the
+  condition, which is also how gdb spells it. }
+procedure TLedMainForm.actBreakpointConditionExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Line: Integer;
+  Cond: string;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
+  begin
+    ReportError('Save the file before setting a breakpoint in it.');
+    Exit;
+  end;
+  Line := Tab.ActiveView.CaretY;
+  Cond := FDebugger.BreakpointCondition(Tab.Document.FileName, Line);
+  if Silent then Exit;      { no dialog during a scripted run }
+  if not InputQuery('Breakpoint Condition',
+    Format('Stop at line %d only when this is true (empty: always):', [Line]),
+    Cond) then Exit;
+  FDebugger.SetBreakpointCondition(Tab.Document.FileName, Line, Trim(Cond));
 end;
 
 procedure TLedMainForm.actToggleBreakpointExecute(Sender: TObject);
@@ -3493,6 +3534,9 @@ begin
   actDebugStepOut.Enabled := FDebugger.CanStep;
   actToggleBreakpoint.Enabled := LedGdbAvailable and HasDoc and
                                  (Tab <> nil) and (Tab.Document.FileName <> '');
+  actBreakpointCondition.Enabled := actToggleBreakpoint.Enabled;
+  actRunToCursor.Enabled := FDebugger.CanStep and (Tab <> nil) and
+                            (Tab.Document.FileName <> '');
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
   actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
   actComplete.Enabled := HasDoc;

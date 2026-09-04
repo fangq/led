@@ -34,6 +34,8 @@ type
     FBreakNum: Integer;
     FBreakFile: string;
     FBreakLine: Integer;
+    FBreakCond: string;
+    FLoopSrc: string;
     FEvalTag, FEvalValue: string;
     FEvalError: Boolean;
     FVarTag, FVarObj, FVarType, FVarValue: string;
@@ -45,7 +47,9 @@ type
     procedure OnStopped(Sender: TObject; const AReason, AFileName: string;
       ALine: Integer; const AFunc: string);
     procedure OnBreakAdded(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer);
+      const AFileName: string; ALine: Integer; const ACondition: string);
+    function StopInLoopProgram(out ASession: TLedGdbSession;
+      const ACondition: string): Boolean;
     procedure OnEval(Sender: TObject; const ATag, AValue: string;
       AIsError: Boolean);
     procedure OnVarCreated(Sender: TObject; const ATag, AVarObj,
@@ -89,6 +93,12 @@ type
     procedure HoverFindsSubscripts;
     procedure HoverSkipsKeywordsAndNumbers;
     procedure HoverOffAWordIsEmpty;
+    procedure ConditionalBreakpointWaitsForItsExpression;
+    procedure ConditionIsEchoedBack;
+    procedure ChangingAConditionTakesEffect;
+    procedure ClearingAConditionMakesItAlwaysFire;
+    procedure RunToCursorReachesTheLine;
+    procedure RunToCursorSkipsWhatIsBetween;
   end;
 
 implementation
@@ -179,11 +189,12 @@ begin
 end;
 
 procedure TTestGdb.OnBreakAdded(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer);
+  const AFileName: string; ALine: Integer; const ACondition: string);
 begin
   FBreakNum := ANumber;
   FBreakFile := AFileName;
   FBreakLine := ALine;
+  FBreakCond := ACondition;
 end;
 
 procedure TTestGdb.OnEval(Sender: TObject; const ATag, AValue: string;
@@ -828,6 +839,196 @@ begin
   AssertEquals('an empty line', '', LedExpressionAt('', 1));
   { A qualifier with nothing in front of it is not an expression. }
   AssertEquals('a stray field', 'x', LedExpressionAt('.x', 2));
+end;
+
+{ --- conditional breakpoints and run-to-cursor --------------------------- }
+
+{ A loop, so a condition has something to be true on only one turn of it.
+  Stops at line 5 -- "total += i;" -- under ACondition, or unconditionally
+  when that is empty. }
+function TTestGdb.StopInLoopProgram(out ASession: TLedGdbSession;
+  const ACondition: string): Boolean;
+var
+  L: TStringList;
+  P: TProcess;
+  Bin: string;
+begin
+  Result := False;
+  ASession := nil;
+  if not LedGdbAvailable then Exit;
+  if FindDefaultExecutablePath('gcc') = '' then Exit;
+
+  FLoopSrc := IncludeTrailingPathDelimiter(FDir) + 'loop.c';
+  Bin := IncludeTrailingPathDelimiter(FDir) + 'loop';
+  L := TStringList.Create;
+  try
+    L.Add('int main(void)');                    { 1 }
+    L.Add('{');                                 { 2 }
+    L.Add('    int i, total = 0;');             { 3 }
+    L.Add('    for (i = 0; i < 10; i++) {');    { 4 }
+    L.Add('        total += i;');               { 5 }
+    L.Add('    }');                             { 6 }
+    L.Add('    total = total * 2;');            { 7 }
+    L.Add('    return total;');                 { 8 }
+    L.Add('}');                                 { 9 }
+    L.SaveToFile(FLoopSrc);
+  finally
+    L.Free;
+  end;
+
+  P := TProcess.Create(nil);
+  try
+    P.Executable := FindDefaultExecutablePath('gcc');
+    P.Parameters.Add('-g');
+    P.Parameters.Add('-O0');
+    P.Parameters.Add(FLoopSrc);
+    P.Parameters.Add('-o');
+    P.Parameters.Add(Bin);
+    P.Options := [poWaitOnExit, poUsePipes, poStderrToOutPut, poNoConsole];
+    P.Execute;
+    if (P.ExitStatus <> 0) or (not FileExists(Bin)) then Exit;
+  finally
+    P.Free;
+  end;
+
+  ASession := NewSession;
+  ASession.Start;
+  ASession.WaitForState([lgsReady], 10000);
+  ASession.SetTarget(Bin);
+  ASession.BreakInsert(FLoopSrc, 5, ACondition);
+  PumpFor(ASession, 600);
+  ASession.ExecRun;
+  Result := PumpUntilStops(ASession, 1);
+end;
+
+procedure TTestGdb.ConditionalBreakpointWaitsForItsExpression;
+var S: TLedGdbSession; i: Integer; Found: Boolean;
+begin
+  if not StopInLoopProgram(S, 'i == 7') then Exit;
+  try
+    { The loop runs ten times and the breakpoint is on the body, so an
+      unconditional one would stop on the first turn.  This one must not. }
+    S.RequestLocals;
+    PumpFor(S, 2000);
+    Found := False;
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'i' then
+      begin
+        Found := True;
+        AssertEquals('stopped on the turn the condition names', '7',
+          S.Locals[i].Value);
+      end;
+    AssertTrue('the loop variable is there', Found);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'total' then
+        { 0+1+...+6 }
+        AssertEquals('and the sum so far proves', '21', S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.ConditionIsEchoedBack;
+var S: TLedGdbSession;
+begin
+  if not StopInLoopProgram(S, 'i == 3') then Exit;
+  try
+    { gdb repeats the condition in the reply, which is how the gutter knows
+      to draw this one hollow. }
+    AssertEquals('the condition comes back on the event', 'i == 3',
+      FBreakCond);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.ChangingAConditionTakesEffect;
+var S: TLedGdbSession; i: Integer;
+begin
+  { Set unconditionally, then given a condition before running. }
+  if not LedGdbAvailable then Exit;
+  if not StopInLoopProgram(S, 'i == 1') then Exit;
+  try
+    S.BreakCondition(FBreakNum, 'i == 6');
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    S.RequestLocals;
+    PumpFor(S, 2000);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'i' then
+        AssertEquals('the new condition is the one that stops it', '6',
+          S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.ClearingAConditionMakesItAlwaysFire;
+var S: TLedGdbSession; i: Integer;
+begin
+  if not StopInLoopProgram(S, 'i == 2') then Exit;
+  try
+    { Cleared, so the very next turn of the loop stops. }
+    S.BreakCondition(FBreakNum, '');
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    S.RequestLocals;
+    PumpFor(S, 2000);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'i' then
+        AssertEquals('it stops on the next turn now', '3',
+          S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.RunToCursorReachesTheLine;
+var S: TLedGdbSession; i: Integer;
+begin
+  if not StopInLoopProgram(S, '') then Exit;
+  try
+    { With nothing in the way, running to line 7 passes all ten turns of the
+      loop in one go -- which is the point of it, as against Continue. }
+    S.BreakDelete(FBreakNum);
+    PumpFor(S, 500);
+    S.ExecUntil(FLoopSrc, 7);
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('the reason gdb gives for arriving', 'location-reached',
+      FLastReason);
+    AssertEquals('on the line asked for', 7, FLastLine);
+    S.RequestLocals;
+    PumpFor(S, 2000);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'total' then
+        AssertEquals('having run the entire loop', '45', S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.RunToCursorSkipsWhatIsBetween;
+var S: TLedGdbSession;
+begin
+  if not StopInLoopProgram(S, '') then Exit;
+  try
+    { But it does *not* ignore breakpoints, and that is worth pinning down
+      because it reads as though it should: -exec-until stops at the first
+      breakpoint on the way, so with the one on line 5 still in place a run
+      to line 7 gets no further than the next turn of the loop.  Every IDE
+      behaves this way, and a run-to-cursor that silently stepped over a
+      breakpoint would be worse.  The first version of this test asserted the
+      opposite, and gdb corrected it. }
+    S.ExecUntil(FLoopSrc, 7);
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('a breakpoint on the way still stops it', 'breakpoint-hit',
+      FLastReason);
+    AssertEquals('on the line the breakpoint is on', 5, FLastLine);
+  finally
+    S.Free;
+  end;
 end;
 
 initialization
