@@ -886,6 +886,8 @@ end;
 procedure TestBrowserNavigation(F: TLedMainForm);
 var
   Dir, Sub, Start: string;
+  T0: TDateTime;
+  Ms: Integer;
 begin
   Say('file browser navigation');
 
@@ -893,8 +895,16 @@ begin
   Sub := Dir + 'inner' + PathDelim;
   ForceDirectories(Sub);
 
+  { The first show is the expensive one: the tree's handle is created here,
+    and until its Root is set the LCL populates it with every logical drive.
+    On Windows that is reported to take about ten seconds. }
+  T0 := Now;
   F.Dock.ShowPane('files');
   Pump;
+  Ms := MilliSecondsBetween(Now, T0);
+  Check('the first show of the file pane is quick, took ' + IntToStr(Ms) +
+    ' ms', Ms < 1500);
+
   F.Browser.SetRoot(Dir);
   Pump;
   Start := F.Browser.Root;

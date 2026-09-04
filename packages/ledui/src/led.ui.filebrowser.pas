@@ -250,6 +250,15 @@ begin
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;
   FTree.Align := alClient;
+  { Rooted at a real directory before anything else touches it.  With Root
+    left empty the LCL populates from GetBasePath, which is '/' on Unix but
+    '' on Windows -- and the empty case there enumerates every logical drive
+    (shellctrls.pas, PopulateWithBaseFiles), which stalls for as long as the
+    slowest of them takes to answer.  A disconnected network mapping is the
+    usual culprit.
+    First, too, because ObjectTypes and FileSortType each repopulate the
+    tree: setting the root last would run those over the drive list. }
+  if DirectoryExists(GetCurrentDir) then FTree.Root := GetCurrentDir;
   FTree.ObjectTypes := [otFolders];
   FTree.FileSortType := fstFoldersFirst;
   FTree.ReadOnly := True;
