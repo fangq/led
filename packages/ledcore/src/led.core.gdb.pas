@@ -26,7 +26,12 @@
 
     * -break-insert takes its location *unquoted*, because gdb echoes it back
       in original-location= and a quoted location comes back quoted, so the
-      breakpoint can never be matched to the line that asked for it. }
+      breakpoint can never be matched to the line that asked for it.
+
+    * -break-condition and -break-watch take the whole rest of the line as
+      the expression, so quoting makes the quotes part of it.  -break-insert
+      -c is the exception, and is quoted, because there the condition is one
+      argument among several. }
 unit Led.Core.Gdb;
 
 {$mode objfpc}{$H+}
