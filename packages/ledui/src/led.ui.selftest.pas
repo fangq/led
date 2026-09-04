@@ -3623,6 +3623,46 @@ begin
   end;
 end;
 
+{ The same, in grey: a disabled breakpoint is drawn as a grey ring, and
+  nothing else about the view says whether it reached the screen.
+
+  Read as a difference rather than as an absolute, because the line numbers
+  beside it are grey too -- what matters is that disabling one *adds* grey
+  where it took red away. }
+function GutterGrey(V: TLedEdit): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  C: TFPColor;
+  x, y: Integer;
+begin
+  Result := 0;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to 40 do
+          if x < Img.Width then
+          begin
+            C := Img.Colors[x, y];
+            { clGray is $808080, which is $8080 in each 16-bit channel. }
+            if (Abs(Integer(C.Red) - Integer(C.Green)) < 3000) and
+               (Abs(Integer(C.Green) - Integer(C.Blue)) < 3000) and
+               (C.Red > 26000) and (C.Red < 40000) then
+              Inc(Result);
+          end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 { The debugger, end to end, against a real gdb.
 
   Compiles a C program with gcc, opens it, sets a breakpoint by the same call
@@ -3645,7 +3685,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   C: TFPColor;
-  x, y, Reds, Rings: Integer;
+  x, y, Reds, Rings, Greys, Watch: Integer;
   Row: TTreeNode;
 begin
   Say('debugger');
@@ -3677,7 +3717,9 @@ begin
   L := TStringList.Create;
   try
     L.Add('#include <stdio.h>');
-    L.Add('struct P { int x; int y; };');
+    { The global is on the same physical line as the struct so that the line
+      numbers the rest of this test names -- 6, 7 and 11 -- do not move. }
+    L.Add('struct P { int x; int y; }; int hits = 0;');
     L.Add('int twice(int n)');
     L.Add('{');
     L.Add('    struct P p = { n, n + 1 };');
@@ -3687,6 +3729,7 @@ begin
     L.Add('int main(void)');
     L.Add('{');
     L.Add('    printf("%d\\n", twice(21));');   { line 11 -- the call }
+    L.Add('    hits++;');                        { line 12 -- what is watched }
     L.Add('    return 0;');
     L.Add('}');
     L.SaveToFile(Src);
@@ -3768,6 +3811,43 @@ begin
   Pump;
   Check('clearing it fills the dot again', not V.BreakpointIsConditional(6));
   CheckEqInt('and the red comes back', Reds, GutterRed(V));
+
+  { --- the breakpoint list --- }
+  Check('the breakpoint pane is registered', F.Dock.FindPane('breaks') <> nil);
+  Check('and the debugger has it', F.BreakPane <> nil);
+  CheckEqInt('the list has the breakpoint in it', 1, F.BreakPane.RowCount);
+  CheckEq('shown as a breakpoint', 'Breakpoint', F.BreakPane.RowText(0, 2));
+  CheckEq('at the file and line it was set on', 'main.c:6',
+    F.BreakPane.RowText(0, 3));
+  CheckEq('with no number until gdb has been told', '--',
+    F.BreakPane.RowText(0, 0));
+  CheckEq('and switched on', 'yes', F.BreakPane.RowText(0, 1));
+
+  { A condition reaches the list as well as the gutter. }
+  F.Debugger.SetBreakpointCondition(Src, 6, 'n == 21');
+  Pump;
+  CheckEq('a condition is shown beside it', 'n == 21',
+    F.BreakPane.RowText(0, 4));
+  F.Debugger.SetBreakpointCondition(Src, 6, '');
+  Pump;
+  CheckEq('and clearing it empties the column', '',
+    F.BreakPane.RowText(0, 4));
+
+  { Turning one off keeps it and greys it, which is the whole point: a line
+    one has deliberately silenced must not look like a line one forgot. }
+  Greys := GutterGrey(V);
+  F.Debugger.SetBreakpointEnabled(0, False);
+  Pump;
+  CheckEq('the list says it is off', 'no', F.BreakPane.RowText(0, 1));
+  Check('the editor still has it', V.HasBreakpoint(6));
+  Check('and knows it is off', not V.BreakpointIsEnabled(6));
+  CheckEqInt('nothing red is drawn for it any more', 0, GutterRed(V));
+  CheckGt('but a grey ring is', Greys, GutterGrey(V));
+
+  F.Debugger.SetBreakpointEnabled(0, True);
+  Pump;
+  CheckEq('switching it back on says so', 'yes', F.BreakPane.RowText(0, 1));
+  CheckEqInt('and the red dot returns', Reds, GutterRed(V));
 
   { And now actually debug it. }
   Check('the session starts', F.Debugger.Start);
@@ -3904,9 +3984,96 @@ begin
     Check('and a repeat is answered at once', Pos('n = 21', V.Hint) > 0);
   end;
 
+  { --- watchpoints --- }
+  if F.Debugger.Stopped then
+  begin
+    { gdb has numbered the breakpoint by now, and has been counting hits. }
+    Check('the list shows the number gdb gave it',
+      F.BreakPane.RowText(0, 0) <> '--');
+    CheckGt('and that it has been hit', 0,
+      StrToIntDef(F.BreakPane.RowText(0, 5), 0));
+
+    { The pane's own Breakpoint button, which was wired to ldcStop and so
+      ended the session instead of setting anything.  Checked while a session
+      is live, because that is the only state in which the two are told
+      apart. }
+    V.CaretY := 11;
+    F.Debugger.Command(ldcToggleBreakpoint);
+    Pump;
+    CheckEqInt('the Breakpoint button sets one at the caret', 2,
+      F.Debugger.BreakpointCount);
+    Check('and leaves the session alone', F.Debugger.Session.Alive);
+    Check('which is still stopped', F.Debugger.Stopped);
+    F.Debugger.Command(ldcToggleBreakpoint);
+    Pump;
+    CheckEqInt('and takes it away again', 1, F.Debugger.BreakpointCount);
+
+    { Typed into the pane's own box, so what is exercised is the widget and
+      not the event it happens to raise. }
+    F.BreakPane.TypeWatchpoint('hits', lgbWatch);
+    Waited := 0;
+    while (F.BreakPane.RowCount < 2) and (Waited < 4000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEqInt('the watchpoint joins the list', 2, F.BreakPane.RowCount);
+    CheckEq('as a watchpoint', 'Write watch', F.BreakPane.RowText(1, 2));
+    CheckEq('on the expression typed', 'hits', F.BreakPane.RowText(1, 3));
+
+    Waited := 0;
+    while (F.BreakPane.RowText(1, 0) = '--') and (Waited < 6000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    Check('and gdb numbered it too', F.BreakPane.RowText(1, 0) <> '--');
+
+    { hits is written in main, after twice() returns -- so continuing from
+      line 7 with the breakpoint behind us can only stop on the watchpoint. }
+    F.Debugger.SetBreakpointEnabled(0, False);
+    Pump;
+    Watch := F.Debugger.CurrentLine;
+    F.Debugger.Command(ldcContinue);
+    Waited := 0;
+    while (F.Debugger.CurrentLine = Watch) and (Waited < 15000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEqInt('the watchpoint stops on the line after the write', 13,
+      F.Debugger.CurrentLine);
+    Waited := 0;
+    while (StrToIntDef(F.BreakPane.RowText(1, 5), 0) = 0) and (Waited < 4000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEqInt('and the list counts the hit', 1,
+      StrToIntDef(F.BreakPane.RowText(1, 5), 0));
+
+    { Removing it through the list is what the Remove button does.  The pane
+      is shown first: a list view with no window handle behind it keeps no
+      selection, so the check would be testing the wrong thing. }
+    F.Dock.EdgeVisible[ledBottom] := True;
+    F.Dock.ShowPane('breaks');
+    Pump;
+    F.BreakPane.Select(1);
+    CheckEqInt('the row can be selected', 1, F.BreakPane.Selected);
+    F.Debugger.RemoveBreakpoint(1);
+    Pump;
+    CheckEqInt('removing it leaves only the breakpoint', 1,
+      F.BreakPane.RowCount);
+  end;
+
   F.Debugger.Stop;
   Pump;
   Check('stopping clears the execution mark', V.DebugLine = 0);
+
+  { Forgetting everything empties the list and the gutter with it. }
+  F.Debugger.RemoveAllBreakpoints;
+  Pump;
+  CheckEqInt('remove-all empties the list', 0, F.BreakPane.RowCount);
+  Check('and the gutter mark goes with it', not V.HasBreakpoint(6));
+  CheckEqInt('with nothing left painted', 0, GutterRed(V));
+  F.Debugger.ToggleBreakpoint(Src, 6);
+  Pump;
 
   { --- building.  The launch.json above names no build command, so add one
     and check the project compiles through the ordinary tool runner. --- }

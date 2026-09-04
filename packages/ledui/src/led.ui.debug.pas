@@ -47,7 +47,8 @@ type
   { What the toolbar asked for.  One event with a verb rather than eight
     events, because the main form's actions want the same list. }
   TLedDebugCommand = (ldcStart, ldcContinue, ldcPause, ldcStop,
-                      ldcStepOver, ldcStepInto, ldcStepOut, ldcBuild);
+                      ldcStepOver, ldcStepInto, ldcStepOut, ldcBuild,
+                      ldcToggleBreakpoint);
 
   TLedDebugCommandEvent = procedure(Sender: TObject;
     ACommand: TLedDebugCommand) of object;
@@ -146,13 +147,80 @@ type
 
   { TLedDebugger }
 
+  { One row of the breakpoint list: a line breakpoint or a watchpoint.  Kept
+    in one array for the same reason gdb keeps them in one number space --
+    everything that acts on a breakpoint acts on a watchpoint too. }
   TLedBreakpoint = record
-    FileName: string;
-    Line: Integer;
+    Kind: TLedGdbBreakKind;
+    FileName: string;     // line breakpoints only
+    Line: Integer;        // line breakpoints only
+    Expression: string;   // watchpoints only
     Number: Integer;      // as gdb knows it, or -1 while it is still asking
     Condition: string;    // '' for one that always fires
+    Enabled: Boolean;
+    HitCount: Integer;
   end;
   TLedBreakpoints = array of TLedBreakpoint;
+
+  TLedBreakRowEvent = procedure(Sender: TObject; AIndex: Integer) of object;
+  TLedBreakAddEvent = procedure(Sender: TObject; const AExpression: string;
+    AKind: TLedGdbBreakKind) of object;
+
+  { TLedBreakPane -- every breakpoint and watchpoint in one list.
+
+    Its own pane rather than a fourth section of the debugger pane: the three
+    sections there are read by glancing between them while stepping, and this
+    is not that.  It is a list one goes to in order to change something --
+    disable a breakpoint, see why one is not firing, watch a variable -- and
+    it wants width, which is what the bottom edge has and the right edge has
+    not. }
+  TLedBreakPane = class(TPanel)
+  private
+    FList: TListView;
+    FBar: TToolBar;
+    FEntry: TEdit;
+    FKind: TComboBox;
+    FFilling: Boolean;
+    FOnJump: TLedBreakRowEvent;
+    FOnRemove: TLedBreakRowEvent;
+    FOnToggleEnabled: TLedBreakRowEvent;
+    FOnEditCondition: TLedBreakRowEvent;
+    FOnRemoveAll: TNotifyEvent;
+    FOnAddWatchpoint: TLedBreakAddEvent;
+    procedure ListDouble(Sender: TObject);
+    procedure ListKey(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure EntryKey(Sender: TObject; var Key: Char);
+    procedure RemoveClick(Sender: TObject);
+    procedure RemoveAllClick(Sender: TObject);
+    procedure EnableClick(Sender: TObject);
+    procedure ConditionClick(Sender: TObject);
+    function AddButton(const ACaption, AHint: string;
+      AOnClick: TNotifyEvent): TToolButton;
+  public
+    constructor Create(AOwner: TComponent); override;
+    procedure SetImages(AImages: TCustomImageList; const AIndexes: array of Integer);
+    { Redraws the whole list.  Cheap -- there are never many -- and it keeps
+      the selection where it was, which a rebuild otherwise loses. }
+    procedure ShowBreakpoints(const ABreaks: TLedBreakpoints);
+    function RowCount: Integer;
+    function RowText(AIndex, AColumn: Integer): string;
+    function Selected: Integer;
+    procedure Select(AIndex: Integer);
+    { For the self-test, and for anything else that wants to add a watchpoint
+      without typing into the box. }
+    procedure TypeWatchpoint(const AExpression: string; AKind: TLedGdbBreakKind);
+
+    property List: TListView read FList;
+    property OnJump: TLedBreakRowEvent read FOnJump write FOnJump;
+    property OnRemove: TLedBreakRowEvent read FOnRemove write FOnRemove;
+    property OnToggleEnabled: TLedBreakRowEvent
+      read FOnToggleEnabled write FOnToggleEnabled;
+    property OnEditCondition: TLedBreakRowEvent
+      read FOnEditCondition write FOnEditCondition;
+    property OnRemoveAll: TNotifyEvent read FOnRemoveAll write FOnRemoveAll;
+    property OnAddWatchpoint: TLedBreakAddEvent
+      read FOnAddWatchpoint write FOnAddWatchpoint;
+  end;
 
   TLedDebugger = class(TComponent)
   private
@@ -160,6 +228,7 @@ type
     FProject: TLedProject;
     FTimer: TTimer;
     FPane: TLedDebugPane;
+    FBreakPane: TLedBreakPane;
     FBreaks: TLedBreakpoints;
     FWatchExprs: TStringList;
     { What has already been asked about at this stop, so moving the pointer
@@ -178,16 +247,18 @@ type
     FOnStatus: TLedDebugTextEvent;
     FOnViewFor: TLedDebugViewLookup;
     FOnStateChanged: TNotifyEvent;
+    FOnEditCondition: TLedDebugJumpEvent;
+    FOnToggleBreakpoint: TNotifyEvent;
 
     procedure Tick(Sender: TObject);
     procedure SessionStopped(Sender: TObject; const AReason, AFileName: string;
       ALine: Integer; const AFunc: string);
     procedure SessionRunning(Sender: TObject);
     procedure SessionStateChanged(Sender: TObject);
-    procedure SessionBreakAdded(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer; const ACondition: string);
-    procedure SessionBreakRemoved(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer; const ACondition: string);
+    procedure SessionBreakAdded(Sender: TObject; const AInfo: TLedGdbBreakInfo);
+    procedure SessionBreakRemoved(Sender: TObject; ANumber: Integer);
+    procedure SessionWatchHit(Sender: TObject; ANumber: Integer;
+      const AExpression, AOldValue, ANewValue: string);
     procedure SessionLocals(Sender: TObject);
     procedure SessionFrames(Sender: TObject);
     procedure SessionEval(Sender: TObject; const ATag, AValue: string;
@@ -209,7 +280,22 @@ type
       const AChildren: TLedGdbVarChildren);
 
     function IndexOfBreak(const AFileName: string; ALine: Integer): Integer;
+    function IndexOfNumber(ANumber: Integer): Integer;
+    function IndexOfPendingWatch(const AExpression: string): Integer;
+    function NewBreakRow: Integer;
+    procedure DropBreakRow(AIndex: Integer);
     procedure PushMarksFor(const AFileName: string);
+    { Repaints the breakpoint list, and the gutter of whatever the row
+      touches.  Called from everything that changes FBreaks, because a list
+      that is right only after the next stop is worse than none. }
+    procedure RefreshBreakList;
+    procedure BreakPaneJump(Sender: TObject; AIndex: Integer);
+    procedure BreakPaneRemove(Sender: TObject; AIndex: Integer);
+    procedure BreakPaneToggle(Sender: TObject; AIndex: Integer);
+    procedure BreakPaneCondition(Sender: TObject; AIndex: Integer);
+    procedure BreakPaneRemoveAll(Sender: TObject);
+    procedure BreakPaneAddWatchpoint(Sender: TObject; const AExpression: string;
+      AKind: TLedGdbBreakKind);
     procedure ClearDebugLine;
     procedure Say(const AText: string);
     function ActiveConfig: TLedLaunchConfig;
@@ -221,6 +307,7 @@ type
     destructor Destroy; override;
 
     procedure Attach(APane: TLedDebugPane);
+    procedure AttachBreakPane(APane: TLedBreakPane);
     { Re-reads the project for the folder AFileName is in, and refreshes the
       configuration list.  Cheap and idempotent; called when the active tab
       changes. }
@@ -243,6 +330,19 @@ type
     procedure HoverExpression(AView: TLedEdit; const AExpr: string);
     function BreakpointCount: Integer;
     function HasBreakpoint(const AFileName: string; ALine: Integer): Boolean;
+    { A copy of a row, for anything that wants to read the list without
+      being able to corrupt it. }
+    function Breakpoint(AIndex: Integer): TLedBreakpoint;
+    { Stops the program when AExpression changes, is read, or either.
+
+      Remembered whether or not gdb takes it, and replayed at the next Start,
+      so a watchpoint on a global can be set before anything is running --
+      one on a local cannot, and gdb says so. }
+    procedure AddWatchpoint(const AExpression: string;
+      AKind: TLedGdbBreakKind = lgbWatch);
+    procedure RemoveBreakpoint(AIndex: Integer);
+    procedure RemoveAllBreakpoints;
+    procedure SetBreakpointEnabled(AIndex: Integer; AEnabled: Boolean);
 
     { Everything the main form needs to enable or disable a menu item. }
     function Running: Boolean;
@@ -266,6 +366,15 @@ type
     property OnStatus: TLedDebugTextEvent read FOnStatus write FOnStatus;
     property OnViewFor: TLedDebugViewLookup read FOnViewFor write FOnViewFor;
     property OnStateChanged: TNotifyEvent read FOnStateChanged write FOnStateChanged;
+    { The breakpoint list asked for a condition to be edited.  Raised rather
+      than prompted for here: the dialog belongs to the main form, which
+      already has one for the same job on the caret's line. }
+    property OnEditCondition: TLedDebugJumpEvent
+      read FOnEditCondition write FOnEditCondition;
+    { The pane's Breakpoint button was pressed.  Raised for the same reason
+      as OnEditCondition: it is a question about the caret. }
+    property OnToggleBreakpoint: TNotifyEvent
+      read FOnToggleBreakpoint write FOnToggleBreakpoint;
   end;
 
 implementation
@@ -296,7 +405,7 @@ begin
     creation unless each is given a Left, and giving them one hard-codes a
     width that stops being right the moment the icons scale. }
   AddButton('Build', 'Build the project'#13'Runs the configuration''s build command', ldcBuild, -1);
-  AddButton('Breakpoint', 'Toggle breakpoint'#13'F9', ldcStop, -1);
+  AddButton('Breakpoint', 'Toggle breakpoint'#13'F9', ldcToggleBreakpoint, -1);
   AddButton('Step Out', 'Step out'#13'Shift+F11', ldcStepOut, -1);
   AddButton('Step Into', 'Step into'#13'F11', ldcStepInto, -1);
   AddButton('Step Over', 'Step over'#13'F10', ldcStepOver, -1);
@@ -755,9 +864,246 @@ begin
       ldcStepOver, ldcStepInto, ldcStepOut:
                    B.Enabled := AtRest;
       ldcBuild:    B.Enabled := AHasProject;
+      ldcToggleBreakpoint: B.Enabled := True;
     end;
   end;
   FCmdEntry.Enabled := Live;
+end;
+
+{ --- TLedBreakPane --------------------------------------------------------- }
+
+const
+  { What each kind is called in the list.  gdb's own words are "hw
+    watchpoint" and "acc watchpoint", which say how it is implemented rather
+    than what it does. }
+  BreakKindNames: array[TLedGdbBreakKind] of string =
+    ('Breakpoint', 'Write watch', 'Read watch', 'Access watch');
+
+constructor TLedBreakPane.Create(AOwner: TComponent);
+var
+  Foot: TPanel;
+  C: TListColumn;
+  K: TLedGdbBreakKind;
+begin
+  inherited Create(AOwner);
+  BevelOuter := bvNone;
+  Caption := '';
+
+  FBar := TToolBar.Create(Self);
+  FBar.Parent := Self;
+  FBar.Align := alTop;
+  FBar.EdgeBorders := [];
+  FBar.ShowCaptions := True;
+  FBar.Flat := True;
+  FBar.AutoSize := True;
+
+  { Back to front, as in the debugger pane, for the same reason: a TToolBar
+    lays its children out in reverse unless each is given a Left. }
+  AddButton('Remove All', 'Forget every breakpoint and watchpoint',
+    @RemoveAllClick);
+  AddButton('Remove', 'Forget the selected one'#13'Delete', @RemoveClick);
+  AddButton('Condition...', 'Only stop where an expression is true',
+    @ConditionClick);
+  AddButton('Enable', 'Turn the selected one off, or back on'#13'Space',
+    @EnableClick);
+
+  Foot := TPanel.Create(Self);
+  Foot.Parent := Self;
+  Foot.Align := alBottom;
+  Foot.BevelOuter := bvNone;
+  Foot.AutoSize := True;
+
+  FKind := TComboBox.Create(Self);
+  FKind.Parent := Foot;
+  FKind.Align := alLeft;
+  FKind.Style := csDropDownList;
+  for K := lgbWatch to lgbAccessWatch do FKind.Items.Add(BreakKindNames[K]);
+  FKind.ItemIndex := 0;
+  FKind.Width := 110;
+
+  FEntry := TEdit.Create(Self);
+  FEntry.Parent := Foot;
+  FEntry.Align := alClient;
+  FEntry.TextHint := 'Watch an expression -- stop when it changes -- then Enter';
+  FEntry.OnKeyPress := @EntryKey;
+
+  FList := TListView.Create(Self);
+  FList.Parent := Self;
+  FList.Align := alClient;
+  FList.ViewStyle := vsReport;
+  FList.ReadOnly := True;
+  FList.RowSelect := True;
+  FList.HideSelection := False;
+  FList.OnDblClick := @ListDouble;
+  FList.OnKeyDown := @ListKey;
+
+  { On is a word rather than a checkbox: LCL's list-view checkboxes fire
+    OnItemChecked while the list is being filled as well as when a person
+    clicks, so the state would have to be guarded going in and out.  A
+    column and a button say the same thing and can be driven by a test. }
+  C := FList.Columns.Add; C.Caption := '#';          C.Width := 40;
+  C := FList.Columns.Add; C.Caption := 'On';         C.Width := 40;
+  C := FList.Columns.Add; C.Caption := 'Kind';       C.Width := 100;
+  C := FList.Columns.Add; C.Caption := 'Where';      C.Width := 260;
+  C := FList.Columns.Add; C.Caption := 'Condition';  C.Width := 180;
+  C := FList.Columns.Add; C.Caption := 'Hits';       C.Width := 50;
+end;
+
+function TLedBreakPane.AddButton(const ACaption, AHint: string;
+  AOnClick: TNotifyEvent): TToolButton;
+begin
+  Result := TToolButton.Create(Self);
+  Result.Parent := FBar;
+  Result.Caption := ACaption;
+  Result.Hint := AHint;
+  Result.ShowHint := True;
+  Result.ImageIndex := -1;
+  Result.OnClick := AOnClick;
+end;
+
+procedure TLedBreakPane.SetImages(AImages: TCustomImageList;
+  const AIndexes: array of Integer);
+var
+  i: Integer;
+begin
+  FBar.Images := AImages;
+  for i := 0 to FBar.ButtonCount - 1 do
+    if i <= High(AIndexes) then FBar.Buttons[i].ImageIndex := AIndexes[i];
+end;
+
+procedure TLedBreakPane.ShowBreakpoints(const ABreaks: TLedBreakpoints);
+var
+  i, Keep: Integer;
+  It: TListItem;
+  Where: string;
+begin
+  Keep := Selected;
+  FFilling := True;
+  FList.BeginUpdate;
+  try
+    FList.Items.Clear;
+    for i := 0 to High(ABreaks) do
+    begin
+      It := FList.Items.Add;
+      { Dashed rather than blank while gdb has not answered yet, because a
+        breakpoint with no number is one that is only in led so far -- which
+        is the ordinary state of one set before the session starts. }
+      if ABreaks[i].Number > 0 then
+        It.Caption := IntToStr(ABreaks[i].Number)
+      else
+        It.Caption := '--';
+      if ABreaks[i].Enabled then It.SubItems.Add('yes')
+                            else It.SubItems.Add('no');
+      It.SubItems.Add(BreakKindNames[ABreaks[i].Kind]);
+      if ABreaks[i].Kind = lgbLine then
+        Where := Format('%s:%d', [ExtractFileName(ABreaks[i].FileName),
+                                  ABreaks[i].Line])
+      else
+        Where := ABreaks[i].Expression;
+      It.SubItems.Add(Where);
+      It.SubItems.Add(ABreaks[i].Condition);
+      It.SubItems.Add(IntToStr(ABreaks[i].HitCount));
+    end;
+  finally
+    FList.EndUpdate;
+    FFilling := False;
+  end;
+  Select(Keep);
+end;
+
+function TLedBreakPane.RowCount: Integer;
+begin
+  Result := FList.Items.Count;
+end;
+
+function TLedBreakPane.RowText(AIndex, AColumn: Integer): string;
+begin
+  Result := '';
+  if (AIndex < 0) or (AIndex >= FList.Items.Count) then Exit;
+  if AColumn = 0 then Exit(FList.Items[AIndex].Caption);
+  if AColumn - 1 < FList.Items[AIndex].SubItems.Count then
+    Result := FList.Items[AIndex].SubItems[AColumn - 1];
+end;
+
+function TLedBreakPane.Selected: Integer;
+begin
+  if FList.Selected = nil then Result := -1
+                          else Result := FList.Selected.Index;
+end;
+
+procedure TLedBreakPane.Select(AIndex: Integer);
+begin
+  if (AIndex >= 0) and (AIndex < FList.Items.Count) then
+    FList.Items[AIndex].Selected := True;
+end;
+
+procedure TLedBreakPane.TypeWatchpoint(const AExpression: string;
+  AKind: TLedGdbBreakKind);
+var
+  Key: Char;
+begin
+  if AKind = lgbLine then Exit;
+  FKind.ItemIndex := Ord(AKind) - Ord(lgbWatch);
+  FEntry.Text := AExpression;
+  { Through the same key handler a person's Enter goes through, so the test
+    exercises the widget rather than the event it happens to raise. }
+  Key := #13;
+  EntryKey(FEntry, Key);
+end;
+
+procedure TLedBreakPane.ListDouble(Sender: TObject);
+begin
+  if (Selected >= 0) and Assigned(FOnJump) then FOnJump(Self, Selected);
+end;
+
+procedure TLedBreakPane.ListKey(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+  if Selected < 0 then Exit;
+  if Key = VK_DELETE then
+  begin
+    if Assigned(FOnRemove) then FOnRemove(Self, Selected);
+    Key := 0;
+  end
+  else if Key = VK_SPACE then
+  begin
+    if Assigned(FOnToggleEnabled) then FOnToggleEnabled(Self, Selected);
+    Key := 0;
+  end;
+end;
+
+procedure TLedBreakPane.EntryKey(Sender: TObject; var Key: Char);
+var
+  K: TLedGdbBreakKind;
+begin
+  if (Key <> #13) or (Trim(FEntry.Text) = '') then Exit;
+  K := TLedGdbBreakKind(Ord(lgbWatch) + FKind.ItemIndex);
+  if Assigned(FOnAddWatchpoint) then
+    FOnAddWatchpoint(Self, Trim(FEntry.Text), K);
+  FEntry.Text := '';
+  Key := #0;
+end;
+
+procedure TLedBreakPane.RemoveClick(Sender: TObject);
+begin
+  if (Selected >= 0) and Assigned(FOnRemove) then FOnRemove(Self, Selected);
+end;
+
+procedure TLedBreakPane.RemoveAllClick(Sender: TObject);
+begin
+  if Assigned(FOnRemoveAll) then FOnRemoveAll(Self);
+end;
+
+procedure TLedBreakPane.EnableClick(Sender: TObject);
+begin
+  if (Selected >= 0) and Assigned(FOnToggleEnabled) then
+    FOnToggleEnabled(Self, Selected);
+end;
+
+procedure TLedBreakPane.ConditionClick(Sender: TObject);
+begin
+  if (Selected >= 0) and Assigned(FOnEditCondition) then
+    FOnEditCondition(Self, Selected);
 end;
 
 { --- TLedDebugger ---------------------------------------------------------- }
@@ -771,6 +1117,7 @@ begin
   FSession.OnStateChanged := @SessionStateChanged;
   FSession.OnBreakAdded := @SessionBreakAdded;
   FSession.OnBreakRemoved := @SessionBreakRemoved;
+  FSession.OnWatchHit := @SessionWatchHit;
   FSession.OnLocals := @SessionLocals;
   FSession.OnFrames := @SessionFrames;
   FSession.OnEval := @SessionEval;
@@ -815,6 +1162,19 @@ begin
   FPane.OnRawCommand := @PaneRaw;
   FPane.OnConfigChanged := @PaneConfigChanged;
   FPane.OnExpandLocal := @PaneExpandLocal;
+end;
+
+procedure TLedDebugger.AttachBreakPane(APane: TLedBreakPane);
+begin
+  FBreakPane := APane;
+  if FBreakPane = nil then Exit;
+  FBreakPane.OnJump := @BreakPaneJump;
+  FBreakPane.OnRemove := @BreakPaneRemove;
+  FBreakPane.OnToggleEnabled := @BreakPaneToggle;
+  FBreakPane.OnEditCondition := @BreakPaneCondition;
+  FBreakPane.OnRemoveAll := @BreakPaneRemoveAll;
+  FBreakPane.OnAddWatchpoint := @BreakPaneAddWatchpoint;
+  RefreshBreakList;
 end;
 
 procedure TLedDebugger.Say(const AText: string);
@@ -897,9 +1257,80 @@ var
   i: Integer;
 begin
   for i := 0 to High(FBreaks) do
-    if (FBreaks[i].Line = ALine) and
+    if (FBreaks[i].Kind = lgbLine) and (FBreaks[i].Line = ALine) and
        SameFileName(FBreaks[i].FileName, AFileName) then Exit(i);
   Result := -1;
+end;
+
+{ A watchpoint led has asked for but gdb has not numbered yet.  Matched on
+  the expression, which is all the reply carries. }
+function TLedDebugger.IndexOfPendingWatch(const AExpression: string): Integer;
+var
+  i: Integer;
+begin
+  if AExpression <> '' then
+    for i := 0 to High(FBreaks) do
+      if (FBreaks[i].Kind <> lgbLine) and (FBreaks[i].Number < 0) and
+         (FBreaks[i].Expression = AExpression) then Exit(i);
+  Result := -1;
+end;
+
+function TLedDebugger.IndexOfNumber(ANumber: Integer): Integer;
+var
+  i: Integer;
+begin
+  if ANumber > 0 then
+    for i := 0 to High(FBreaks) do
+      if FBreaks[i].Number = ANumber then Exit(i);
+  Result := -1;
+end;
+
+{ A blank row with the defaults every kind shares.  Written once because
+  forgetting Enabled leaves a breakpoint that the list draws as off and that
+  Start then tries to disable. }
+function TLedDebugger.NewBreakRow: Integer;
+begin
+  Result := Length(FBreaks);
+  SetLength(FBreaks, Result + 1);
+  FBreaks[Result].Kind := lgbLine;
+  FBreaks[Result].FileName := '';
+  FBreaks[Result].Line := 0;
+  FBreaks[Result].Expression := '';
+  FBreaks[Result].Number := -1;
+  FBreaks[Result].Condition := '';
+  FBreaks[Result].Enabled := True;
+  FBreaks[Result].HitCount := 0;
+end;
+
+procedure TLedDebugger.DropBreakRow(AIndex: Integer);
+var
+  n: Integer;
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  for n := AIndex to High(FBreaks) - 1 do FBreaks[n] := FBreaks[n + 1];
+  SetLength(FBreaks, Length(FBreaks) - 1);
+end;
+
+procedure TLedDebugger.RefreshBreakList;
+begin
+  if FBreakPane <> nil then FBreakPane.ShowBreakpoints(FBreaks);
+end;
+
+function TLedDebugger.Breakpoint(AIndex: Integer): TLedBreakpoint;
+begin
+  { Set field by field rather than with FillChar: the record holds strings,
+    and zeroing a managed field behind the compiler's back is how one gets a
+    reference count that is wrong later rather than a crash now. }
+  Result.Kind := lgbLine;
+  Result.FileName := '';
+  Result.Line := 0;
+  Result.Expression := '';
+  Result.Number := -1;
+  Result.Condition := '';
+  Result.Enabled := False;
+  Result.HitCount := 0;
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  Result := FBreaks[AIndex];
 end;
 
 function TLedDebugger.HasBreakpoint(const AFileName: string;
@@ -925,10 +1356,12 @@ begin
   SetLength(Marks, Length(FBreaks));
   n := 0;
   for i := 0 to High(FBreaks) do
-    if SameFileName(FBreaks[i].FileName, AFileName) then
+    if (FBreaks[i].Kind = lgbLine) and
+       SameFileName(FBreaks[i].FileName, AFileName) then
     begin
       Marks[n].Line := FBreaks[i].Line;
       Marks[n].Conditional := FBreaks[i].Condition <> '';
+      Marks[n].Enabled := FBreaks[i].Enabled;
       Inc(n);
     end;
   SetLength(Marks, n);
@@ -946,21 +1379,19 @@ begin
   begin
     if (FBreaks[i].Number > 0) and FSession.Alive then
       FSession.BreakDelete(FBreaks[i].Number);
-    for n := i to High(FBreaks) - 1 do FBreaks[n] := FBreaks[n + 1];
-    SetLength(FBreaks, Length(FBreaks) - 1);
+    DropBreakRow(i);
   end
   else
   begin
-    n := Length(FBreaks);
-    SetLength(FBreaks, n + 1);
+    n := NewBreakRow;
     FBreaks[n].FileName := AFileName;
     FBreaks[n].Line := ALine;
-    FBreaks[n].Number := -1;
     { Sent now when gdb is up, and replayed at Start when it is not, so a
       breakpoint can be set before anything is running. }
     if FSession.Alive then FSession.BreakInsert(AFileName, ALine);
   end;
   PushMarksFor(AFileName);
+  RefreshBreakList;
 end;
 
 procedure TLedDebugger.SendBreakpointsToGdb;
@@ -970,11 +1401,18 @@ begin
   for i := 0 to High(FBreaks) do
   begin
     FBreaks[i].Number := -1;
-    { With its condition, so one set before the session started still only
-      fires where it was meant to. }
-    FSession.BreakInsert(FBreaks[i].FileName, FBreaks[i].Line,
-      FBreaks[i].Condition);
+    if FBreaks[i].Kind = lgbLine then
+      { With its condition, so one set before the session started still only
+        fires where it was meant to. }
+      FSession.BreakInsert(FBreaks[i].FileName, FBreaks[i].Line,
+        FBreaks[i].Condition)
+    else
+      { Watchpoints are replayed too, and a local's will be refused until
+        there is a frame -- gdb says so, and the row stays with no number
+        so the list shows it has not taken. }
+      FSession.WatchInsert(FBreaks[i].Expression, FBreaks[i].Kind);
   end;
+  RefreshBreakList;
 end;
 
 function TLedDebugger.BreakpointCondition(const AFileName: string;
@@ -1012,6 +1450,75 @@ begin
     Say(Format('[gdb] breakpoint at %s:%d always fires',
       [ExtractFileName(AFileName), ALine]));
   PushMarksFor(AFileName);
+  RefreshBreakList;
+end;
+
+{ --- watchpoints and the list --------------------------------------------- }
+
+procedure TLedDebugger.AddWatchpoint(const AExpression: string;
+  AKind: TLedGdbBreakKind);
+var
+  n: Integer;
+begin
+  if Trim(AExpression) = '' then Exit;
+  if AKind = lgbLine then AKind := lgbWatch;
+  n := NewBreakRow;
+  FBreaks[n].Kind := AKind;
+  FBreaks[n].Expression := Trim(AExpression);
+  if FSession.Alive then
+    FSession.WatchInsert(FBreaks[n].Expression, AKind)
+  else
+    Say(Format('[gdb] will watch %s when the session starts',
+      [FBreaks[n].Expression]));
+  RefreshBreakList;
+end;
+
+procedure TLedDebugger.RemoveBreakpoint(AIndex: Integer);
+var
+  Gone: string;
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  Gone := FBreaks[AIndex].FileName;
+  if (FBreaks[AIndex].Number > 0) and FSession.Alive then
+    FSession.BreakDelete(FBreaks[AIndex].Number);
+  DropBreakRow(AIndex);
+  if Gone <> '' then PushMarksFor(Gone);
+  RefreshBreakList;
+end;
+
+procedure TLedDebugger.RemoveAllBreakpoints;
+var
+  i: Integer;
+  Files: TStringList;
+begin
+  Files := TStringList.Create;
+  try
+    Files.Duplicates := dupIgnore;
+    Files.Sorted := True;
+    for i := High(FBreaks) downto 0 do
+    begin
+      if FBreaks[i].FileName <> '' then Files.Add(FBreaks[i].FileName);
+      if (FBreaks[i].Number > 0) and FSession.Alive then
+        FSession.BreakDelete(FBreaks[i].Number);
+    end;
+    SetLength(FBreaks, 0);
+    { Every file that had one, because the gutter is pushed per view. }
+    for i := 0 to Files.Count - 1 do PushMarksFor(Files[i]);
+  finally
+    Files.Free;
+  end;
+  RefreshBreakList;
+end;
+
+procedure TLedDebugger.SetBreakpointEnabled(AIndex: Integer; AEnabled: Boolean);
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  FBreaks[AIndex].Enabled := AEnabled;
+  if (FBreaks[AIndex].Number > 0) and FSession.Alive then
+    FSession.BreakEnable(FBreaks[AIndex].Number, AEnabled);
+  if FBreaks[AIndex].Kind = lgbLine then
+    PushMarksFor(FBreaks[AIndex].FileName);
+  RefreshBreakList;
 end;
 
 procedure TLedDebugger.RunToCursor(const AFileName: string; ALine: Integer);
@@ -1026,47 +1533,91 @@ end;
 
 { --- session events --- }
 
-procedure TLedDebugger.SessionBreakAdded(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer; const ACondition: string);
+{ gdb has told us about a breakpoint or watchpoint.
+
+  Matched by number first, because =breakpoint-modified -- which is how hit
+  counts and a watchpoint's real type arrive -- is about one we already have.
+  Failing that it is a new one: matched to the row that asked for it, by line
+  for a breakpoint and by expression for a watchpoint, both of which are
+  waiting with no number yet. }
+procedure TLedDebugger.SessionBreakAdded(Sender: TObject;
+  const AInfo: TLedGdbBreakInfo);
 var
   i: Integer;
 begin
-  i := IndexOfBreak(AFileName, ALine);
-  if i >= 0 then
+  i := IndexOfNumber(AInfo.Number);
+
+  if i < 0 then
   begin
-    FBreaks[i].Number := ANumber;
-    { gdb's answer wins: a condition it rejected is not one we have. }
-    FBreaks[i].Condition := ACondition;
-  end
-  else if (AFileName <> '') and (ALine > 0) then
-  begin
-    { Created from the gdb command box rather than from the gutter.  Adopted,
-      so the dot appears where gdb says the breakpoint is. }
-    i := Length(FBreaks);
-    SetLength(FBreaks, i + 1);
-    FBreaks[i].FileName := AFileName;
-    FBreaks[i].Line := ALine;
-    FBreaks[i].Number := ANumber;
-    FBreaks[i].Condition := ACondition;
+    if AInfo.Kind = lgbLine then
+      i := IndexOfBreak(AInfo.FileName, AInfo.Line)
+    else
+      i := IndexOfPendingWatch(AInfo.Expression);
   end;
-  PushMarksFor(AFileName);
+
+  if i < 0 then
+  begin
+    { Created from the gdb command box rather than from the gutter or the
+      list.  Adopted, so the dot appears where gdb says it is. }
+    if (AInfo.Kind = lgbLine) and ((AInfo.FileName = '') or (AInfo.Line <= 0))
+      then Exit;
+    if (AInfo.Kind <> lgbLine) and (AInfo.Expression = '') then Exit;
+    i := NewBreakRow;
+    FBreaks[i].Kind := AInfo.Kind;
+    FBreaks[i].FileName := AInfo.FileName;
+    FBreaks[i].Line := AInfo.Line;
+    FBreaks[i].Expression := AInfo.Expression;
+  end;
+
+  FBreaks[i].Number := AInfo.Number;
+  { A watchpoint only learns which of the three kinds it is from the full
+    record; the short insert reply guesses from the field name and is right,
+    but =breakpoint-modified is gdb's own word for it. }
+  if AInfo.Complete then
+  begin
+    FBreaks[i].Kind := AInfo.Kind;
+    { gdb's answer wins: a condition it rejected is not one we have. }
+    FBreaks[i].Condition := AInfo.Condition;
+    FBreaks[i].HitCount := AInfo.HitCount;
+    if AInfo.Kind <> lgbLine then FBreaks[i].Expression := AInfo.Expression;
+  end;
+
+  { Disabling sends no notification, so a row that was turned off before the
+    session started has to turn itself off again now it has a number. }
+  if (not FBreaks[i].Enabled) and AInfo.Enabled and FSession.Alive then
+    FSession.BreakEnable(AInfo.Number, False)
+  else if AInfo.Complete then
+    FBreaks[i].Enabled := AInfo.Enabled;
+
+  if FBreaks[i].Kind = lgbLine then PushMarksFor(FBreaks[i].FileName);
+  RefreshBreakList;
 end;
 
-procedure TLedDebugger.SessionBreakRemoved(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer; const ACondition: string);
+procedure TLedDebugger.SessionBreakRemoved(Sender: TObject; ANumber: Integer);
 var
-  i, n: Integer;
+  i: Integer;
   Gone: string;
 begin
-  for i := 0 to High(FBreaks) do
-    if FBreaks[i].Number = ANumber then
-    begin
-      Gone := FBreaks[i].FileName;
-      for n := i to High(FBreaks) - 1 do FBreaks[n] := FBreaks[n + 1];
-      SetLength(FBreaks, Length(FBreaks) - 1);
-      PushMarksFor(Gone);
-      Exit;
-    end;
+  i := IndexOfNumber(ANumber);
+  if i < 0 then Exit;
+  Gone := FBreaks[i].FileName;
+  DropBreakRow(i);
+  if Gone <> '' then PushMarksFor(Gone);
+  RefreshBreakList;
+end;
+
+{ A watchpoint fired.  Said before the stop is handled, because by the time
+  the caret has moved and the locals have been re-read the interesting part
+  -- what the value was a moment ago -- is gone from everywhere but here. }
+procedure TLedDebugger.SessionWatchHit(Sender: TObject; ANumber: Integer;
+  const AExpression, AOldValue, ANewValue: string);
+begin
+  if AOldValue = '' then
+    Say(Format('[gdb] watchpoint %d: %s read, value %s',
+      [ANumber, AExpression, ANewValue]))
+  else
+    Say(Format('[gdb] watchpoint %d: %s changed from %s to %s',
+      [ANumber, AExpression, AOldValue, ANewValue]));
 end;
 
 procedure TLedDebugger.ClearDebugLine;
@@ -1106,6 +1657,12 @@ begin
     if Assigned(FOnStateChanged) then FOnStateChanged(Self);
     Exit;
   end;
+
+  { gdb deletes a watchpoint whose variable has gone out of scope, and tells
+    us so through =breakpoint-deleted -- but a stop with no visible cause is
+    alarming, so it is named. }
+  if AReason = 'watchpoint-scope' then
+    Say('[gdb] a watched variable went out of scope; its watchpoint is gone');
 
   FCurrentFile := AFileName;
   FCurrentLine := ALine;
@@ -1309,6 +1866,54 @@ begin
   FPane.SetLocalChildren(Serial, AChildren);
 end;
 
+{ --- breakpoint pane events ------------------------------------------------ }
+
+procedure TLedDebugger.BreakPaneJump(Sender: TObject; AIndex: Integer);
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  { A watchpoint has nowhere to go -- it belongs to an expression, not a
+    line -- so a double click on one does nothing rather than jumping to
+    whatever file happens to be blank. }
+  if FBreaks[AIndex].Kind <> lgbLine then Exit;
+  if (FBreaks[AIndex].FileName <> '') and Assigned(FOnJump) then
+    FOnJump(Self, FBreaks[AIndex].FileName, FBreaks[AIndex].Line);
+end;
+
+procedure TLedDebugger.BreakPaneRemove(Sender: TObject; AIndex: Integer);
+begin
+  RemoveBreakpoint(AIndex);
+end;
+
+procedure TLedDebugger.BreakPaneToggle(Sender: TObject; AIndex: Integer);
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  SetBreakpointEnabled(AIndex, not FBreaks[AIndex].Enabled);
+end;
+
+procedure TLedDebugger.BreakPaneCondition(Sender: TObject; AIndex: Integer);
+begin
+  if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
+  if FBreaks[AIndex].Kind <> lgbLine then
+  begin
+    Say('[gdb] a condition can only be put on a breakpoint here; ' +
+        'use the gdb box for one on a watchpoint');
+    Exit;
+  end;
+  if Assigned(FOnEditCondition) then
+    FOnEditCondition(Self, FBreaks[AIndex].FileName, FBreaks[AIndex].Line);
+end;
+
+procedure TLedDebugger.BreakPaneRemoveAll(Sender: TObject);
+begin
+  RemoveAllBreakpoints;
+end;
+
+procedure TLedDebugger.BreakPaneAddWatchpoint(Sender: TObject;
+  const AExpression: string; AKind: TLedGdbBreakKind);
+begin
+  AddWatchpoint(AExpression, AKind);
+end;
+
 procedure TLedDebugger.PaneConfigChanged(Sender: TObject);
 begin
   { Nothing to do until Start: the configuration is read when the target is
@@ -1418,6 +2023,12 @@ begin
     ldcStepInto: if CanStep then FSession.ExecStep;
     ldcStepOut: if CanStep then FSession.ExecFinish;
     ldcBuild: ;   { the main form runs builds; it owns the tool runner }
+    { Neither is this one's to do: which line to put a breakpoint on is a
+      question about the caret, and the caret belongs to the window.  The
+      button used to be wired to ldcStop, so pressing Breakpoint ended the
+      session. }
+    ldcToggleBreakpoint:
+      if Assigned(FOnToggleBreakpoint) then FOnToggleBreakpoint(Self);
   end;
 end;
 

@@ -29,11 +29,13 @@ type
   TLedHoverExpression = procedure(Sender: TObject; const AExpr: string) of object;
 
   { A breakpoint as the gutter needs to know it.  Conditional ones are drawn
-    hollow, because one that looks identical to an unconditional breakpoint
-    and then does not stop is the sort of thing that costs an afternoon. }
+    hollow, and disabled ones grey, because one that looks identical to an
+    unconditional breakpoint and then does not stop is the sort of thing that
+    costs an afternoon. }
   TLedGutterBreak = record
     Line: Integer;
     Conditional: Boolean;
+    Enabled: Boolean;
   end;
   TLedGutterBreaks = array of TLedGutterBreak;
 
@@ -126,6 +128,10 @@ type
     procedure SetBreakpointLines(const ABreaks: TLedGutterBreaks);
     function HasBreakpoint(ALine: Integer): Boolean;
     function BreakpointIsConditional(ALine: Integer): Boolean;
+    { A breakpoint that has been turned off is still shown -- greyed -- so
+      that a line one has deliberately silenced does not look like a line one
+      forgot to set. }
+    function BreakpointIsEnabled(ALine: Integer): Boolean;
     property DebugLine: Integer read FDebugLine write SetDebugLine;
     property OnBreakpointClick: TLedBreakpointClick
       read FOnBreakpointClick write FOnBreakpointClick;
@@ -589,6 +595,15 @@ begin
   Result := False;
 end;
 
+function TLedEdit.BreakpointIsEnabled(ALine: Integer): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FBreaks) do
+    if FBreaks[i].Line = ALine then Exit(FBreaks[i].Enabled);
+  Result := True;
+end;
+
 procedure TLedEdit.SetDebugLine(AValue: Integer);
 begin
   if FDebugLine = AValue then Exit;
@@ -626,7 +641,17 @@ begin
 
     if IsBreak then
     begin
-      if BreakpointIsConditional(TextIdx + 1) then
+      if not BreakpointIsEnabled(TextIdx + 1) then
+      begin
+        { Grey, and hollow: it is remembered but will not stop anything, and
+          the colour is what says so at a glance. }
+        Canvas.Brush.Style := bsClear;
+        Canvas.Pen.Color := clGray;
+        Canvas.Pen.Width := 2;
+        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+        Canvas.Pen.Width := 1;
+      end
+      else if BreakpointIsConditional(TextIdx + 1) then
       begin
         { Hollow, and in the same red: it is still a breakpoint, it just will
           not necessarily stop.  Drawn in maroon it read as a shadow rather

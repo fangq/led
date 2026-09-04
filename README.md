@@ -201,6 +201,7 @@ time.  **Tools → Debug**, or:
 | `Ctrl+F5` | Start debugging, or continue |
 | `F9`, or click the gutter | Toggle a breakpoint |
 | `Ctrl+Shift+F9` | Give a breakpoint a condition |
+| `Ctrl+Shift+F10` | Watch an expression |
 | `Ctrl+F10` | Run to the caret's line |
 | `F10` / `F11` / `Shift+F11` | Step over / into / out |
 | `Ctrl+F6` | Pause |
@@ -212,6 +213,23 @@ not stop cannot be mistaken for one that always will.  An empty condition
 clears it.  **Run to Cursor** continues to the caret's line without stopping
 at the lines between, though it does still stop at any breakpoint on the way,
 as every debugger does.
+
+A **watchpoint** stops the program when an expression *changes*, wherever
+that happens — which is what to reach for when something is being overwritten
+and you do not know by what.  `Ctrl+Shift+F10` watches whatever the caret is
+in; the Breakpoints pane has a box for typing one, and a menu beside it for
+the two rarer kinds, a read watchpoint (stop when it is *read*) and an access
+watchpoint (either).  When one fires, the Output pane says what the value was
+and what it became.  Watchpoints on a local die with the frame they were made
+in, and gdb stops to say so; one on a global can be set before the program
+starts, one on a local cannot.
+
+The **Breakpoints** pane lists every breakpoint and watchpoint with its
+number, its condition and how many times it has been hit.  Double-clicking a
+breakpoint goes to its line; `Delete` forgets one; `Space`, or the Enable
+button, turns one off without forgetting it — a disabled breakpoint stays in
+the gutter as a grey ring, so a line you have deliberately silenced does not
+look like one you forgot to set.
 
 The Debugger pane shows locals, the call stack and watched expressions;
 double-clicking a frame switches to it.  A struct, array or pointer in Locals

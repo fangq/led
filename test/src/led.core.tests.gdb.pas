@@ -35,6 +35,17 @@ type
     FBreakFile: string;
     FBreakLine: Integer;
     FBreakCond: string;
+    FBreakKind: TLedGdbBreakKind;
+    FBreakExpr: string;
+    FBreakEnabled: Boolean;
+    FBreakHits: Integer;
+    FBreakComplete: Boolean;
+    FRemovedNum: Integer;
+    FRemovals: Integer;
+    FWatchNum: Integer;
+    FWatchExpr, FWatchOld, FWatchNew: string;
+    FWatchHits: Integer;
+    FErrors: string;
     FLoopSrc: string;
     FEvalTag, FEvalValue: string;
     FEvalError: Boolean;
@@ -46,8 +57,16 @@ type
     FTargetText: string;
     procedure OnStopped(Sender: TObject; const AReason, AFileName: string;
       ALine: Integer; const AFunc: string);
-    procedure OnBreakAdded(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer; const ACondition: string);
+    procedure OnBreakAdded(Sender: TObject; const AInfo: TLedGdbBreakInfo);
+    procedure OnBreakRemoved(Sender: TObject; ANumber: Integer);
+    procedure OnWatchHit(Sender: TObject; ANumber: Integer;
+      const AExpression, AOldValue, ANewValue: string);
+    procedure OnError(Sender: TObject; const AText: string);
+    { The global fixture: a loop that writes and then reads a global, so a
+      watchpoint of every kind has something to fire on. }
+    function StopInGlobalProgram(out ASession: TLedGdbSession;
+      out ASource: string): Boolean;
+    function CompileTo(const AName, ASource: string): string;
     function StopInLoopProgram(out ASession: TLedGdbSession;
       const ACondition: string): Boolean;
     procedure OnEval(Sender: TObject; const ATag, AValue: string;
@@ -99,6 +118,15 @@ type
     procedure ClearingAConditionMakesItAlwaysFire;
     procedure RunToCursorReachesTheLine;
     procedure RunToCursorSkipsWhatIsBetween;
+    procedure WatchpointStopsWhenTheValueChanges;
+    procedure WatchpointReportsWhatItWasAndWhatItIs;
+    procedure ReadWatchpointFiresWithoutAChange;
+    procedure WatchpointComesBackAsAWatchpointNotABreakpoint;
+    procedure WatchingALocalBeforeThereIsAFrameIsRefused;
+    procedure AWatchpointOutOfScopeIsDeleted;
+    procedure DisablingABreakpointStopsItFiring;
+    procedure EnablingItAgainBringsItBack;
+    procedure HitCountsComeBackFromGdb;
   end;
 
 implementation
@@ -134,6 +162,13 @@ begin
   FStops := 0;
   FStops := 0;
   FBreakNum := -1;
+  FRemovedNum := -1;
+  FRemovals := 0;
+  FWatchNum := -1;
+  FWatchHits := 0;
+  FWatchOld := '';
+  FWatchNew := '';
+  FErrors := '';
   FConsole := '';
   FTargetText := '';
 
@@ -188,13 +223,39 @@ begin
   FLastFunc := AFunc;
 end;
 
-procedure TTestGdb.OnBreakAdded(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer; const ACondition: string);
+procedure TTestGdb.OnBreakAdded(Sender: TObject;
+  const AInfo: TLedGdbBreakInfo);
 begin
-  FBreakNum := ANumber;
-  FBreakFile := AFileName;
-  FBreakLine := ALine;
-  FBreakCond := ACondition;
+  FBreakNum := AInfo.Number;
+  FBreakFile := AInfo.FileName;
+  FBreakLine := AInfo.Line;
+  FBreakCond := AInfo.Condition;
+  FBreakKind := AInfo.Kind;
+  FBreakExpr := AInfo.Expression;
+  FBreakEnabled := AInfo.Enabled;
+  FBreakHits := AInfo.HitCount;
+  FBreakComplete := AInfo.Complete;
+end;
+
+procedure TTestGdb.OnBreakRemoved(Sender: TObject; ANumber: Integer);
+begin
+  FRemovedNum := ANumber;
+  Inc(FRemovals);
+end;
+
+procedure TTestGdb.OnWatchHit(Sender: TObject; ANumber: Integer;
+  const AExpression, AOldValue, ANewValue: string);
+begin
+  FWatchNum := ANumber;
+  FWatchExpr := AExpression;
+  FWatchOld := AOldValue;
+  FWatchNew := ANewValue;
+  Inc(FWatchHits);
+end;
+
+procedure TTestGdb.OnError(Sender: TObject; const AText: string);
+begin
+  FErrors := FErrors + AText + LineEnding;
 end;
 
 procedure TTestGdb.OnEval(Sender: TObject; const ATag, AValue: string;
@@ -293,11 +354,90 @@ begin
   Result := PumpUntilStops(ASession, 1);
 end;
 
+{ Compiles one source into the test's directory and answers with the binary's
+  path, or '' when there is no toolchain or gcc refused it. }
+function TTestGdb.CompileTo(const AName, ASource: string): string;
+var
+  L: TStringList;
+  P: TProcess;
+  Src: string;
+begin
+  Result := '';
+  if FindDefaultExecutablePath('gcc') = '' then Exit;
+  Src := IncludeTrailingPathDelimiter(FDir) + AName + '.c';
+  L := TStringList.Create;
+  try
+    L.Text := ASource;
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  P := TProcess.Create(nil);
+  try
+    P.Executable := FindDefaultExecutablePath('gcc');
+    P.Parameters.Add('-g');
+    P.Parameters.Add('-O0');
+    P.Parameters.Add(Src);
+    P.Parameters.Add('-o');
+    P.Parameters.Add(IncludeTrailingPathDelimiter(FDir) + AName);
+    P.Options := [poWaitOnExit, poUsePipes, poStderrToOutPut, poNoConsole];
+    P.Execute;
+    if (P.ExitStatus = 0) and
+       FileExists(IncludeTrailingPathDelimiter(FDir) + AName) then
+      Result := IncludeTrailingPathDelimiter(FDir) + AName;
+  finally
+    P.Free;
+  end;
+end;
+
+{ A program with a global that is written and then read, stopped on the line
+  before the loop starts -- so a watchpoint can be set on a local as well.
+
+  ASource is handed back because a breakpoint's location is a path, and the
+  tests set theirs by line number in this file. }
+function TTestGdb.StopInGlobalProgram(out ASession: TLedGdbSession;
+  out ASource: string): Boolean;
+var
+  Bin: string;
+begin
+  Result := False;
+  ASession := nil;
+  ASource := '';
+  if not LedGdbAvailable then Exit;
+
+  Bin := CompileTo('glob',
+    'int g = 0;'#10 +                                   { 1 }
+    'int main(void)'#10 +                               { 2 }
+    '{'#10 +                                            { 3 }
+    '    int i, total = 0;'#10 +                        { 4 }
+    '    for (i = 0; i < 5; i++) {'#10 +                 { 5 }
+    '        g = i + 1;'#10 +                            { 6 }
+    '        total += g;'#10 +                           { 7 }
+    '    }'#10 +                                         { 8 }
+    '    return total;'#10 +                             { 9 }
+    '}'#10);
+  if Bin = '' then Exit;
+  ASource := IncludeTrailingPathDelimiter(FDir) + 'glob.c';
+
+  ASession := NewSession;
+  ASession.Start;
+  ASession.WaitForState([lgsReady], 10000);
+  ASession.SetTarget(Bin);
+  ASession.BreakInsert(ASource, 4);
+  PumpFor(ASession, 600);
+  ASession.ExecRun;
+  Result := PumpUntilStops(ASession, 1);
+end;
+
 function TTestGdb.NewSession: TLedGdbSession;
 begin
   Result := TLedGdbSession.Create;
   Result.OnStopped := @OnStopped;
   Result.OnBreakAdded := @OnBreakAdded;
+  Result.OnBreakRemoved := @OnBreakRemoved;
+  Result.OnWatchHit := @OnWatchHit;
+  Result.OnError := @OnError;
   Result.OnEval := @OnEval;
   Result.OnConsole := @OnConsole;
   Result.OnTarget := @OnTarget;
@@ -1026,6 +1166,205 @@ begin
     AssertEquals('a breakpoint on the way still stops it', 'breakpoint-hit',
       FLastReason);
     AssertEquals('on the line the breakpoint is on', 5, FLastLine);
+  finally
+    S.Free;
+  end;
+end;
+
+{ --- watchpoints ----------------------------------------------------------- }
+
+procedure TTestGdb.WatchpointStopsWhenTheValueChanges;
+var S: TLedGdbSession; Src: string; i: Integer;
+begin
+  if not StopInGlobalProgram(S, Src) then Exit;
+  try
+    S.WatchInsert('g');
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('gdb says why it stopped', 'watchpoint-trigger', FLastReason);
+    { The write is on line 6; gdb reports the line after the store. }
+    S.RequestLocals;
+    PumpFor(S, 1500);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'i' then
+        AssertEquals('on the first turn of the loop', '0', S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.WatchpointReportsWhatItWasAndWhatItIs;
+var S: TLedGdbSession; Src: string;
+begin
+  if not StopInGlobalProgram(S, Src) then Exit;
+  try
+    S.WatchInsert('g');
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('one hit reported', 1, FWatchHits);
+    AssertEquals('on the expression asked about', 'g', FWatchExpr);
+    { Both values, which is the whole reason a watchpoint beats a breakpoint
+      on the line: the old one is gone by the time anything else can look. }
+    AssertEquals('what it was', '0', FWatchOld);
+    AssertEquals('what it became', '1', FWatchNew);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.ReadWatchpointFiresWithoutAChange;
+var S: TLedGdbSession; Src: string;
+begin
+  if not StopInGlobalProgram(S, Src) then Exit;
+  try
+    { total += g reads g without writing it, so only a read watchpoint can
+      catch it -- the write watchpoint above would not. }
+    S.WatchInsert('g', lgbReadWatch);
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('a read is its own kind of stop', 'read-watchpoint-trigger',
+      FLastReason);
+    AssertEquals('reported for the expression', 'g', FWatchExpr);
+    { A read has no previous value: gdb sends value={value=...} and nothing
+      else, which is what tells the two apart downstream. }
+    AssertEquals('with no old value', '', FWatchOld);
+    AssertEquals('and the value that was read', '1', FWatchNew);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.WatchpointComesBackAsAWatchpointNotABreakpoint;
+var S: TLedGdbSession; Src: string;
+begin
+  if not StopInGlobalProgram(S, Src) then Exit;
+  try
+    S.WatchInsert('g');
+    PumpFor(S, 800);
+    AssertEquals('the kind gdb gave it', Ord(lgbWatch), Ord(FBreakKind));
+    AssertEquals('watching what was asked for', 'g', FBreakExpr);
+    AssertTrue('and it has a number of its own', FBreakNum > 0);
+    { The insert reply carries a number and an expression and nothing else,
+      so a listener must not read a condition or a hit count out of it. }
+    AssertFalse('the short reply is not a full record', FBreakComplete);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.WatchingALocalBeforeThereIsAFrameIsRefused;
+var S: TLedGdbSession;
+begin
+  if not LedGdbAvailable then Exit;
+  if CompileTo('glob2',
+    'int main(void) { int total = 0; total++; return total; }'#10) = '' then Exit;
+  S := NewSession;
+  try
+    S.Start;
+    S.WaitForState([lgsReady], 10000);
+    S.SetTarget(IncludeTrailingPathDelimiter(FDir) + 'glob2');
+    { A local does not exist until there is a frame, and gdb says so.  The
+      message names the expression, because gdb's own does not. }
+    S.WatchInsert('total');
+    PumpFor(S, 800);
+    AssertTrue('the failure is reported: ' + FErrors,
+      Pos('cannot watch total', FErrors) > 0);
+    AssertTrue('with gdb''s own reason kept',
+      Pos('No symbol', FErrors) > 0);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.AWatchpointOutOfScopeIsDeleted;
+var S: TLedGdbSession; Src: string; Num: Integer;
+begin
+  if not StopInGlobalProgram(S, Src) then Exit;
+  try
+    { A watchpoint on a local dies with the frame it was made in.  gdb stops
+      to say so and deletes it, which is the one path where a breakpoint
+      disappears without anyone asking. }
+    S.WatchInsert('total');
+    PumpFor(S, 800);
+    Num := FBreakNum;
+    AssertTrue('the watchpoint took', Num > 0);
+    FRemovals := 0;
+    S.ExecContinue;
+    { Several stops on the way: the value changes on every turn of the loop. }
+    while (FRemovals = 0) and (FStops < 12) do
+    begin
+      if not PumpUntilStops(S, FStops + 1, 15000) then Break;
+      S.ExecContinue;
+    end;
+    PumpFor(S, 1000);
+    AssertTrue('gdb dropped it when the frame went', FRemovals > 0);
+    AssertEquals('and named the one it dropped', Num, FRemovedNum);
+  finally
+    S.Free;
+  end;
+end;
+
+{ --- enabling and disabling ------------------------------------------------ }
+
+procedure TTestGdb.DisablingABreakpointStopsItFiring;
+var S: TLedGdbSession;
+begin
+  if not StopInLoopProgram(S, '') then Exit;
+  try
+    { Stopped on the first turn of the loop with a breakpoint on the body.
+      Disabled, a continue must reach the end of the program rather than the
+      second turn. }
+    S.BreakEnable(FBreakNum, False);
+    PumpFor(S, 500);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertTrue('it ran to the end instead of stopping again: ' + FLastReason,
+      Pos('exited', FLastReason) > 0);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.EnablingItAgainBringsItBack;
+var S: TLedGdbSession; i: Integer;
+begin
+  if not StopInLoopProgram(S, '') then Exit;
+  try
+    S.BreakEnable(FBreakNum, False);
+    PumpFor(S, 300);
+    S.BreakEnable(FBreakNum, True);
+    PumpFor(S, 300);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    AssertEquals('the breakpoint fires again', 'breakpoint-hit', FLastReason);
+    S.RequestLocals;
+    PumpFor(S, 1500);
+    for i := 0 to High(S.Locals) do
+      if S.Locals[i].Name = 'i' then
+        AssertEquals('on the next turn of the loop', '1', S.Locals[i].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.HitCountsComeBackFromGdb;
+var S: TLedGdbSession;
+begin
+  if not StopInLoopProgram(S, '') then Exit;
+  try
+    AssertEquals('one hit so far', 1, FBreakHits);
+    AssertTrue('and that record was a full one', FBreakComplete);
+    AssertTrue('reported as enabled', FBreakEnabled);
+    S.ExecContinue;
+    if not PumpUntilStops(S, 2) then Exit;
+    PumpFor(S, 500);
+    { =breakpoint-modified carries times= on every hit, which is where the
+      count in the breakpoint list comes from -- there is no other way to
+      ask for it short of parsing -break-list. }
+    AssertEquals('two after the second stop', 2, FBreakHits);
   finally
     S.Free;
   end;
