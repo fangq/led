@@ -1377,9 +1377,13 @@ begin
   i := IndexOfBreak(AFileName, ALine);
   if i >= 0 then
   begin
-    if (FBreaks[i].Number > 0) and FSession.Alive then
-      FSession.BreakDelete(FBreaks[i].Number);
+    { Dropped before gdb is told, not after.  BreakDelete reports the removal
+      straight back through OnBreakRemoved -- which drops the row itself --
+      so removing it again by an index that has already shifted took the next
+      breakpoint with it. }
+    n := FBreaks[i].Number;
     DropBreakRow(i);
+    if (n > 0) and FSession.Alive then FSession.BreakDelete(n);
   end
   else
   begin
@@ -1476,12 +1480,14 @@ end;
 procedure TLedDebugger.RemoveBreakpoint(AIndex: Integer);
 var
   Gone: string;
+  Num: Integer;
 begin
   if (AIndex < 0) or (AIndex > High(FBreaks)) then Exit;
   Gone := FBreaks[AIndex].FileName;
-  if (FBreaks[AIndex].Number > 0) and FSession.Alive then
-    FSession.BreakDelete(FBreaks[AIndex].Number);
+  { The row goes first, for the reason ToggleBreakpoint gives. }
+  Num := FBreaks[AIndex].Number;
   DropBreakRow(AIndex);
+  if (Num > 0) and FSession.Alive then FSession.BreakDelete(Num);
   if Gone <> '' then PushMarksFor(Gone);
   RefreshBreakList;
 end;
@@ -1490,18 +1496,25 @@ procedure TLedDebugger.RemoveAllBreakpoints;
 var
   i: Integer;
   Files: TStringList;
+  Numbers: array of Integer;
 begin
   Files := TStringList.Create;
+  Numbers := nil;
   try
     Files.Duplicates := dupIgnore;
     Files.Sorted := True;
-    for i := High(FBreaks) downto 0 do
+    SetLength(Numbers, Length(FBreaks));
+    for i := 0 to High(FBreaks) do
     begin
       if FBreaks[i].FileName <> '' then Files.Add(FBreaks[i].FileName);
-      if (FBreaks[i].Number > 0) and FSession.Alive then
-        FSession.BreakDelete(FBreaks[i].Number);
+      Numbers[i] := FBreaks[i].Number;
     end;
+    { Emptied before gdb is told, again so that the removals it reports back
+      find nothing left to drop. }
     SetLength(FBreaks, 0);
+    if FSession.Alive then
+      for i := 0 to High(Numbers) do
+        if Numbers[i] > 0 then FSession.BreakDelete(Numbers[i]);
     { Every file that had one, because the gutter is pushed per view. }
     for i := 0 to Files.Count - 1 do PushMarksFor(Files[i]);
   finally

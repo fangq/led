@@ -4004,7 +4004,29 @@ begin
       F.Debugger.BreakpointCount);
     Check('and leaves the session alone', F.Debugger.Session.Alive);
     Check('which is still stopped', F.Debugger.Stopped);
-    F.Debugger.Command(ldcToggleBreakpoint);
+    { Both numbered by gdb, which is the state in which removing one used to
+      remove the next one with it: -break-delete reports the removal back
+      through OnBreakRemoved, which dropped the row -- and then it was
+      dropped a second time by an index that had already shifted. }
+    Waited := 0;
+    while ((F.BreakPane.RowText(0, 0) = '--') or
+           (F.BreakPane.RowText(1, 0) = '--')) and (Waited < 6000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    Check('gdb numbered both of them',
+      (F.BreakPane.RowText(0, 0) <> '--') and (F.BreakPane.RowText(1, 0) <> '--'));
+    F.Debugger.RemoveBreakpoint(0);
+    Pump;
+    CheckEqInt('removing the first removes exactly one', 1,
+      F.Debugger.BreakpointCount);
+    CheckEq('and the one left is the other', 'main.c:11',
+      F.BreakPane.RowText(0, 3));
+
+    { Back to the one breakpoint on line 6 that the rest of this expects. }
+    F.Debugger.RemoveBreakpoint(0);
+    Pump;
+    F.Debugger.ToggleBreakpoint(Src, 6);
     Pump;
     CheckEqInt('and takes it away again', 1, F.Debugger.BreakpointCount);
 
