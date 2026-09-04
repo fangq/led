@@ -14,6 +14,9 @@ checked off by the presence of a menu entry.
 | Vertical / box selection<br><sub>Ctrl+drag or Ctrl+Shift+arrows; copy, paste back as a column, type and delete on every line</sub> | yes | yes | mouse and keyboard.  The mouse half claimed to work for a long time and did not: the Ctrl entry sat on MouseActions, which SynEdit consults *after* MouseTextActions, whose stock stream-selection entry matches a Ctrl+press because its mask names only Shift and Alt -- and emAltSetsColumnMode was never enabled either, so Alt+drag did nothing at all.  A column copy pastes back as a column because led remembers what it put on the clipboard, which the clipboard itself cannot say |
 | Long-line truncate-and-reveal<br><sub>display only past 4096 chars, click the marker for more</sub> | yes | yes | done, for painting only.  The first pass deferred this on the open time alone; the per-operation numbers in the same benchmark said otherwise.  A second pass also shortened the *logical* line, which was faster still and gave the editor two coordinate spaces -- led has around fifteen places that read a length from `Lines` and write through `TextBetweenPoints`, and a column paste across them put 10907 characters on a 9004-character line.  Now the logical text is always the buffer's and only the painter is clamped: 65 ms to 42 ms to scroll 300 lines of 30,000 characters |
 | Wiki markup preview<br><sub>UseMod / Habitat dialect, rendered in the preview pane</sub> | yes | yes | done.  Dropped up front as "a niche format", which was a judgement about other people's files rather than this editor's users.  Led.Core.Wiki is a Pascal port of medit's in-tree converter, rule for rule; `.wiki`, `.wp`, `.usemod` and a `<!-- wiki -->` first line select it.  Highlighting needed a local patch to `data/langs/mediawiki.lang`, which upstream ships with no globs at all |
+| GDB debugger<br><sub>breakpoints, stepping, locals, call stack, watches</sub> | yes | yes | done.  medit's is on `gdbdebug`, a branch that was never pushed until now.  led drives `gdb --interpreter=mi3` as a subprocess with no compile-time dependency; the protocol reader and the session live in ledcore and are tested against a real gdb debugging a real program.  Clicking the gutter toggles a breakpoint, which medit's own plugin records as a thing it could not manage |
+| Project with launch configurations<br><sub>`.led/launch.json`, `.vscode/launch.json`</sub> | yes | yes | done.  Found by walking up from the file being edited.  Parsed leniently, because every real launch.json has comments and trailing commas.  `environment` is read as an object as well as an array, which medit documents and does not do |
+| Build the project<br><sub>`preLaunchTask`, and rebuild before debugging</sub> | yes | yes | done.  Runs through led's existing tool runner, so a compiler's `file:line: error` is clickable in the Output pane like any other tool's.  A binary older than its sources is rebuilt before a launch, and a failed build abandons it |
 | Split view<br><sub>up to 4 views of one document per tab</sub> | yes | yes | done |
 | Split notebook<br><sub>two independent tab groups per window</sub> | yes | yes | done |
 | Ctrl+0 / Ctrl+9<br><sub>shift selected lines by exactly one space</sub> | yes | yes | done |
@@ -205,11 +208,18 @@ One decision taken up front turned out to be wrong and has been undone.
 Asked about, looked for in medit, and absent -- recorded so the question is
 not reopened from the feature's name alone.
 
+Search local branches, not only the published ones.  The debugger row that
+used to sit here said medit had no debugger, on the strength of checking
+`main`, `gtk3` and `python3` on the remote.  It is on `gdbdebug`, a branch
+that has never been pushed, so no amount of looking at the remote would ever
+have found it -- and the working tree it was built in had been cleaned, so
+the source was gone from disk too.  What gave it away was object files left
+in `build-md/`, whose `.o.d` dependency lists still named every source path.
+
 | Feature | Finding |
 |---|---|
-| Project / workspace subsystem | none.  `git log --all --diff-filter=AD` over every ref finds no such file and there is no `MooProject` API.  What looks like project support is three separate things led already has: user tools, output filters, and the File List plugin (led's Project pane) |
-| Compiler / makefile / builder integration | none beyond the shipped user tools.  Building is a `type=exe` tool whose output goes through an output filter to become clickable `file:line`; there is no build model, target list or dependency handling to port |
-| gcc/gdb debugger | not in medit.  Checked `git@github.com:fangq/medit.git` on all four refs -- `main`, `gtk3`, `python3`, `HEAD`, newest commit 2026-08-31 -- with no `gdb` string, no debugger source, and no matching commit message.  If it exists it is somewhere not fetched here |
+| Project / workspace subsystem | none on the published branches: no such file over every remote ref, and no `MooProject` API.  What looks like project support there is three separate things led already has -- user tools, output filters, and the File List plugin (led's Project pane).  The `gdbdebug` branch does add one, scoped to debugging: `moogdb-project.cpp` walks up for `.medit/launch.json` or `.vscode/launch.json` and reads launch configurations out of it -- which led now has as `Led.Core.Project`, listed above |
+| Compiler / makefile / builder integration | none on the published branches, beyond the shipped user tools.  Building is a `type=exe` tool whose output goes through an output filter to become clickable `file:line`; there is no build model, target list or dependency handling to port.  `gdbdebug` adds a build runner, but only as a debugger's `preLaunchTask`: a label looked up in `.vscode/tasks.json` and run before the target starts.  led has that, and also builds on demand from F7 |
 
 ## Dropped, agreed up front
 

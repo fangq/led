@@ -189,6 +189,55 @@ monospace family with CJK coverage — `Noto Sans Mono CJK SC`, `Noto Sans Mono
 CJK JP`, `WenQuanYi Micro Hei Mono`, `Sarasa Mono` — and the baselines line
 up, because no fallback happens.
 
+### Debugging C and C++
+
+led debugs with `gdb`, which it drives over the machine interface as a
+subprocess — there is no compile-time dependency, only `gdb` on `PATH` at run
+time.  **Tools → Debug**, or:
+
+| | |
+|---|---|
+| `F7` | Build the project |
+| `Ctrl+F5` | Start debugging, or continue |
+| `F9`, or click the gutter | Toggle a breakpoint |
+| `F10` / `F11` / `Shift+F11` | Step over / into / out |
+| `Ctrl+F6` | Pause |
+| `Shift+F5` | Stop |
+
+The Debugger pane shows locals, the call stack and watched expressions;
+double-clicking a frame switches to it.  gdb's output, the program's own
+output and any build go to the Output pane, where `file:line` is clickable.
+There is an entry box for raw gdb commands.
+
+A project is a folder containing `.led/launch.json`, or `.vscode/launch.json`
+— led looks for the first and falls back to the second, walking up from the
+file you are editing, so opening any source in a tree finds it.  The format is
+VS Code's:
+
+```jsonc
+{
+  "configurations": [
+    { // comments and trailing commas are fine
+      "name": "Debug",
+      "program": "${workspaceFolder}/myprog",
+      "args": ["--verbose"],
+      "preLaunchTask": "build",
+    },
+  ]
+}
+```
+
+`${workspaceFolder}`, `${file}`, `${fileBasename}`,
+`${fileBasenameNoExtension}`, `${fileDirname}` and `${env:VAR}` are
+substituted when they are used, not when the file is read.  `preLaunchTask`
+names a label in `tasks.json`; a configuration can also carry a `build`
+command directly.  Starting a debug session rebuilds first if the binary is
+older than any source under the project root, and gives up on the launch if
+that build fails.
+
+Without a project, led debugs the open file's name minus its extension —
+`foo.c` → `foo` — which is what `gcc -g foo.c -o foo` produces.
+
 ### Very long lines
 
 Past `Editor/max_line_len` characters (4096, medit's figure) a line is drawn
