@@ -11,6 +11,7 @@
    sodipodi:docname="led_editor_icon.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
   <sodipodi:namedview
@@ -28,8 +29,8 @@
      fit-margin-right="0"
      fit-margin-bottom="0"
      inkscape:zoom="0.74583496"
-     inkscape:cx="-559.77531"
-     inkscape:cy="324.46856"
+     inkscape:cx="-372.06623"
+     inkscape:cy="344.58025"
      inkscape:window-width="2560"
      inkscape:window-height="1352"
      inkscape:window-x="0"
@@ -39,6 +40,18 @@
   <defs
      id="defs2">
     <linearGradient
+       inkscape:collect="always"
+       id="linearGradient7703">
+      <stop
+         style="stop-color:#a2b6e6;stop-opacity:1"
+         offset="0"
+         id="stop7699" />
+      <stop
+         style="stop-color:#b07af0;stop-opacity:1"
+         offset="1"
+         id="stop7701" />
+    </linearGradient>
+    <linearGradient
        id="linearGradient13423"
        inkscape:swatch="solid">
       <stop
@@ -46,19 +59,16 @@
          offset="0"
          id="stop13421" />
     </linearGradient>
-    <filter
+    <linearGradient
        inkscape:collect="always"
-       style="color-interpolation-filters:sRGB"
-       id="filter5429"
-       x="-0.14483212"
-       y="-0.80943675"
-       width="1.2896642"
-       height="2.6188735">
-      <feGaussianBlur
-         inkscape:collect="always"
-         stdDeviation="6.5210696"
-         id="feGaussianBlur5431" />
-    </filter>
+       xlink:href="#linearGradient7703"
+       id="linearGradient7709"
+       x1="23.329508"
+       y1="204.23557"
+       x2="163.33057"
+       y2="204.23557"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(0.99628611,0,0,0.99628611,0.08664402,1.2858195)" />
   </defs>
   <g
      inkscape:label="Layer 1"
@@ -66,43 +76,51 @@
      id="layer1"
      transform="translate(-22.792395,-134.88858)">
     <rect
-       style="opacity:0.97;fill:#15369e;fill-opacity:1;stroke:none;stroke-width:3.99543;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;filter:url(#filter5429)"
-       id="rect3047"
-       width="108.06006"
-       height="19.335133"
-       x="38.442963"
-       y="239.55219"
-       ry="7.9158525"
+       style="opacity:1;fill:url(#linearGradient7709);fill-opacity:1;stroke:#6f2525;stroke-width:0.257103;stroke-linecap:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+       id="rect2367"
+       width="139.224"
+       height="139.224"
+       x="23.458059"
+       y="135.15088"
+       ry="26.893293"
        inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
        inkscape:export-xdpi="51.509998"
        inkscape:export-ydpi="51.509998" />
     <path
-       style="fill:#2aaa20;fill-opacity:1;stroke:#000000;stroke-width:6.73495;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 122.39123,179.78935 c 3.80861,-6.27489 11.82938,-26.61388 -5.85803,-37.93162 -19.886057,-11.2456 -34.780556,6.40513 -37.458313,12.05798 l -16.899004,28.5206 -6.051774,-3.64575 c 0,0 -5.176643,-4.3226 -9.028548,2.31015 -3.548658,5.9128 2.086188,8.15326 2.086188,8.15326 l 55.941521,33.14642 c 0,0 5.2426,4.06821 8.48295,-2.17054 3.28985,-5.55232 -2.02016,-7.8952 -2.02016,-7.8952 l -6.02999,-3.57288 z"
+       style="fill:#fdff00;fill-opacity:1;stroke:#9f0c0c;stroke-width:5.36512;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 56.842753,237.96038 -21.223462,-4.31664 9.07507,13.27162 -13.675057,9.68684 17.283556,1.20875 0.528517,11.83816 19.474547,-11.74826 89.726936,0.90601 -82.718183,-15.79834 14.877342,-12.271 -21.791473,5.03144 -18.06565,-15.50109"
+       id="path863"
+       sodipodi:nodetypes="cccccccccccc"
+       inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
+       inkscape:export-xdpi="51.509998"
+       inkscape:export-ydpi="51.509998" />
+    <path
+       style="fill:#5fe355;fill-opacity:1;stroke:#000000;stroke-width:10.193;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 125.83328,186.08403 c 3.38323,-8.07523 9.24858,-33.48522 -13.61651,-43.70848 -25.445855,-9.74944 -39.894752,13.70475 -42.054005,20.84629 l -14.891605,36.63071 -7.783255,-3.23057 c 0,0 -6.870618,-4.18371 -10.24165,4.32132 -3.140611,7.60215 3.902378,9.24875 3.902378,9.24875 l 71.849037,29.20902 c 0,0 6.90344,3.87197 9.62274,-4.06016 2.89905,-7.13118 -3.77887,-8.95603 -3.77887,-8.95603 l -7.74467,-3.14846 z"
        id="path1713"
        sodipodi:nodetypes="cccccccccccc"
        inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
        inkscape:export-xdpi="51.509998"
        inkscape:export-ydpi="51.509998" />
     <path
-       style="fill:none;stroke:#000000;stroke-width:6.73495;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 59.464382,196.57464 -8.710467,37.03808"
+       style="fill:none;stroke:#000000;stroke-width:10.193;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 54.572347,217.00954 -2.694603,32.56961"
        id="path2824"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
        inkscape:export-xdpi="51.509998"
        inkscape:export-ydpi="51.509998" />
     <path
-       style="fill:none;stroke:#000000;stroke-width:6.73495;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 94.607815,216.64722 59.24187,239.53616 m -1.045924,-22.80643"
+       style="fill:none;stroke:#000000;stroke-width:10.193;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 99.576451,234.47378 74.288411,256.8886"
        id="path2826"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
        inkscape:export-xdpi="51.509998"
        inkscape:export-ydpi="51.509998" />
     <path
-       style="fill:none;stroke:#000000;stroke-width:6.73495;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 104.67821,150.85643 c -15.342791,3.00385 -17.776928,17.39093 -17.776928,17.39093"
+       style="fill:none;stroke:#000000;stroke-width:10.193;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 99.823595,155.08641 c -17.567293,6.25597 -17.894947,23.65735 -17.894947,23.65735"
        id="path2826-6"
        sodipodi:nodetypes="cc"
        inkscape:export-filename="/home/fangq/GotBox/led_editor_icon.png"
