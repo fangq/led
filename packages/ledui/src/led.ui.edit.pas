@@ -127,6 +127,9 @@ type
       stopped at (0 for none).  Set by the debugger; drawn in the gutter. }
     procedure SetBreakpointLines(const ABreaks: TLedGutterBreaks);
     function HasBreakpoint(ALine: Integer): Boolean;
+    { The band of the gutter in which a click toggles a breakpoint.  Public
+      so a test can click where a person would. }
+    function BreakpointZone(out ALeft, ARight: Integer): Boolean;
     function BreakpointIsConditional(ALine: Integer): Boolean;
     { A breakpoint that has been turned off is still shown -- greyed -- so
       that a line one has deliberately silenced does not look like a line one
@@ -539,6 +542,29 @@ end;
 { Where the mark column is, in client pixels.  Asked of the gutter rather
   than assumed: the parts are ordered by whatever is switched on, so summing
   widths by hand goes wrong the moment someone hides the line numbers. }
+{ Where a click sets a breakpoint: everything left of the fold column.
+
+  Not the marks column alone.  That is six pixels wide, sits hard against the
+  left edge and is unmarked, so hitting it is guesswork -- clicking the line
+  number, which is what "click the gutter beside the line" means to anyone
+  who has used another debugger, did nothing at all.  The fold column keeps
+  its own clicks; nothing between has any.
+
+  The dot is still *drawn* in the marks column.  Where one may click and
+  where the mark appears are different questions, and only the first was
+  wrong. }
+function TLedEdit.BreakpointZone(out ALeft, ARight: Integer): Boolean;
+begin
+  ALeft := 0;
+  ARight := 0;
+  if not Gutter.Visible then Exit(False);
+  if (Gutter.CodeFoldPart <> nil) and Gutter.CodeFoldPart.Visible then
+    ARight := Gutter.CodeFoldPart.Left
+  else
+    ARight := Gutter.Width;
+  Result := ARight > ALeft;
+end;
+
 function TLedEdit.MarksColumn(out ALeft, AWidth: Integer): Boolean;
 begin
   ALeft := 0;
@@ -1111,7 +1137,7 @@ procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;
   X, Y: Integer);
 var
   P: TPoint;
-  TextIdx, Col, MLeft, MWidth, Row: Integer;
+  TextIdx, Col, ZLeft, ZRight, Row: Integer;
   FV: TSynEditFoldedView;
 begin
   { A click in the gutter's mark column sets or clears a breakpoint, which is
@@ -1119,8 +1145,8 @@ begin
     it could not manage.  Taken before inherited, because the gutter's own
     mouse actions would otherwise consume it. }
   if (AButton = mbLeft) and Assigned(FOnBreakpointClick) and
-     MarksColumn(MLeft, MWidth) and
-     (X >= MLeft) and (X < MLeft + MWidth) and
+     BreakpointZone(ZLeft, ZRight) and
+     (X >= ZLeft) and (X < ZRight) and
      (FoldedTextBuffer is TSynEditFoldedView) then
   begin
     FV := TSynEditFoldedView(FoldedTextBuffer);
