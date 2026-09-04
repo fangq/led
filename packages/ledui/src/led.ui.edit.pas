@@ -18,6 +18,13 @@ uses
 
 {$I led.lazversion.inc}
 
+type
+  { A click in the gutter's mark column, which is how a breakpoint is set in
+    every debugger anyone has used.  medit's plugin could not do this -- its
+    own notes call it a known limitation -- because GtkTextView gives no
+    usable per-line gutter hit.  SynEdit does. }
+  TLedBreakpointClick = procedure(Sender: TObject; ALine: Integer) of object;
+
 { Shortcuts the menus own, which the editor must therefore not consume.
 
   SynEdit ships a keymap of its own and handles a key before the form's
@@ -50,6 +57,17 @@ type
     FSpell: TLedSpellMarkup;
     FLongLines: TLedLongLineView;
     FGuideColour: TColor;
+    { The debugger's two marks.  Painted here rather than made into
+      TSynEditMarks because SynEdit only draws marks when
+      BookMarkOptions.BookmarkImages is set, and setting it would also
+      replace the numbered glyphs led's ten bookmarks draw themselves with. }
+    FBreakLines: array of Integer;
+    FDebugLine: Integer;
+    FOnBreakpointClick: TLedBreakpointClick;
+    procedure SetDebugLine(AValue: Integer);
+    function MarksColumn(out ALeft, AWidth: Integer): Boolean;
+    procedure DrawDebugMarks;
+    procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
     function GetWrapEnabled: Boolean;
@@ -87,6 +105,14 @@ type
     { Created on first use.  TSynCompletion builds a popup form, and building
       a form inside another form's constructor hangs. }
     function Completion: TSynCompletion;
+
+    { The lines this document has breakpoints on, and the line execution is
+      stopped at (0 for none).  Set by the debugger; drawn in the gutter. }
+    procedure SetBreakpointLines(const ALines: array of Integer);
+    function HasBreakpoint(ALine: Integer): Boolean;
+    property DebugLine: Integer read FDebugLine write SetDebugLine;
+    property OnBreakpointClick: TLedBreakpointClick
+      read FOnBreakpointClick write FOnBreakpointClick;
 
     { Display-only truncation of very long lines; see Led.UI.LongLine for why
       the buffer is never touched.  Always present, because the view has to be
@@ -471,6 +497,115 @@ end;
   rather than as absent.  Drawn rather than inserted: putting the marker in
   the text would make it selectable, searchable and saveable, which is three
   kinds of wrong for something that is not in the file. }
+{ --- the debugger's gutter marks ------------------------------------------ }
+
+{ Where the mark column is, in client pixels.  Asked of the gutter rather
+  than assumed: the parts are ordered by whatever is switched on, so summing
+  widths by hand goes wrong the moment someone hides the line numbers. }
+function TLedEdit.MarksColumn(out ALeft, AWidth: Integer): Boolean;
+begin
+  ALeft := 0;
+  AWidth := 0;
+  Result := Gutter.Visible and (Gutter.MarksPart <> nil) and
+            Gutter.MarksPart.Visible;
+  if not Result then Exit;
+  ALeft := Gutter.MarksPart.Left;
+  AWidth := Gutter.MarksPart.Width;
+  Result := AWidth > 0;
+end;
+
+{ The column is six scaled pixels when nothing is being debugged, which is
+  right for the bookmark glyph it was sized for and far too narrow both to
+  show a breakpoint and to click one.  Widened only while there is something
+  to show, so a session that never debugs looks exactly as it did. }
+procedure TLedEdit.ApplyDebugGutterWidth;
+var
+  Want: Integer;
+begin
+  if (Length(FBreakLines) > 0) or (FDebugLine > 0) then
+    Want := LedScale96(14)
+  else
+    Want := LedScale96(6);
+  if Gutter.MarksPart.Width <> Want then
+    Gutter.MarksPart.Width := Want;
+end;
+
+procedure TLedEdit.SetBreakpointLines(const ALines: array of Integer);
+var
+  i: Integer;
+begin
+  SetLength(FBreakLines, Length(ALines));
+  for i := 0 to High(ALines) do FBreakLines[i] := ALines[i];
+  ApplyDebugGutterWidth;
+  Invalidate;
+end;
+
+function TLedEdit.HasBreakpoint(ALine: Integer): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FBreakLines) do
+    if FBreakLines[i] = ALine then Exit(True);
+  Result := False;
+end;
+
+procedure TLedEdit.SetDebugLine(AValue: Integer);
+begin
+  if FDebugLine = AValue then Exit;
+  FDebugLine := AValue;
+  ApplyDebugGutterWidth;
+  Invalidate;
+end;
+
+procedure TLedEdit.DrawDebugMarks;
+var
+  FV: TSynEditFoldedView;
+  Row, TextIdx, MLeft, MWidth, Cx, Cy, R: Integer;
+  IsBreak, IsHere: Boolean;
+begin
+  if (Length(FBreakLines) = 0) and (FDebugLine <= 0) then Exit;
+  if not MarksColumn(MLeft, MWidth) then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+
+  R := MWidth;
+  if LineHeight - 4 < R then R := LineHeight - 4;
+  if R < 4 then Exit;
+
+  for Row := 0 to LinesInWindow do
+  begin
+    TextIdx := FV.ScreenLineToTextIndex(Row);
+    if (TextIdx < 0) or (TextIdx >= Lines.Count) then Continue;
+
+    IsBreak := HasBreakpoint(TextIdx + 1);
+    IsHere := (FDebugLine > 0) and (TextIdx + 1 = FDebugLine);
+    if not (IsBreak or IsHere) then Continue;
+
+    Cx := MLeft + (MWidth - R) div 2;
+    Cy := Row * LineHeight + (LineHeight - R) div 2;
+
+    if IsBreak then
+    begin
+      Canvas.Brush.Style := bsSolid;
+      Canvas.Brush.Color := clRed;
+      Canvas.Pen.Color := clMaroon;
+      Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+    end;
+
+    if IsHere then
+    begin
+      { Drawn over the dot when both are on the line, because where
+        execution is matters more than that it can stop there. }
+      Canvas.Brush.Style := bsSolid;
+      Canvas.Brush.Color := clYellow;
+      Canvas.Pen.Color := clOlive;
+      Canvas.Polygon([Point(Cx, Cy), Point(Cx + R, Cy + R div 2),
+                      Point(Cx, Cy + R)]);
+    end;
+  end;
+  Canvas.Brush.Style := bsSolid;
+end;
+
 procedure TLedEdit.DrawLongLineMarkers;
 var
   FV: TSynEditFoldedView;
@@ -644,6 +779,7 @@ begin
   inherited Paint;
   DrawBlockGuides;
   DrawLongLineMarkers;
+  DrawDebugMarks;
 end;
 
 { Word completion drawn from the document itself.  medit had none at all, and
@@ -846,8 +982,28 @@ procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;
   X, Y: Integer);
 var
   P: TPoint;
-  TextIdx, Col: Integer;
+  TextIdx, Col, MLeft, MWidth, Row: Integer;
+  FV: TSynEditFoldedView;
 begin
+  { A click in the gutter's mark column sets or clears a breakpoint, which is
+    how every debugger does it and which medit's own plugin lists as a thing
+    it could not manage.  Taken before inherited, because the gutter's own
+    mouse actions would otherwise consume it. }
+  if (AButton = mbLeft) and Assigned(FOnBreakpointClick) and
+     MarksColumn(MLeft, MWidth) and
+     (X >= MLeft) and (X < MLeft + MWidth) and
+     (FoldedTextBuffer is TSynEditFoldedView) then
+  begin
+    FV := TSynEditFoldedView(FoldedTextBuffer);
+    Row := Y div LineHeight;
+    TextIdx := FV.ScreenLineToTextIndex(Row);
+    if (TextIdx >= 0) and (TextIdx < Lines.Count) then
+    begin
+      FOnBreakpointClick(Self, TextIdx + 1);
+      Exit;
+    end;
+  end;
+
   if (AButton = mbLeft) and (FLongLines <> nil) and (FLongLines.Limit > 0) then
   begin
     P := PixelsToRowColumn(Point(X, Y));

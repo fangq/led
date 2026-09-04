@@ -25,9 +25,11 @@ type
     FActiveView: TLedEdit;
     FSheet: TTabSheet;          // the page this tab lives on
     FViewPopupMenu: TPopupMenu;
+    FViewBreakpointClick: TLedBreakpointClick;
     procedure ViewEnter(Sender: TObject);
     function AddView(AParent: TWinControl): TLedEdit;
     procedure SetViewPopupMenu(AValue: TPopupMenu);
+    procedure SetViewBreakpointClick(AValue: TLedBreakpointClick);
     function GetViewCount: Integer;
     function GetView(AIndex: Integer): TLedEdit;
   public
@@ -51,6 +53,11 @@ type
     { Applied to every view the tab creates, including the ones a later split
       adds, so the context menu does not go missing after Split View. }
     property ViewPopupMenu: TPopupMenu read FViewPopupMenu write SetViewPopupMenu;
+    { Set on every view, splits included, the same way the popup menu is:
+      a breakpoint is toggled by clicking the gutter of whichever view of the
+      document happens to be under the pointer. }
+    property ViewBreakpointClick: TLedBreakpointClick
+      read FViewBreakpointClick write SetViewBreakpointClick;
     property Sheet: TTabSheet read FSheet write FSheet;
   end;
 
@@ -126,6 +133,15 @@ begin
     TLedEdit(FViews[i]).PopupMenu := AValue;
 end;
 
+procedure TLedTab.SetViewBreakpointClick(AValue: TLedBreakpointClick);
+var
+  i: Integer;
+begin
+  FViewBreakpointClick := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).OnBreakpointClick := AValue;
+end;
+
 function TLedTab.AddView(AParent: TWinControl): TLedEdit;
 begin
   Result := FDocument.CreateView(Self);
@@ -133,6 +149,7 @@ begin
   Result.Align := alClient;
   Result.OnEnter := @ViewEnter;
   Result.PopupMenu := FViewPopupMenu;
+  Result.OnBreakpointClick := FViewBreakpointClick;
   FViews.Add(Result);
   if FActiveView = nil then
     FActiveView := Result;

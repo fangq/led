@@ -33,6 +33,7 @@ uses
   Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
+  Led.UI.Debug, Led.Core.Gdb, process,
   Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
@@ -3588,6 +3589,198 @@ begin
   Pump;
 end;
 
+{ The debugger, end to end, against a real gdb.
+
+  Compiles a C program with gcc, opens it, sets a breakpoint by the same call
+  the gutter click makes, starts a session and waits for the stop.  Skipped
+  whole when gcc or gdb is missing.
+
+  Worth doing in the GUI suite even though Led.Core.Tests.Gdb already drives
+  a session headlessly: what is checked here is the wiring -- that a
+  breakpoint reaches the editor as a gutter mark, that stopping moves the
+  caret into the right file, and that the panes fill. }
+procedure TestDebugger(F: TLedMainForm);
+var
+  Dir, Src, Bin, LaunchDir: string;
+  L: TStringList;
+  P: TProcess;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Waited: Integer;
+  Built: Boolean;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  C: TFPColor;
+  x, y, Reds: Integer;
+begin
+  Say('debugger');
+
+  { The pane and the actions exist whether or not gdb does -- a saved layout
+    naming the pane has to find it. }
+  Check('the debugger pane is registered', F.Dock.FindPane('debug') <> nil);
+  Check('and the controller exists', F.Debugger <> nil);
+  Check('stepping is off when nothing is running', not F.Debugger.CanStep);
+  Check('and so is stopped', not F.Debugger.Stopped);
+
+  if not LedGdbAvailable then
+  begin
+    Say('  (gdb is not installed; skipping the session)');
+    Exit;
+  end;
+  if FindDefaultExecutablePath('gcc') = '' then
+  begin
+    Say('  (gcc is not installed; skipping the session)');
+    Exit;
+  end;
+
+  Dir := TempName('dbgproj');
+  LaunchDir := IncludeTrailingPathDelimiter(Dir) + '.led';
+  ForceDirectories(LaunchDir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'main.c';
+  Bin := IncludeTrailingPathDelimiter(Dir) + 'main';
+
+  L := TStringList.Create;
+  try
+    L.Add('#include <stdio.h>');
+    L.Add('int twice(int n)');
+    L.Add('{');
+    L.Add('    int r = n * 2;');        { line 4 -- the breakpoint }
+    L.Add('    return r;');
+    L.Add('}');
+    L.Add('int main(void)');
+    L.Add('{');
+    L.Add('    printf("%d\n", twice(21));');
+    L.Add('    return 0;');
+    L.Add('}');
+    L.SaveToFile(Src);
+
+    { A launch.json, so the project half is exercised too. }
+    L.Clear;
+    L.Add('{ "configurations": [');
+    L.Add('  { "name": "Debug", "program": "${workspaceFolder}/main" }');
+    L.Add('] }');
+    L.SaveToFile(IncludeTrailingPathDelimiter(LaunchDir) + 'launch.json');
+  finally
+    L.Free;
+  end;
+
+  P := TProcess.Create(nil);
+  try
+    P.Executable := FindDefaultExecutablePath('gcc');
+    P.Parameters.Add('-g');
+    P.Parameters.Add('-O0');
+    P.Parameters.Add(Src);
+    P.Parameters.Add('-o');
+    P.Parameters.Add(Bin);
+    P.Options := [poWaitOnExit, poUsePipes, poStderrToOutPut, poNoConsole];
+    P.Execute;
+    Built := (P.ExitStatus = 0) and FileExists(Bin);
+  finally
+    P.Free;
+  end;
+  if not Built then
+  begin
+    Say('  (gcc could not build the fixture; skipping)');
+    Exit;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+
+  { The project is found by walking up from the file. }
+  F.Debugger.NoteActiveFile(Src);
+  Check('the project is found from the source', F.Debugger.Project.Root <> '');
+  CheckEqInt('with its one configuration', 1,
+    F.Debugger.Project.ConfigCount);
+
+  { Exactly what a gutter click does. }
+  F.Debugger.ToggleBreakpoint(Src, 4);
+  Pump;
+  CheckEqInt('one breakpoint', 1, F.Debugger.BreakpointCount);
+  Check('and the editor shows it in the gutter', V.HasBreakpoint(4));
+  F.Debugger.ToggleBreakpoint(Src, 4);
+  Pump;
+  CheckEqInt('toggling again removes it', 0, F.Debugger.BreakpointCount);
+  Check('and the mark goes with it', not V.HasBreakpoint(4));
+  F.Debugger.ToggleBreakpoint(Src, 4);
+  Pump;
+
+  { And that the dot is actually drawn, not merely recorded.  The gutter is
+    painted by TLedEdit.Paint, so nothing about the breakpoint list says
+    whether anything reached the screen -- which is the shape of bug this
+    suite has been caught by before. }
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      Reds := 0;
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to 40 do
+          if x < Img.Width then
+          begin
+            C := Img.Colors[x, y];
+            if (C.Red > 40000) and (C.Green < 20000) and (C.Blue < 20000) then
+              Inc(Reds);
+          end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+  CheckGt('the breakpoint is painted in the gutter', 0, Reds);
+
+  { And now actually debug it. }
+  Check('the session starts', F.Debugger.Start);
+  Waited := 0;
+  while (not F.Debugger.Stopped) and (Waited < 20000) do
+  begin
+    Pump;
+    Sleep(20);
+    Inc(Waited, 20);
+  end;
+
+  Check('the program stops', F.Debugger.Stopped);
+  if F.Debugger.Stopped then
+  begin
+    CheckEqInt('on the line the breakpoint is on', 4, F.Debugger.CurrentLine);
+    Check('in the file it was set in',
+      Pos('main.c', F.Debugger.CurrentFile) > 0);
+    Check('the editor marks where execution is', V.DebugLine = 4);
+    Check('stepping is offered now', F.Debugger.CanStep);
+
+    { Locals and the stack are asked for when the stop arrives and answered a
+      few exchanges later, so they are waited for rather than read at once --
+      the first version of this checked immediately and found both empty. }
+    Waited := 0;
+    while (F.DebugPane.Locals.Items.Count = 0) and (Waited < 8000) do
+    begin
+      Pump;
+      Sleep(20);
+      Inc(Waited, 20);
+    end;
+    CheckGt('the locals pane filled', 0, F.DebugPane.Locals.Items.Count);
+    CheckGt('and the call stack', 1, F.DebugPane.Stack.Items.Count);
+    if F.DebugPane.Stack.Items.Count > 0 then
+      CheckEq('whose innermost frame is the function stopped in', 'twice',
+        F.DebugPane.Stack.Items[0].SubItems[0]);
+  end;
+
+  F.Debugger.Stop;
+  Pump;
+  Check('stopping clears the execution mark', V.DebugLine = 0);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
 { Vertical guides down the body of each open block.
 
   ComputeBlockGuides is what Paint draws from, so checking it checks the
@@ -4094,6 +4287,7 @@ begin
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);
+  TestDebugger(F);
   TestReportedPolish(F);
   WriteLn;
   TestSplitNotebook(F);
