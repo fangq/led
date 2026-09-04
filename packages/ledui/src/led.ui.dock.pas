@@ -546,15 +546,24 @@ begin
 end;
 
 procedure TLedDockHost.DockPane(APane: TLedPaneForm);
+var
+  Site: TAnchorDockHostSite;
 begin
   { First appearance: put it on the edge it was registered for, against the
     editor area.  Afterwards AnchorDocking remembers where it was, so this
-    only runs once per pane per layout. }
+    only runs once per pane per layout.
+
+    Docked before it is shown, not after.  ShowControl makes the pane
+    visible, and a pane that is not in the layout yet is visible as a
+    floating window -- so showing first put it on screen undocked for as
+    long as it took the next statement to run, which on Windows was long
+    enough to see it flash in the wrong place.  MakeDockable has already
+    created the site by the time any of this runs, so there is nothing to
+    wait for. }
+  Site := DockMaster.GetAnchorSite(APane);
+  if (Site <> nil) and (Site.Parent = nil) then
+    DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.Edge]);
   DockMaster.ShowControl(APane.Name, True);
-  if DockMaster.GetAnchorSite(APane) = nil then Exit;
-  if DockMaster.GetAnchorSite(APane).Parent = nil then
-    DockMaster.ManualDock(DockMaster.GetAnchorSite(APane), FSite,
-      EdgeAlign[APane.Edge]);
 end;
 
 procedure TLedDockHost.ShowPane(const AId: string);
