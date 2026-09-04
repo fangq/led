@@ -439,6 +439,20 @@ object LedMainForm: TLedMainForm
       ShortCut = 8314
       OnExecute = actDebugStepOutExecute
     end
+    object actRunToCursor: TAction
+      Caption = '&Run to Cursor'
+      Hint = 'Continue until the caret'#39's line, stopping at nothing between'
+      ImageIndex = 45
+      ShortCut = 16505
+      OnExecute = actRunToCursorExecute
+    end
+    object actBreakpointCondition: TAction
+      Caption = 'Breakpoint Co&ndition...'
+      Hint = 'Only stop where an expression is true'
+      ImageIndex = 49
+      ShortCut = 24696
+      OnExecute = actBreakpointConditionExecute
+    end
     object actToggleBreakpoint: TAction
       Caption = 'Toggle &Breakpoint'
       Hint = 'Or click the gutter beside the line'
@@ -775,8 +789,17 @@ object LedMainForm: TLedMainForm
         object miSepDbg2: TMenuItem
           Caption = '-'
         end
+        object mi_RunToCursor: TMenuItem
+          Action = actRunToCursor
+        end
+        object miSepDbg4: TMenuItem
+          Caption = '-'
+        end
         object mi_ToggleBreakpoint: TMenuItem
           Action = actToggleBreakpoint
+        end
+        object mi_BreakpointCondition: TMenuItem
+          Action = actBreakpointCondition
         end
       end
       object miSepDbg0: TMenuItem

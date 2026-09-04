@@ -3589,6 +3589,40 @@ begin
   Pump;
 end;
 
+{ How much red is in the gutter.  A filled breakpoint disc has more of it
+  than a hollow ring, which is the only way to tell from outside that a
+  conditional breakpoint is drawn differently. }
+function GutterRed(V: TLedEdit): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  C: TFPColor;
+  x, y: Integer;
+begin
+  Result := 0;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to 40 do
+          if x < Img.Width then
+          begin
+            C := Img.Colors[x, y];
+            if (C.Red > 40000) and (C.Green < 20000) and (C.Blue < 20000) then
+              Inc(Result);
+          end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 { The debugger, end to end, against a real gdb.
 
   Compiles a C program with gcc, opens it, sets a breakpoint by the same call
@@ -3611,7 +3645,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   C: TFPColor;
-  x, y, Reds: Integer;
+  x, y, Reds, Rings: Integer;
   Row: TTreeNode;
 begin
   Say('debugger');
@@ -3714,29 +3748,26 @@ begin
     painted by TLedEdit.Paint, so nothing about the breakpoint list says
     whether anything reached the screen -- which is the shape of bug this
     suite has been caught by before. }
-  Bmp := TBitmap.Create;
-  try
-    Bmp.PixelFormat := pf32bit;
-    Bmp.SetSize(V.Width, V.Height);
-    V.PaintTo(Bmp.Canvas, 0, 0);
-    Img := Bmp.CreateIntfImage;
-    try
-      Reds := 0;
-      for y := 0 to Img.Height - 1 do
-        for x := 0 to 40 do
-          if x < Img.Width then
-          begin
-            C := Img.Colors[x, y];
-            if (C.Red > 40000) and (C.Green < 20000) and (C.Blue < 20000) then
-              Inc(Reds);
-          end;
-    finally
-      Img.Free;
-    end;
-  finally
-    Bmp.Free;
-  end;
+  Reds := GutterRed(V);
   CheckGt('the breakpoint is painted in the gutter', 0, Reds);
+
+  { A condition makes it hollow, so it cannot be mistaken for one that always
+    stops.  Set before the session exists, which is also the path that has to
+    survive being replayed to gdb at Start. }
+  F.Debugger.SetBreakpointCondition(Src, 6, 'n == 21');
+  Pump;
+  CheckEq('the condition is remembered', 'n == 21',
+    F.Debugger.BreakpointCondition(Src, 6));
+  Check('and the gutter knows it is conditional', V.BreakpointIsConditional(6));
+  { A ring is still drawn -- it must not vanish -- but uses less ink than a
+    filled disc.  Asserting only "different" would pass if it disappeared. }
+  Rings := GutterRed(V);
+  CheckGt('the ring is drawn', 0, Rings);
+  CheckGt('but with less ink than a filled disc', Rings, Reds);
+  F.Debugger.SetBreakpointCondition(Src, 6, '');
+  Pump;
+  Check('clearing it fills the dot again', not V.BreakpointIsConditional(6));
+  CheckEqInt('and the red comes back', Reds, GutterRed(V));
 
   { And now actually debug it. }
   Check('the session starts', F.Debugger.Start);
@@ -3774,9 +3805,34 @@ begin
         F.DebugPane.Stack.Items[0].SubItems[0]);
   end;
 
+  { --- run to cursor --- }
+  if F.Debugger.Stopped then
+  begin
+    { Stopped on line 6; the caret goes to 7 and the program runs there.
+      gdb calls this reason "location-reached". }
+    F.Debugger.RunToCursor(Src, 7);
+    Waited := 0;
+    while (F.Debugger.CurrentLine <> 7) and (Waited < 10000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEqInt('run to cursor arrives at the line', 7,
+      F.Debugger.CurrentLine);
+    Check('and the editor marks it', V.DebugLine = 7);
+  end;
+
   { --- drilling into a struct --- }
   if F.Debugger.Stopped then
   begin
+    { Run to cursor moved execution, so the tree has been cleared and is
+      being refilled -- reading it now finds it empty.  The first version of
+      this check did exactly that. }
+    Waited := 0;
+    while (F.DebugPane.Locals.Items.Count = 0) and (Waited < 8000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+
     { The struct row is the one shown as "name: type" -- an aggregate has no
       value of its own under --simple-values, which is what tells it from a
       scalar without led parsing C types. }

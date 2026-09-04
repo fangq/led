@@ -200,9 +200,18 @@ time.  **Tools → Debug**, or:
 | `F7` | Build the project |
 | `Ctrl+F5` | Start debugging, or continue |
 | `F9`, or click the gutter | Toggle a breakpoint |
+| `Ctrl+Shift+F9` | Give a breakpoint a condition |
+| `Ctrl+F10` | Run to the caret's line |
 | `F10` / `F11` / `Shift+F11` | Step over / into / out |
 | `Ctrl+F6` | Pause |
 | `Shift+F5` | Stop |
+
+A conditional breakpoint stops only where an expression is true — `i == 7`,
+say — and is drawn as a hollow ring rather than a filled dot, so one that may
+not stop cannot be mistaken for one that always will.  An empty condition
+clears it.  **Run to Cursor** continues to the caret's line without stopping
+at the lines between, though it does still stop at any breakpoint on the way,
+as every debugger does.
 
 The Debugger pane shows locals, the call stack and watched expressions;
 double-clicking a frame switches to it.  A struct, array or pointer in Locals

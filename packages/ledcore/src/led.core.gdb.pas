@@ -84,8 +84,12 @@ type
   TLedGdbTextEvent = procedure(Sender: TObject; const AText: string) of object;
   TLedGdbStopEvent = procedure(Sender: TObject;
     const AReason, AFileName: string; ALine: Integer; const AFunc: string) of object;
+  { ACondition is the expression the breakpoint waits for, or '' for one
+    that always fires.  Carried on the event because gdb echoes it back in
+    the reply and the gutter draws a conditional breakpoint differently. }
   TLedGdbBreakEvent = procedure(Sender: TObject; ANumber: Integer;
-    const AFileName: string; ALine: Integer) of object;
+    const AFileName: string; ALine: Integer;
+    const ACondition: string) of object;
   TLedGdbEvalEvent = procedure(Sender: TObject; const ATag, AValue: string;
     AIsError: Boolean) of object;
   TLedGdbNotify = procedure(Sender: TObject) of object;
@@ -181,10 +185,19 @@ type
     procedure ExecStep;      // step into
     procedure ExecFinish;    // step out
     procedure ExecInterrupt; // pause
+    { Runs on until a line is reached, without stopping at anything in
+      between -- "run to cursor".  Answers with reason="location-reached". }
+    procedure ExecUntil(const AFileName: string; ALine: Integer);
 
     { --- breakpoints --- }
-    procedure BreakInsert(const AFileName: string; ALine: Integer);
+    { ACondition, when given, makes the breakpoint fire only where the
+      expression is true. }
+    procedure BreakInsert(const AFileName: string; ALine: Integer;
+      const ACondition: string = '');
     procedure BreakDelete(ANumber: Integer);
+    { Changes or -- with an empty expression -- clears the condition on a
+      breakpoint gdb already knows about. }
+    procedure BreakCondition(ANumber: Integer; const ACondition: string);
 
     { --- inspection --- }
     procedure RequestLocals;
@@ -740,14 +753,14 @@ begin
   begin
     Num := ARec.Results.Int('id', -1);
     if (Num >= 0) and Assigned(FOnBreakRemoved) then
-      FOnBreakRemoved(Self, Num, '', 0);
+      FOnBreakRemoved(Self, Num, '', 0, '');
   end;
 end;
 
 procedure TLedGdbSession.EmitBreakpoint(AValue: TLedMIValue);
 var
   Num, Line, p: Integer;
-  FileName, Loc: string;
+  FileName, Loc, Cond: string;
 begin
   if AValue = nil then Exit;
   Num := AValue.Int('number', -1);
@@ -755,6 +768,7 @@ begin
 
   FileName := AValue.Str('fullname', AValue.Str('file', ''));
   Line := AValue.Int('line', 0);
+  Cond := AValue.Str('cond', '');
 
   { A pending breakpoint -- set before any binary was loaded -- has no file
     or line of its own; gdb only echoes back what was asked for. }
@@ -769,7 +783,8 @@ begin
     end;
   end;
 
-  if Assigned(FOnBreakAdded) then FOnBreakAdded(Self, Num, FileName, Line);
+  if Assigned(FOnBreakAdded) then
+    FOnBreakAdded(Self, Num, FileName, Line, Cond);
 end;
 
 procedure TLedGdbSession.ReadLocals(ARec: TLedMIRecord);
@@ -915,13 +930,43 @@ begin
   Send('-exec-interrupt --all', lgrExec);
 end;
 
-procedure TLedGdbSession.BreakInsert(const AFileName: string; ALine: Integer);
+procedure TLedGdbSession.ExecUntil(const AFileName: string; ALine: Integer);
+begin
+  if (AFileName = '') or (ALine <= 0) then Exit;
+  Send(Format('-exec-until %s:%d', [AFileName, ALine]), lgrExec);
+end;
+
+procedure TLedGdbSession.BreakInsert(const AFileName: string; ALine: Integer;
+  const ACondition: string);
+var
+  Cmd: string;
 begin
   { -f allows a breakpoint before any binary is loaded, which is what makes
-    setting one in the editor before pressing Start work.  Unquoted on
-    purpose: see the note at the top of the unit. }
-  Send(Format('-break-insert -f %s:%d', [AFileName, ALine]), lgrBreakInsert,
-    Format('%s:%d', [AFileName, ALine]));
+    setting one in the editor before pressing Start work. }
+  Cmd := '-break-insert -f';
+  { The condition *is* quoted here, because it is one argument among several
+    and holds spaces.  BreakCondition below must not quote -- the two are not
+    interchangeable, and each was checked against gdb 12.1. }
+  if ACondition <> '' then
+    Cmd := Cmd + ' -c ' + LedMIQuote(ACondition);
+  { The location stays unquoted: gdb echoes it back in original-location, and
+    a quoted one comes back quoted so the breakpoint can never be matched to
+    the line that asked for it. }
+  Cmd := Cmd + Format(' %s:%d', [AFileName, ALine]);
+  Send(Cmd, lgrBreakInsert, Format('%s:%d', [AFileName, ALine]));
+end;
+
+procedure TLedGdbSession.BreakCondition(ANumber: Integer;
+  const ACondition: string);
+begin
+  if ANumber <= 0 then Exit;
+  { Unquoted, and deliberately: -break-condition takes the whole rest of the
+    line as the expression, so quoting it makes the quotes part of it.  An
+    empty expression clears the condition, which is gdb's own convention. }
+  if ACondition = '' then
+    Send(Format('-break-condition %d', [ANumber]))
+  else
+    Send(Format('-break-condition %d %s', [ANumber, ACondition]));
 end;
 
 procedure TLedGdbSession.BreakDelete(ANumber: Integer);
@@ -929,7 +974,8 @@ begin
   Send(Format('-break-delete %d', [ANumber]), lgrBreakDelete);
   { Reported locally as well as from =breakpoint-deleted: the notify does not
     always arrive, and a duplicate removal is harmless. }
-  if Assigned(FOnBreakRemoved) then FOnBreakRemoved(Self, ANumber, '', 0);
+  if Assigned(FOnBreakRemoved) then
+    FOnBreakRemoved(Self, ANumber, '', 0, '');
 end;
 
 procedure TLedGdbSession.RequestLocals;

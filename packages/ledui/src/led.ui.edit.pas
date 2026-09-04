@@ -28,6 +28,15 @@ type
     through ShowHoverValue, because gdb is asked and gdb takes its time. }
   TLedHoverExpression = procedure(Sender: TObject; const AExpr: string) of object;
 
+  { A breakpoint as the gutter needs to know it.  Conditional ones are drawn
+    hollow, because one that looks identical to an unconditional breakpoint
+    and then does not stop is the sort of thing that costs an afternoon. }
+  TLedGutterBreak = record
+    Line: Integer;
+    Conditional: Boolean;
+  end;
+  TLedGutterBreaks = array of TLedGutterBreak;
+
 { Shortcuts the menus own, which the editor must therefore not consume.
 
   SynEdit ships a keymap of its own and handles a key before the form's
@@ -64,7 +73,7 @@ type
       TSynEditMarks because SynEdit only draws marks when
       BookMarkOptions.BookmarkImages is set, and setting it would also
       replace the numbered glyphs led's ten bookmarks draw themselves with. }
-    FBreakLines: array of Integer;
+    FBreaks: TLedGutterBreaks;
     FDebugLine: Integer;
     FOnBreakpointClick: TLedBreakpointClick;
     FOnHoverExpression: TLedHoverExpression;
@@ -114,8 +123,9 @@ type
 
     { The lines this document has breakpoints on, and the line execution is
       stopped at (0 for none).  Set by the debugger; drawn in the gutter. }
-    procedure SetBreakpointLines(const ALines: array of Integer);
+    procedure SetBreakpointLines(const ABreaks: TLedGutterBreaks);
     function HasBreakpoint(ALine: Integer): Boolean;
+    function BreakpointIsConditional(ALine: Integer): Boolean;
     property DebugLine: Integer read FDebugLine write SetDebugLine;
     property OnBreakpointClick: TLedBreakpointClick
       read FOnBreakpointClick write FOnBreakpointClick;
@@ -543,7 +553,7 @@ procedure TLedEdit.ApplyDebugGutterWidth;
 var
   Want: Integer;
 begin
-  if (Length(FBreakLines) > 0) or (FDebugLine > 0) then
+  if (Length(FBreaks) > 0) or (FDebugLine > 0) then
     Want := LedScale96(14)
   else
     Want := LedScale96(6);
@@ -551,12 +561,12 @@ begin
     Gutter.MarksPart.Width := Want;
 end;
 
-procedure TLedEdit.SetBreakpointLines(const ALines: array of Integer);
+procedure TLedEdit.SetBreakpointLines(const ABreaks: TLedGutterBreaks);
 var
   i: Integer;
 begin
-  SetLength(FBreakLines, Length(ALines));
-  for i := 0 to High(ALines) do FBreakLines[i] := ALines[i];
+  SetLength(FBreaks, Length(ABreaks));
+  for i := 0 to High(ABreaks) do FBreaks[i] := ABreaks[i];
   ApplyDebugGutterWidth;
   Invalidate;
 end;
@@ -565,8 +575,17 @@ function TLedEdit.HasBreakpoint(ALine: Integer): Boolean;
 var
   i: Integer;
 begin
-  for i := 0 to High(FBreakLines) do
-    if FBreakLines[i] = ALine then Exit(True);
+  for i := 0 to High(FBreaks) do
+    if FBreaks[i].Line = ALine then Exit(True);
+  Result := False;
+end;
+
+function TLedEdit.BreakpointIsConditional(ALine: Integer): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FBreaks) do
+    if FBreaks[i].Line = ALine then Exit(FBreaks[i].Conditional);
   Result := False;
 end;
 
@@ -584,7 +603,7 @@ var
   Row, TextIdx, MLeft, MWidth, Cx, Cy, R: Integer;
   IsBreak, IsHere: Boolean;
 begin
-  if (Length(FBreakLines) = 0) and (FDebugLine <= 0) then Exit;
+  if (Length(FBreaks) = 0) and (FDebugLine <= 0) then Exit;
   if not MarksColumn(MLeft, MWidth) then Exit;
   if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
   FV := TSynEditFoldedView(FoldedTextBuffer);
@@ -607,10 +626,24 @@ begin
 
     if IsBreak then
     begin
-      Canvas.Brush.Style := bsSolid;
-      Canvas.Brush.Color := clRed;
-      Canvas.Pen.Color := clMaroon;
-      Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+      if BreakpointIsConditional(TextIdx + 1) then
+      begin
+        { Hollow, and in the same red: it is still a breakpoint, it just will
+          not necessarily stop.  Drawn in maroon it read as a shadow rather
+          than as a breakpoint at all. }
+        Canvas.Brush.Style := bsClear;
+        Canvas.Pen.Color := clRed;
+        Canvas.Pen.Width := 2;
+        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+        Canvas.Pen.Width := 1;
+      end
+      else
+      begin
+        Canvas.Brush.Style := bsSolid;
+        Canvas.Brush.Color := clRed;
+        Canvas.Pen.Color := clMaroon;
+        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+      end;
     end;
 
     if IsHere then

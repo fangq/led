@@ -150,6 +150,7 @@ type
     FileName: string;
     Line: Integer;
     Number: Integer;      // as gdb knows it, or -1 while it is still asking
+    Condition: string;    // '' for one that always fires
   end;
   TLedBreakpoints = array of TLedBreakpoint;
 
@@ -184,9 +185,9 @@ type
     procedure SessionRunning(Sender: TObject);
     procedure SessionStateChanged(Sender: TObject);
     procedure SessionBreakAdded(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer);
+      const AFileName: string; ALine: Integer; const ACondition: string);
     procedure SessionBreakRemoved(Sender: TObject; ANumber: Integer;
-      const AFileName: string; ALine: Integer);
+      const AFileName: string; ALine: Integer; const ACondition: string);
     procedure SessionLocals(Sender: TObject);
     procedure SessionFrames(Sender: TObject);
     procedure SessionEval(Sender: TObject; const ATag, AValue: string;
@@ -229,6 +230,14 @@ type
     procedure Stop;
     procedure Command(ACommand: TLedDebugCommand);
     procedure ToggleBreakpoint(const AFileName: string; ALine: Integer);
+    { Sets, changes or -- with an empty expression -- clears the condition on
+      the breakpoint at AFileName:ALine, creating one if there is none. }
+    procedure SetBreakpointCondition(const AFileName: string; ALine: Integer;
+      const ACondition: string);
+    function BreakpointCondition(const AFileName: string;
+      ALine: Integer): string;
+    { Runs on to a line without stopping at anything between. }
+    procedure RunToCursor(const AFileName: string; ALine: Integer);
     { Hover-to-inspect.  Answers from the cache at once when it can, so a
       value the pointer has already been over appears without a round trip. }
     procedure HoverExpression(AView: TLedEdit; const AExpr: string);
@@ -907,22 +916,23 @@ end;
 procedure TLedDebugger.PushMarksFor(const AFileName: string);
 var
   V: TLedEdit;
-  Lines: array of Integer;
+  Marks: TLedGutterBreaks;
   i, n: Integer;
 begin
   if not Assigned(FOnViewFor) then Exit;
   V := FOnViewFor(AFileName);
   if V = nil then Exit;
-  SetLength(Lines, Length(FBreaks));
+  SetLength(Marks, Length(FBreaks));
   n := 0;
   for i := 0 to High(FBreaks) do
     if SameFileName(FBreaks[i].FileName, AFileName) then
     begin
-      Lines[n] := FBreaks[i].Line;
+      Marks[n].Line := FBreaks[i].Line;
+      Marks[n].Conditional := FBreaks[i].Condition <> '';
       Inc(n);
     end;
-  SetLength(Lines, n);
-  V.SetBreakpointLines(Lines);
+  SetLength(Marks, n);
+  V.SetBreakpointLines(Marks);
 end;
 
 procedure TLedDebugger.ToggleBreakpoint(const AFileName: string;
@@ -960,20 +970,74 @@ begin
   for i := 0 to High(FBreaks) do
   begin
     FBreaks[i].Number := -1;
-    FSession.BreakInsert(FBreaks[i].FileName, FBreaks[i].Line);
+    { With its condition, so one set before the session started still only
+      fires where it was meant to. }
+    FSession.BreakInsert(FBreaks[i].FileName, FBreaks[i].Line,
+      FBreaks[i].Condition);
   end;
+end;
+
+function TLedDebugger.BreakpointCondition(const AFileName: string;
+  ALine: Integer): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  i := IndexOfBreak(AFileName, ALine);
+  if i >= 0 then Result := FBreaks[i].Condition;
+end;
+
+procedure TLedDebugger.SetBreakpointCondition(const AFileName: string;
+  ALine: Integer; const ACondition: string);
+var
+  i: Integer;
+begin
+  if (AFileName = '') or (ALine <= 0) then Exit;
+  i := IndexOfBreak(AFileName, ALine);
+  if i < 0 then
+  begin
+    { Asking for a condition on a line with no breakpoint means both. }
+    ToggleBreakpoint(AFileName, ALine);
+    i := IndexOfBreak(AFileName, ALine);
+    if i < 0 then Exit;
+  end;
+
+  FBreaks[i].Condition := ACondition;
+  if FSession.Alive and (FBreaks[i].Number > 0) then
+    FSession.BreakCondition(FBreaks[i].Number, ACondition);
+  if ACondition <> '' then
+    Say(Format('[gdb] breakpoint at %s:%d fires when %s',
+      [ExtractFileName(AFileName), ALine, ACondition]))
+  else
+    Say(Format('[gdb] breakpoint at %s:%d always fires',
+      [ExtractFileName(AFileName), ALine]));
+  PushMarksFor(AFileName);
+end;
+
+procedure TLedDebugger.RunToCursor(const AFileName: string; ALine: Integer);
+begin
+  if not CanStep then
+  begin
+    Say('[gdb] nothing is stopped, so there is nowhere to run from');
+    Exit;
+  end;
+  FSession.ExecUntil(AFileName, ALine);
 end;
 
 { --- session events --- }
 
 procedure TLedDebugger.SessionBreakAdded(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer);
+  const AFileName: string; ALine: Integer; const ACondition: string);
 var
   i: Integer;
 begin
   i := IndexOfBreak(AFileName, ALine);
   if i >= 0 then
-    FBreaks[i].Number := ANumber
+  begin
+    FBreaks[i].Number := ANumber;
+    { gdb's answer wins: a condition it rejected is not one we have. }
+    FBreaks[i].Condition := ACondition;
+  end
   else if (AFileName <> '') and (ALine > 0) then
   begin
     { Created from the gdb command box rather than from the gutter.  Adopted,
@@ -983,12 +1047,13 @@ begin
     FBreaks[i].FileName := AFileName;
     FBreaks[i].Line := ALine;
     FBreaks[i].Number := ANumber;
+    FBreaks[i].Condition := ACondition;
   end;
   PushMarksFor(AFileName);
 end;
 
 procedure TLedDebugger.SessionBreakRemoved(Sender: TObject; ANumber: Integer;
-  const AFileName: string; ALine: Integer);
+  const AFileName: string; ALine: Integer; const ACondition: string);
 var
   i, n: Integer;
   Gone: string;
