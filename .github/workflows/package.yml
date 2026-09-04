@@ -142,9 +142,21 @@ jobs:
         id: lazarus
         uses: gcarreno/setup-lazarus@v3.4.1
         continue-on-error: true
-        timeout-minutes: 15
+        # Shorter than the second attempt on purpose: a healthy download
+        # takes seconds, so waiting the full fifteen minutes on a stall
+        # before even trying again spends most of the job's budget.
+        timeout-minutes: 8
         with:
           lazarus-version: stable
+
+      # setup-lazarus will not download over a file that is already there,
+      # and an attempt killed by the timeout leaves a partial one behind --
+      # so without this the second attempt fails instantly with
+      # "Destination file path ... already exists" and the retry is useless.
+      - name: Clear the half-finished download
+        if: steps.lazarus.outcome == 'failure'
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/installers"
 
       - name: Install Lazarus + FPC (second attempt)
         if: steps.lazarus.outcome == 'failure'
@@ -286,9 +298,21 @@ jobs:
         id: lazarus
         uses: gcarreno/setup-lazarus@v3.4.1
         continue-on-error: true
-        timeout-minutes: 15
+        # Shorter than the second attempt on purpose: a healthy download
+        # takes seconds, so waiting the full fifteen minutes on a stall
+        # before even trying again spends most of the job's budget.
+        timeout-minutes: 8
         with:
           lazarus-version: stable
+
+      # setup-lazarus will not download over a file that is already there,
+      # and an attempt killed by the timeout leaves a partial one behind --
+      # so without this the second attempt fails instantly with
+      # "Destination file path ... already exists" and the retry is useless.
+      - name: Clear the half-finished download
+        if: steps.lazarus.outcome == 'failure'
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/installers"
 
       - name: Install Lazarus + FPC (second attempt)
         if: steps.lazarus.outcome == 'failure'
