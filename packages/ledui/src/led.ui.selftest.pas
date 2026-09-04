@@ -33,7 +33,7 @@ uses
   Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
-  Led.UI.Debug, Led.Core.Gdb, process,
+  Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, process,
   Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
@@ -3774,6 +3774,47 @@ begin
   F.Debugger.Stop;
   Pump;
   Check('stopping clears the execution mark', V.DebugLine = 0);
+
+  { --- building.  The launch.json above names no build command, so add one
+    and check the project compiles through the ordinary tool runner. --- }
+  L := TStringList.Create;
+  try
+    L.Add('{ "configurations": [');
+    L.Add('  { "name": "Debug", "program": "${workspaceFolder}/main",');
+    L.Add('    "preLaunchTask": "build" }');
+    L.Add('] }');
+    L.SaveToFile(IncludeTrailingPathDelimiter(LaunchDir) + 'launch.json');
+    L.Clear;
+    L.Add('{ "tasks": [');
+    L.Add('  { "label": "build", "command": "gcc",');
+    L.Add('    "args": ["-g", "-O0", "main.c", "-o", "main"] }');
+    L.Add('] }');
+    L.SaveToFile(IncludeTrailingPathDelimiter(LaunchDir) + 'tasks.json');
+  finally
+    L.Free;
+  end;
+
+  { Force a fresh read of the project, then check the label resolved. }
+  F.Debugger.Project.LoadFrom(Src);
+  CheckEq('the build command comes from tasks.json',
+    'gcc -g -O0 main.c -o main',
+    F.Debugger.Project.BuildCommandFor(F.Debugger.Project[0]));
+
+  DeleteFile(Bin);
+  Check('a missing binary is stale',
+    LedBinaryIsStale(F.Debugger.Project.Root, Bin));
+
+  Check('the build starts', F.BuildProjectNow(False));
+  Waited := 0;
+  while F.ToolRunning and (Waited < 20000) do
+  begin
+    Pump;
+    Sleep(20);
+    Inc(Waited, 20);
+  end;
+  Check('and it produced the binary', FileExists(Bin));
+  Check('which is no longer stale',
+    not LedBinaryIsStale(F.Debugger.Project.Root, Bin));
 
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);

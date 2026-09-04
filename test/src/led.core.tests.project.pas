@@ -43,6 +43,11 @@ type
     procedure BuildCommandPrefersExplicitBuild;
     procedure MissingTasksFileIsFine;
     procedure ShellQuoting;
+    procedure MissingBinaryIsStale;
+    procedure FreshBinaryIsNotStale;
+    procedure NewerSourceMakesItStale;
+    procedure NewerFileInABuildDirDoesNot;
+    procedure NewerNonSourceDoesNot;
   end;
 
 implementation
@@ -434,6 +439,54 @@ begin
   AssertEquals('a quote is escaped', '''it''\''''s''', LedShellQuote('it''s'));
   AssertEquals('a semicolon cannot leak into the shell', '''a;rm -rf /''',
     LedShellQuote('a;rm -rf /'));
+end;
+
+{ --- staleness ------------------------------------------------------------- }
+
+procedure TTestProject.MissingBinaryIsStale;
+begin
+  AssertTrue('a binary that is not there has to be built',
+    LedBinaryIsStale(FDir, Sub('nosuchbinary')));
+  AssertTrue('and so does one with no name at all',
+    LedBinaryIsStale(FDir, ''));
+end;
+
+procedure TTestProject.FreshBinaryIsNotStale;
+begin
+  Put('src/main.c', 'int main(void){return 0;}');
+  Sleep(1100);            { file times have one-second resolution }
+  Put('app', 'binary');
+  AssertFalse('a binary newer than its sources is not stale',
+    LedBinaryIsStale(FDir, Sub('app')));
+end;
+
+procedure TTestProject.NewerSourceMakesItStale;
+begin
+  Put('app', 'binary');
+  Sleep(1100);
+  Put('src/deep/main.c', 'int main(void){return 1;}');
+  AssertTrue('a source touched after the binary makes it stale',
+    LedBinaryIsStale(FDir, Sub('app')));
+end;
+
+procedure TTestProject.NewerFileInABuildDirDoesNot;
+begin
+  Put('app', 'binary');
+  Sleep(1100);
+  { An object file written by the build itself must not make the build
+    look stale, or every Start rebuilds. }
+  Put('build/main.c', 'int main(void){return 1;}');
+  AssertFalse('output directories are not searched',
+    LedBinaryIsStale(FDir, Sub('app')));
+end;
+
+procedure TTestProject.NewerNonSourceDoesNot;
+begin
+  Put('app', 'binary');
+  Sleep(1100);
+  Put('src/README.md', 'notes');
+  AssertFalse('a file that is not a source does not force a rebuild',
+    LedBinaryIsStale(FDir, Sub('app')));
 end;
 
 initialization

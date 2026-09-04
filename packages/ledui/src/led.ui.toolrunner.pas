@@ -59,8 +59,12 @@ type
     { Runs ATool against ADoc.  AOutput may be nil for tools that do not use
       the pane.  Returns False when the tool could not be started, having
       already reported why. }
+    { AWorkDir overrides the folder the command runs in.  Empty keeps the
+      old rule -- the active document's folder -- which is right for a tool
+      acting on a file.  A project build wants the project root instead, and
+      is the reason this exists. }
     function Run(ATool: TLedTool; ADoc: TLedDocument; AView: TLedEdit;
-      AOutput: TLedOutputPane): Boolean;
+      AOutput: TLedOutputPane; const AWorkDir: string = ''): Boolean;
 
     property OnFinished: TLedToolFinished read FOnFinished write FOnFinished;
     property Tool: TLedTool read FTool;
@@ -200,7 +204,7 @@ begin
 end;
 
 function TLedToolRunner.Run(ATool: TLedTool; ADoc: TLedDocument;
-  AView: TLedEdit; AOutput: TLedOutputPane): Boolean;
+  AView: TLedEdit; AOutput: TLedOutputPane; const AWorkDir: string): Boolean;
 var
   Input, ScriptPath, WorkDir: string;
   L: TStringList;
@@ -251,8 +255,9 @@ begin
   FProcess.Parameters.Add(ScriptPath);
   {$ENDIF}
 
-  WorkDir := '';
-  if (FDoc <> nil) and not FDoc.IsUntitled then
+  { The caller's folder wins; otherwise the document's, as it always did. }
+  WorkDir := AWorkDir;
+  if (WorkDir = '') and (FDoc <> nil) and (not FDoc.IsUntitled) then
     WorkDir := ExtractFileDir(FDoc.FileName);
   if WorkDir = '' then WorkDir := GetCurrentDir;
   FProcess.CurrentDirectory := WorkDir;

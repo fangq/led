@@ -389,6 +389,13 @@ object LedMainForm: TLedMainForm
       Caption = '&Reset Pane Layout'
       OnExecute = actResetLayoutExecute
     end
+    object actBuildProject: TAction
+      Caption = '&Build Project'
+      Hint = 'Run the configuration'#39's build command'
+      ImageIndex = 28
+      ShortCut = 118
+      OnExecute = actBuildProjectExecute
+    end
     object actDebugStart: TAction
       Caption = '&Start Debugging'
       Hint = 'Build if needed, then run the program under gdb'
@@ -735,6 +742,12 @@ object LedMainForm: TLedMainForm
       Caption = '&Tools'
       object miDebug: TMenuItem
         Caption = '&Debug'
+        object mi_BuildProject: TMenuItem
+          Action = actBuildProject
+        end
+        object miSepDbg3: TMenuItem
+          Caption = '-'
+        end
         object mi_DebugStart: TMenuItem
           Action = actDebugStart
         end

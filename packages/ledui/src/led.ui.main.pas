@@ -22,6 +22,7 @@ uses
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
+  Led.Core.Project,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
@@ -69,6 +70,7 @@ type
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
     actToggleBookmark: TAction;
+    actBuildProject: TAction;
     actDebugStart: TAction;
     actDebugContinue: TAction;
     actDebugPause: TAction;
@@ -79,6 +81,8 @@ type
     actToggleBreakpoint: TAction;
     actToggleDebugPane: TAction;
     miDebug: TMenuItem;
+    mi_BuildProject: TMenuItem;
+    miSepDbg3: TMenuItem;
     mi_DebugStart: TMenuItem;
     mi_DebugContinue: TMenuItem;
     mi_DebugPause: TMenuItem;
@@ -399,6 +403,7 @@ type
     procedure actSelectAllExecute(Sender: TObject);
     procedure actSelectToBracketExecute(Sender: TObject);
     procedure actToggleBookmarkExecute(Sender: TObject);
+    procedure actBuildProjectExecute(Sender: TObject);
     procedure actDebugStartExecute(Sender: TObject);
     procedure actDebugContinueExecute(Sender: TObject);
     procedure actDebugPauseExecute(Sender: TObject);
@@ -480,6 +485,10 @@ type
     FTerminal: TLedTerminalPane;
     FDebugPane: TLedDebugPane;
     FDebugger: TLedDebugger;
+    { A build asked for by the debugger rather than by the Tools menu, and
+      whether a debug session should follow it. }
+    FBuildTool: TLedTool;
+    FBuildThenDebug: Boolean;
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
@@ -496,6 +505,9 @@ type
     function DebugViewFor(const AFileName: string): TLedEdit;
     procedure DebugGutterClick(Sender: TObject; ALine: Integer);
     procedure DebugCommand(ACommand: TLedDebugCommand);
+    function BuildProject(AThenDebug: Boolean): Boolean;
+    procedure BuildFinished(ATool: TLedTool; AExitCode: Integer;
+      const ACollected: string);
     procedure PrefsApplied(Sender: TObject);
     procedure InstancePoll(Sender: TObject);
     procedure InstanceOpenRequest(const APayload: string);
@@ -602,6 +614,9 @@ type
     { The debugger and its pane, so the suite can set a breakpoint, start a
       real gdb and read back what came of it. }
     property Debugger: TLedDebugger read FDebugger;
+    { For the suite: run a build and wait for it. }
+    function BuildProjectNow(AThenDebug: Boolean): Boolean;
+    function ToolRunning: Boolean;
     property DebugPane: TLedDebugPane read FDebugPane;
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
@@ -808,6 +823,7 @@ begin
   FTools.LoadDirectory(LedConfigFile('tools'));
   FTools.LoadDirectory(LedDataFile('tools'));
   FRunner := TLedToolRunner.Create(Self);
+  FRunner.OnFinished := @BuildFinished;
 
   FDock := TLedDockHost.Create(Self);
   FDock.Parent := Self;
@@ -1189,6 +1205,21 @@ end;
 
 { --- the debugger ---------------------------------------------------------- }
 
+function TLedMainForm.BuildProjectNow(AThenDebug: Boolean): Boolean;
+begin
+  Result := BuildProject(AThenDebug);
+end;
+
+function TLedMainForm.ToolRunning: Boolean;
+begin
+  Result := FRunner.Running;
+end;
+
+procedure TLedMainForm.actBuildProjectExecute(Sender: TObject);
+begin
+  DebugCommand(ldcBuild);
+end;
+
 procedure TLedMainForm.actDebugStartExecute(Sender: TObject);
 begin
   DebugCommand(ldcStart);
@@ -1242,6 +1273,87 @@ begin
   FDock.TogglePane('debug');
 end;
 
+
+{ Runs the project's build command through the ordinary tool runner.
+
+  A synthetic TLedTool rather than a second process-running path: the runner
+  already writes the body to a script, sets led's environment, polls the pipe
+  and pushes every line through an output filter, which is what turns a
+  compiler's `file:line: error` into something clickable.  A build that did
+  its own spawning would have to reimplement all of that and would still not
+  make errors clickable. }
+function TLedMainForm.BuildProject(AThenDebug: Boolean): Boolean;
+var
+  Cmd, Dir: string;
+  C: TLedLaunchConfig;
+begin
+  Result := False;
+  if FRunner.Running then
+  begin
+    ReportError('Another command is still running.');
+    Exit;
+  end;
+
+  C := nil;
+  if FDebugger.Project.ConfigCount > 0 then
+    C := FDebugger.Project[FDebugPane.ConfigIndex];
+  Cmd := FDebugger.Project.BuildCommandFor(C);
+  if Cmd = '' then
+  begin
+    DebugConsole(Self,
+      '[build] nothing to build: give the configuration a "build" command, ' +
+      'or a "preLaunchTask" naming one in tasks.json' + LineEnding);
+    Exit;
+  end;
+
+  Dir := FDebugger.Project.Root;
+  if Dir = '' then Dir := GetCurrentDir;
+  Cmd := FDebugger.Project.Resolve(Cmd, ActiveTab.Document.FileName);
+
+  if FBuildTool = nil then
+  begin
+    FBuildTool := TLedTool.Create;
+    FBuildTool.Id := 'led-project-build';
+    FBuildTool.Name := 'Build';
+    FBuildTool.Kind := ltkExe;
+    FBuildTool.Input := ltiNone;
+    FBuildTool.Output := ltoPane;
+    { The make filter carries the directory stack, so a recursive build's
+      errors still name the right file. }
+    FBuildTool.Filter := 'make';
+    FBuildTool.Enabled := True;
+  end;
+  FBuildTool.Code := Cmd;
+
+  FBuildThenDebug := AThenDebug;
+  FDock.ShowPane('output');
+  FDock.EdgeVisible[ledBottom] := True;
+  DebugConsole(Self, '[build] ' + Cmd + '  # in ' + Dir + LineEnding);
+  Result := FRunner.Run(FBuildTool, ActiveTab.Document, ActiveView, FOutput, Dir);
+end;
+
+procedure TLedMainForm.BuildFinished(ATool: TLedTool; AExitCode: Integer;
+  const ACollected: string);
+begin
+  if (ATool = nil) or (ATool.Id <> 'led-project-build') then Exit;
+  if AExitCode = 0 then
+  begin
+    DebugConsole(Self, '[build] succeeded' + LineEnding);
+    if FBuildThenDebug then
+    begin
+      FBuildThenDebug := False;
+      FDebugger.Start;
+    end;
+  end
+  else
+  begin
+    { A launch that goes ahead on a failed build debugs the previous
+      binary, which is worse than not launching. }
+    DebugConsole(Self, Format('[build] failed (exit code %d)%s',
+      [AExitCode, LineEnding]));
+    FBuildThenDebug := False;
+  end;
+end;
 
 procedure TLedMainForm.DebugJump(Sender: TObject; const AFileName: string;
   ALine: Integer);
@@ -1300,10 +1412,22 @@ begin
     FDebugger.NoteActiveFile(Tab.Document.FileName);
   { Output is where the session talks, so it is shown before it starts
     rather than after something has already gone wrong unseen. }
+  if ACommand = ldcBuild then
+  begin
+    BuildProject(False);
+    Exit;
+  end;
+
   if ACommand = ldcStart then
   begin
     FDock.ShowPane('output');
     FDock.ShowPane('debug');
+    { Debugging a binary older than its sources is the classic wasted hour,
+      so a stale one is rebuilt first and the launch waits for it. }
+    if (not FDebugger.Session.Alive) and
+       LedBinaryIsStale(FDebugger.Project.Root, FDebugger.TargetPath) and
+       (FDebugger.Project.ConfigCount > 0) then
+      if BuildProject(True) then Exit;
   end;
   FDebugger.Command(ACommand);
 end;
@@ -3351,6 +3475,8 @@ begin
   { The debugger.  Everything is greyed unless it can actually be done: a
     Step that answers "the program is not running" is worse than one that is
     plainly unavailable, and gdb may not be installed at all. }
+  actBuildProject.Enabled := HasDoc and (not FRunner.Running) and
+                             (FDebugger.Project.ConfigCount > 0);
   actDebugStart.Enabled := LedGdbAvailable and HasDoc;
   actDebugContinue.Enabled := FDebugger.Stopped;
   actDebugPause.Enabled := FDebugger.Running;
