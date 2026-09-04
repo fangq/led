@@ -14,7 +14,7 @@ uses
   SynEditKeyCmds, LCLType,
   SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.LongLine,
-  Led.Core.Spell;
+  Led.Core.Spell, Led.Core.Gdb;
 
 {$I led.lazversion.inc}
 
@@ -24,6 +24,9 @@ type
     own notes call it a known limitation -- because GtkTextView gives no
     usable per-line gutter hit.  SynEdit does. }
   TLedBreakpointClick = procedure(Sender: TObject; ALine: Integer) of object;
+  { The pointer came to rest on something worth evaluating.  Answered later,
+    through ShowHoverValue, because gdb is asked and gdb takes its time. }
+  TLedHoverExpression = procedure(Sender: TObject; const AExpr: string) of object;
 
 { Shortcuts the menus own, which the editor must therefore not consume.
 
@@ -64,6 +67,8 @@ type
     FBreakLines: array of Integer;
     FDebugLine: Integer;
     FOnBreakpointClick: TLedBreakpointClick;
+    FOnHoverExpression: TLedHoverExpression;
+    FHoverExpr: string;
     procedure SetDebugLine(AValue: Integer);
     function MarksColumn(out ALeft, AWidth: Integer): Boolean;
     procedure DrawDebugMarks;
@@ -87,6 +92,7 @@ type
     { Clicking the marker reveals the next chunk, which is medit's gesture. }
     procedure MouseDown(AButton: TMouseButton; AShift: TShiftState;
       X, Y: Integer); override;
+    procedure MouseMove(AShift: TShiftState; X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -113,6 +119,21 @@ type
     property DebugLine: Integer read FDebugLine write SetDebugLine;
     property OnBreakpointClick: TLedBreakpointClick
       read FOnBreakpointClick write FOnBreakpointClick;
+
+    { Hover-to-inspect.  The editor says what the pointer is over; the
+      debugger says what it is worth, whenever it finds out. }
+    property OnHoverExpression: TLedHoverExpression
+      read FOnHoverExpression write FOnHoverExpression;
+    { Asks about AExpr and remembers that it did, which is what lets a late
+      answer be told from one about a place the pointer has since left.
+      MouseMove calls this; so does anything driving the editor without a
+      mouse. }
+    procedure RequestHover(const AExpr: string);
+    procedure ShowHoverValue(const AExpr, AValue: string);
+    { What the pointer is over now, or ''.  Public so a check can ask
+      without a mouse. }
+    function ExpressionAtPixels(X, Y: Integer): string;
+    property HoverExpression: string read FHoverExpr;
 
     { Display-only truncation of very long lines; see Led.UI.LongLine for why
       the buffer is never touched.  Always present, because the view has to be
@@ -978,6 +999,56 @@ end;
   part of the row that means "there is more", and a bare click that both
   moved the caret and changed what the line shows would make the text jump
   under the pointer. }
+{ What the pointer is over, in the document's own terms. }
+function TLedEdit.ExpressionAtPixels(X, Y: Integer): string;
+var
+  P: TPoint;
+begin
+  Result := '';
+  if Gutter.Visible and (X < Gutter.Width) then Exit;
+  P := PixelsToRowColumn(Point(X, Y));
+  if (P.Y < 1) or (P.Y > Lines.Count) then Exit;
+  Result := LedExpressionAt(Lines[P.Y - 1], P.X);
+end;
+
+{ Only asks when the answer could differ from the one already showing, so
+  moving along a single identifier costs nothing. }
+procedure TLedEdit.MouseMove(AShift: TShiftState; X, Y: Integer);
+var
+  Expr: string;
+begin
+  inherited MouseMove(AShift, X, Y);
+  if not Assigned(FOnHoverExpression) then Exit;
+  Expr := ExpressionAtPixels(X, Y);
+  if Expr = FHoverExpr then Exit;
+  RequestHover(Expr);
+end;
+
+procedure TLedEdit.RequestHover(const AExpr: string);
+begin
+  FHoverExpr := AExpr;
+  if AExpr = '' then
+  begin
+    Hint := '';
+    Exit;
+  end;
+  { Something is shown at once, so the pointer does not sit over a value
+    with no sign that anything was asked. }
+  Hint := AExpr + ' = ...';
+  ShowHint := True;
+  if Assigned(FOnHoverExpression) then FOnHoverExpression(Self, AExpr);
+end;
+
+procedure TLedEdit.ShowHoverValue(const AExpr, AValue: string);
+begin
+  { Ignored when the pointer has moved on: the answer is for a place it is
+    no longer over, and putting it in the hint would show the wrong value
+    for whatever is there now. }
+  if AExpr <> FHoverExpr then Exit;
+  Hint := AExpr + ' = ' + AValue;
+  ShowHint := True;
+end;
+
 procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;
   X, Y: Integer);
 var

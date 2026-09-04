@@ -36,6 +36,10 @@ type
     FBreakLine: Integer;
     FEvalTag, FEvalValue: string;
     FEvalError: Boolean;
+    FVarTag, FVarObj, FVarType, FVarValue: string;
+    FVarNumChild: Integer;
+    FKidsTag: string;
+    FKids: TLedGdbVarChildren;
     FConsole: string;
     FTargetText: string;
     procedure OnStopped(Sender: TObject; const AReason, AFileName: string;
@@ -44,6 +48,11 @@ type
       const AFileName: string; ALine: Integer);
     procedure OnEval(Sender: TObject; const ATag, AValue: string;
       AIsError: Boolean);
+    procedure OnVarCreated(Sender: TObject; const ATag, AVarObj,
+      ATypeName, AValue: string; ANumChild: Integer);
+    procedure OnVarChildren(Sender: TObject; const ATag: string;
+      const AChildren: TLedGdbVarChildren);
+    function StopInStructProgram(out ASession: TLedGdbSession): Boolean;
     procedure OnConsole(Sender: TObject; const AText: string);
     procedure OnTarget(Sender: TObject; const AText: string);
     function NewSession: TLedGdbSession;
@@ -68,6 +77,18 @@ type
     procedure ProgramOutputReachesTheTarget;
     procedure ContinueRunsToExitAndClearsInferior;
     procedure DeleteStopsTheBreakpointFiring;
+    procedure VarCreateDescribesAStruct;
+    procedure VarChildrenListsTheFields;
+    procedure AggregateChildrenHaveNoValue;
+    procedure DrillingTwoLevelsDeepReachesALeaf;
+    procedure ArrayChildrenAreIndexed;
+    procedure VarCreateBeforeStoppingIsAnswered;
+    procedure HoverFindsAPlainIdentifier;
+    procedure HoverFindsFieldAccess;
+    procedure HoverFindsArrowAccess;
+    procedure HoverFindsSubscripts;
+    procedure HoverSkipsKeywordsAndNumbers;
+    procedure HoverOffAWordIsEmpty;
   end;
 
 implementation
@@ -173,6 +194,26 @@ begin
   FEvalError := AIsError;
 end;
 
+procedure TTestGdb.OnVarCreated(Sender: TObject; const ATag, AVarObj,
+  ATypeName, AValue: string; ANumChild: Integer);
+begin
+  FVarTag := ATag;
+  FVarObj := AVarObj;
+  FVarType := ATypeName;
+  FVarValue := AValue;
+  FVarNumChild := ANumChild;
+end;
+
+procedure TTestGdb.OnVarChildren(Sender: TObject; const ATag: string;
+  const AChildren: TLedGdbVarChildren);
+var
+  i: Integer;
+begin
+  FKidsTag := ATag;
+  SetLength(FKids, Length(AChildren));
+  for i := 0 to High(AChildren) do FKids[i] := AChildren[i];
+end;
+
 procedure TTestGdb.OnConsole(Sender: TObject; const AText: string);
 begin
   FConsole := FConsole + AText;
@@ -181,6 +222,64 @@ end;
 procedure TTestGdb.OnTarget(Sender: TObject; const AText: string);
 begin
   FTargetText := FTargetText + AText;
+end;
+
+{ The struct fixture, stopped where its locals are all initialised.  Returns
+  False -- with no session -- when there is no toolchain to build it. }
+function TTestGdb.StopInStructProgram(out ASession: TLedGdbSession): Boolean;
+var
+  L: TStringList;
+  P: TProcess;
+  Src, Bin: string;
+begin
+  Result := False;
+  ASession := nil;
+  if not LedGdbAvailable then Exit;
+  if FindDefaultExecutablePath('gcc') = '' then Exit;
+
+  Src := IncludeTrailingPathDelimiter(FDir) + 'st.c';
+  Bin := IncludeTrailingPathDelimiter(FDir) + 'st';
+  L := TStringList.Create;
+  try
+    L.Add('struct Point { int x; int y; };');
+    L.Add('struct Box { struct Point tl; struct Point br; };');
+    L.Add('int main(void)');
+    L.Add('{');
+    L.Add('    struct Box b = { {1,2}, {3,4} };');
+    L.Add('    int arr[3] = {7,8,9};');
+    L.Add('    int last = b.tl.x + arr[0];');       { line 7 }
+    L.Add('    return last;');                       { line 8 -- stop here }
+    L.Add('}');
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  P := TProcess.Create(nil);
+  try
+    P.Executable := FindDefaultExecutablePath('gcc');
+    P.Parameters.Add('-g');
+    P.Parameters.Add('-O0');
+    P.Parameters.Add(Src);
+    P.Parameters.Add('-o');
+    P.Parameters.Add(Bin);
+    P.Options := [poWaitOnExit, poUsePipes, poStderrToOutPut, poNoConsole];
+    P.Execute;
+    if (P.ExitStatus <> 0) or (not FileExists(Bin)) then Exit;
+  finally
+    P.Free;
+  end;
+
+  ASession := NewSession;
+  ASession.OnVarCreated := @OnVarCreated;
+  ASession.OnVarChildren := @OnVarChildren;
+  ASession.Start;
+  ASession.WaitForState([lgsReady], 10000);
+  ASession.SetTarget(Bin);
+  ASession.BreakInsert(Src, 8);
+  PumpFor(ASession, 500);
+  ASession.ExecRun;
+  Result := PumpUntilStops(ASession, 1);
 end;
 
 function TTestGdb.NewSession: TLedGdbSession;
@@ -523,6 +622,212 @@ begin
   finally
     S.Free;
   end;
+end;
+
+{ --- variable objects: drilling into a struct ------------------------------ }
+
+procedure TTestGdb.VarCreateDescribesAStruct;
+var S: TLedGdbSession;
+begin
+  if not StopInStructProgram(S) then Exit;
+  try
+    FVarObj := '';
+    S.VarCreate('b', 'loc:0');
+    PumpFor(S, 2000);
+    AssertEquals('answered against its tag', 'loc:0', FVarTag);
+    AssertTrue('gdb named a variable object', FVarObj <> '');
+    AssertEquals('with the struct''s type', 'struct Box', FVarType);
+    AssertEquals('and two fields to drill into', 2, FVarNumChild);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.VarChildrenListsTheFields;
+var S: TLedGdbSession;
+begin
+  if not StopInStructProgram(S) then Exit;
+  try
+    S.VarCreate('b', 'loc:0');
+    PumpFor(S, 2000);
+    if FVarObj = '' then Exit;
+    SetLength(FKids, 0);
+    S.VarChildren(FVarObj, 'k:0');
+    PumpFor(S, 2000);
+    AssertEquals('answered against its tag', 'k:0', FKidsTag);
+    AssertEquals('two fields', 2, Length(FKids));
+    AssertEquals('named as written in the struct', 'tl', FKids[0].Expr);
+    AssertEquals('and the second', 'br', FKids[1].Expr);
+    AssertEquals('each with its type', 'struct Point', FKids[0].TypeName);
+    AssertTrue('and a handle to drill further', FKids[0].VarObj <> '');
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.AggregateChildrenHaveNoValue;
+var S: TLedGdbSession;
+begin
+  if not StopInStructProgram(S) then Exit;
+  try
+    S.VarCreate('b', 'loc:0');
+    PumpFor(S, 2000);
+    if FVarObj = '' then Exit;
+    S.VarChildren(FVarObj, 'k:0');
+    PumpFor(S, 2000);
+    if Length(FKids) < 1 then Exit;
+    { --simple-values gives a value only for leaves.  An empty value means
+      "expand me", and a reader that treats it as a failure shows nothing
+      where a struct should be. }
+    AssertEquals('a struct field has no value of its own', '', FKids[0].Value);
+    AssertTrue('but says how many children it has', FKids[0].NumChild > 0);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.DrillingTwoLevelsDeepReachesALeaf;
+var S: TLedGdbSession; Inner: string;
+begin
+  if not StopInStructProgram(S) then Exit;
+  try
+    S.VarCreate('b', 'loc:0');
+    PumpFor(S, 2000);
+    if FVarObj = '' then Exit;
+    S.VarChildren(FVarObj, 'k:0');
+    PumpFor(S, 2000);
+    if Length(FKids) < 1 then Exit;
+    Inner := FKids[0].VarObj;          { b.tl }
+
+    SetLength(FKids, 0);
+    S.VarChildren(Inner, 'k:1');
+    PumpFor(S, 2000);
+    AssertEquals('two members of the inner struct', 2, Length(FKids));
+    AssertEquals('x', 'x', FKids[0].Expr);
+    { b = { {1,2}, {3,4} } -- so b.tl.x is 1, and at the leaf a value
+      finally appears. }
+    AssertEquals('whose value is now given', '1', FKids[0].Value);
+    AssertEquals('and y', '2', FKids[1].Value);
+    AssertEquals('leaves have no children', 0, FKids[0].NumChild);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.ArrayChildrenAreIndexed;
+var S: TLedGdbSession;
+begin
+  if not StopInStructProgram(S) then Exit;
+  try
+    S.VarCreate('arr', 'loc:1');
+    PumpFor(S, 2000);
+    if FVarObj = '' then Exit;
+    AssertEquals('three elements', 3, FVarNumChild);
+    SetLength(FKids, 0);
+    S.VarChildren(FVarObj, 'k:2');
+    PumpFor(S, 2000);
+    AssertEquals('listed as three children', 3, Length(FKids));
+    { gdb names array children by subscript, which is what makes an array
+      and a struct the same problem. }
+    AssertEquals('by index', '0', FKids[0].Expr);
+    AssertEquals('with their values', '7', FKids[0].Value);
+    AssertEquals('and the last', '9', FKids[2].Value);
+  finally
+    S.Free;
+  end;
+end;
+
+procedure TTestGdb.VarCreateBeforeStoppingIsAnswered;
+var S: TLedGdbSession;
+begin
+  if not LedGdbAvailable then Exit;
+  S := NewSession;
+  S.OnVarCreated := @OnVarCreated;
+  try
+    S.Start;
+    S.WaitForState([lgsReady], 10000);
+    FVarTag := '';
+    FVarObj := 'not-empty';
+    { Answered locally with nothing, so the pane needs one code path. }
+    S.VarCreate('whatever', 'loc:9');
+    AssertEquals('answered at once', 'loc:9', FVarTag);
+    AssertEquals('with no variable object', '', FVarObj);
+  finally
+    S.Free;
+  end;
+end;
+
+{ --- what to ask about when the pointer rests on something -------------- }
+
+procedure TTestGdb.HoverFindsAPlainIdentifier;
+begin
+  //                              1234567890123456789
+  AssertEquals('mid-word', 'total', LedExpressionAt('    int total = 0;', 11));
+  AssertEquals('at its first letter', 'total',
+    LedExpressionAt('    int total = 0;', 9));
+  AssertEquals('at its last', 'total', LedExpressionAt('    int total = 0;', 13));
+end;
+
+procedure TTestGdb.HoverFindsFieldAccess;
+begin
+  { The whole point of doing more than medit: hovering the y of box.tl.y has
+    to ask about box.tl.y, not about y, which is not in scope. }
+  AssertEquals('two levels', 'box.tl.y',
+    LedExpressionAt('    n = box.tl.y + 1;', 16));
+  AssertEquals('one level', 'box.tl',
+    LedExpressionAt('    n = box.tl.y + 1;', 14));
+  AssertEquals('the root alone', 'box',
+    LedExpressionAt('    n = box.tl.y + 1;', 10));
+end;
+
+procedure TTestGdb.HoverFindsArrowAccess;
+begin
+  AssertEquals('through a pointer', 'p->next->value',
+    LedExpressionAt('    x = p->next->value;', 22));
+  AssertEquals('mixed with a dot', 'a.b->c',
+    LedExpressionAt('    y = a.b->c;', 14));
+end;
+
+procedure TTestGdb.HoverFindsSubscripts;
+begin
+  { A subscript is only ever *passed through* on the way left, so the
+    positions that matter are the ones after it.  Hovering a closing bracket
+    asks nothing, because a bracket is not a word. }
+  //                1234567890123456789
+  AssertEquals('through a subscript', 'arr[2].x',
+    LedExpressionAt('    v = arr[2].x;', 16));
+  AssertEquals('two dimensions', 'm[1][2].z',
+    LedExpressionAt('    v = m[1][2].z;', 17));
+  AssertEquals('a computed subscript', 'a[i+1].n',
+    LedExpressionAt('    v = a[i+1].n;', 16));
+  AssertEquals('the index is a literal', '',
+    LedExpressionAt('    v = arr[2].x;', 13));
+  AssertEquals('and the name is just the name', 'arr',
+    LedExpressionAt('    v = arr[2].x;', 10));
+  AssertEquals('a bracket is not a word', '',
+    LedExpressionAt('    v = m[1][2];', 15));
+end;
+
+procedure TTestGdb.HoverSkipsKeywordsAndNumbers;
+begin
+  { Each of these would come back from gdb as an error, and showing it would
+    look like a fault rather than a non-question. }
+  AssertEquals('a keyword', '', LedExpressionAt('    int total = 0;', 6));
+  AssertEquals('return', '', LedExpressionAt('    return sum;', 6));
+  AssertEquals('a literal', '', LedExpressionAt('    x = 4200;', 10));
+  AssertEquals('but a name with digits in it is fine', 'x2',
+    LedExpressionAt('    x2 = 1;', 6));
+end;
+
+procedure TTestGdb.HoverOffAWordIsEmpty;
+begin
+  AssertEquals('on a space', '', LedExpressionAt('    x = 1;', 4));
+  AssertEquals('on punctuation', '', LedExpressionAt('    x = 1;', 7));
+  AssertEquals('past the end', '', LedExpressionAt('    x = 1;', 99));
+  AssertEquals('before the start', '', LedExpressionAt('    x = 1;', 0));
+  AssertEquals('an empty line', '', LedExpressionAt('', 1));
+  { A qualifier with nothing in front of it is not an expression. }
+  AssertEquals('a stray field', 'x', LedExpressionAt('.x', 2));
 end;
 
 initialization

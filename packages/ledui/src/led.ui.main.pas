@@ -504,6 +504,7 @@ type
     procedure DebugStateChanged(Sender: TObject);
     function DebugViewFor(const AFileName: string): TLedEdit;
     procedure DebugGutterClick(Sender: TObject; ALine: Integer);
+    procedure DebugHover(Sender: TObject; const AExpr: string);
     procedure DebugCommand(ACommand: TLedDebugCommand);
     function BuildProject(AThenDebug: Boolean): Boolean;
     procedure BuildFinished(ATool: TLedTool; AExitCode: Integer;
@@ -1401,6 +1402,11 @@ begin
   Tab := ActiveTab;
   if (Tab = nil) or (Tab.Document.FileName = '') then Exit;
   FDebugger.ToggleBreakpoint(Tab.Document.FileName, ALine);
+end;
+
+procedure TLedMainForm.DebugHover(Sender: TObject; const AExpr: string);
+begin
+  FDebugger.HoverExpression(TLedEdit(Sender), AExpr);
 end;
 
 procedure TLedMainForm.DebugCommand(ACommand: TLedDebugCommand);
@@ -3230,6 +3236,7 @@ begin
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
+  Result.ViewHoverExpression := @DebugHover;
   ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;

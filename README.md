@@ -205,7 +205,12 @@ time.  **Tools → Debug**, or:
 | `Shift+F5` | Stop |
 
 The Debugger pane shows locals, the call stack and watched expressions;
-double-clicking a frame switches to it.  gdb's output, the program's own
+double-clicking a frame switches to it.  A struct, array or pointer in Locals
+opens: its fields are fetched when you open it and not before, so a deep
+structure costs one round trip per level you actually look at.  Resting the
+pointer over an expression in the source shows its value — `box.tl.y`,
+`p->next->value` and `arr[2].x` are read as written, not just the identifier
+under the cursor.  gdb's output, the program's own
 output and any build go to the Output pane, where `file:line` is clickable.
 There is an entry box for raw gdb commands.
 

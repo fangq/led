@@ -45,7 +45,8 @@ type
     reason about than an array of anonymous methods -- and every request led
     makes is one of a fixed handful. }
   TLedGdbRequest = (lgrNone, lgrVersion, lgrBreakInsert, lgrBreakDelete,
-                    lgrLocals, lgrFrames, lgrEval, lgrExec);
+                    lgrLocals, lgrFrames, lgrEval, lgrExec,
+                    lgrVarCreate, lgrVarChildren);
 
   TLedGdbLocal = record
     Name: string;
@@ -63,6 +64,23 @@ type
   end;
   TLedGdbFrames = array of TLedGdbFrame;
 
+  { One child of a variable object: a struct field, an array element, or the
+    pointee of a pointer.  VarObj is gdb's handle for it, which is what a
+    further -var-list-children is asked about, so drilling in is recursive
+    without led having to know anything about C types.
+
+    An aggregate child arrives with no value at all under --simple-values --
+    only leaves carry one -- so an empty Value means "expand me", not
+    "failed". }
+  TLedGdbVarChild = record
+    VarObj: string;
+    Expr: string;
+    TypeName: string;
+    Value: string;
+    NumChild: Integer;
+  end;
+  TLedGdbVarChildren = array of TLedGdbVarChild;
+
   TLedGdbTextEvent = procedure(Sender: TObject; const AText: string) of object;
   TLedGdbStopEvent = procedure(Sender: TObject;
     const AReason, AFileName: string; ALine: Integer; const AFunc: string) of object;
@@ -71,6 +89,10 @@ type
   TLedGdbEvalEvent = procedure(Sender: TObject; const ATag, AValue: string;
     AIsError: Boolean) of object;
   TLedGdbNotify = procedure(Sender: TObject) of object;
+  TLedGdbVarCreatedEvent = procedure(Sender: TObject; const ATag, AVarObj,
+    ATypeName, AValue: string; ANumChild: Integer) of object;
+  TLedGdbVarChildrenEvent = procedure(Sender: TObject; const ATag: string;
+    const AChildren: TLedGdbVarChildren) of object;
 
   TLedGdbSession = class
   private
@@ -90,6 +112,11 @@ type
 
     FLocals: TLedGdbLocals;
     FFrames: TLedGdbFrames;
+    { Every variable object handed out, so they can all be dropped when the
+      program moves.  A varobj is bound to the frame it was made in; kept
+      across a resume it reports the old frame's memory, which is a wrong
+      answer rather than an error. }
+    FVarObjs: TStringList;
 
     FOnConsole: TLedGdbTextEvent;
     FOnTarget: TLedGdbTextEvent;
@@ -103,6 +130,8 @@ type
     FOnLocals: TLedGdbNotify;
     FOnFrames: TLedGdbNotify;
     FOnEval: TLedGdbEvalEvent;
+    FOnVarCreated: TLedGdbVarCreatedEvent;
+    FOnVarChildren: TLedGdbVarChildrenEvent;
     FOnExited: TLedGdbNotify;
 
     procedure SetState(AValue: TLedGdbState);
@@ -115,6 +144,7 @@ type
     procedure HandleNotify(ARec: TLedMIRecord);
     procedure ReadLocals(ARec: TLedMIRecord);
     procedure ReadFrames(ARec: TLedMIRecord);
+    procedure ReadVarChildren(ARec: TLedMIRecord; const ATag: string);
     procedure EmitBreakpoint(AValue: TLedMIValue);
     procedure Send(const ACommand: string; AKind: TLedGdbRequest = lgrNone;
       const ATag: string = '');
@@ -164,6 +194,14 @@ type
       watches and hover without keeping a queue of its own. }
     procedure Evaluate(const AExpression, ATag: string);
 
+    { Makes a variable object for AExpression and reports it on
+      OnVarCreated.  NumChild > 0 means it can be drilled into. }
+    procedure VarCreate(const AExpression, ATag: string);
+    { The fields or elements of AVarObj, on OnVarChildren. }
+    procedure VarChildren(const AVarObj, ATag: string);
+    { Drops every variable object.  Done automatically on each resume. }
+    procedure VarDeleteAll;
+
     procedure SendRaw(const ACommand: string);
 
     property State: TLedGdbState read FState;
@@ -185,8 +223,26 @@ type
     property OnLocals: TLedGdbNotify read FOnLocals write FOnLocals;
     property OnFrames: TLedGdbNotify read FOnFrames write FOnFrames;
     property OnEval: TLedGdbEvalEvent read FOnEval write FOnEval;
+    property OnVarCreated: TLedGdbVarCreatedEvent
+      read FOnVarCreated write FOnVarCreated;
+    property OnVarChildren: TLedGdbVarChildrenEvent
+      read FOnVarChildren write FOnVarChildren;
     property OnExited: TLedGdbNotify read FOnExited write FOnExited;
   end;
+
+{ The C expression around column ACol of ALine, or '' when there is nothing
+  worth asking gdb about.
+
+  Deliberately more than an identifier.  medit's plugin takes the bare
+  `[A-Za-z_][A-Za-z0-9_]*` run and its own notes list `a->b`, `a.b` and
+  `a[i]` as unsupported -- which is most of what one actually wants to look
+  at while stopped in C.  This walks left through field access, arrow and
+  subscript so hovering the `y` of `box.tl.y` asks about `box.tl.y`.
+
+  Keywords and type names return '' : `int`, `if` and `return` are never
+  worth a round trip, and gdb answers each of them with an error that would
+  otherwise be shown as though it meant something. }
+function LedExpressionAt(const ALine: string; ACol: Integer): string;
 
 { True when a gdb that speaks mi3 can be found.  The pane greys itself out
   rather than failing at the first click. }
@@ -213,6 +269,100 @@ begin
   Result := FGdbFound;
 end;
 
+const
+  { Not worth asking about, and each would come back as an error. }
+  CNoise: array[0..37] of string = (
+    'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+    'break', 'continue', 'return', 'goto', 'sizeof', 'typedef',
+    'struct', 'union', 'enum', 'const', 'volatile', 'static', 'extern',
+    'register', 'inline', 'void', 'char', 'short', 'int', 'long',
+    'float', 'double', 'signed', 'unsigned', 'NULL', 'true', 'false',
+    'nullptr', 'auto', 'restrict');
+
+function IsWordCh(C: Char): Boolean; inline;
+begin
+  Result := (C in ['A'..'Z', 'a'..'z', '0'..'9', '_', '$']);
+end;
+
+function LedExpressionAt(const ALine: string; ACol: Integer): string;
+var
+  Start_, Stop_, k, Depth, Saved: Integer;
+  Word_: string;
+begin
+  Result := '';
+  if (ACol < 1) or (ACol > Length(ALine)) then Exit;
+  if not IsWordCh(ALine[ACol]) then Exit;
+  { A number on its own is not a variable. }
+  if ALine[ACol] in ['0'..'9'] then
+  begin
+    k := ACol;
+    while (k > 1) and IsWordCh(ALine[k - 1]) do Dec(k);
+    if ALine[k] in ['0'..'9'] then Exit;
+  end;
+
+  Stop_ := ACol;
+  while (Stop_ < Length(ALine)) and IsWordCh(ALine[Stop_ + 1]) do Inc(Stop_);
+  Start_ := ACol;
+  while (Start_ > 1) and IsWordCh(ALine[Start_ - 1]) do Dec(Start_);
+
+  { The identifier alone decides whether this is noise -- `int` in
+    `int x` must not become a request just because `x` follows it. }
+  Word_ := Copy(ALine, Start_, Stop_ - Start_ + 1);
+  for k := 0 to High(CNoise) do
+    if Word_ = CNoise[k] then Exit;
+
+  { Now walk left through whatever qualifies it.
+
+    Each turn consumes one qualifier -- `.`, `->` or a balanced `[...]` --
+    and then the name in front of it.  A qualifier with nothing before it is
+    not part of an expression, so the position is put back: hovering the `x`
+    of a line beginning `.x` asks about `x`, not about `.x`. }
+  repeat
+    Saved := Start_;
+
+    if (Start_ > 1) and (ALine[Start_ - 1] = '.') then
+      Dec(Start_)
+    else if (Start_ > 2) and (ALine[Start_ - 2] = '-') and
+            (ALine[Start_ - 1] = '>') then
+      Dec(Start_, 2)
+    else if (Start_ > 1) and (ALine[Start_ - 1] = ']') then
+    begin
+      { Back over a balanced subscript, so a[i][j] and a[f(1)] both work. }
+      Depth := 0;
+      k := Start_ - 1;
+      while k >= 1 do
+      begin
+        if ALine[k] = ']' then Inc(Depth)
+        else if ALine[k] = '[' then
+        begin
+          Dec(Depth);
+          if Depth = 0 then Break;
+        end;
+        Dec(k);
+      end;
+      if (k < 1) or (Depth <> 0) then Break;
+      Start_ := k;
+    end
+    else
+      Break;
+
+    if (Start_ > 1) and IsWordCh(ALine[Start_ - 1]) then
+      while (Start_ > 1) and IsWordCh(ALine[Start_ - 1]) do Dec(Start_)
+    else if (Start_ > 1) and (ALine[Start_ - 1] = ']') then
+      { `arr[2].x` -- the thing being qualified is itself subscripted, so
+        let the next turn take the subscript.  Breaking here instead is what
+        made this return ".x". }
+      Continue
+    else
+    begin
+      Start_ := Saved;
+      Break;
+    end;
+  until False;
+
+  Result := Copy(ALine, Start_, Stop_ - Start_ + 1);
+end;
+
 { --- lifecycle ------------------------------------------------------------- }
 
 constructor TLedGdbSession.Create;
@@ -220,12 +370,14 @@ begin
   inherited Create;
   FState := lgsIdle;
   FToken := 0;
+  FVarObjs := TStringList.Create;
 end;
 
 destructor TLedGdbSession.Destroy;
 begin
   Quit;
   FProcess.Free;
+  FVarObjs.Free;
   inherited Destroy;
 end;
 
@@ -526,6 +678,19 @@ begin
     lgrEval:
       if Assigned(FOnEval) then
         FOnEval(Self, Tag, ARec.Results.Str('value', ''), False);
+    lgrVarCreate:
+      begin
+        if ARec.Results.Str('name', '') <> '' then
+          FVarObjs.Add(ARec.Results.Str('name', ''));
+        if Assigned(FOnVarCreated) then
+          FOnVarCreated(Self, Tag,
+            ARec.Results.Str('name', ''),
+            ARec.Results.Str('type', ''),
+            ARec.Results.Str('value', ''),
+            ARec.Results.Int('numchild', 0));
+      end;
+    lgrVarChildren:
+      ReadVarChildren(ARec, Tag);
   end;
 end;
 
@@ -536,6 +701,8 @@ var
 begin
   if ARec.Class_ = 'running' then
   begin
+    { Frame-bound, so they cannot outlive the stop that made them. }
+    VarDeleteAll;
     FInferiorAlive := True;
     SetState(lgsRunning);
     if Assigned(FOnRunning) then FOnRunning(Self);
@@ -655,6 +822,36 @@ begin
   if Assigned(FOnFrames) then FOnFrames(Self);
 end;
 
+procedure TLedGdbSession.ReadVarChildren(ARec: TLedMIRecord;
+  const ATag: string);
+var
+  V, E: TLedMIValue;
+  Kids: TLedGdbVarChildren;
+  i, n: Integer;
+begin
+  SetLength(Kids, 0);
+  V := ARec.Results.ByName('children');
+  if V <> nil then
+  begin
+    SetLength(Kids, V.Count);
+    n := 0;
+    for i := 0 to V.Count - 1 do
+    begin
+      E := V[i];
+      if E = nil then Continue;
+      Kids[n].VarObj := E.Str('name', '');
+      Kids[n].Expr := E.Str('exp', '');
+      Kids[n].TypeName := E.Str('type', '');
+      { Absent for an aggregate -- see the note on the record. }
+      Kids[n].Value := E.Str('value', '');
+      Kids[n].NumChild := E.Int('numchild', 0);
+      if Kids[n].VarObj <> '' then Inc(n);
+    end;
+    SetLength(Kids, n);
+  end;
+  if Assigned(FOnVarChildren) then FOnVarChildren(Self, ATag, Kids);
+end;
+
 { --- commands -------------------------------------------------------------- }
 
 procedure TLedGdbSession.SetTarget(const APath: string);
@@ -764,6 +961,41 @@ begin
     Exit;
   end;
   Send('-data-evaluate-expression ' + LedMIQuote(AExpression), lgrEval, ATag);
+end;
+
+procedure TLedGdbSession.VarCreate(const AExpression, ATag: string);
+begin
+  if (AExpression = '') or (FState <> lgsStopped) or (not FInferiorAlive) then
+  begin
+    if Assigned(FOnVarCreated) then FOnVarCreated(Self, ATag, '', '', '', 0);
+    Exit;
+  end;
+  { "-" lets gdb name it, "*" means the current frame. }
+  Send('-var-create - * ' + LedMIQuote(AExpression), lgrVarCreate, ATag);
+end;
+
+procedure TLedGdbSession.VarChildren(const AVarObj, ATag: string);
+var
+  Empty: TLedGdbVarChildren;
+begin
+  if (AVarObj = '') or (FState <> lgsStopped) or (not FInferiorAlive) then
+  begin
+    SetLength(Empty, 0);
+    if Assigned(FOnVarChildren) then FOnVarChildren(Self, ATag, Empty);
+    Exit;
+  end;
+  Send('-var-list-children --simple-values ' + AVarObj, lgrVarChildren, ATag);
+end;
+
+procedure TLedGdbSession.VarDeleteAll;
+var
+  i: Integer;
+begin
+  if FVarObjs.Count = 0 then Exit;
+  if Alive then
+    for i := 0 to FVarObjs.Count - 1 do
+      Send('-var-delete ' + FVarObjs[i]);
+  FVarObjs.Clear;
 end;
 
 end.
