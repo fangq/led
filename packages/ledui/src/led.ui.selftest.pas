@@ -3775,7 +3775,44 @@ begin
   CheckEqInt('with its one configuration', 1,
     F.Debugger.Project.ConfigCount);
 
-  { Exactly what a gutter click does. }
+  { A real click in the gutter, not the call it is supposed to make.  What
+    was checked here before was ToggleBreakpoint, with a comment claiming it
+    was "exactly what a gutter click does" -- which is an assumption, and the
+    one thing this suite exists to stop being taken on trust. }
+  { The click has to land where a person aims, which is the line number --
+    "click the gutter beside the line" means that to anyone who has used
+    another debugger.  It used to mean a six-pixel unmarked strip at the far
+    left, and clicking the number did nothing. }
+  Check('the gutter has a zone for it', V.BreakpointZone(x, y));
+  CheckGt('wider than the marks column alone', V.Gutter.MarksPart.Width,
+    y - x);
+  Check('and it stops before the fold column',
+    y <= V.Gutter.CodeFoldPart.Left);
+
+  TLedMousePoke.Press(V, [],
+    V.Gutter.LineNumberPart.Left + V.Gutter.LineNumberPart.Width div 2,
+    5 * V.LineHeight + V.LineHeight div 2);
+  Pump;
+  CheckEqInt('clicking the line number sets a breakpoint', 1,
+    F.Debugger.BreakpointCount);
+  Check('on the line clicked', F.Debugger.HasBreakpoint(Src, 6));
+
+  { And clicking it again clears it, which is the other half of "toggle". }
+  TLedMousePoke.Press(V, [],
+    V.Gutter.LineNumberPart.Left + V.Gutter.LineNumberPart.Width div 2,
+    5 * V.LineHeight + V.LineHeight div 2);
+  Pump;
+  CheckEqInt('and clicking it again clears it', 0,
+    F.Debugger.BreakpointCount);
+
+  { The fold column is not part of the zone: a click there must still fold. }
+  TLedMousePoke.Press(V, [],
+    V.Gutter.CodeFoldPart.Left + V.Gutter.CodeFoldPart.Width div 2,
+    5 * V.LineHeight + V.LineHeight div 2);
+  Pump;
+  CheckEqInt('but the fold column still folds instead', 0,
+    F.Debugger.BreakpointCount);
+
   F.Debugger.ToggleBreakpoint(Src, 6);
   Pump;
   CheckEqInt('one breakpoint', 1, F.Debugger.BreakpointCount);

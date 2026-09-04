@@ -199,7 +199,7 @@ time.  **Tools → Debug**, or:
 |---|---|
 | `F7` | Build the project |
 | `Ctrl+F5` | Start debugging, or continue |
-| `F9`, or click the gutter | Toggle a breakpoint |
+| `F9`, or click the line number | Toggle a breakpoint |
 | `Ctrl+Shift+F9` | Give a breakpoint a condition |
 | `Ctrl+Shift+F10` | Watch an expression |
 | `Ctrl+F10` | Run to the caret's line |
