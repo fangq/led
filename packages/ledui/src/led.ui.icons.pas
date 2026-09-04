@@ -71,7 +71,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..43] of string = (
+  IconNames: array[0..50] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -82,7 +82,12 @@ const
     { The tab headers: a plain document, and one with unsaved changes. }
     'doc', 'docmodified',
     { File-browser navigation. }
-    'back', 'forward', 'up', 'home'
+    'back', 'forward', 'up', 'home',
+    { The debugger.  Appended rather than inserted: an ImageIndex in the form
+      file is an absolute position, so inserting here would silently move
+      every icon after it. }
+    'debug', 'stepover', 'stepinto', 'stepout', 'pause',
+    'breakpoint', 'debugline'
   );
 
 procedure LedApplyWindowIcon;
@@ -400,6 +405,55 @@ begin
           it the one coloured mark on an otherwise monochrome toolbar and
           drew the eye to Run for no reason anyone chose. }
         P.Poly([3.5, 1.5, 14, 8, 3.5, 14.5], True);
+      end;
+    'debug':
+      begin
+        { A bug: a body, a head, and legs.  The one glyph in this set that is
+          a picture of its name rather than of its action, because every
+          debugger in thirty years has used it and nothing else reads. }
+        P.Ellipse(5, 5.5, 11, 13, True);
+        P.Ellipse(6.5, 2.5, 9.5, 5.5);
+        P.Line(2, 7, 5, 8.5);
+        P.Line(2, 12, 5, 11);
+        P.Line(14, 7, 11, 8.5);
+        P.Line(14, 12, 11, 11);
+      end;
+    'stepover':
+      begin
+        { An arrow that arcs over a dot: the call is skipped, not entered. }
+        P.Poly([3, 9, 5, 5.5, 8, 4, 11, 5.5, 13, 9]);
+        P.Poly([13, 9, 10, 8.5, 11.5, 11.5], True);
+        P.Ellipse(6.5, 11, 9.5, 14, True);
+      end;
+    'stepinto':
+      begin
+        { An arrow down into a dot. }
+        P.Line(8, 2, 8, 8.5);
+        P.Poly([8, 11, 5.5, 7, 10.5, 7], True);
+        P.Ellipse(6.5, 11.5, 9.5, 14.5, True);
+      end;
+    'stepout':
+      begin
+        { And back up out of it. }
+        P.Line(8, 11.5, 8, 5);
+        P.Poly([8, 2.5, 5.5, 6.5, 10.5, 6.5], True);
+        P.Ellipse(6.5, 12, 9.5, 15, True);
+      end;
+    'pause':
+      begin
+        P.Box(4.5, 3, 6.8, 13, True);
+        P.Box(9.2, 3, 11.5, 13, True);
+      end;
+    'breakpoint':
+      begin
+        { The filled disc every debugger puts in the margin. }
+        P.Ellipse(3.5, 3.5, 12.5, 12.5, True);
+      end;
+    'debugline':
+      begin
+        { The arrow that says "execution is here". }
+        P.Poly([3, 4.5, 9, 8, 3, 11.5], True);
+        P.Line(10.5, 8, 13.5, 8);
       end;
     'terminal':
       begin

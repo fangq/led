@@ -21,7 +21,7 @@ uses
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki,
+  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
@@ -69,6 +69,28 @@ type
     actToggleBracket: TAction;
     actSelectToBracket: TAction;
     actToggleBookmark: TAction;
+    actDebugStart: TAction;
+    actDebugContinue: TAction;
+    actDebugPause: TAction;
+    actDebugStop: TAction;
+    actDebugStepOver: TAction;
+    actDebugStepInto: TAction;
+    actDebugStepOut: TAction;
+    actToggleBreakpoint: TAction;
+    actToggleDebugPane: TAction;
+    miDebug: TMenuItem;
+    mi_DebugStart: TMenuItem;
+    mi_DebugContinue: TMenuItem;
+    mi_DebugPause: TMenuItem;
+    mi_DebugStop: TMenuItem;
+    mi_DebugStepOver: TMenuItem;
+    mi_DebugStepInto: TMenuItem;
+    mi_DebugStepOut: TMenuItem;
+    mi_ToggleBreakpoint: TMenuItem;
+    mi_ToggleDebugPane: TMenuItem;
+    miSepDbg0: TMenuItem;
+    miSepDbg1: TMenuItem;
+    miSepDbg2: TMenuItem;
     actToggleProject: TAction;
     actAddToProject: TAction;
     actAddBookmark: TAction;
@@ -377,6 +399,15 @@ type
     procedure actSelectAllExecute(Sender: TObject);
     procedure actSelectToBracketExecute(Sender: TObject);
     procedure actToggleBookmarkExecute(Sender: TObject);
+    procedure actDebugStartExecute(Sender: TObject);
+    procedure actDebugContinueExecute(Sender: TObject);
+    procedure actDebugPauseExecute(Sender: TObject);
+    procedure actDebugStopExecute(Sender: TObject);
+    procedure actDebugStepOverExecute(Sender: TObject);
+    procedure actDebugStepIntoExecute(Sender: TObject);
+    procedure actDebugStepOutExecute(Sender: TObject);
+    procedure actToggleBreakpointExecute(Sender: TObject);
+    procedure actToggleDebugPaneExecute(Sender: TObject);
     procedure actToggleProjectExecute(Sender: TObject);
     procedure actAddToProjectExecute(Sender: TObject);
     procedure actAddBookmarkExecute(Sender: TObject);
@@ -447,6 +478,8 @@ type
     FGrepDialog: TLedGrepDialog;
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTerminalPane;
+    FDebugPane: TLedDebugPane;
+    FDebugger: TLedDebugger;
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
@@ -457,6 +490,12 @@ type
     procedure GrepStarted;
     procedure ToolItemClick(Sender: TObject);
     procedure OutputJump(const AFileName: string; ALine, AColumn: Integer);
+    procedure DebugJump(Sender: TObject; const AFileName: string; ALine: Integer);
+    procedure DebugConsole(Sender: TObject; const AText: string);
+    procedure DebugStateChanged(Sender: TObject);
+    function DebugViewFor(const AFileName: string): TLedEdit;
+    procedure DebugGutterClick(Sender: TObject; ALine: Integer);
+    procedure DebugCommand(ACommand: TLedDebugCommand);
     procedure PrefsApplied(Sender: TObject);
     procedure InstancePoll(Sender: TObject);
     procedure InstanceOpenRequest(const APayload: string);
@@ -560,6 +599,10 @@ type
     { The terminal pane, for the checks that look at its context menu and
       its cursor. }
     property Terminal: TLedTerminalPane read FTerminal;
+    { The debugger and its pane, so the suite can set a breakpoint, start a
+      real gdb and read back what came of it. }
+    property Debugger: TLedDebugger read FDebugger;
+    property DebugPane: TLedDebugPane read FDebugPane;
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
     property DocListMenu: TMenuItem read miDocList;
@@ -847,6 +890,24 @@ begin
     FDock.AddPane(ledBottom, 'terminal', 'Terminal', FTerminal, 'terminal');
   end;
 
+  { The debugger.  Registered whether or not gdb is installed, because a
+    layout that names the pane has to find it -- the actions grey themselves
+    out instead, which is how the terminal handles the same problem. }
+  FDebugPane := TLedDebugPane.Create(Self);
+  FDebugPane.SetImages(ImageList1,
+    [LedIconIndex('debug'), LedIconIndex('run'), LedIconIndex('pause'),
+     LedIconIndex('stop'), LedIconIndex('stepover'), LedIconIndex('stepinto'),
+     LedIconIndex('stepout'), LedIconIndex('breakpoint'),
+     LedIconIndex('run')]);
+  FDock.AddPane(ledRight, 'debug', 'Debugger', FDebugPane, 'debug');
+
+  FDebugger := TLedDebugger.Create(Self);
+  FDebugger.Attach(FDebugPane);
+  FDebugger.OnJump := @DebugJump;
+  FDebugger.OnConsole := @DebugConsole;
+  FDebugger.OnViewFor := @DebugViewFor;
+  FDebugger.OnStateChanged := @DebugStateChanged;
+
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
 
@@ -1124,6 +1185,127 @@ begin
 
   { ShowPane raises OnPaneShown, which starts it. }
   LedTryFocus(FTerminal.Active);
+end;
+
+{ --- the debugger ---------------------------------------------------------- }
+
+procedure TLedMainForm.actDebugStartExecute(Sender: TObject);
+begin
+  DebugCommand(ldcStart);
+end;
+
+procedure TLedMainForm.actDebugContinueExecute(Sender: TObject);
+begin
+  DebugCommand(ldcContinue);
+end;
+
+procedure TLedMainForm.actDebugPauseExecute(Sender: TObject);
+begin
+  DebugCommand(ldcPause);
+end;
+
+procedure TLedMainForm.actDebugStopExecute(Sender: TObject);
+begin
+  DebugCommand(ldcStop);
+end;
+
+procedure TLedMainForm.actDebugStepOverExecute(Sender: TObject);
+begin
+  DebugCommand(ldcStepOver);
+end;
+
+procedure TLedMainForm.actDebugStepIntoExecute(Sender: TObject);
+begin
+  DebugCommand(ldcStepInto);
+end;
+
+procedure TLedMainForm.actDebugStepOutExecute(Sender: TObject);
+begin
+  DebugCommand(ldcStepOut);
+end;
+
+procedure TLedMainForm.actToggleBreakpointExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
+  begin
+    ReportError('Save the file before setting a breakpoint in it.');
+    Exit;
+  end;
+  FDebugger.ToggleBreakpoint(Tab.Document.FileName, Tab.ActiveView.CaretY);
+end;
+
+procedure TLedMainForm.actToggleDebugPaneExecute(Sender: TObject);
+begin
+  FDock.TogglePane('debug');
+end;
+
+
+procedure TLedMainForm.DebugJump(Sender: TObject; const AFileName: string;
+  ALine: Integer);
+begin
+  OutputJump(AFileName, ALine, 0);
+end;
+
+{ gdb's own chatter, the program's output and the debugger's messages all go
+  to the Output pane.  It already colours, buffers partial lines and turns
+  file:line into a jump; a second console would be a worse copy of it. }
+procedure TLedMainForm.DebugConsole(Sender: TObject; const AText: string);
+begin
+  if FOutput = nil then Exit;
+  FOutput.Append(AText);
+  if Pos(LineEnding, AText) = 0 then FOutput.Flush;
+end;
+
+procedure TLedMainForm.DebugStateChanged(Sender: TObject);
+begin
+  { The action enabler runs on idle and reads the debugger, so there is
+    nothing to push -- but the marks in the gutter are painted, not polled. }
+  if ActiveView <> nil then ActiveView.Invalidate;
+end;
+
+{ The open view of a file, or nil.  How the debugger reaches a document
+  without knowing what a tab is. }
+function TLedMainForm.DebugViewFor(const AFileName: string): TLedEdit;
+var
+  Doc: TLedDocument;
+  Tab: TLedTab;
+begin
+  Result := nil;
+  if AFileName = '' then Exit;
+  Doc := FDocs.FindByFileName(AFileName);
+  if Doc = nil then Exit;
+  Tab := FindTabFor(Doc);
+  if Tab = nil then Exit;
+  Result := Tab.ActiveView;
+end;
+
+procedure TLedMainForm.DebugGutterClick(Sender: TObject; ALine: Integer);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document.FileName = '') then Exit;
+  FDebugger.ToggleBreakpoint(Tab.Document.FileName, ALine);
+end;
+
+procedure TLedMainForm.DebugCommand(ACommand: TLedDebugCommand);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab <> nil) and (Tab.Document.FileName <> '') then
+    FDebugger.NoteActiveFile(Tab.Document.FileName);
+  { Output is where the session talks, so it is shown before it starts
+    rather than after something has already gone wrong unseen. }
+  if ACommand = ldcStart then
+  begin
+    FDock.ShowPane('output');
+    FDock.ShowPane('debug');
+  end;
+  FDebugger.Command(ACommand);
 end;
 
 procedure TLedMainForm.OutputJump(const AFileName: string;
@@ -2923,6 +3105,7 @@ begin
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
+  Result.ViewBreakpointClick := @DebugGutterClick;
   ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;
@@ -3164,6 +3347,20 @@ begin
   actStopTool.Enabled := FRunner.Running;
   actToggleOutput.Checked := FDock.EdgeVisible[ledBottom];
   actToggleTerminal.Enabled := LedPtyAvailable;
+
+  { The debugger.  Everything is greyed unless it can actually be done: a
+    Step that answers "the program is not running" is worse than one that is
+    plainly unavailable, and gdb may not be installed at all. }
+  actDebugStart.Enabled := LedGdbAvailable and HasDoc;
+  actDebugContinue.Enabled := FDebugger.Stopped;
+  actDebugPause.Enabled := FDebugger.Running;
+  actDebugStop.Enabled := FDebugger.Session.Alive;
+  actDebugStepOver.Enabled := FDebugger.CanStep;
+  actDebugStepInto.Enabled := FDebugger.CanStep;
+  actDebugStepOut.Enabled := FDebugger.CanStep;
+  actToggleBreakpoint.Enabled := LedGdbAvailable and HasDoc and
+                                 (Tab <> nil) and (Tab.Document.FileName <> '');
+  actToggleDebugPane.Checked := FDock.PaneVisible('debug');
   actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
   actComplete.Enabled := HasDoc;
   actPrint.Enabled := HasDoc and LedPrinterAvailable;

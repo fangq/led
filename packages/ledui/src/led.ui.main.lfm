@@ -389,6 +389,61 @@ object LedMainForm: TLedMainForm
       Caption = '&Reset Pane Layout'
       OnExecute = actResetLayoutExecute
     end
+    object actDebugStart: TAction
+      Caption = '&Start Debugging'
+      Hint = 'Build if needed, then run the program under gdb'
+      ImageIndex = 44
+      ShortCut = 16500
+      OnExecute = actDebugStartExecute
+    end
+    object actDebugContinue: TAction
+      Caption = '&Continue'
+      ImageIndex = 28
+      ShortCut = 16503
+      OnExecute = actDebugContinueExecute
+    end
+    object actDebugPause: TAction
+      Caption = 'P&ause'
+      ImageIndex = 48
+      ShortCut = 16501
+      OnExecute = actDebugPauseExecute
+    end
+    object actDebugStop: TAction
+      Caption = 'S&top Debugging'
+      ImageIndex = 27
+      ShortCut = 8308
+      OnExecute = actDebugStopExecute
+    end
+    object actDebugStepOver: TAction
+      Caption = 'Step &Over'
+      ImageIndex = 45
+      ShortCut = 121
+      OnExecute = actDebugStepOverExecute
+    end
+    object actDebugStepInto: TAction
+      Caption = 'Step &Into'
+      ImageIndex = 46
+      ShortCut = 122
+      OnExecute = actDebugStepIntoExecute
+    end
+    object actDebugStepOut: TAction
+      Caption = 'Step O&ut'
+      ImageIndex = 47
+      ShortCut = 8314
+      OnExecute = actDebugStepOutExecute
+    end
+    object actToggleBreakpoint: TAction
+      Caption = 'Toggle &Breakpoint'
+      Hint = 'Or click the gutter beside the line'
+      ImageIndex = 49
+      ShortCut = 120
+      OnExecute = actToggleBreakpointExecute
+    end
+    object actToggleDebugPane: TAction
+      Caption = 'Debu&gger'
+      ImageIndex = 44
+      OnExecute = actToggleDebugPaneExecute
+    end
     object actToggleProject: TAction
       Caption = '&Project Files'
       OnExecute = actToggleProjectExecute
@@ -678,6 +733,42 @@ object LedMainForm: TLedMainForm
     end
     object mnuTools: TMenuItem
       Caption = '&Tools'
+      object miDebug: TMenuItem
+        Caption = '&Debug'
+        object mi_DebugStart: TMenuItem
+          Action = actDebugStart
+        end
+        object mi_DebugContinue: TMenuItem
+          Action = actDebugContinue
+        end
+        object mi_DebugPause: TMenuItem
+          Action = actDebugPause
+        end
+        object mi_DebugStop: TMenuItem
+          Action = actDebugStop
+        end
+        object miSepDbg1: TMenuItem
+          Caption = '-'
+        end
+        object mi_DebugStepOver: TMenuItem
+          Action = actDebugStepOver
+        end
+        object mi_DebugStepInto: TMenuItem
+          Action = actDebugStepInto
+        end
+        object mi_DebugStepOut: TMenuItem
+          Action = actDebugStepOut
+        end
+        object miSepDbg2: TMenuItem
+          Caption = '-'
+        end
+        object mi_ToggleBreakpoint: TMenuItem
+          Action = actToggleBreakpoint
+        end
+      end
+      object miSepDbg0: TMenuItem
+        Caption = '-'
+      end
       object miToolList: TMenuItem
         Caption = '(no tools)'
         OnClick = miToolListClick
@@ -797,6 +888,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleProject: TMenuItem
         Action = actToggleProject
+      end
+      object mi_ToggleDebugPane: TMenuItem
+        Action = actToggleDebugPane
       end
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview
