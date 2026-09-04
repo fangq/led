@@ -515,6 +515,7 @@ type
     procedure DebugEditCondition(Sender: TObject; const AFileName: string;
       ALine: Integer);
     procedure DebugToggleBreakpoint(Sender: TObject);
+    procedure DebugPaneCommand(Sender: TObject; ACommand: TLedDebugCommand);
     procedure DebugConsole(Sender: TObject; const AText: string);
     procedure DebugStateChanged(Sender: TObject);
     function DebugViewFor(const AFileName: string): TLedEdit;
@@ -948,6 +949,8 @@ begin
   FDebugger.AttachBreakPane(FBreakPane);
   FDebugger.OnEditCondition := @DebugEditCondition;
   FDebugger.OnToggleBreakpoint := @DebugToggleBreakpoint;
+  { So the pane's buttons and the menu are the same thing. }
+  FDebugger.OnCommand := @DebugPaneCommand;
   FDebugger.OnJump := @DebugJump;
   FDebugger.OnConsole := @DebugConsole;
   FDebugger.OnViewFor := @DebugViewFor;
@@ -1339,6 +1342,12 @@ end;
 procedure TLedMainForm.DebugToggleBreakpoint(Sender: TObject);
 begin
   actToggleBreakpoint.Execute;
+end;
+
+procedure TLedMainForm.DebugPaneCommand(Sender: TObject;
+  ACommand: TLedDebugCommand);
+begin
+  DebugCommand(ACommand);
 end;
 
 procedure TLedMainForm.actToggleBreakPaneExecute(Sender: TObject);
