@@ -149,6 +149,7 @@ type
       mouse. }
     procedure RequestHover(const AExpr: string);
     procedure ShowHoverValue(const AExpr, AValue: string);
+    procedure HideHoverValue(const AExpr: string);
     { What the pointer is over now, or ''.  Public so a check can ask
       without a mouse. }
     function ExpressionAtPixels(X, Y: Integer): string;
@@ -1131,6 +1132,18 @@ begin
   if AExpr <> FHoverExpr then Exit;
   Hint := AExpr + ' = ' + AValue;
   ShowHint := True;
+end;
+
+{ There is nothing to say about this one.  Hovering the type in `Item *it`
+  asked gdb about `Item`, which answered "Attempt to use a type name as an
+  expression" -- and that was then shown as though it were the value.  A
+  pointer resting on a word that is not a value should produce no tooltip,
+  which is what every other debugger does. }
+procedure TLedEdit.HideHoverValue(const AExpr: string);
+begin
+  if AExpr <> FHoverExpr then Exit;
+  Hint := '';
+  ShowHint := False;
 end;
 
 procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;

@@ -1152,6 +1152,104 @@ begin
   DeleteFile(Path2);
 end;
 
+{ True when an icon has a hole in it: a background pixel with ink above,
+  below, left and right of it.
+
+  Which is what tells an outlined shape from a solid one, and is the point
+  of the stop sign.  A run triangle and the filled disc that used to be the
+  breakpoint icon are both solid, so neither has one -- at sixteen pixels
+  they are two blobs of the same weight, which is how they came to be
+  mistaken for each other. }
+function IconHasHole(const AName: string): Boolean;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, k: Integer;
+  Ink: array of array of Boolean;
+  C: TFPColor;
+  Up, Down, Left, Right: Boolean;
+begin
+  Result := False;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf24bit;
+    Bmp.SetSize(16, 16);
+    Bmp.Canvas.Brush.Color := clWhite;
+    Bmp.Canvas.Brush.Style := bsSolid;
+    Bmp.Canvas.FillRect(0, 0, 16, 16);
+    Bmp.Canvas.AntialiasingMode := amOff;
+    LedDrawIcon(Bmp, AName, clBlack);
+    Img := Bmp.CreateIntfImage;
+    try
+      SetLength(Ink, Img.Width, Img.Height);
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          Ink[x, y] := (C.Red < $4000) and (C.Green < $4000) and
+                       (C.Blue < $4000);
+        end;
+      for y := 1 to Img.Height - 2 do
+        for x := 1 to Img.Width - 2 do
+          if not Ink[x, y] then
+          begin
+            Up := False; Down := False; Left := False; Right := False;
+            for k := 0 to y - 1 do if Ink[x, k] then Up := True;
+            for k := y + 1 to Img.Height - 1 do if Ink[x, k] then Down := True;
+            for k := 0 to x - 1 do if Ink[k, y] then Left := True;
+            for k := x + 1 to Img.Width - 1 do if Ink[k, y] then Right := True;
+            if Up and Down and Left and Right then Exit(True);
+          end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The width of the topmost row of ink in an icon, which is what tells a
+  flat-topped shape from a round or pointed one. }
+function IconTopRun(const AName: string): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, Run: Integer;
+  C: TFPColor;
+begin
+  Result := 0;
+  { Drawn into a bitmap of this function's own.  LedIconBitmap hands back a
+    shared one that the unit owns and reuses, so freeing it is a crash. }
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf24bit;
+    Bmp.SetSize(16, 16);
+    Bmp.Canvas.Brush.Color := clWhite;
+    Bmp.Canvas.Brush.Style := bsSolid;
+    Bmp.Canvas.FillRect(0, 0, 16, 16);
+    Bmp.Canvas.AntialiasingMode := amOff;
+    LedDrawIcon(Bmp, AName, clBlack);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+      begin
+        Run := 0;
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red < $4000) and (C.Green < $4000) and (C.Blue < $4000) then
+            Inc(Run);
+        end;
+        if Run > 0 then Exit(Run);
+      end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 procedure TestIconsAndFocus(F: TLedMainForm);
 var
   Bmp: TBitmap;
@@ -1213,6 +1311,22 @@ begin
   finally
     Bmp.Free;
   end;
+
+  { Breakpoint against Run.  Both are solid shapes in the same ink on a
+    monochrome toolbar, and a filled disc and a filled triangle at sixteen
+    pixels were being taken for one another.  A stop sign is the shape that
+    reads as "stop" without colour, and its tell is a flat top: the topmost
+    row with any ink in it is a run several pixels wide, where a disc's is a
+    short arc and a triangle's is a single point. }
+  Say(Format('  (top row ink: breakpoint %d, run %d)',
+    [IconTopRun('breakpoint'), IconTopRun('run')]));
+  CheckGt('the breakpoint icon has a flat top, like a stop sign',
+    IconTopRun('run'), IconTopRun('breakpoint'));
+  { The stronger half, and the one a disc fails: an outline encloses
+    background, a solid shape does not. }
+  Check('and it is an outline, so it cannot read as another solid blob',
+    IconHasHole('breakpoint'));
+  Check('where Run is solid', not IconHasHole('run'));
 
   { An icon that draws nothing is a missing case branch, which is easy to
     introduce and impossible to see in a menu. }
@@ -3719,11 +3833,12 @@ begin
   try
     L.Add('#include <stdio.h>');
     { The global is on the same physical line as the struct so that the line
-      numbers the rest of this test names -- 6, 7 and 11 -- do not move. }
-    L.Add('struct P { int x; int y; }; int hits = 0;');
+      numbers the rest of this test names -- 6, 7 and 11 -- do not move.  The
+      char array is there because gdb pads one to its declared length. }
+    L.Add('struct P { int x; int y; char tag[8]; }; int hits = 0;');
     L.Add('int twice(int n)');
     L.Add('{');
-    L.Add('    struct P p = { n, n + 1 };');
+    L.Add('    struct P p = { n, n + 1, "ab" };');
     L.Add('    int r = n * 2;');      { line 6 -- the breakpoint }
     L.Add('    return r + p.x - p.y;');
     L.Add('}');
@@ -4010,11 +4125,19 @@ begin
       begin
         Pump; Sleep(20); Inc(Waited, 20);
       end;
-      CheckEqInt('opening it fetches both fields', 2, Row.Count);
-      { p = { n, n + 1 } with n = 21. }
+      CheckEqInt('opening it fetches all three fields', 3, Row.Count);
+      { p = { n, n + 1, "ab" } with n = 21. }
       CheckEq('the first with its value', 'x = 21', Row.Items[0].Text);
       CheckEq('and the second', 'y = 22', Row.Items[1].Text);
       Check('leaves are not openable', Row.Items[0].Count = 0);
+
+      { A char array is an array to gdb: --simple-values gives it no value of
+        its own, so it is listed as an aggregate that opens into its elements
+        rather than shown as a string.  Where the padding does show is
+        wherever the array is *evaluated* -- a watch, or a hover -- and both
+        of those are checked below. }
+      CheckEq('a char array opens like any other', 'tag: char [8]',
+        Row.Items[2].Text);
     end;
   end;
 
@@ -4056,6 +4179,52 @@ begin
     V.RequestHover('');
     V.RequestHover('n');
     Check('and a repeat is answered at once', Pos('n = 21', V.Hint) > 0);
+
+    { A watch on the char array, which is the path that shows gdb's padding:
+      a watch evaluates the expression rather than listing its children. }
+    F.DebugPane.TypeWatch('p.tag');
+    Waited := 0;
+    while (F.DebugPane.Watches.Items.Count = 0) and (Waited < 4000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEqInt('the watch is listed', 1, F.DebugPane.Watches.Items.Count);
+    Waited := 0;
+    while (F.DebugPane.Watches.Items[0].SubItems[0] = '') and
+          (Waited < 6000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEq('and shows the string without its padding', '"ab"',
+      F.DebugPane.Watches.Items[0].SubItems[0]);
+
+    { Hovering a struct.  It used to arrive as one line, which is what "it
+      does not show the subfields" means in practice -- they are all there,
+      in a paragraph. }
+    V.RequestHover('');
+    V.RequestHover('p');
+    Waited := 0;
+    while (Pos(' = ...', V.Hint) > 0) and (Waited < 8000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    Check('hovering a struct answers: ' + V.Hint, Pos('x = 21', V.Hint) > 0);
+    Check('with one field to a line', Pos(LineEnding, V.Hint) > 0);
+    Check('and its char array unpadded', Pos('"ab"', V.Hint) > 0);
+    Check('nothing of the padding survives', Pos('\000', V.Hint) = 0);
+
+    { Hovering the *type* is not a question gdb can answer: it says "Attempt
+      to use a type name as an expression", and that used to be shown as
+      though it were the value. }
+    V.RequestHover('');
+    V.RequestHover('struct P');
+    Waited := 0;
+    while (Pos(' = ...', V.Hint) > 0) and (Waited < 8000) do
+    begin
+      Pump; Sleep(20); Inc(Waited, 20);
+    end;
+    CheckEq('a type name produces no tooltip at all', '', V.Hint);
+    Check('and the hint is switched off with it', not V.ShowHint);
   end;
 
   { --- watchpoints --- }

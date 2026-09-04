@@ -237,7 +237,11 @@ opens: its fields are fetched when you open it and not before, so a deep
 structure costs one round trip per level you actually look at.  Resting the
 pointer over an expression in the source shows its value — `box.tl.y`,
 `p->next->value` and `arr[2].x` are read as written, not just the identifier
-under the cursor.  gdb's output, the program's own
+under the cursor.  A struct is shown one field to a line rather than as a
+paragraph, and hovering something that is not a value at all — a type name, a
+label — produces no tooltip rather than gdb's complaint about it.  The NUL
+padding gdb reports for a `char[n]` is dropped everywhere a value is shown:
+`"item-1"`, not `"item-1\000\000\000\000\000\000\000\000\000"`.  gdb's output, the program's own
 output and any build go to the Output pane, where `file:line` is clickable.
 There is an entry box for raw gdb commands.
 
