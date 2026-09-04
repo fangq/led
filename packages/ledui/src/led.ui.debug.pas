@@ -191,6 +191,10 @@ type
     property Session: TLedGdbSession read FSession;
     property Project: TLedProject read FProject;
     property Pane: TLedDebugPane read FPane;
+    { Where the program to debug is, resolved from the configuration or
+      guessed from the open file.  Public so the form can ask whether it
+      needs rebuilding before a launch. }
+    function TargetPath: string;
     property CurrentFile: string read FCurrentFile;
     property CurrentLine: Integer read FCurrentLine;
     { Overrides launch.json, for a folder that has none. }
@@ -1066,6 +1070,11 @@ begin
     ldcStepOut: if CanStep then FSession.ExecFinish;
     ldcBuild: ;   { the main form runs builds; it owns the tool runner }
   end;
+end;
+
+function TLedDebugger.TargetPath: string;
+begin
+  Result := ResolvedTarget;
 end;
 
 function TLedDebugger.Running: Boolean;

@@ -116,6 +116,18 @@ function LedParseJsonc(const AText: string): TJSONData;
   two arguments. }
 function LedShellQuote(const AText: string): string;
 
+{ True when ABinary needs rebuilding: it is missing, or some source under
+  ARoot is newer than it.
+
+  Deliberately shallow and cheap.  It runs before every Start, so it must not
+  walk a whole checkout: it stops at ADepth levels, skips hidden directories
+  and the usual output and dependency folders, and looks only at the
+  extensions a C or C++ program is built from.  Getting it wrong in the
+  cautious direction costs a rebuild; getting it wrong the other way debugs
+  yesterday's binary, so a file it cannot stat counts as newer. }
+function LedBinaryIsStale(const ARoot, ABinary: string;
+  ADepth: Integer = 5): Boolean;
+
 implementation
 
 { --- helpers --------------------------------------------------------------- }
@@ -205,6 +217,83 @@ begin
     Prev := Dir;
     Dir := ExtractFileDir(Dir);
   end;
+end;
+
+function LedBinaryIsStale(const ARoot, ABinary: string;
+  ADepth: Integer): Boolean;
+const
+  SourceExts: array[0..7] of string =
+    ('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx');
+  { Where build output and other people's code live.  Walking these is both
+    slow and pointless -- a freshly written object file is not a reason to
+    rebuild. }
+  SkipDirs: array[0..7] of string =
+    ('build', 'build-md', 'build-rel', 'node_modules', 'bin', 'obj',
+     'target', 'dist');
+var
+  BinAge: TDateTime;
+
+  function IsSource(const AName: string): Boolean;
+  var
+    Ext: string;
+    k: Integer;
+  begin
+    Ext := LowerCase(ExtractFileExt(AName));
+    for k := 0 to High(SourceExts) do
+      if Ext = SourceExts[k] then Exit(True);
+    Result := False;
+  end;
+
+  function Skip(const AName: string): Boolean;
+  var
+    k: Integer;
+  begin
+    Result := (AName = '') or (AName[1] = '.');
+    if Result then Exit;
+    for k := 0 to High(SkipDirs) do
+      if SameText(AName, SkipDirs[k]) then Exit(True);
+  end;
+
+  function Walk(const ADir: string; ALeft: Integer): Boolean;
+  var
+    R: TSearchRec;
+    Age: TDateTime;
+  begin
+    Result := False;
+    if ALeft < 0 then Exit;
+    if FindFirst(IncludeTrailingPathDelimiter(ADir) + '*', faAnyFile, R) <> 0 then
+      Exit;
+    try
+      repeat
+        if (R.Name = '.') or (R.Name = '..') then Continue;
+        if (R.Attr and faDirectory) <> 0 then
+        begin
+          if Skip(R.Name) then Continue;
+          if Walk(IncludeTrailingPathDelimiter(ADir) + R.Name, ALeft - 1) then
+            Exit(True);
+        end
+        else if IsSource(R.Name) then
+        begin
+          if FileAge(IncludeTrailingPathDelimiter(ADir) + R.Name, Age) then
+          begin
+            if Age > BinAge then Exit(True);
+          end
+          else
+            { Cannot be read now; assume it moved. }
+            Exit(True);
+        end;
+      until FindNext(R) <> 0;
+    finally
+      FindClose(R);
+    end;
+  end;
+
+begin
+  if ABinary = '' then Exit(True);
+  if not FileExists(ABinary) then Exit(True);
+  if (ARoot = '') or (not DirectoryExists(ARoot)) then Exit(False);
+  if not FileAge(ABinary, BinAge) then Exit(True);
+  Result := Walk(ExcludeTrailingPathDelimiter(ARoot), ADepth);
 end;
 
 { --- TLedLaunchConfig ------------------------------------------------------ }
