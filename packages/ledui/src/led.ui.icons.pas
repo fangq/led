@@ -446,8 +446,18 @@ begin
       end;
     'breakpoint':
       begin
-        { The filled disc every debugger puts in the margin. }
-        P.Ellipse(3.5, 3.5, 12.5, 12.5, True);
+        { A stop sign.  The margin gets a filled disc, which is what every
+          debugger draws there -- but on a monochrome toolbar a disc and the
+          filled triangle of Run are two solid blobs of the same weight, and
+          they were being mistaken for each other.  An octagon is the one
+          shape that reads as "stop" with no colour to help it. }
+        { An outlined octagon with a bar across it.  A filled shape was the
+          problem: at sixteen pixels a solid disc and the solid triangle of
+          Run are two blobs of the same weight, and they were being taken
+          for each other.  This is hollow, so it cannot be. }
+        P.Poly([5.5, 2, 10.5, 2, 14, 5.5, 14, 10.5,
+                10.5, 14, 5.5, 14, 2, 10.5, 2, 5.5, 5.5, 2]);
+        P.Box(5, 7.2, 11, 8.8, True);
       end;
     'debugline':
       begin

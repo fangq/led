@@ -314,6 +314,28 @@ type
   otherwise be shown as though it meant something. }
 function LedExpressionAt(const ALine: string; ACol: Integer): string;
 
+{ gdb's rendering of a value, made fit to read.
+
+  A char array comes back padded to its declared length --
+  "item-1\000\000\000\000\000\000\000\000\000" for a char[16] -- and once the
+  run is long enough gdb collapses it to `"item-1", '\000' <repeats 9 times>`
+  instead.  Neither carries information: the padding is the array's size,
+  which is in its type.  Both forms are removed.
+
+  Only where they trail a string, so a NUL in the middle of one -- which is
+  a real thing to see in a buffer being examined -- is left alone. }
+function LedTidyValue(const AValue: string): string;
+
+{ The same value with one field to a line, for a tooltip.
+
+  gdb renders an aggregate on a single line: `{items = {{name = "item-0",
+  value = 0}, {name = ...}}, count = 5}`.  That is unreadable in a hint the
+  moment the struct has more than two fields, which is what "it does not show
+  the subfields" means in practice -- they are all there, in a paragraph.
+
+  Long values are cut off after ALimit lines rather than filling the screen. }
+function LedExpandValue(const AValue: string; ALimit: Integer = 40): string;
+
 { True when a gdb that speaks mi3 can be found.  The pane greys itself out
   rather than failing at the first click. }
 function LedGdbAvailable(const AGdbPath: string = 'gdb'): Boolean;
@@ -454,6 +476,133 @@ end;
 function TLedGdbSession.Alive: Boolean;
 begin
   Result := (FProcess <> nil) and FProcess.Running;
+end;
+
+function LedTidyValue(const AValue: string): string;
+const
+  { The literal text  '\000' <repeats  }
+  Collapsed = '''\000'' <repeats ';
+var
+  i, j, Start: Integer;
+begin
+  Result := AValue;
+
+  { `"item-0", '\000' <repeats 9 times>` -- the run and the comma that
+    introduced it both go. }
+  repeat
+    i := Pos(Collapsed, Result);
+    if i = 0 then Break;
+    j := i;
+    while (j <= Length(Result)) and (Result[j] <> '>') do Inc(j);
+    if j > Length(Result) then Break;
+    Start := i;
+    while (Start > 1) and ((Result[Start - 1] = ' ') or
+                           (Result[Start - 1] = ',')) do Dec(Start);
+    Delete(Result, Start, j - Start + 1);
+  until False;
+
+  { `"item-0\000\000\000"` -- walk back from each closing quote over whole
+    four-character \000 groups. }
+  i := 1;
+  while i <= Length(Result) do
+  begin
+    if Result[i] = '"' then
+    begin
+      j := i;
+      while (j >= 5) and (Copy(Result, j - 4, 4) = '\000') do Dec(j, 4);
+      if j < i then
+      begin
+        Delete(Result, j, i - j);
+        i := j;
+      end;
+    end;
+    Inc(i);
+  end;
+end;
+
+function LedExpandValue(const AValue: string; ALimit: Integer): string;
+var
+  i, Depth, Lines: Integer;
+  InStr: Boolean;
+  Ch: Char;
+
+  procedure Indent;
+  var
+    k: Integer;
+  begin
+    for k := 1 to Depth do Result := Result + '  ';
+  end;
+
+begin
+  Result := '';
+  Depth := 0;
+  Lines := 1;
+  InStr := False;
+  i := 1;
+  while i <= Length(AValue) do
+  begin
+    Ch := AValue[i];
+
+    if InStr then
+    begin
+      Result := Result + Ch;
+      { A quote that is escaped is part of the string, not its end. }
+      if (Ch = '\') and (i < Length(AValue)) then
+      begin
+        Result := Result + AValue[i + 1];
+        Inc(i, 2);
+        Continue;
+      end;
+      if Ch = '"' then InStr := False;
+      Inc(i);
+      Continue;
+    end;
+
+    case Ch of
+      '"':
+        begin
+          InStr := True;
+          Result := Result + Ch;
+        end;
+      '{':
+        begin
+          Inc(Depth);
+          Result := Result + '{' + LineEnding;
+          Inc(Lines);
+          Indent;
+        end;
+      '}':
+        begin
+          if Depth > 0 then Dec(Depth);
+          Result := Result + LineEnding;
+          Inc(Lines);
+          Indent;
+          Result := Result + '}';
+        end;
+      ',':
+        if Depth > 0 then
+        begin
+          Result := Result + ',' + LineEnding;
+          Inc(Lines);
+          Indent;
+          { The space gdb puts after the comma would indent the next line
+            one column further than the rest. }
+          if (i < Length(AValue)) and (AValue[i + 1] = ' ') then Inc(i);
+        end
+        else
+          Result := Result + Ch;
+    else
+      Result := Result + Ch;
+    end;
+
+    { A tooltip taller than the screen is no more use than one line. }
+    if Lines >= ALimit then
+    begin
+      Result := Result + LineEnding + '...';
+      Exit;
+    end;
+    Inc(i);
+  end;
 end;
 
 procedure TLedGdbSession.SetState(AValue: TLedGdbState);

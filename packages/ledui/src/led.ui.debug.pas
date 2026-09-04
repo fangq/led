@@ -121,6 +121,9 @@ type
     procedure ClearWatchValues;
     function WatchCount: Integer;
     function SelectedWatch: Integer;
+    { Types an expression into the watch box and presses Enter, so a test
+      goes through the widget rather than the event behind it. }
+    procedure TypeWatch(const AExpr: string);
     procedure AddWatchRow(const AExpr: string);
     procedure RemoveWatchRow(AIndex: Integer);
     procedure Clear;
@@ -238,6 +241,9 @@ type
       back over something does not ask again.  Emptied on every resume,
       because the values belong to the frame. }
     FHoverCache: TStringList;
+    { Expressions gdb has already refused.  Cleared with the cache, because a
+      name that is a type here may be a variable in the next frame. }
+    FHoverBad: TStringList;
     FHoverView: TLedEdit;
     FCurrentFile: string;
     FCurrentLine: Integer;
@@ -648,8 +654,10 @@ begin
         N := FLocals.Items.AddChild(nil,
           ALocals[i].Name + ': ' + ALocals[i].TypeName)
       else
+        { Tidied: a char array arrives padded to its declared length, and the
+          run of \000 after the text is the array's size restated. }
         N := FLocals.Items.AddChild(nil,
-          ALocals[i].Name + ' = ' + ALocals[i].Value);
+          ALocals[i].Name + ' = ' + LedTidyValue(ALocals[i].Value));
       Info := NewLocalNode(ALocals[i].Name, '');
       N.Data := Info;
       if Aggregate then AddPlaceholder(FLocals, N);
@@ -724,7 +732,7 @@ begin
           AChildren[i].Expr + ': ' + AChildren[i].TypeName)
       else
         N := FLocals.Items.AddChild(Owner_,
-          AChildren[i].Expr + ' = ' + AChildren[i].Value);
+          AChildren[i].Expr + ' = ' + LedTidyValue(AChildren[i].Value));
       Kid := NewLocalNode(AChildren[i].Expr, AChildren[i].VarObj);
       N.Data := Kid;
       { Its own children are fetched only if it is opened in turn, so a deep
@@ -789,6 +797,15 @@ begin
   Result := FConfigs.ItemIndex;
 end;
 
+procedure TLedDebugPane.TypeWatch(const AExpr: string);
+var
+  Key: Char;
+begin
+  FWatchEntry.Text := AExpr;
+  Key := #13;
+  WatchEntryKey(FWatchEntry, Key);
+end;
+
 procedure TLedDebugPane.AddWatchRow(const AExpr: string);
 var
   It: TListItem;
@@ -818,7 +835,7 @@ begin
   if AIsError then
     It.SubItems[0] := '(' + AValue + ')'
   else
-    It.SubItems[0] := AValue;
+    It.SubItems[0] := LedTidyValue(AValue);
 end;
 
 procedure TLedDebugPane.ClearWatchValues;
@@ -1139,6 +1156,7 @@ begin
   FProject := TLedProject.Create;
   FWatchExprs := TStringList.Create;
   FHoverCache := TStringList.Create;
+  FHoverBad := TStringList.Create;
 
   { 40 ms: fast enough that a step feels immediate, slow enough to cost
     nothing.  The protocol is drained here rather than waited on -- see the
@@ -1156,6 +1174,7 @@ begin
   FProject.Free;
   FWatchExprs.Free;
   FHoverCache.Free;
+  FHoverBad.Free;
   inherited Destroy;
 end;
 
@@ -1658,6 +1677,7 @@ procedure TLedDebugger.SessionRunning(Sender: TObject);
 begin
   { The values belonged to the frame that has just been left. }
   FHoverCache.Clear;
+  FHoverBad.Clear;
   ClearDebugLine;
   if FPane <> nil then FPane.Clear;
   if Assigned(FOnStateChanged) then FOnStateChanged(Self);
@@ -1670,6 +1690,7 @@ var
 begin
   ClearDebugLine;
   FHoverCache.Clear;
+  FHoverBad.Clear;
 
   if Pos('exited', AReason) > 0 then
   begin
@@ -1750,6 +1771,14 @@ begin
   if (AView = nil) or (AExpr = '') then Exit;
   FHoverView := AView;
 
+  { Asked once and answered with an error: a type name, a label, a macro.
+    Asking again on every pass of the pointer would fill the log. }
+  if FHoverBad.IndexOf(AExpr) >= 0 then
+  begin
+    AView.HideHoverValue(AExpr);
+    Exit;
+  end;
+
   i := FHoverCache.IndexOfName(AExpr);
   if i >= 0 then
   begin
@@ -1771,15 +1800,29 @@ procedure TLedDebugger.SessionEval(Sender: TObject; const ATag, AValue: string;
   AIsError: Boolean);
 var
   Idx: Integer;
-  Expr: string;
+  Expr, Expanded: string;
 begin
   { Hover first: its tag carries the expression itself, because the answer
     has to be matched to a place on screen rather than to a row. }
   if Copy(ATag, 1, 2) = 'h:' then
   begin
     Expr := Copy(ATag, 3, Length(ATag));
-    FHoverCache.Values[Expr] := AValue;
-    if FHoverView <> nil then FHoverView.ShowHoverValue(Expr, AValue);
+    { Nothing worth showing.  Hovering the type in `Item *it` asks gdb about
+      `Item`, which answers "Attempt to use a type name as an expression" --
+      and that was then displayed as though it were the value.  Remembered so
+      the same word is not asked about again on every pass of the pointer. }
+    if AIsError then
+    begin
+      if FHoverBad.IndexOf(Expr) < 0 then FHoverBad.Add(Expr);
+      if FHoverView <> nil then FHoverView.HideHoverValue(Expr);
+      Exit;
+    end;
+    { Expanded: a struct arrives on one line, which in a tooltip is where
+      "it does not show the subfields" comes from -- they are all there, in a
+      paragraph nobody can read. }
+    Expanded := LedExpandValue(LedTidyValue(AValue));
+    FHoverCache.Values[Expr] := Expanded;
+    if FHoverView <> nil then FHoverView.ShowHoverValue(Expr, Expanded);
     Exit;
   end;
 

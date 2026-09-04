@@ -127,6 +127,14 @@ type
     procedure DisablingABreakpointStopsItFiring;
     procedure EnablingItAgainBringsItBack;
     procedure HitCountsComeBackFromGdb;
+    procedure PaddingIsStrippedFromACharArray;
+    procedure ACollapsedRunOfNulsGoesToo;
+    procedure ANulInTheMiddleIsKept;
+    procedure APlainValueIsLeftAlone;
+    procedure AStructIsBrokenAcrossLines;
+    procedure StringsWithBracesInThemAreNotSplit;
+    procedure AHugeValueIsCutOff;
+    procedure RealGdbValuesComeOutReadable;
   end;
 
 implementation
@@ -1365,6 +1373,123 @@ begin
       count in the breakpoint list comes from -- there is no other way to
       ask for it short of parsing -break-list. }
     AssertEquals('two after the second stop', 2, FBreakHits);
+  finally
+    S.Free;
+  end;
+end;
+
+{ --- making values readable ------------------------------------------------ }
+
+procedure TTestGdb.PaddingIsStrippedFromACharArray;
+begin
+  { A char[16] holding "item-1" comes back padded to its declared length.
+    The padding is the array's size, which is already in its type. }
+  AssertEquals('the trailing NULs go', '"item-1"',
+    LedTidyValue('"item-1\000\000\000\000\000\000\000\000\000"'));
+  AssertEquals('an array of nothing but padding is an empty string', '""',
+    LedTidyValue('"\000\000\000"'));
+end;
+
+procedure TTestGdb.ACollapsedRunOfNulsGoesToo;
+begin
+  { Past ten repeats gdb stops spelling them out and says so instead. }
+  AssertEquals('the shorthand form goes as well', '"item-1"',
+    LedTidyValue('"item-1", ''\000'' <repeats 25 times>'));
+  AssertEquals('inside a struct, and the comma with it',
+    '{name = "a", value = 3}',
+    LedTidyValue('{name = "a", ''\000'' <repeats 14 times>, value = 3}'));
+end;
+
+procedure TTestGdb.ANulInTheMiddleIsKept;
+begin
+  { A NUL between two runs of text is a fact about the buffer, not padding,
+    and someone looking at a buffer needs to see it. }
+  AssertEquals('an embedded NUL survives', '"a\000b"',
+    LedTidyValue('"a\000b"'));
+  AssertEquals('and only what trails is taken', '"a\000b"',
+    LedTidyValue('"a\000b\000\000"'));
+end;
+
+procedure TTestGdb.APlainValueIsLeftAlone;
+begin
+  AssertEquals('a number', '42', LedTidyValue('42'));
+  AssertEquals('a pointer', '0x7fff1234 "text"',
+    LedTidyValue('0x7fff1234 "text"'));
+  AssertEquals('nothing at all', '', LedTidyValue(''));
+end;
+
+procedure TTestGdb.AStructIsBrokenAcrossLines;
+var
+  S: string;
+begin
+  S := LedExpandValue('{name = "a", value = 3}');
+  AssertTrue('it is more than one line now', Pos(LineEnding, S) > 0);
+  AssertTrue('with the first field on its own: ' + S,
+    Pos('name = "a",' + LineEnding, S) > 0);
+  AssertTrue('and the second', Pos('value = 3', S) > 0);
+  { Nesting indents, so which brace a field belongs to can be seen. }
+  S := LedExpandValue('{a = {b = 1}}');
+  AssertTrue('a nested field is indented further: ' + S,
+    Pos(LineEnding + '    b = 1', S) > 0);
+end;
+
+procedure TTestGdb.StringsWithBracesInThemAreNotSplit;
+var
+  S: string;
+begin
+  { A comma or a brace inside a string is text, and splitting on it would
+    break the string across lines in the middle of a word. }
+  S := LedExpandValue('{msg = "a, b {c}"}');
+  AssertTrue('the string stays whole: ' + S, Pos('"a, b {c}"', S) > 0);
+end;
+
+procedure TTestGdb.AHugeValueIsCutOff;
+var
+  i: Integer;
+  Big, S: string;
+begin
+  Big := '{';
+  for i := 1 to 200 do Big := Big + Format('f%d = %d, ', [i, i]);
+  Big := Big + 'last = 0}';
+  S := LedExpandValue(Big, 10);
+  { A tooltip taller than the screen is no more use than one line. }
+  AssertTrue('it stops', Pos('...', S) > 0);
+  AssertTrue('well short of the whole thing', Length(S) < Length(Big));
+end;
+
+procedure TTestGdb.RealGdbValuesComeOutReadable;
+var
+  S: TLedGdbSession;
+  Src, Bin: string;
+begin
+  { Against gdb rather than against a string I wrote: the padding is only
+    worth stripping if it is the shape gdb actually produces. }
+  if not LedGdbAvailable then Exit;
+  Bin := CompileTo('pad',
+    'struct Item { char name[16]; int value; };'#10 +
+    'int main(void)'#10 +
+    '{'#10 +
+    '    struct Item it = { "item-1", 7 };'#10 +
+    '    return it.value;'#10 +                    { line 5 }
+    '}'#10);
+  if Bin = '' then Exit;
+  Src := IncludeTrailingPathDelimiter(FDir) + 'pad.c';
+
+  S := NewSession;
+  try
+    S.Start;
+    S.WaitForState([lgsReady], 10000);
+    S.SetTarget(Bin);
+    S.BreakInsert(Src, 5);
+    PumpFor(S, 600);
+    S.ExecRun;
+    if not PumpUntilStops(S, 1) then Exit;
+    S.Evaluate('it.name', 't');
+    PumpFor(S, 1500);
+    AssertTrue('gdb really does pad it: ' + FEvalValue,
+      Pos('\000', FEvalValue) > 0);
+    AssertEquals('and it comes out clean', '"item-1"',
+      LedTidyValue(FEvalValue));
   finally
     S.Free;
   end;
