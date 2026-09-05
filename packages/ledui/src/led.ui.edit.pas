@@ -39,6 +39,9 @@ type
   end;
   TLedGutterBreaks = array of TLedGutterBreak;
 
+  { The corners of the stop sign the gutter draws for a breakpoint. }
+  TLedOctagon = array[0..7] of TPoint;
+
 { Shortcuts the menus own, which the editor must therefore not consume.
 
   SynEdit ships a keymap of its own and handles a key before the form's
@@ -639,11 +642,34 @@ begin
   Invalidate;
 end;
 
+{ The eight corners of an octagon filling the square at (ALeft, ATop).
+
+  A breakpoint is drawn as a stop sign rather than the disc every other
+  debugger puts there, to match the toolbar icon -- and because at the size a
+  gutter allows, an octagon keeps its silhouette where a small circle turns
+  into a blob. }
+procedure LedOctagon(ALeft, ATop, ASize: Integer; out APts: TLedOctagon);
+var
+  C: Integer;
+begin
+  C := ASize div 3;
+  if C < 1 then C := 1;
+  APts[0] := Point(ALeft + C,         ATop);
+  APts[1] := Point(ALeft + ASize - C, ATop);
+  APts[2] := Point(ALeft + ASize,     ATop + C);
+  APts[3] := Point(ALeft + ASize,     ATop + ASize - C);
+  APts[4] := Point(ALeft + ASize - C, ATop + ASize);
+  APts[5] := Point(ALeft + C,         ATop + ASize);
+  APts[6] := Point(ALeft,             ATop + ASize - C);
+  APts[7] := Point(ALeft,             ATop + C);
+end;
+
 procedure TLedEdit.DrawDebugMarks;
 var
   FV: TSynEditFoldedView;
   Row, TextIdx, MLeft, MWidth, Cx, Cy, R: Integer;
   IsBreak, IsHere: Boolean;
+  Oct: TLedOctagon;
 begin
   if (Length(FBreaks) = 0) and (FDebugLine <= 0) then Exit;
   if not MarksColumn(MLeft, MWidth) then Exit;
@@ -668,6 +694,7 @@ begin
 
     if IsBreak then
     begin
+      LedOctagon(Cx, Cy, R, Oct);
       if not BreakpointIsEnabled(TextIdx + 1) then
       begin
         { Grey, and hollow: it is remembered but will not stop anything, and
@@ -675,7 +702,7 @@ begin
         Canvas.Brush.Style := bsClear;
         Canvas.Pen.Color := clGray;
         Canvas.Pen.Width := 2;
-        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+        Canvas.Polygon(Oct);
         Canvas.Pen.Width := 1;
       end
       else if BreakpointIsConditional(TextIdx + 1) then
@@ -686,7 +713,7 @@ begin
         Canvas.Brush.Style := bsClear;
         Canvas.Pen.Color := clRed;
         Canvas.Pen.Width := 2;
-        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+        Canvas.Polygon(Oct);
         Canvas.Pen.Width := 1;
       end
       else
@@ -694,7 +721,7 @@ begin
         Canvas.Brush.Style := bsSolid;
         Canvas.Brush.Color := clRed;
         Canvas.Pen.Color := clMaroon;
-        Canvas.Ellipse(Cx, Cy, Cx + R, Cy + R);
+        Canvas.Polygon(Oct);
       end;
     end;
 
