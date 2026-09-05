@@ -175,6 +175,29 @@ converter.  The dialect is medit's UseMod / Habitat one: `= Heading =`,
 Anything matching no rule is escaped and shown as text, so unknown syntax
 looks wrong rather than disappearing.
 
+### Running over ssh X forwarding
+
+led works over `ssh -X`, with one thing worth knowing.  ssh forwards the X
+server's extension list unchanged, so MIT-SHM is advertised even though the
+server is on your machine and the program is on the far one — and no server
+can attach to another host's shared memory.  GTK offers a segment anyway, the
+server answers `BadAccess`, and GTK's default handler prints
+
+```
+The error was 'BadAccess (attempt to access private resource denied)'.
+  (Details: serial 2915 error_code 10 request_code 129 minor_code 1)
+```
+
+and calls `exit()`, taking any unsaved buffers with it.  (`request_code` is
+MIT-SHM's major opcode, which the server assigns, so it differs between
+machines; `minor_code 1` is `X_ShmAttach`.)
+
+led installs its own X error handler for this one case: MIT-SHM errors are
+reported once on stderr and ignored, and everything else goes on to GTK's
+handler, which still aborts.  Drawing falls back to ordinary images, which is
+what every one of these libraries does anyway when shm is refused — the
+session is a little slower over the wire, and it does not die.
+
 ### CJK text and the editor font
 
 If the editor font has no CJK glyphs, GTK falls back to one that does — and

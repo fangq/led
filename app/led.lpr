@@ -15,7 +15,8 @@ uses
   {$ENDIF}
   Interfaces, Forms, Classes, SysUtils,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
-  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons;
+  Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons,
+  Led.UI.XError;
 
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every
@@ -96,6 +97,11 @@ begin
       LedPrepareSelfTestSandbox;
 
     Application.Initialize;
+    { After Initialize, so it replaces the handler GTK installs rather than
+      being replaced by it.  See Led.UI.XError: over ssh X forwarding the
+      server refuses shared memory, and GTK's handler answers that by
+      calling exit() on an editor holding unsaved work. }
+    LedInstallXErrorHandler;
     Application.CreateForm(TLedMainForm, LedMainForm);
     { The window icon, from the PNG copy of the artwork embedded by
       packaging/windows/led.rc.
