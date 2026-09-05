@@ -33,7 +33,10 @@ uses
   Led.UI.Splitter,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
-  Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, process,
+  Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
+  {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+  ctypes, x, xlib,
+  {$ENDIF}
   Graphics, IntfGraphics, FPimage, StdCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
@@ -1248,6 +1251,85 @@ begin
   finally
     Bmp.Free;
   end;
+end;
+
+{$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+  {$DEFINE LED_X11_TEST}
+{$ENDIF}
+
+{$IFDEF LED_X11_TEST}
+type
+  { Only the fields the request needs.  Declared here rather than taken from a
+    binding FPC does not ship. }
+  TLedShmSegmentInfo = record
+    shmseg: TXID;
+    shmid: cint;
+    shmaddr: PChar;
+    readOnly: TBoolResult;
+  end;
+
+function XShmAttach(D: PDisplay; var Info: TLedShmSegmentInfo): TBoolResult;
+  cdecl; external 'Xext';
+{$ENDIF}
+
+{ Surviving the X error that ssh X forwarding produces.
+
+  Not a simulation: this sends a real X_ShmAttach for a segment the server
+  cannot attach to, which is exactly what GDK sends when the display is on
+  another machine, and gets back exactly what the user reported --
+  error_code 10, request_code <MIT-SHM>, minor_code 1.  Without the handler
+  in Led.UI.XError, GTK's own handler prints a paragraph and calls exit(),
+  and this procedure never returns. }
+procedure TestXErrorSurvival(F: TLedMainForm);
+{$IFDEF LED_X11_TEST}
+var
+  D: PDisplay;
+  Info: TLedShmSegmentInfo;
+  Before, Major, FirstEvent, FirstError: cint;
+{$ENDIF}
+begin
+  Say('x error handling');
+{$IFDEF LED_X11_TEST}
+  { The handler has to be in: without it the request below reaches GTK's own
+    handler, which prints a paragraph and calls exit() -- so this check
+    failing is the last thing this suite would ever print. }
+  CheckGt('the MIT-SHM opcode was looked up', 0, LedXShmOpcode);
+
+  D := XOpenDisplay(nil);
+  Check('a second connection opens', D <> nil);
+  if D = nil then Exit;
+  try
+    { Looked up here as well as in Led.UI.XError, so the request is sent
+      whether or not led installed anything -- a check that provokes nothing
+      when the fix is missing proves nothing about the fix. }
+    Major := 0;
+    if not XQueryExtension(D, 'MIT-SHM', @Major, @FirstEvent, @FirstError) then
+    begin
+      Say('  (no MIT-SHM on this server; nothing to provoke)');
+      Exit;
+    end;
+    Before := LedXErrorsIgnored;
+    { A shmid nothing owns, so the server's own shmat fails and it answers
+      BadAccess -- the same answer it gives when the segment is on a
+      different machine. }
+    Info.shmseg := 0;
+    Info.shmid := 999999999;
+    Info.shmaddr := nil;
+    Info.readOnly := False;
+    XShmAttach(D, Info);
+    { Forces the error to arrive now rather than at some later flush. }
+    XSync(D, False);
+    CheckGt('the shm error was caught and ignored', Before,
+      LedXErrorsIgnored);
+  finally
+    XCloseDisplay(D);
+  end;
+  { Reached at all only because the process did not exit. }
+  Check('and led is still running', F <> nil);
+{$ELSE}
+  Say('  (not an X11 build; nothing to provoke)');
+  Check('the stub reports no opcode', LedXShmOpcode = -1);
+{$ENDIF}
 end;
 
 procedure TestIconsAndFocus(F: TLedMainForm);
@@ -4856,6 +4938,7 @@ begin
   TestSharedBufferSplitView(F);
   WriteLn;
   TestIconsAndFocus(F);
+  TestXErrorSurvival(F);
   TestTerminalPaneAndSession(F);
   TestBrowserNavigation(F);
   TestTabReordering(F);
