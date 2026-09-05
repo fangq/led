@@ -928,17 +928,21 @@ begin
     layout that names the pane has to find it -- the actions grey themselves
     out instead, which is how the terminal handles the same problem. }
   FDebugPane := TLedDebugPane.Create(Self);
+  { One icon per command, in the order TLedDebugCommand declares them:
+    Start, Continue, Pause, Stop, StepOver, StepInto, StepOut, Build,
+    ToggleBreakpoint. }
   FDebugPane.SetImages(ImageList1,
     [LedIconIndex('debug'), LedIconIndex('run'), LedIconIndex('pause'),
      LedIconIndex('stop'), LedIconIndex('stepover'), LedIconIndex('stepinto'),
-     LedIconIndex('stepout'), LedIconIndex('breakpoint'),
-     LedIconIndex('run')]);
+     LedIconIndex('stepout'), LedIconIndex('run'),
+     LedIconIndex('breakpoint')]);
   FDock.AddPane(ledRight, 'debug', 'Debugger', FDebugPane, 'debug');
 
   { The breakpoint list goes at the bottom rather than beside the debugger:
     it is a wide table one goes to in order to change something, not one of
     the three panels one glances at while stepping. }
   FBreakPane := TLedBreakPane.Create(Self);
+  { In TLedBreakButton order: Enable, Condition, Remove, Remove All. }
   FBreakPane.SetImages(ImageList1,
     [LedIconIndex('breakpoint'), LedIconIndex('breakpoint'),
      LedIconIndex('close'), LedIconIndex('close')]);

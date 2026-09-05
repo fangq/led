@@ -3889,6 +3889,42 @@ begin
 
   { The pane and the actions exist whether or not gdb does -- a saved layout
     naming the pane has to find it. }
+  { Each button wears its own command's icon.
+
+    Read off the button's Tag rather than its position, because position is
+    what was wrong: a TToolBar lists Buttons[] in creation order, these are
+    created in reverse so they read left to right, and the icons were applied
+    by position -- so every one but Step Over's landed on the wrong button.
+    Continue wore the breakpoint icon, Toggle Breakpoint wore Run's triangle,
+    and Build wore the debugger's bug.  It went unseen while the breakpoint
+    icon was a plain disc and only showed when it became a stop sign. }
+  Btn := nil;
+  for x := 0 to F.DebugPane.Bar.ButtonCount - 1 do
+  begin
+    y := F.DebugPane.Bar.Buttons[x].ImageIndex;
+    case TLedDebugCommand(F.DebugPane.Bar.Buttons[x].Tag) of
+      ldcStart:    CheckEqInt('Start wears the debugger icon',
+                     LedIconIndex('debug'), y);
+      ldcContinue: CheckEqInt('Continue wears Run, not the breakpoint',
+                     LedIconIndex('run'), y);
+      ldcPause:    CheckEqInt('Pause wears Pause', LedIconIndex('pause'), y);
+      ldcStop:     CheckEqInt('Stop wears Stop', LedIconIndex('stop'), y);
+      ldcStepOver: CheckEqInt('Step Over wears Step Over',
+                     LedIconIndex('stepover'), y);
+      ldcStepInto: CheckEqInt('Step Into wears Step Into',
+                     LedIconIndex('stepinto'), y);
+      ldcStepOut:  CheckEqInt('Step Out wears Step Out',
+                     LedIconIndex('stepout'), y);
+      ldcToggleBreakpoint:
+                   begin
+                     Btn := F.DebugPane.Bar.Buttons[x];
+                     CheckEqInt('and F9 wears the stop sign',
+                       LedIconIndex('breakpoint'), y);
+                   end;
+    end;
+  end;
+  Check('the F9 button was found at all', Btn <> nil);
+
   Check('the debugger pane is registered', F.Dock.FindPane('debug') <> nil);
   Check('and the controller exists', F.Debugger <> nil);
   Check('stepping is off when nothing is running', not F.Debugger.CanStep);

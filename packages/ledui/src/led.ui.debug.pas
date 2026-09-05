@@ -168,6 +168,12 @@ type
   end;
   TLedBreakpoints = array of TLedBreakpoint;
 
+  { The buttons on the breakpoint pane's toolbar, in the order SetImages
+    expects their icons.  A tag rather than a position, because a TToolBar
+    lists its buttons in the order they were created and they are created in
+    reverse so they read left to right. }
+  TLedBreakButton = (lbbEnable, lbbCondition, lbbRemove, lbbRemoveAll);
+
   TLedBreakRowEvent = procedure(Sender: TObject; AIndex: Integer) of object;
   TLedBreakAddEvent = procedure(Sender: TObject; const AExpression: string;
     AKind: TLedGdbBreakKind) of object;
@@ -201,7 +207,7 @@ type
     procedure EnableClick(Sender: TObject);
     procedure ConditionClick(Sender: TObject);
     function AddButton(const ACaption, AHint: string;
-      AOnClick: TNotifyEvent): TToolButton;
+      AOnClick: TNotifyEvent; ATag: Integer): TToolButton;
   public
     constructor Create(AOwner: TComponent); override;
     procedure SetImages(AImages: TCustomImageList; const AIndexes: array of Integer);
@@ -536,17 +542,30 @@ begin
   end;
 end;
 
+{ AIndexes is read by command, not by position.
+
+  It used to be by position, on the belief that a TToolBar lists its buttons
+  in the reverse of the order they were created -- so building them back to
+  front would line them up again.  It does not: Buttons[] is in creation
+  order, and every icon but Step Over's landed on the wrong button.  Continue
+  wore the breakpoint icon, Toggle Breakpoint wore Run's triangle, and Build
+  wore the debugger's bug.  Nobody noticed while the breakpoint icon was a
+  plain disc.
+
+  Reading the button's own Tag removes the question: it holds the command,
+  and the caller lists one icon per command in the order they are declared. }
 procedure TLedDebugPane.SetImages(AImages: TCustomImageList;
   const AIndexes: array of Integer);
 var
-  i: Integer;
+  i, Cmd: Integer;
 begin
   FBar.Images := AImages;
-  { The buttons were created back to front, so the indexes are applied the
-    same way round as they were built. }
   for i := 0 to FBar.ButtonCount - 1 do
-    if i <= High(AIndexes) then
-      FBar.Buttons[i].ImageIndex := AIndexes[i];
+  begin
+    Cmd := FBar.Buttons[i].Tag;
+    if (Cmd >= 0) and (Cmd <= High(AIndexes)) then
+      FBar.Buttons[i].ImageIndex := AIndexes[Cmd];
+  end;
 end;
 
 procedure TLedDebugPane.BarClick(Sender: TObject);
@@ -922,15 +941,17 @@ begin
   FBar.Flat := True;
   FBar.AutoSize := True;
 
-  { Back to front, as in the debugger pane, for the same reason: a TToolBar
-    lays its children out in reverse unless each is given a Left. }
+  { Back to front, so they read left to right: a TToolBar lays its children
+    out in reverse unless each is given a Left.  Each carries its own tag so
+    SetImages can find it without depending on any of that. }
   AddButton('Remove All', 'Forget every breakpoint and watchpoint',
-    @RemoveAllClick);
-  AddButton('Remove', 'Forget the selected one'#13'Delete', @RemoveClick);
+    @RemoveAllClick, Ord(lbbRemoveAll));
+  AddButton('Remove', 'Forget the selected one'#13'Delete', @RemoveClick,
+    Ord(lbbRemove));
   AddButton('Condition...', 'Only stop where an expression is true',
-    @ConditionClick);
+    @ConditionClick, Ord(lbbCondition));
   AddButton('Enable', 'Turn the selected one off, or back on'#13'Space',
-    @EnableClick);
+    @EnableClick, Ord(lbbEnable));
 
   Foot := TPanel.Create(Self);
   Foot.Parent := Self;
@@ -975,7 +996,7 @@ begin
 end;
 
 function TLedBreakPane.AddButton(const ACaption, AHint: string;
-  AOnClick: TNotifyEvent): TToolButton;
+  AOnClick: TNotifyEvent; ATag: Integer): TToolButton;
 begin
   Result := TToolButton.Create(Self);
   Result.Parent := FBar;
@@ -983,17 +1004,25 @@ begin
   Result.Hint := AHint;
   Result.ShowHint := True;
   Result.ImageIndex := -1;
+  Result.Tag := ATag;
   Result.OnClick := AOnClick;
 end;
 
+{ By tag, for the reason TLedDebugPane.SetImages gives: Buttons[] is in
+  creation order, and these are created in reverse so they read left to
+  right. }
 procedure TLedBreakPane.SetImages(AImages: TCustomImageList;
   const AIndexes: array of Integer);
 var
-  i: Integer;
+  i, Which: Integer;
 begin
   FBar.Images := AImages;
   for i := 0 to FBar.ButtonCount - 1 do
-    if i <= High(AIndexes) then FBar.Buttons[i].ImageIndex := AIndexes[i];
+  begin
+    Which := FBar.Buttons[i].Tag;
+    if (Which >= 0) and (Which <= High(AIndexes)) then
+      FBar.Buttons[i].ImageIndex := AIndexes[Which];
+  end;
 end;
 
 procedure TLedBreakPane.ShowBreakpoints(const ABreaks: TLedBreakpoints);
