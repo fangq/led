@@ -1,4 +1,4 @@
-{ led - a light editor.  The preferences dialog.
+{ led - a lightweight editor.  The preferences dialog.
 
   medit authored nine preference pages as Glade files compiled to C. Here the
   whole dialog is driven by one table: each row names a category, a
@@ -19,7 +19,7 @@ uses
   Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls, Spin,
   Grids, Dialogs, Graphics, LCLType, LConvEncoding,
   Led.Core.Prefs, Led.Core.Tools, Led.Core.Filters, Led.Core.Paths,
-  Led.Syn.Theme, Led.Syn.Languages;
+  Led.Syn.Theme, Led.Syn.Languages, Led.UI.Dpi;
 
 type
   TLedPrefKind = (pkBool, pkInt, pkString, pkChoice, pkFont, pkHeading,
@@ -108,6 +108,10 @@ type
     function PageCount: Integer;
     function ListPagesReady: Boolean;
     procedure AddFilterRow(const AFilter, AConfig: string);
+    { What a font row's label currently reads, for the pref key given -- so
+      the self-test can check an unset font preference resolves to a real,
+      platform-correct family rather than a literal like "Monospace 10". }
+    function FontCaption(const AKey: string): string;
   end;
 
 implementation
@@ -117,7 +121,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..49] of TLedPrefItem = (
+  PrefItems: array[0..50] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -170,11 +174,14 @@ const
      Caption: 'Appearance'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'View'; Kind: pkFont; Key: 'Editor/font';
-     Caption: 'Editor font'; DefStr: 'Monospace 10';
+     Caption: 'Editor font'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'View'; Kind: pkChoice; Key: 'Editor/color_scheme';
      Caption: 'Colour scheme'; DefStr: 'medit';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: '@themes'),
+    (Category: 'View'; Kind: pkBool; Key: 'Editor/dark_titlebar';
+     Caption: 'Use a dark Windows title bar'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'View'; Kind: pkHeading; Key: '';
      Caption: 'Highlighting'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -363,7 +370,7 @@ var
   begin
     k := Tops.IndexOf(ACat);
     if k < 0 then k := Tops.Add(ACat);
-    Result := PtrInt(Tops.Objects[k]) + 12;
+    Result := PtrInt(Tops.Objects[k]) + 8;
     Tops.Objects[k] := TObject(PtrInt(Result + ADelta));
   end;
 
@@ -429,12 +436,19 @@ begin
     for i := Low(PrefItems) to High(PrefItems) do
     begin
       Item := PrefItems[i];
+      { Windows-only setting; the row does not exist elsewhere. }
+      if Item.Key = 'Editor/dark_titlebar' then
+      begin
+        {$IFNDEF WINDOWS}
+        Continue;
+        {$ENDIF}
+      end;
       Page := PageFor(Item.Category);
 
       case Item.Kind of
         pkHeading:
           begin
-            Y := NextY(Item.Category, 20);
+            Y := NextY(Item.Category, 16);
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page;
             Lbl.Caption := Item.Caption;
@@ -444,7 +458,7 @@ begin
           end;
         pkBool:
           begin
-            Y := NextY(Item.Category, 22);
+            Y := NextY(Item.Category, 18);
             Chk := TCheckBox.Create(Self);
             Chk.Parent := Page;
             Chk.Caption := Item.Caption;
@@ -456,7 +470,7 @@ begin
           end;
         pkInt:
           begin
-            Y := NextY(Item.Category, 26);
+            Y := NextY(Item.Category, 20);
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Caption := Item.Caption;
             Lbl.Left := 24; Lbl.Top := Y + 4;
@@ -469,7 +483,7 @@ begin
           end;
         pkString:
           begin
-            Y := NextY(Item.Category, 26);
+            Y := NextY(Item.Category, 20);
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Caption := Item.Caption;
             Lbl.Left := 24; Lbl.Top := Y + 4;
@@ -482,7 +496,7 @@ begin
           end;
         pkChoice:
           begin
-            Y := NextY(Item.Category, 26);
+            Y := NextY(Item.Category, 20);
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Caption := Item.Caption;
             Lbl.Left := 24; Lbl.Top := Y + 4;
@@ -511,7 +525,7 @@ begin
           end;
         pkFont:
           begin
-            Y := NextY(Item.Category, 28);
+            Y := NextY(Item.Category, 22);
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Caption := Item.Caption;
             Lbl.Left := 24; Lbl.Top := Y + 4;
@@ -545,6 +559,16 @@ begin
       (Node <> nil) and (FCategories.Objects[i] = TObject(Node.Data));
 end;
 
+function TLedPrefsDialog.FontCaption(const AKey: string): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  i := FFontLabels.IndexOf(AKey);
+  if i >= 0 then
+    Result := TLabel(FFontLabels.Objects[i]).Caption;
+end;
+
 procedure TLedPrefsDialog.PickFont(Sender: TObject);
 var
   Dlg: TFontDialog;
@@ -559,6 +583,9 @@ begin
 
   Dlg := TFontDialog.Create(Self);
   try
+    { A raster font looks pixelated at any size but its native one -- keep
+      the picker to fonts that actually scale. }
+    Dlg.Options := Dlg.Options + [fdFixedPitchOnly, fdTrueTypeOnly];
     { The stored form is "Family Size", as medit wrote it. }
     Dlg.Font.Name := Copy(Lbl.Caption, 1, LastDelimiter(' ', Lbl.Caption) - 1);
     Dlg.Font.Size := StrToIntDef(
@@ -572,8 +599,8 @@ end;
 
 procedure TLedPrefsDialog.LoadFromPrefs;
 var
-  i, j: Integer;
-  Key: string;
+  i, j, FontSize: Integer;
+  Key, FontName: string;
   Kind: TLedPrefKind;
   Ctl: TObject;
   Item: TLedPrefItem;
@@ -598,7 +625,17 @@ begin
       pkBool:   TCheckBox(Ctl).Checked := LedPrefs.GetBool(Key, Item.DefInt <> 0);
       pkInt:    TSpinEdit(Ctl).Value := LedPrefs.GetInt(Key, Item.DefInt);
       pkString: TEdit(Ctl).Text := LedPrefs.GetStr(Key, Item.DefStr);
-      pkFont:   TLabel(Ctl).Caption := LedPrefs.GetStr(Key, Item.DefStr);
+      pkFont:
+        begin
+          { Resolved the same way the editor itself resolves it, rather than
+            just showing whatever string is on disk: a family that is not
+            actually installed -- "Monospace" surviving from a Linux
+            prefs.ini, say -- is exactly the case that must not be echoed
+            back unchanged, or the dialog lies about what the editor is
+            about to look like. }
+          LedParseFontSpec(LedPrefs.GetStr(Key, Item.DefStr), FontName, FontSize);
+          TLabel(Ctl).Caption := Format('%s %d', [FontName, FontSize]);
+        end;
       pkChoice:
         begin
           if Item.Choices = '@themes' then

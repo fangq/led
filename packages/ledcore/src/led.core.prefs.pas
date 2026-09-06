@@ -1,4 +1,4 @@
-{ led - a light editor.  User preferences.
+{ led - a lightweight editor.  User preferences.
 
   medit stored these as XML under a hand-rolled DOM; led uses an INI file,
   because the settings model is flat dotted keys and that is exactly what INI
@@ -61,6 +61,8 @@ const
   { Key names carried over from medit so the vocabulary is unchanged. }
   LedPrefFont            = 'Editor/font';
   LedPrefColorScheme     = 'Editor/color_scheme';
+  { Windows only; not part of medit's vocabulary. }
+  LedPrefDarkTitlebar    = 'Editor/dark_titlebar';
   LedPrefTabWidth        = 'Editor/tab_width';
   LedPrefIndentWidth     = 'Editor/indent_width';
   LedPrefSpacesNotTabs   = 'Editor/spaces_instead_of_tabs';

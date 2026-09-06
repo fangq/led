@@ -1,4 +1,4 @@
-{ led - a light editor.  Main window.
+{ led - a lightweight editor.  Main window.
 
   Menus, the toolbar and the action list live in led.ui.main.lfm and are meant
   to be edited in the Lazarus form designer.  This unit holds only behaviour:
@@ -980,6 +980,8 @@ begin
     actNewExecute(nil);
 
   PopulateAllMenus;
+
+  LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
 end;
 
 procedure TLedMainForm.PopulateAllMenus;
@@ -1602,6 +1604,7 @@ begin
   ApplyTabVisibility;
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   LedSetCurrentTheme(LedPrefs.GetStr(LedPrefColorScheme, 'medit'));
+  LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
@@ -4389,7 +4392,7 @@ procedure TLedMainForm.actHelpExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    'led ' + LedVersion + ' -- a light editor.' + LineEnding + LineEnding +
+    'led ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
     'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
     LineEnding +
     'and every one of them can be changed there.' + LineEnding + LineEnding +
@@ -4454,6 +4457,7 @@ var
   Start, Len, i: Integer;
   Sugg: TStringList;
   Item: TMenuItem;
+  ClickPos: TPoint;
 begin
   ClearMenu(miSpelling);
   miSpelling.Enabled := False;
@@ -4463,9 +4467,19 @@ begin
 
   V := CurrentView;
   if V = nil then Exit;
-  if (V.CaretY < 1) or (V.CaretY > V.Lines.Count) then Exit;
-  Line := V.Lines[V.CaretY - 1];
-  Word := LedWordAt(Line, V.LogicalCaretXY.X, Start, Len);
+  { A right-click never moves the caret (SynEdit's context-menu action is
+    set to never move it), so the caret and the clicked word are usually two
+    different words.  LastMouseCaret is where the click actually landed; fall
+    back to the caret for a keyboard-invoked menu (Shift+F10 / Menu key),
+    where there is no recent click. }
+  ClickPos := V.LastMouseCaret;
+  if ClickPos.Y < 1 then
+    ClickPos := Point(V.LogicalCaretXY.X, V.CaretY)
+  else
+    ClickPos := V.PhysicalToLogicalPos(ClickPos);
+  if (ClickPos.Y < 1) or (ClickPos.Y > V.Lines.Count) then Exit;
+  Line := V.Lines[ClickPos.Y - 1];
+  Word := LedWordAt(Line, ClickPos.X, Start, Len);
   if (Word = '') or LedSpell.Check(Word) then
   begin
     miSpelling.Caption := 'Spelling';

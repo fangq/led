@@ -1,4 +1,4 @@
-{ led - a light editor.  The document model.
+{ led - a lightweight editor.  The document model.
 
   A TLedDocument is the unit of "an open file".  It is not a widget and not a
   buffer: it owns a hidden master TSynEdit whose TSynEditStringList holds the
@@ -18,8 +18,8 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, SynEdit, SynEditTypes, SynEditMiscClasses,
-  SynEditHighlighter,
+  Classes, SysUtils, Contnrs, Graphics, SynEdit, SynEditTypes,
+  SynEditMiscClasses, SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
@@ -249,6 +249,22 @@ begin
   LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontName, FontSize);
   AView.Font.Name := FontName;
   AView.Font.Size := FontSize;
+  { SynEdit's own constructor hard-codes fqNonAntialiased (SynDefaultFontQuality
+    in synedit.pp) -- crisp-but-jagged was a deliberate default once, but it
+    reads as a bug next to every other application on a modern display.
+
+    Plain grayscale antialiasing, not ClearType: GDI's ClearType rendering is
+    well documented as considerably more expensive than grayscale AA for a
+    monospace font redrawn over and over.  A Windows scroll freeze reported
+    around the same time as the pixelation turned out to be an unrelated
+    infinite loop in the spell-checker's word scanner (see led.ui.spellmarkup
+    .pas), not this -- but grayscale AA is still the cheaper, still-not-
+    pixelated choice on its own merits, and ClearType's subpixel rendering
+    is unlikely to be free on a control that repaints this often, so this
+    stays the safer default regardless.  Ignored outright on every
+    non-Windows widgetset (nothing in the GTK2 or Cocoa backends reads
+    Font.Quality at all), so this only changes anything here. }
+  AView.Font.Quality := fqAntialiased;
 
   AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
   AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
