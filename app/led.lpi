@@ -43,7 +43,9 @@
           </CodeGeneration>
           <Linking>
             <Debugging>
+              <GenerateDebugInfo Value="True"/>
               <DebugInfoType Value="dsDwarf3"/>
+              <StripSymbols Value="False"/>
               <UseHeaptrc Value="True"/>
               <TrashVariables Value="True"/>
             </Debugging>
