@@ -5,7 +5,7 @@ unit Led.Core.Tests.Spell;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry, Led.Core.Spell;
+  Classes, SysUtils, DateUtils, fpcunit, testregistry, Led.Core.Spell;
 
 type
   TTestSpell = class(TTestCase)
@@ -28,6 +28,7 @@ type
     procedure UserWordsAreAccepted;
     procedure IgnoredWordsAreAccepted;
     procedure NoDictionaryMeansNoComplaints;
+    procedure CheckingManyWordsIsFast;
   end;
 
 implementation
@@ -161,6 +162,32 @@ begin
   finally
     Empty.Free;
   end;
+end;
+
+{ TStringList.IndexOf always does a linear scan, whether or not the list is
+  Sorted -- only Find binary-searches -- and Known used to call IndexOf on
+  FWords (104,334 entries), three lists deep, for every word.  A markdown
+  document's worth of prose scrolling into view was enough to hang the
+  editor for minutes.  5,000 checks over a ~104k-entry dictionary finishes
+  in well under a second with Find; the old IndexOf call would not finish
+  this test inside any sane timeout, so this is the regression test for
+  that specific bug, not a general benchmark. }
+procedure TTestSpell.CheckingManyWordsIsFast;
+var
+  i: Integer;
+  T0: TDateTime;
+  Ms: Int64;
+begin
+  T0 := Now;
+  for i := 1 to 5000 do
+  begin
+    FSpell.Check('receive');
+    FSpell.Check('recieve');
+    FSpell.Check('Paris');
+  end;
+  Ms := MilliSecondsBetween(Now, T0);
+  AssertTrue('15,000 dictionary checks take under 1000 ms, took ' +
+    IntToStr(Ms) + ' ms', Ms < 1000);
 end;
 
 initialization
