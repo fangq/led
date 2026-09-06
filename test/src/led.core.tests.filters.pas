@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for filename-based config rules. }
+{ led - a lightweight editor.  Headless tests for filename-based config rules. }
 unit Led.Core.Tests.Filters;
 
 {$mode objfpc}{$H+}

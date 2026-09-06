@@ -1,4 +1,4 @@
-{ led - a light editor.  The Find in Files dialog.
+{ led - a lightweight editor.  The Find in Files dialog.
 
   Results are written into the ordinary output pane as "file:line: text",
   which the default output filter already knows how to turn into something

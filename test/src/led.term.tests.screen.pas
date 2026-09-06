@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for the terminal screen model.
+{ led - a lightweight editor.  Headless tests for the terminal screen model.
 
   A terminal emulator is only testable this way: drive the parser with the
   byte sequences a program would emit and inspect the grid.  Every case here

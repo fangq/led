@@ -1,4 +1,4 @@
-{ led - a light editor. }
+{ led - a lightweight editor. }
 program led;
 
 {$mode objfpc}{$H+}

@@ -1,4 +1,4 @@
-{ led - a light editor.  Fold markers drawn as chevrons, the way medit drew
+{ led - a lightweight editor.  Fold markers drawn as chevrons, the way medit drew
   them.
 
   SynEdit's own fold column draws a boxed [-] and [+], which is the Windows

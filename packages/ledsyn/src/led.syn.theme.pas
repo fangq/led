@@ -1,4 +1,4 @@
-{ led - a light editor.  Colour themes.
+{ led - a lightweight editor.  Colour themes.
 
   Reads GtkSourceView <style-scheme> files unchanged, which is what lets the
   eight schemes medit ships carry over intact.  A scheme is a flat map from a

@@ -1,4 +1,4 @@
-{ led - a light editor.  Character-encoding names and detection helpers.
+{ led - a lightweight editor.  Character-encoding names and detection helpers.
 
   medit named encodings the way iconv does ("UTF-8", "ISO_8859-15"); Lazarus
   names them the way LConvEncoding does ("utf8", "iso885915").  Everything

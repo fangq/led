@@ -1,4 +1,4 @@
-{ led - a light editor.  Spell checking, over a shipped word list.
+{ led - a lightweight editor.  Spell checking, over a shipped word list.
 
   Deliberately not Hunspell.  Hunspell is C++, so using it means shipping
   libhunspell.dll on Windows and a .dylib inside the macOS bundle -- and on

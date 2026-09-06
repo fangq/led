@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for user tools and output filters. }
+{ led - a lightweight editor.  Headless tests for user tools and output filters. }
 unit Led.Core.Tests.Tools;
 
 {$mode objfpc}{$H+}

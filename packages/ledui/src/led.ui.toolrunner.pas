@@ -1,4 +1,4 @@
-{ led - a light editor.  Running user tools.
+{ led - a lightweight editor.  Running user tools.
 
   Takes a tool and a document and does what the tool says: assembles the
   input, sets the environment, runs the command, and puts the output where

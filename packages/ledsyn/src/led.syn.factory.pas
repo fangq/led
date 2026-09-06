@@ -1,4 +1,4 @@
-{ led - a light editor.  Highlighter selection and theming.
+{ led - a lightweight editor.  Highlighter selection and theming.
 
   Two jobs, kept together because they share one table:
 

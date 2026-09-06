@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for preferences, session and recent
+{ led - a lightweight editor.  Headless tests for preferences, session and recent
   files.  All three write to disk, so they are exercised against a temporary
   config directory rather than the user's real one. }
 unit Led.Core.Tests.Settings;

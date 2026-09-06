@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for crash recovery.
+{ led - a lightweight editor.  Headless tests for crash recovery.
 
   The interesting cases are the ones a clean run never produces: a journal
   entry whose text was still being written when the process died, an entry

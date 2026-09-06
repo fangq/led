@@ -1,4 +1,4 @@
-{ led - a light editor.  The wiki-to-HTML converter.
+{ led - a lightweight editor.  The wiki-to-HTML converter.
 
   Every check asserts something in the produced HTML rather than that the
   converter ran, and the fixtures are the syntax medit's own converter

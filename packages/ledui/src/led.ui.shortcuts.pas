@@ -1,4 +1,4 @@
-{ led - a light editor.  Customisable keyboard shortcuts.
+{ led - a lightweight editor.  Customisable keyboard shortcuts.
 
   Bindings live in keys.ini as action-id to shortcut pairs, and only where
   they differ from the built-in default -- so the file stays small and a new

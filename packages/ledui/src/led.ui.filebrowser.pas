@@ -1,4 +1,4 @@
-{ led - a light editor.  The file browser pane.
+{ led - a lightweight editor.  The file browser pane.
 
   medit hand-wrote 22,000 lines here, including its own icon grid, because GTK
   had nothing suitable.  LCL ships the pair that does the job: TShellTreeView

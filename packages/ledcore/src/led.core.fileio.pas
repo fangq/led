@@ -1,4 +1,4 @@
-{ led - a light editor.  File loading and saving.
+{ led - a lightweight editor.  File loading and saving.
 
   Ported from medit's mooedit-fileops.cpp, which is the piece of medit with
   the least equivalent anywhere in Lazarus: LConvEncoding is only a codec

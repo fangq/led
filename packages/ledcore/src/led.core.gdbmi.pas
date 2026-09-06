@@ -1,4 +1,4 @@
-{ led - a light editor.  GDB/MI: the machine interface gdb speaks.
+{ led - a lightweight editor.  GDB/MI: the machine interface gdb speaks.
 
   `gdb --interpreter=mi3` answers in a line-oriented grammar meant for
   programs rather than people.  This unit is the reader for it: one line in,

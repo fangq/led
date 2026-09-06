@@ -1,4 +1,4 @@
-{ led - a light editor.  The command output pane.
+{ led - a lightweight editor.  The command output pane.
 
   A read-only editor showing what a tool printed, with the lines that name a
   place in a file turned into something you can click.  The parsing is done

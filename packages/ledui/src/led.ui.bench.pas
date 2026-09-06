@@ -1,4 +1,4 @@
-{ led - a light editor.  Phase 0 long-line benchmark.
+{ led - a lightweight editor.  Phase 0 long-line benchmark.
 
   medit truncates any line past 4096 characters and shows a clickable marker
   to reveal more, because GtkTextView's line-layout cache collapses on very

@@ -1,4 +1,4 @@
-{ led - a light editor.  The debugger: a pane, and the thing that drives it.
+{ led - a lightweight editor.  The debugger: a pane, and the thing that drives it.
 
   Two classes with one job each.
 

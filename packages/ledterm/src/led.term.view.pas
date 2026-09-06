@@ -1,4 +1,4 @@
-{ led - a light editor.  The terminal widget.
+{ led - a lightweight editor.  The terminal widget.
 
   Custom-drawn, because there is nothing in LCL to draw a character grid with
   per-cell colour.  It owns a pseudo-terminal and a screen model; a timer

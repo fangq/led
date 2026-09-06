@@ -1,4 +1,4 @@
-{ led - a light editor.  "Save these documents?" for a batch close.
+{ led - a lightweight editor.  "Save these documents?" for a batch close.
 
   Closing a window with six modified documents in it asked six separate
   questions, one after another, with no way to see how many were coming or to

@@ -1,4 +1,4 @@
-{ led - a light editor.  Project discovery, launch.json and tasks.json. }
+{ led - a lightweight editor.  Project discovery, launch.json and tasks.json. }
 unit Led.Core.Tests.Project;
 
 {$mode objfpc}{$H+}

@@ -1,4 +1,4 @@
-{ led - a light editor.  A gdb subprocess, driven over its machine interface.
+{ led - a lightweight editor.  A gdb subprocess, driven over its machine interface.
 
   One session is one `gdb --interpreter=mi3` child.  It owns the pipe, tags
   every command with a token so replies can be matched to what asked for them,

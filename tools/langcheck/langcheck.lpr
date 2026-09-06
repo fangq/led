@@ -1,4 +1,4 @@
-{ led - a light editor.  Grammar loader check.
+{ led - a lightweight editor.  Grammar loader check.
 
   Loads every generated TextMate grammar through the same engine the editor
   uses and reports the ones that do not compile.  A converter that emits

@@ -1,4 +1,4 @@
-{ led - a light editor.  Printing.
+{ led - a lightweight editor.  Printing.
 
   A paginated dump of the document with line numbers and a header, drawn on
   the printer canvas.  Deliberately plain: syntax colours on paper cost more

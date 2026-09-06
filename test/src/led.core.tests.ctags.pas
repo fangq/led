@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for the tags-file reader. }
+{ led - a lightweight editor.  Headless tests for the tags-file reader. }
 unit Led.Core.Tests.Ctags;
 
 {$mode objfpc}{$H+}
