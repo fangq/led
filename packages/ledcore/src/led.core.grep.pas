@@ -1,4 +1,4 @@
-{ led - a light editor.  Search across files.
+{ led - a lightweight editor.  Search across files.
 
   medit shelled out to grep and find.  That is the single worst portability
   bug in the old code -- neither exists on a stock Windows -- and it also

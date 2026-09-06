@@ -1,4 +1,4 @@
-# led — a light editor
+# led — a lightweight editor
 
 `led` is a lightweight programmer's text editor written in Free Pascal with
 Lazarus/LCL, so one source tree builds natively on Linux, Windows and macOS.

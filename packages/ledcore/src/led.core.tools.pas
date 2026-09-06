@@ -1,4 +1,4 @@
-{ led - a light editor.  User-defined tools.
+{ led - a lightweight editor.  User-defined tools.
 
   medit kept these in menu.xml and context.xml; led keeps one file per tool,
   because a tool is mostly a shell script and a script wants to be a file you

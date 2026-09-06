@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for encoding detection and the
+{ led - a lightweight editor.  Headless tests for encoding detection and the
   load/save contract.  This is the matrix the plan calls the highest-value
   thing to get right, so it is tested harder than anything else. }
 unit Led.Core.Tests.Encodings;

@@ -1,4 +1,4 @@
-{ led - a light editor.  Where things live on disk.
+{ led - a lightweight editor.  Where things live on disk.
 
   Config is per-user and writable; data is installed alongside the binary and
   read-only.  Both are resolved once and can be overridden by environment

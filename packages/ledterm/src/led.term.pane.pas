@@ -1,4 +1,4 @@
-{ led - a light editor.  The terminal pane.
+{ led - a lightweight editor.  The terminal pane.
 
   Holds one or more terminals in a tree of splitters, Terminator-style: any
   terminal can be split horizontally or vertically, and closing one collapses

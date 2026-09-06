@@ -1,4 +1,4 @@
-{ led - a light editor.  Surviving an X error that nothing can act on.
+{ led - a lightweight editor.  Surviving an X error that nothing can act on.
 
   Over ssh X forwarding the X server is on the machine in front of you and
   the client is on the far one.  ssh forwards the extension list unchanged,

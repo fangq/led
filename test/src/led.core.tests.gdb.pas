@@ -1,4 +1,4 @@
-{ led - a light editor.  A real gdb, driven end to end.
+{ led - a lightweight editor.  A real gdb, driven end to end.
 
   These tests compile a C program with gcc and debug it with the gdb on this
   machine.  Nothing is mocked, because the things that break in a debugger

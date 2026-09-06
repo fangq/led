@@ -1,4 +1,4 @@
-{ led - a light editor.  Layered per-document settings.
+{ led - a lightweight editor.  Layered per-document settings.
 
   Ported from medit's mooeditconfig.cpp, minus the GObject property machinery.
   The idea worth keeping is the precedence chain: the same setting can be

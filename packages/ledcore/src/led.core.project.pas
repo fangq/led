@@ -1,4 +1,4 @@
-{ led - a light editor.  Projects: a root, launch configurations, build tasks.
+{ led - a lightweight editor.  Projects: a root, launch configurations, build tasks.
 
   led has had two things called "project" and neither is this one.  The
   Project pane is a curated list of files with no root and no build; the user

@@ -1,4 +1,4 @@
-{ led - a light editor.  Pseudo-terminal.
+{ led - a lightweight editor.  Pseudo-terminal.
 
   There is no PTY binding anywhere in FPC's RTL, so this is written against
   the syscalls: posix_openpt, grantpt, unlockpt, ptsname to get the pair, then

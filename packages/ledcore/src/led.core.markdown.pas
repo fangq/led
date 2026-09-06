@@ -1,4 +1,4 @@
-{ led - a light editor.  Markdown to HTML.
+{ led - a lightweight editor.  Markdown to HTML.
 
   medit converted Markdown with md4c, a C library.  Linking C into an FPC
   build reintroduces a C toolchain on every platform, which is the coupling

@@ -1,4 +1,4 @@
-{ led - a light editor.  Display-only truncation of very long lines.
+{ led - a lightweight editor.  Display-only truncation of very long lines.
 
   medit truncates any line past 4096 characters and draws a clickable "..."
   marker to reveal 4096 more, because GtkTextView's line-layout cache

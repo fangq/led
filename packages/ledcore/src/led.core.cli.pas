@@ -1,4 +1,4 @@
-{ led - a light editor.  Command line parsing.
+{ led - a lightweight editor.  Command line parsing.
 
   medit's option set, carried over so muscle memory and scripts keep working,
   including the "file:123" suffix that opens a file at a line.

@@ -1,4 +1,4 @@
-{ led - a light editor.  Toolbar and menu icons, drawn rather than shipped.
+{ led - a lightweight editor.  Toolbar and menu icons, drawn rather than shipped.
 
   medit used the desktop's stock GTK icon theme, which does not exist on
   Windows or macOS, and bundling a PNG set means artwork to license, scale

@@ -1,4 +1,4 @@
-{ led - a light editor.  Editing commands.
+{ led - a lightweight editor.  Editing commands.
 
   The operations that are more than a SynEdit call: comment/uncomment driven
   by the grammar's own markers, the one-space indent shift medit bound to

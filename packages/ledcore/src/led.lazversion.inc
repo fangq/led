@@ -1,4 +1,4 @@
-{ led - a light editor.  Which Lazarus are we compiling against?
+{ led - a lightweight editor.  Which Lazarus are we compiling against?
 
   led is developed against Lazarus 4.2 and has to keep building on the 2.2
   that Debian and Ubuntu still ship.  SynEdit, AnchorDocking and a few LCL

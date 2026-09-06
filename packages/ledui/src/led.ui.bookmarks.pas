@@ -1,4 +1,4 @@
-{ led - a light editor.  The bookmark list.
+{ led - a lightweight editor.  The bookmark list.
 
   SynEdit gives ten numbered bookmark slots and the means to jump between
   them, which covers Toggle / Next / Previous.  What it has no notion of is

@@ -1,4 +1,4 @@
-{ led - a light editor.  The GDB/MI reader.
+{ led - a lightweight editor.  The GDB/MI reader.
 
   Fixtures are real lines from `gdb --interpreter=mi3`, not invented ones. }
 unit Led.Core.Tests.GdbMI;

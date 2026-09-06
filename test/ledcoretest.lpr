@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless test runner for the ledcore package. }
+{ led - a lightweight editor.  Headless test runner for the ledcore package. }
 program ledcoretest;
 
 {$mode objfpc}{$H+}

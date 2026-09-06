@@ -1,4 +1,4 @@
-{ led - a light editor.  Reading a tags file.
+{ led - a lightweight editor.  Reading a tags file.
 
   medit bundled a copy of universal-ctags' readtags.c.  The format is simple
   enough that parsing it directly is smaller than carrying the C:

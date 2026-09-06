@@ -1,4 +1,4 @@
-{ led - a light editor.  Modeline parsing.
+{ led - a lightweight editor.  Modeline parsing.
 
   medit reads three dialects, from the first, second and last line of the
   document (mooedit.cpp:1188 update_config_from_mode_lines):

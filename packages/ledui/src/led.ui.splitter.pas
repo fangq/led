@@ -1,4 +1,4 @@
-{ led - a light editor.  Splitters that keep both sides visible.
+{ led - a lightweight editor.  Splitters that keep both sides visible.
 
   TPairSplitter has no minimum of any kind -- only Position -- so every
   divider built on it could be dragged until one side was gone: a split view

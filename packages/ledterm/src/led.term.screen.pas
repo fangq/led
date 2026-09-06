@@ -1,4 +1,4 @@
-{ led - a light editor.  Terminal screen model and escape-sequence parser.
+{ led - a lightweight editor.  Terminal screen model and escape-sequence parser.
 
   A grid of cells, a scrollback ring, and a state machine that turns the byte
   stream from the child into changes to that grid.  The parser follows the

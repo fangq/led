@@ -1,4 +1,4 @@
-{ led - a light editor.  Crash recovery for unsaved work.
+{ led - a lightweight editor.  Crash recovery for unsaved work.
 
   Until this existed, killing led lost everything unsaved: session.json holds
   paths and caret positions but no text, skips untitled documents outright,

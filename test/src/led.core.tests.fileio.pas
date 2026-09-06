@@ -1,4 +1,4 @@
-{ led - a light editor.  Headless tests for Led.Core.FileIO.
+{ led - a lightweight editor.  Headless tests for Led.Core.FileIO.
 
   These run with no widgetset at all: the ledcore package depends on LazUtils
   but on nothing visual, which is the constraint that keeps the interesting

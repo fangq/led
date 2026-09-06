@@ -1,4 +1,4 @@
-{ led - a light editor.  Find and replace.
+{ led - a lightweight editor.  Find and replace.
 
   Two surfaces over one engine: a modeless Find/Replace dialog for the full
   set of options, and an incremental find bar that appears at the foot of the

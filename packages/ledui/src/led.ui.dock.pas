@@ -1,4 +1,4 @@
-{ led - a light editor.  The dock host.
+{ led - a lightweight editor.  The dock host.
 
   medit hand-built a 7,200-line docking system (MooBigPaned/MooPaned/MooPane)
   to get panes that could be dragged between edges, collapsed to a title bar

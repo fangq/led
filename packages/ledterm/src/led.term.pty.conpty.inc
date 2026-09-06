@@ -1,4 +1,4 @@
-{ led - a light editor.  The Windows half of Led.Term.Pty: ConPTY.
+{ led - a lightweight editor.  The Windows half of Led.Term.Pty: ConPTY.
 
   Included from led.term.pty.pas under {$IFDEF WINDOWS}.  A separate file
   because it cannot be compiled on the machine it was written on -- there is

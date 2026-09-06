@@ -1,4 +1,4 @@
-{ led - a light editor.  Filename-based configuration rules.
+{ led - a lightweight editor.  Filename-based configuration rules.
 
   Ported from medit's mooeditfiltersettings.cpp.  A rule pairs a filter with a
   config string, and every rule whose filter matches the document is applied
