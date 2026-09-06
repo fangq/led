@@ -1,4 +1,4 @@
-{ led - a light editor.  The Markdown and wiki preview pane.
+{ led - a lightweight editor.  The Markdown and wiki preview pane.
 
   medit rendered HTML with a 3,100-line DOM-to-text-buffer renderer of its
   own, because GTK had no HTML control it could use.  Lazarus ships
@@ -29,9 +29,25 @@ type
     FBaseDir: string;
     FIsWiki: Boolean;
     FTimer: TTimer;
+    FResizeTimer: TTimer;
+    FHasRendered: Boolean;
     FPendingText: string;
     FPendingTitle: string;
     procedure Render(Sender: TObject);
+    { Resolves an <img> URL against the document's own folder, since
+      TIpFileDataProvider otherwise looks relative to the process's working
+      directory.  Any failure to load degrades to "no image" instead of an
+      exception escaping into IPro's layout code. }
+    procedure ProvideImage(Sender: TIpHtmlNode; const URL: string;
+      var Picture: TPicture);
+    { TIpHtmlPanel relays out the whole document on every repaint it is
+      given, not only when the content actually changed -- so a live
+      drag-resize would otherwise force a full relayout on every
+      intermediate size.  Hiding it for the duration of the drag and
+      revealing it once, after the size has settled, keeps the drag itself
+      responsive; see FResizeTimer. }
+    procedure PaneResize(Sender: TObject);
+    procedure ResizeSettled(Sender: TObject);
   public
     constructor Create(AOwner: TComponent); override;
     { Shows AText rendered as Markdown.  Debounced, because it is called on
@@ -83,6 +99,7 @@ begin
   FNote.Caption := 'Open a Markdown or wiki file to see it rendered here.';
 
   FProvider := TIpFileDataProvider.Create(Self);
+  FProvider.OnGetImage := @ProvideImage;
 
   FHtml := TIpHtmlPanel.Create(Self);
   FHtml.Parent := Self;
@@ -94,6 +111,53 @@ begin
   FTimer.Interval := 250;
   FTimer.Enabled := False;
   FTimer.OnTimer := @Render;
+
+  FResizeTimer := TTimer.Create(Self);
+  FResizeTimer.Interval := 200;
+  FResizeTimer.Enabled := False;
+  FResizeTimer.OnTimer := @ResizeSettled;
+  OnResize := @PaneResize;
+end;
+
+procedure TLedPreviewPane.PaneResize(Sender: TObject);
+begin
+  if FHasRendered and FHtml.Visible then
+    FHtml.Visible := False;
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Enabled := True;
+end;
+
+procedure TLedPreviewPane.ResizeSettled(Sender: TObject);
+begin
+  FResizeTimer.Enabled := False;
+  if FHasRendered then
+    FHtml.Visible := True;
+end;
+
+procedure TLedPreviewPane.ProvideImage(Sender: TIpHtmlNode; const URL: string;
+  var Picture: TPicture);
+var
+  FN: string;
+begin
+  Picture := nil;
+  if URL = '' then Exit;
+
+  if (Pos('://', URL) > 0) or ((Length(URL) > 1) and (URL[2] = ':')) or
+     (URL[1] in ['/', '\']) then
+    FN := URL
+  else
+    FN := IncludeTrailingPathDelimiter(FBaseDir) + URL;
+
+  Picture := TPicture.Create;
+  try
+    Picture.LoadFromFile(FN);
+  except
+    on E: Exception do
+    begin
+      Picture.Free;
+      Picture := nil;
+    end;
+  end;
 end;
 
 procedure TLedPreviewPane.ShowMessage_(const AText: string);
@@ -101,6 +165,7 @@ begin
   FNote.Caption := AText;
   FNote.Visible := True;
   FHtml.Visible := False;
+  FHasRendered := False;
   FTimer.Enabled := False;
 end;
 
@@ -128,6 +193,7 @@ begin
     FHtml.SetHtmlFromStr(Page);
     FNote.Visible := False;
     FHtml.Visible := True;
+    FHasRendered := True;
   except
     on E: Exception do
       ShowMessage_('The preview could not be rendered: ' + E.Message);
