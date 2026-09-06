@@ -1,4 +1,4 @@
-{ led - a light editor.  Scripted GUI self-test.
+{ led - a lightweight editor.  Scripted GUI self-test.
 
   Run with `led --self-test`.  Drives the real main window through a sequence
   of actions, checking the state the user would see, and exits non-zero on the
@@ -30,7 +30,7 @@ uses
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
-  Led.UI.Splitter,
+  Led.UI.Splitter, Led.UI.Dpi,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
@@ -2412,6 +2412,21 @@ begin
   Dlg := TLedPrefsDialog.CreateDialog(F);
   try
     Dlg.LoadFromPrefs;
+
+    { An unset font preference used to show and then save the literal
+      "Monospace 10", which is not an installed family on Windows and made
+      GDI fall back to a pixelated raster font.  It must resolve to this
+      platform's real default instead, and Apply must not turn around and
+      write the bad literal back. }
+    LedPrefs.SetStr('Editor/font', '');
+    Dlg.LoadFromPrefs;
+    Check('an unset font preference shows the platform default, not "Monospace"',
+      Dlg.FontCaption('Editor/font') = Format('%s %d',
+        [LedDefaultFontName, LedDefaultFontSize]));
+    Dlg.ApplyToPrefs;
+    Check('and applying it does not persist the old literal default',
+      LedPrefs.GetStr('Editor/font', '') <> 'Monospace 10');
+
     LedPrefs.SetInt('Editor/tab_width', 3);
     LedPrefs.SetBool('Editor/make_backups', True);
     LedPrefs.SetStr('Editor/color_scheme', 'oblivion');
@@ -3311,6 +3326,14 @@ begin
     F.Preview.IsWiki := False;
     F.Preview.Update('# markdown heading', 'md', '');
     Check('and still renders markdown', F.Preview.RenderNow);
+
+    { A relative image the file does not have used to be able to raise past
+      IPro's own narrow except clause; the preview's own OnGetImage handler
+      is what turns "file not found" into "no image" instead. }
+    F.Preview.Update('# with an image' + LineEnding +
+      '![missing](does-not-exist.png)', 'md', ExtractFileDir(P));
+    Check('a markdown image that cannot load does not crash the preview',
+      F.Preview.RenderNow);
   end;
 
   { Put the pane back.  Leaving the right edge open changed what the dock
