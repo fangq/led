@@ -1,4 +1,4 @@
-{ led - a light editor.  The editor view control.
+{ led - a lightweight editor.  The editor view control.
 
   One TLedEdit is one *view*.  A document may own several of them, all sharing
   a single text buffer, which is how split view works. }
@@ -113,6 +113,11 @@ type
     property Document: TObject read FDocument write FDocument;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
+    { SynEdit tracks the physical row/column of the last mouse click here,
+      protected, regardless of whether that click was allowed to move the
+      caret -- a right-click never does.  Published so the spelling context
+      menu can check the word under the pointer instead of under the caret. }
+    property LastMouseCaret;
 
     { The columns a guide belongs at, for every text line in the range.
       Public because it is what the self-test can check: the drawing itself

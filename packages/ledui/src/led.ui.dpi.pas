@@ -1,4 +1,4 @@
-{ led - a light editor.  Adaptive high-DPI scaling.
+{ led - a lightweight editor.  Adaptive high-DPI scaling.
 
   Ported from the sibling Lazarus project GotBox, whose comments explain the
   problem better than a summary can: on gtk2, Application.Scaled caps at the
@@ -62,6 +62,11 @@ function LedDefaultFontName: string;
 procedure LedParseFontSpec(const ASpec: string; out AName: string;
   out ASize: Integer);
 
+{ Darkens (or reverts) AForm's Windows title bar via DWM's immersive-dark-mode
+  attribute.  A no-op everywhere else, and a silent no-op on Windows builds too
+  old to know the attribute -- this is cosmetic and must never fail loudly. }
+procedure LedApplyDarkTitleBar(AForm: TCustomForm; AEnable: Boolean);
+
 implementation
 
 { The whole clause is conditional, not just the unit inside it: on Windows a
@@ -71,6 +76,10 @@ implementation
 {$IFDEF LINUX}
 uses
   Process;
+{$ENDIF}
+{$IFDEF WINDOWS}
+uses
+  Windows;
 {$ENDIF}
 
 { The desktop's integer window-scaling factor -- xfce's
@@ -109,10 +118,12 @@ var
   Factor: Double;
   Wsf: Integer;
 begin
-  { An explicit override wins, as a factor relative to 96. }
-  S := GetEnvironmentVariable('LED_SCALE');
+  { An explicit override wins, as a factor relative to 96.  Qualified
+    because the Windows unit, pulled in below for the dark-title-bar call,
+    declares its own GetEnvironmentVariable with a different signature. }
+  S := SysUtils.GetEnvironmentVariable('LED_SCALE');
   if S = '' then
-    S := GetEnvironmentVariable('GDK_SCALE');
+    S := SysUtils.GetEnvironmentVariable('GDK_SCALE');
   if S <> '' then
   begin
     Fs := DefaultFormatSettings;
@@ -226,23 +237,32 @@ begin
       p := n;
       Break;
     end;
+  n := -1;
   if p > 1 then
   begin
     Tail := Copy(Spec, p + 1, MaxInt);
     n := StrToIntDef(Tail, -1);
-    if n > 0 then
-    begin
-      AName := Trim(Copy(Spec, 1, p - 1));
-      ASize := n;
-      if AName = '' then
-        AName := LedDefaultFontName;
-      Exit;
-    end;
   end;
+  if n > 0 then
+  begin
+    AName := Trim(Copy(Spec, 1, p - 1));
+    ASize := n;
+    if AName = '' then
+      AName := LedDefaultFontName;
+  end
+  else
+    { No trailing size: the whole thing is a family name, and the size stays
+      at the system default rather than reverting to a hard-coded one. }
+    AName := Spec;
 
-  { No trailing size: the whole thing is a family name, and the size stays at
-    the system default rather than reverting to a hard-coded one. }
-  AName := Spec;
+  { A family that is not actually installed -- "Monospace" surviving from a
+    Linux prefs.ini, or a bad literal an older build wrote to disk -- looks
+    pixelated at every size rather than merely wrong at one, so it gets the
+    same fallback an empty preference does.  Checked here rather than only
+    where the preference is read, so a value already on disk self-heals
+    without the user having to touch Preferences. }
+  if Screen.Fonts.IndexOf(AName) < 0 then
+    AName := LedDefaultFontName;
 end;
 
 function LedDefaultFontSize: Integer;
@@ -264,5 +284,34 @@ begin
   if Result > 16 then
     Result := 16;
 end;
+
+{$IFDEF WINDOWS}
+const
+  DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+function DwmSetWindowAttribute(hWnd: HWND; dwAttribute: DWORD;
+  pvAttribute: Pointer; cbAttribute: DWORD): HRESULT;
+  stdcall; external 'dwmapi.dll';
+
+procedure LedApplyDarkTitleBar(AForm: TCustomForm; AEnable: Boolean);
+var
+  Flag: LongBool;
+begin
+  if AForm = nil then Exit;
+  try
+    Flag := AEnable;
+    DwmSetWindowAttribute(AForm.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE,
+      @Flag, SizeOf(Flag));
+  except
+    { Older Windows builds do not know this attribute; leave the title bar
+      as the widgetset drew it. }
+  end;
+end;
+{$ELSE}
+procedure LedApplyDarkTitleBar(AForm: TCustomForm; AEnable: Boolean);
+begin
+  { Only Windows has a title bar to darken this way. }
+end;
+{$ENDIF}
 
 end.
