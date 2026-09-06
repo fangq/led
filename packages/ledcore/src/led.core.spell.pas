@@ -191,9 +191,16 @@ begin
 end;
 
 function TLedSpell.Known(const AWord: string): Boolean;
+var
+  Idx: Integer;
 begin
-  Result := (FWords.IndexOf(AWord) >= 0) or (FUser.IndexOf(AWord) >= 0) or
-            (FIgnored.IndexOf(AWord) >= 0);
+  { TStringList.IndexOf always does a linear scan -- Sorted only changes what
+    Add and Find do, not IndexOf -- so this used to walk up to all 104,334
+    entries of FWords, three lists deep, for every word on every line that
+    was not already cached.  Find is the one that actually binary-searches a
+    sorted list, which is the whole reason FWords.Sorted is set in Create. }
+  Result := FWords.Find(AWord, Idx) or FUser.Find(AWord, Idx) or
+            FIgnored.Find(AWord, Idx);
 end;
 
 function TLedSpell.Check(const AWord: string): Boolean;

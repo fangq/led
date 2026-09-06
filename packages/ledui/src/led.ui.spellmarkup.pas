@@ -1,4 +1,4 @@
-{ led - a light editor.  The red squiggle under a misspelled word.
+{ led - a lightweight editor.  The red squiggle under a misspelled word.
 
   A TSynEditMarkup rather than custom painting, because SynEdit already knows
   how to draw a wavy underline -- slsWaved on the bottom frame edge -- and
@@ -9,7 +9,12 @@
   Words are checked lazily, one visible line at a time, and the answers for
   that line are cached until the line changes.  A document is only ever a
   screenful of lines away from the user, so there is nothing to gain from
-  checking the rest. }
+  checking the rest.
+
+  The cache is keyed by row *and* the row's own text, not by row number
+  alone -- see the comment on PrepareMarkupForRow for why the row-number-only
+  version this replaced had to be torn out, and why keying on content this
+  time round does not bring the same bug back. }
 unit Led.UI.SpellMarkup;
 
 {$mode objfpc}{$H+}
@@ -28,6 +33,17 @@ type
     Led.UI.Document.ApplyConfigToView. }
   TLedSpellScope = (lssAll, lssCode, lssOff);
 
+  { One row's scan result, plus the exact text it was computed from.  A hit
+    only counts when the text still matches: an edit changes the text, which
+    makes every cached entry for that row a miss on its own, with no
+    separate invalidation needed. }
+  TLedSpellCacheEntry = record
+    Row: Integer;      // 0: empty slot
+    Line: string;
+    Starts, Ends: array of Integer;
+    Count: Integer;
+  end;
+
   TLedSpellMarkup = class(TSynEditMarkup)
   private
     FScope: TLedSpellScope;
@@ -42,6 +58,11 @@ type
       one pass over the highlighter rather than one query per word. }
     FProseFrom, FProseTo: array of Integer;
     FProseCount: Integer;
+    { Direct-mapped by Row mod Length(FCache): simple, bounded, and a
+      collision between two far-apart rows only costs a rescan of one of
+      them -- never a wrong answer, since the slot is still checked against
+      the row number and the text before it is trusted. }
+    FCache: array of TLedSpellCacheEntry;
     procedure ScanRow(ARow: Integer);
     procedure CollectProseRuns(ARow: Integer; const ALine: string);
     function InProse(ACol: Integer): Boolean;
@@ -113,6 +134,7 @@ begin
   inherited Create(ASynEdit);
   FScope := lssOff;
   FCurrentRow := -1;
+  SetLength(FCache, 256);
   { No foreground or background of its own: only the wavy underline, so the
     syntax colours underneath are untouched. }
   MarkupInfo.Foreground := clNone;
@@ -123,25 +145,69 @@ begin
 end;
 
 procedure TLedSpellMarkup.Invalidate;
+var
+  i: Integer;
 begin
   FCurrentRow := -1;
+  { A word just added to the dictionary or ignored changes the answer for
+    every row that contains it, not just the one being edited, so unlike an
+    ordinary edit this cannot rely on the per-row text check catching it:
+    the text is unchanged, only the dictionary is. }
+  for i := 0 to High(FCache) do
+    FCache[i].Row := 0;
 end;
 
-{ Called once per display row before any token of it is drawn, which is why
-  there is no staleness test anywhere else: the scan cannot outlive the paint
-  that made it.  The previous version keyed a cache on the row number and
-  rescanned only when that changed -- so typing on one line, which repaints
-  only that line, reused the scan from the first keystroke and never noticed
-  anything typed after it.
+{ Called once per display row before any token of it is drawn.  The guard at
+  the top is for word wrap, where one text line covers several display rows
+  and Prepare is called for each.
 
-  The guard is for word wrap, where one text line covers several display rows
-  and Prepare is called for each. }
+  The previous version kept only the single most recent row's scan, keyed on
+  the row number alone, and dropped it unconditionally at the end of every
+  paint (see EndMarkup) -- typing on one line, which repaints only that
+  line, is exactly why: reusing a cache keyed on row number alone across
+  paints reused the scan from the first keystroke and never noticed anything
+  typed after it, since the row number had not changed. Rescanning
+  everything on every paint was the fix, and it is correct, but it means a
+  document with real prose repaints its whole visible spelling on every
+  single scroll step, however little of it has actually changed.
+
+  Keying the cache on the row's own text as well as its number keeps the
+  fix: an edit changes the text, so the very next paint of that row is a
+  miss regardless of what the cache remembers, with no extra bookkeeping.
+  A scroll repaints rows whose text has not changed at all, so those are
+  hits -- which is the case this exists for. }
 procedure TLedSpellMarkup.PrepareMarkupForRow(aRow: Integer);
+var
+  Slot: Integer;
+  Line: string;
 begin
   if FScope = lssOff then Exit;
   if aRow = FCurrentRow then Exit;
   FCurrentRow := aRow;
+
+  if (aRow < 1) or (aRow > TCustomSynEdit(SynEdit).Lines.Count) then
+  begin
+    FCount := 0;
+    Exit;
+  end;
+  Line := TCustomSynEdit(SynEdit).Lines[aRow - 1];
+
+  Slot := aRow mod Length(FCache);
+  if (FCache[Slot].Row = aRow) and (FCache[Slot].Line = Line) then
+  begin
+    FStarts := FCache[Slot].Starts;
+    FEnds := FCache[Slot].Ends;
+    FCount := FCache[Slot].Count;
+    Exit;
+  end;
+
   ScanRow(aRow);
+
+  FCache[Slot].Row := aRow;
+  FCache[Slot].Line := Line;
+  FCache[Slot].Starts := Copy(FStarts, 0, FCount);
+  FCache[Slot].Ends := Copy(FEnds, 0, FCount);
+  FCache[Slot].Count := FCount;
 end;
 
 procedure TLedSpellMarkup.EndMarkup;
@@ -311,7 +377,19 @@ begin
       FEnds[FCount] := S + L;
       Inc(FCount);
     end;
-    i := S + L;
+    { S + L is normally past i, but not always: a word immediately followed
+      by a trailing apostrophe -- a possessive like "LazUtils'" -- leaves the
+      apostrophe as its own scan position, and IsWordChar counts an
+      apostrophe as a word character, so LedWordAt expands backward from it
+      and rediscovers the very same word, returning the same S and L again.
+      i := S + L then sets i back to the value it already had, forever: an
+      infinite loop that reproduced as a multi-minute freeze scrolling a
+      real document.  Advancing by at least one column regardless is what
+      guarantees this loop always terminates, whatever LedWordAt returns. }
+    if S + L > i then
+      i := S + L
+    else
+      Inc(i);
   end;
 end;
 
