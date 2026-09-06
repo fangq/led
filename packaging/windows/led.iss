@@ -67,7 +67,10 @@ Name: "associate"; Description: "Open .txt, .md and common source files with led
 
 [Files]
 Source: "{#SrcDir}\bin\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SrcDir}\README.md";     DestDir: "{app}"; Flags: ignoreversion isreadme
+; Not isreadme: that flag makes Inno offer its own "view README" step, which
+; opens it in whatever the shell has registered for .md -- Notepad, usually.
+; The [Run] entry below opens it in led itself instead.
+Source: "{#SrcDir}\README.md";     DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SrcDir}\PARITY.md";     DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; The grammars, themes and shipped tools are read at run time.  led looks for
 ; data\ next to the executable on Windows, so the layout here is not optional.
@@ -159,4 +162,8 @@ begin
 end;
 
 [Run]
+; led is single-instance: if both of these run, the second hand its file to
+; the first rather than opening a second window, so checking both ends up
+; with one led window showing README.md, whichever order they run in.
 Filename: "{app}\{#AppExe}"; Description: "Launch led now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Parameters: """{app}\README.md"""; Description: "View README.md"; Flags: nowait postinstall skipifsilent unchecked
