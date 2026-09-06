@@ -34,6 +34,14 @@
   <color name="yellow"                      value="#FFFF00"/>
   <color name="white"                       value="#FFFFFF"/>
 
+  <!-- text and line-numbers were never set here: GtkSourceView falls back
+       to the widget's own colours when they are absent, but led has no such
+       widget-native default to fall back to, so both the base editor and the
+       gutter were left at whatever the previous scheme had set, and
+       current-line's pale background had no defined page colour to contrast
+       against. -->
+  <style name="text"                        foreground="#000000" background="white"/>
+  <style name="line-numbers"                foreground="grey" background="#E6E6E6"/>
   <style name="current-line"                background="#EEF6FF"/>
   <style name="right-margin"                background="#ADD4FF"/>
   <style name="bracket-match"               background="#FFFF99" bold="true"/>

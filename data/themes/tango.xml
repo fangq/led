@@ -54,6 +54,12 @@
   <color name="aluminium6"                  value="#2e3436"/>
 
   <!-- Global Settings -->
+  <!-- text and line-numbers were never set here: GtkSourceView falls back
+       to the widget's own colours when they are absent, but led has no such
+       widget-native default to fall back to, so both the base editor and the
+       gutter were left at whatever the previous scheme had set. -->
+  <style name="text"                        foreground="aluminium6" background="#FFFFFF"/>
+  <style name="line-numbers"                foreground="aluminium4" background="aluminium1"/>
   <style name="current-line"                background="aluminium1"/>
   <style name="current-line-number"         background="aluminium1"/>
   <style name="draw-spaces"                 foreground="aluminium3"/>
