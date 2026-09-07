@@ -938,6 +938,13 @@ begin
   FBar.Align := alTop;
   FBar.EdgeBorders := [];
   FBar.ShowCaptions := True;
+  { Caption beside the icon rather than under it.  A TToolBar with captions
+    and images stacks the label below the glyph and still sizes every button
+    to ButtonWidth, which is nowhere near enough for "Condition..." or
+    "Remove All" -- so they came out two rows tall with the text cut off.
+    List puts the label on the same line, and AutoSize on each button lets it
+    take the width its own caption needs. }
+  FBar.List := True;
   FBar.Flat := True;
   FBar.AutoSize := True;
 
@@ -1000,6 +1007,7 @@ function TLedBreakPane.AddButton(const ACaption, AHint: string;
 begin
   Result := TToolButton.Create(Self);
   Result.Parent := FBar;
+  Result.AutoSize := True;
   Result.Caption := ACaption;
   Result.Hint := AHint;
   Result.ShowHint := True;
