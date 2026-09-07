@@ -109,6 +109,7 @@ type
     function GetEdgeSize(AEdge: TLedDockEdge): Integer;
     procedure SetEdgeSize(AEdge: TLedDockEdge; AValue: Integer);
     function PaneById(const AId: string): TLedPaneForm;
+    procedure SizeEdgePanes(AEdge: TLedDockEdge);
     procedure DockPane(APane: TLedPaneForm);
     procedure MasterCreateControl(Sender: TObject; aName: string;
       var AControl: TControl; DoDisableAutoSizing: Boolean);
@@ -132,6 +133,12 @@ type
       panes cannot be shown, and the menu should say so rather than offering
       a toggle that does nothing. }
     function EdgeHasPanes(AEdge: TLedDockEdge): Boolean;
+
+    { How wide a left or right pane is, or how tall a top or bottom one, as
+      it currently sits in the layout; -1 when it is not docked.  For the
+      self-test, which has no other way to see that a pane has been squeezed
+      down to a strip. }
+    function PaneSize(const AId: string): Integer;
 
     { Tears APane off into a window of its own, and puts it back.  This is
       what medit's detachable panes did, and what AnchorDocking gives for
@@ -545,6 +552,164 @@ begin
   Result := PaneById(AId);
 end;
 
+{ The size a freshly docked pane ends up at, which AnchorDocking will not
+  give us.
+
+  DockAnotherControl sizes a new pane from the one it lands beside:
+
+    NewSize := Max(1, Min(NewSite.Width, Sibling.Width div 2));
+
+  The sibling is the pane already on that edge, not the editor, so every pane
+  after the first takes half of its neighbour and the neighbour keeps what is
+  left.  Opening three panes down one edge went 229, 114, 57, and because the
+  reduced size is also what goes into the next dock, closing and reopening
+  them walked the whole edge down 28, 14, 7, 3, 1 -- the Max(1,...) floor --
+  where it stayed, and got written into layout.xml so a restart kept it.
+
+  So the size is re-asserted here afterwards.  The space comes off the editor
+  rather than off the neighbouring pane: the editor is the alClient control in
+  the layout, so it is what gives when the splitter moves. }
+procedure TLedDockHost.SizeEdgePanes(AEdge: TLedDockEdge);
+var
+  i, j, n, Want, Have, Delta: Integer;
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  Split: TAnchorDockSplitter;
+  Side: TAnchorKind;
+  Sites: array of TAnchorDockHostSite;
+  Panes: array of TLedPaneForm;
+  Keys: array of Integer;
+  Wants: array of Integer;
+  TotalWant, Budget, Pass: Integer;
+  TmpS: TAnchorDockHostSite;
+  TmpP: TLedPaneForm;
+  TmpK: Integer;
+begin
+  { Which side of a pane on this edge the splitter sits on.  A left pane is
+    anchored to the splitter on its right, a right pane to the one on its
+    left, and so on -- that is the anchor DockAnotherControl gave it. }
+  case AEdge of
+    ledLeft:   Side := akRight;
+    ledRight:  Side := akLeft;
+    ledTop:    Side := akBottom;
+  else
+    Side := akTop;
+  end;
+
+  { Collect the panes that are actually docked on this edge, with a sort key
+    that puts the one furthest from the editor first.
+
+    Order is the whole trick.  A splitter borrows from whatever is on its far
+    side, and only the innermost one borders the editor -- so fixing the pane
+    nearest the editor first just means the next pane takes the space straight
+    back off it.  Going outside-in, each pane takes from its inner neighbour
+    and the last move takes from the editor, which is where the space is meant
+    to come from. }
+  n := 0;
+  SetLength(Sites, FPanes.Count);
+  SetLength(Panes, FPanes.Count);
+  SetLength(Keys, FPanes.Count);
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    if Pane.Edge <> AEdge then Continue;
+    Site := DockMaster.GetAnchorSite(Pane);
+    if (Site = nil) or (Site.Parent = nil) then Continue;
+    if not (Site.AnchorSide[Side].Control is TAnchorDockSplitter) then Continue;
+    Sites[n] := Site;
+    Panes[n] := Pane;
+    case AEdge of
+      ledLeft:   Keys[n] := Site.Left;
+      ledRight:  Keys[n] := -Site.Left;
+      ledTop:    Keys[n] := Site.Top;
+    else
+      Keys[n] := -Site.Top;
+    end;
+    Inc(n);
+  end;
+
+  for i := 1 to n - 1 do
+    for j := i downto 1 do
+      if Keys[j] < Keys[j - 1] then
+      begin
+        TmpK := Keys[j]; Keys[j] := Keys[j-1]; Keys[j-1] := TmpK;
+        TmpS := Sites[j]; Sites[j] := Sites[j-1]; Sites[j-1] := TmpS;
+        TmpP := Panes[j]; Panes[j] := Panes[j-1]; Panes[j-1] := TmpP;
+      end;
+
+  { What each pane wants: the size registered for its edge.  Deliberately not
+    the size it had when it was last closed -- carrying that forward brings
+    the ratchet back by another route, because the size being carried is
+    itself the scaled-down one and every cycle starts smaller than the last.
+    Reopening a pane gives the default; dragging the splitter is how a
+    different size is chosen, and the saved layout keeps that across a
+    restart. }
+  SetLength(Wants, n);
+  TotalWant := 0;
+  for i := 0 to n - 1 do
+  begin
+    Wants[i] := EdgeDefault[AEdge];
+    Inc(TotalWant, Wants[i]);
+  end;
+
+  { What the edge may occupy: what its panes already hold, plus whatever the
+    editor can spare above a floor it is never taken below.  Needed because
+    MoveSplitter will hand over every last pixel the editor has -- three
+    220-wide panes on one edge of a 1042-wide window left it one pixel across.
+    An edge that asks for more than is going spare gets its panes scaled down
+    to fit instead.
+
+    Budgeted against the editor rather than against the window so that the
+    other edges' panes are accounted for too: they have already taken their
+    room out of the editor, so what is left really is free. }
+  Budget := 0;
+  for i := 0 to n - 1 do
+    if AEdge in [ledLeft, ledRight] then
+      Inc(Budget, Sites[i].Width)
+    else
+      Inc(Budget, Sites[i].Height);
+  if AEdge in [ledLeft, ledRight] then
+    Inc(Budget, Max(0, FCenter.Width - LedScale96(240)))
+  else
+    Inc(Budget, Max(0, FCenter.Height - LedScale96(160)));
+
+  if (TotalWant > Budget) and (TotalWant > 0) and (Budget > 0) then
+    for i := 0 to n - 1 do
+      Wants[i] := Max(1, (Wants[i] * Budget) div TotalWant);
+
+  { The splitter is moved rather than the site resized.  These sites take
+    their bounds from their anchors, so assigning Width or Height is simply
+    recomputed away at the next autosize.
+
+    Twice, because a splitter will not move past what its neighbour can give:
+    the outermost pane is moved first, when the panes inside it are still
+    holding the space it wants, so it comes up short on the first pass.  By
+    the second everything inside has been sized and the room is really there.
+    A third pass changed nothing in testing. }
+  for Pass := 1 to 2 do
+  for i := 0 to n - 1 do
+  begin
+    Site := Sites[i];
+    Split := TAnchorDockSplitter(Site.AnchorSide[Side].Control);
+
+    Want := Wants[i];
+
+    if AEdge in [ledLeft, ledRight] then
+      Have := Site.Width
+    else
+      Have := Site.Height;
+    Delta := Want - Have;
+    if Delta = 0 then Continue;
+
+    { A left or top pane grows when its splitter moves away from the edge; a
+      right or bottom pane grows when its splitter moves toward it. }
+    if AEdge in [ledLeft, ledTop] then
+      Split.MoveSplitter(Delta)
+    else
+      Split.MoveSplitter(-Delta);
+  end;
+end;
+
 procedure TLedDockHost.DockPane(APane: TLedPaneForm);
 var
   Site: TAnchorDockHostSite;
@@ -562,7 +727,10 @@ begin
     wait for. }
   Site := DockMaster.GetAnchorSite(APane);
   if (Site <> nil) and (Site.Parent = nil) then
+  begin
     DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.Edge]);
+    SizeEdgePanes(APane.Edge);
+  end;
   DockMaster.ShowControl(APane.Name, True);
 end;
 
@@ -892,6 +1060,22 @@ begin
       Site.Height := AValue;
     Exit;
   end;
+end;
+
+function TLedDockHost.PaneSize(const AId: string): Integer;
+var
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+begin
+  Result := -1;
+  Pane := PaneById(AId);
+  if Pane = nil then Exit;
+  Site := DockMaster.GetAnchorSite(Pane);
+  if (Site = nil) or (Site.Parent = nil) then Exit;
+  if Pane.Edge in [ledLeft, ledRight] then
+    Result := Site.Width
+  else
+    Result := Site.Height;
 end;
 
 function TLedDockHost.EdgeHasPanes(AEdge: TLedDockEdge): Boolean;

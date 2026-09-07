@@ -1455,6 +1455,76 @@ begin
   end;
 end;
 
+{ Pane geometry.  AnchorDocking sizes a newly docked pane from the one it
+  lands beside -- Max(1, Min(NewSite.Width, Sibling.Width div 2)) -- so before
+  led re-asserted the size itself, three panes down one edge came out 229, 114,
+  57, and closing and reopening them walked the edge down to the Max(1,...)
+  floor and left it there.  A pane one pixel wide is not a pane. }
+procedure TestPaneSizes(F: TLedMainForm);
+var
+  i, round_: Integer;
+  Ids: array[0..2] of string = ('symbols', 'preview', 'debug');
+  First: array[0..2] of Integer;
+  Smallest: Integer;
+
+  function SmallestPane: Integer;
+  var
+    k, Sz: Integer;
+  begin
+    Result := MaxInt;
+    for k := 0 to 2 do
+    begin
+      Sz := F.Dock.PaneSize(Ids[k]);
+      if (Sz >= 0) and (Sz < Result) then Result := Sz;
+    end;
+    if Result = MaxInt then Result := -1;
+  end;
+
+begin
+  Say('pane sizes');
+
+  for i := 0 to 2 do
+  begin
+    F.Dock.ShowPane(Ids[i]);
+    Pump;
+  end;
+
+  { Not a strip.  The floor is well below the 220 an edge asks for -- a narrow
+    window has to be allowed to give them less -- but far above the single
+    pixel this used to collapse to. }
+  Smallest := SmallestPane;
+  CheckGt('three panes on one edge all stay usably wide', 40, Smallest);
+
+  { And the editor is not squeezed out to pay for them. }
+  CheckGt('and the editor keeps its room', 100, F.Dock.Center.Width);
+
+  for i := 0 to 2 do
+    First[i] := F.Dock.PaneSize(Ids[i]);
+
+  { The ratchet: the size a dock produced used to be the size fed into the
+    next one, so every close and reopen shrank the edge again. }
+  for round_ := 1 to 3 do
+    for i := 0 to 2 do
+    begin
+      F.Dock.HidePane(Ids[i]);
+      Pump;
+      F.Dock.ShowPane(Ids[i]);
+      Pump;
+    end;
+
+  CheckGt('and still usably wide after three reopen rounds', 40, SmallestPane);
+
+  for i := 0 to 2 do
+    CheckEqInt('pane ' + Ids[i] + ' is the same size after three reopen rounds',
+      First[i], F.Dock.PaneSize(Ids[i]));
+
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Ids[i]);
+    Pump;
+  end;
+end;
+
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
@@ -5016,6 +5086,7 @@ begin
   TestProjectList(F);
   TestSpelling(F);
   TestDockEdges(F);
+  TestPaneSizes(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
   WriteLn;
