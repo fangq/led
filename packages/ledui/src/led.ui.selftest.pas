@@ -2424,8 +2424,16 @@ begin
       Dlg.FontCaption('Editor/font') = Format('%s %d',
         [LedDefaultFontName, LedDefaultFontSize]));
     Dlg.ApplyToPrefs;
-    Check('and applying it does not persist the old literal default',
-      LedPrefs.GetStr('Editor/font', '') <> 'Monospace 10');
+    { Against the resolved default rather than the literal string.  "Monospace
+      10" is only the wrong answer where it is not also the platform's own --
+      on a Linux desktop it is exactly what should be written, so the string
+      comparison asserted the opposite of the truth here and failed as soon as
+      the default resolved to it.  Comparing against what this platform
+      actually resolves to keeps the Windows regression covered, where the
+      default is "Consolas 10" and the bad literal still fails. }
+    Check('and applying it persists that default rather than a literal',
+      LedPrefs.GetStr('Editor/font', '') = Format('%s %d',
+        [LedDefaultFontName, LedDefaultFontSize]));
 
     LedPrefs.SetInt('Editor/tab_width', 3);
     LedPrefs.SetBool('Editor/make_backups', True);
