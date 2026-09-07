@@ -505,6 +505,12 @@ type
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
     FCheckingDisk: Boolean;
+    { Whether the clipboard holds something the Paste actions could use, and
+      the tick it was last asked.  See ClipboardHasText. }
+    FClipHasText: Boolean;
+    FClipAsked: Boolean;
+    FClipAskedAt: QWord;
+    function ClipboardHasText(AView: TLedEdit): Boolean;
     procedure RefreshPreview;
     procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
@@ -3568,14 +3574,53 @@ begin
   end;
 end;
 
+{ Asking the clipboard whether it holds text is not a field read.  On X11 it
+  is a synchronous round trip to whichever process owns the selection --
+  ConvertSelection, block for the reply, GetProperty, DeleteProperty -- and
+  SynEdit's CanPaste makes two of them, one per format it accepts.
+
+  ActionList1Update below runs once per *visible action client* per idle pass,
+  not once per pass: LCL's DoIdleActions walks every form, its menu bar and
+  every control with csActionClient, calling Update on each.  With the two
+  Paste actions asking separately that came to four round trips per client and
+  about fourteen hundred a second on a window with nothing happening in it --
+  enough to hold a core at 80%.  It also could not settle: each round trip
+  puts events on our own window, so the main loop always had something waiting
+  and never reached the sleep at the end of an idle pass, which is why the
+  load stayed up instead of subsiding.
+
+  So the answer is remembered for a fraction of a second.  A whole idle pass
+  now costs one round trip at most.  Nothing observable changes -- the poll is
+  far shorter than the time it takes to pull a menu down, so Paste is already
+  right by the time it is drawn. }
+const
+  ClipboardPollMs = 200;
+
+function TLedMainForm.ClipboardHasText(AView: TLedEdit): Boolean;
+var
+  Now_: QWord;
+begin
+  Now_ := GetTickCount64;
+  { FClipAsked rather than a zero FClipAskedAt: the tick count is only
+    milliseconds since boot on some platforms and genuinely can be small. }
+  if FClipAsked and (Now_ - FClipAskedAt < ClipboardPollMs) then
+    Exit(FClipHasText);
+
+  FClipHasText := AView.CanPaste;
+  FClipAsked := True;
+  FClipAskedAt := Now_;
+  Result := FClipHasText;
+end;
+
 procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
   var Handled: Boolean);
 var
   Tab: TLedTab;
-  HasDoc: Boolean;
+  HasDoc, CanPaste: Boolean;
 begin
   Tab := ActiveTab;
   HasDoc := Tab <> nil;
+  CanPaste := HasDoc and ClipboardHasText(Tab.ActiveView);
 
   actSave.Enabled := HasDoc and (Tab.Document.Modified or Tab.Document.IsUntitled);
   actSaveAs.Enabled := HasDoc;
@@ -3589,9 +3634,9 @@ begin
   actRedo.Enabled := HasDoc and Tab.ActiveView.CanRedo;
   actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;
   actCopy.Enabled := actCut.Enabled;
-  actPaste.Enabled := HasDoc and Tab.ActiveView.CanPaste;
+  actPaste.Enabled := CanPaste;
   actSelectAll.Enabled := HasDoc;
-  actPasteColumn.Enabled := HasDoc and Tab.ActiveView.CanPaste;
+  actPasteColumn.Enabled := CanPaste;
   actClearSelection.Enabled := HasDoc and Tab.ActiveView.SelAvail;
   actIndent.Enabled := HasDoc;
   actUnindent.Enabled := HasDoc;
