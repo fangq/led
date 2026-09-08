@@ -560,6 +560,7 @@ type
       handling them itself.  Called after the shortcuts are set up and again
       whenever the user changes them. }
     procedure ReserveActionShortcuts;
+    procedure FillActionHints;
     procedure PopulateHeaderStyleMenu;
     { The tab group new tabs go to and ActiveTab reads from. }
     function ActiveBook: TPageControl;
@@ -840,6 +841,8 @@ begin
     which keys are not its to handle. }
   ReserveActionShortcuts;
   FShortcuts.Load;
+  { After Load, so a hint quotes the shortcut the user actually has. }
+  FillActionHints;
 
   FTools := TLedTools.Create;
   { Shipped tools first, then the user's, so a user tool with the same id
@@ -2727,6 +2730,43 @@ begin
   Result := actNew.ShortCut;
 end;
 
+{ A TToolButton bound to an action shows that action's Hint, and eight of the
+  ninety-seven actions had one -- so hovering almost anything on the toolbar
+  produced nothing.  The toolbar was never the problem: it has ShowHint set,
+  and there was simply nothing to show.
+
+  Derived rather than written out, because eighty-nine strings in the .lfm are
+  eighty-nine strings to keep in step with the captions.  The caption without
+  its accelerator or its trailing ellipsis, then the shortcut, so the hint
+  also follows whatever the shortcut editor last set.
+
+  Only where the .lfm left the hint empty, so a hint written by hand still
+  wins -- the eight that exist say more than their caption does. }
+procedure TLedMainForm.FillActionHints;
+var
+  i: Integer;
+  Act: TCustomAction;
+  Tip: string;
+begin
+  for i := 0 to ActionList1.ActionCount - 1 do
+  begin
+    if not (ActionList1.Actions[i] is TCustomAction) then Continue;
+    Act := TCustomAction(ActionList1.Actions[i]);
+    if Act.Hint <> '' then Continue;
+
+    Tip := Trim(StringReplace(Act.Caption, '&', '', [rfReplaceAll]));
+    if (Length(Tip) > 3) and (Copy(Tip, Length(Tip) - 2, 3) = '...') then
+      Tip := Trim(Copy(Tip, 1, Length(Tip) - 3));
+    { A separator, or an action whose caption is only an accelerator, has
+      nothing worth putting in a tooltip. }
+    if Tip = '' then Continue;
+
+    if Act.ShortCut <> 0 then
+      Tip := Tip + '  (' + ShortCutToText(Act.ShortCut) + ')';
+    Act.Hint := Tip;
+  end;
+end;
+
 procedure TLedMainForm.ReserveActionShortcuts;
 var
   i, j: Integer;
@@ -4411,6 +4451,13 @@ procedure TLedMainForm.actToggleBrowserExecute(Sender: TObject);
 begin
   FDock.ShowPane('files');
   FDock.EdgeVisible[ledLeft] := True;
+  { The tree cannot populate before its control is realized, so the browser
+    waits to be told -- and only the Left Pane toggle was telling it.  Opening
+    the pane by name, from View > File Browser or from the rail, showed an
+    empty pane: no tree, no crumb trail, nothing.  Idempotent, so the two
+    routes in can both say it. }
+  if FBrowser <> nil then
+    FBrowser.EnsureRoot(GetCurrentDir);
 end;
 
 { ---- Tools ------------------------------------------------------------ }

@@ -26,6 +26,7 @@ uses
   Classes, SysUtils, DateUtils, Forms, ComCtrls,
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
+  ShellCtrls, Dialogs,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -913,7 +914,13 @@ begin
   Pump;
   Start := F.Browser.Root;
 
-  Check('nothing to go back to yet', not F.Browser.CanGoBack);
+  { The pane roots itself the first time it is shown, so setting a root here
+    is the second place it has been and there is genuinely a step behind it.
+    That is a change in premise, not in behaviour: what used to make this
+    assertion pass was the trail never being seeded at all, which is the bug
+    that left the crumb bar empty.  A browser that really has been nowhere is
+    checked in TestFileBrowser, on one built there. }
+  Check('the root it opened at is behind us', F.Browser.CanGoBack);
   Check('and nothing forward', not F.Browser.CanGoForward);
 
   F.Browser.SetRoot(Sub);
@@ -2743,6 +2750,10 @@ begin
 end;
 
 procedure TestFileBrowser(F: TLedMainForm);
+var
+  Fresh: TLedFileBrowser;
+  Root: TTreeNode;
+  RootRaised: string;
 begin
   Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
@@ -2757,11 +2768,101 @@ begin
     takes the nearest control below it -- which came down to creation order,
     and the filter row won.  Asking the splitter what it would resize is the
     only way to check this without a mouse. }
+  { The glyph and the button under it came apart twice over.  First the
+    glyphs were drawn at a fixed sixteen pixels while the buttons scaled with
+    the pane -- four big empty buttons.  Then the buttons were given
+    LedScale96 sizes as well, which the startup sweep scaled a second time and
+    put them 253 pixels apart.  Asserted on the browser the application built,
+    not one made here: the sweep is what scales the buttons, and it has long
+    since run by the time a test can create its own. }
+  Check('a navigation glyph is drawn at the display''s scale',
+    F.Browser.NavGlyphSize >= LedScale96(14));
+  Check('and fits inside the button it sits on',
+    (F.Browser.NavButtonSize > 0) and
+    (F.Browser.NavGlyphSize <= F.Browser.NavButtonSize));
+  { Not scaled twice: a button holding a LedScale96(16) glyph should be a
+    little bigger than it, not three times over. }
+  Check('and the button is not scaled twice over',
+    F.Browser.NavButtonSize < LedScale96(16) * 3);
+  Say(Format('    nav: %d px glyph on a %d px button',
+    [F.Browser.NavGlyphSize, F.Browser.NavButtonSize]));
+
   Check('the splitter has something to resize',
     F.Browser.SplitterTarget <> nil);
   Check('and it is the panel holding the file list, not the filter row',
     (F.Browser.SplitterTarget <> nil) and
     (F.Browser.FileList.Parent = F.Browser.SplitterTarget));
+
+  { Clicking the tree's top row -- the root folder itself -- used to raise
+    EShellCtrl, "The selected item does not exist on disk", and arrive as the
+    LCL's ignore-or-abort dialog.  Assigning FileSortType had rebuilt the root
+    node without the file info that marks it a directory, so selecting it took
+    DoSelectionChanged's branch for files, and a folder is never a file on
+    disk.  Selecting it is the whole test: the raise was in the selection
+    handler. }
+  { A browser of its own, because the reproduction needs the root the
+    constructor set and nothing else after it.  TCustomShellTreeView.SetRoot
+    early-exits when the path has not changed, so the pane that is already
+    open has had its root node rebuilt -- correctly -- by whatever path it was
+    pointed at first.  Running the editor from the folder it browses is what
+    made the first SetRoot a no-op, and left the damaged node in place. }
+  Fresh := TLedFileBrowser.Create(F);
+  try
+    Fresh.Parent := F;
+    Fresh.SetBounds(0, 0, LedScale96(300), LedScale96(400));
+    Fresh.Visible := True;
+    Pump;
+    { Deliberately not told a root.  EnsureRoot was called from the two pane
+      toggles and nowhere else, so a session that restored with the Files pane
+      already open never called it: FRoot stayed empty for the whole session
+      and the crumb trail, which is built from it, came up with nothing in it.
+      The tree hid the problem by filling anyway -- the constructor roots that
+      separately.  The pane roots itself now, once it has real geometry. }
+    Pump;
+    Check('a browser nobody told a root to finds one anyway',
+      Fresh.Root <> '');
+    { And that first root is where it opened, not somewhere it navigated to,
+      so there is nothing behind it. }
+    Check('and has been nowhere to go back to', not Fresh.CanGoBack);
+    Check('nor forward', not Fresh.CanGoForward);
+
+    { "The breadcrumb bar disappeared" -- so first, is there one?  A trail for
+      a path several folders deep should have a button per component plus the
+      root, and they have to fit inside the bar or the ones that matter, at
+      the right-hand end, are the ones that get cut off. }
+    Check('the crumb trail has buttons in it', Fresh.CrumbCount >= 2);
+    { And they fit.  Laid out left to right they did not: seven buttons
+      spanning 982 pixels in a 937-pixel bar, with the folder you are in the
+      one hanging off the right-hand edge, which is what "the breadcrumb bar
+      disappeared" looked like.  The trail is fitted from the right now, so
+      whatever it shows has to be inside the bar. }
+    Check('and the whole trail fits inside the bar',
+      Fresh.CrumbsWidth <= Fresh.CrumbBarWidth);
+    Say(Format('    crumbs: %d buttons spanning %d px in a bar %d px wide',
+      [Fresh.CrumbCount, Fresh.CrumbsWidth, Fresh.CrumbBarWidth]));
+
+    Root := Fresh.FileTree.Items.GetFirstNode;
+    Check('the tree has a row for the root folder', Root <> nil);
+    if Root <> nil then
+    begin
+      { The reason it raised, before the symptom: assigning FileSortType had
+        rebuilt this node without the file info that marks it a directory. }
+      Check('the root row knows it is a directory',
+        TShellTreeNode(Root).IsDirectory);
+      RootRaised := '';
+      try
+        Fresh.FileTree.Selected := Root;
+        Pump;
+      except
+        on E: Exception do RootRaised := E.Message;
+      end;
+      { EShellCtrl, "The selected item does not exist on disk", arriving as
+        the LCL's ignore-or-abort dialog. }
+      CheckEq('and selecting it does not raise', '', RootRaised);
+    end;
+  finally
+    Fresh.Free;
+  end;
 
   F.actToggleLeftPane.Execute;
   Pump;
@@ -2937,6 +3038,9 @@ end;
 procedure TestMenusAndDetection(F: TLedMainForm);
 var
   Doc: TLedDocument;
+  MsgDlg: TForm;
+  MsgBefore, MsgAfter: Integer;
+  HintLess, HintTotal, i: Integer;
   Path, MakeDir: string;
   MenuFont, MenuFace: string;
   MenuSize: Integer;
@@ -2966,12 +3070,78 @@ begin
   Check('the encoding menu has entries', F.miEncoding.Count > 5);
   Check('the line-ending menu has three', F.miLineEnd.Count = 3);
 
+  { Eight of the ninety-seven actions carried a Hint, so hovering almost any
+    toolbar button produced nothing at all -- a TToolButton shows its
+    action's hint, and the toolbar had ShowHint set the whole time.  Every
+    action that has a caption should now answer a hover. }
+  HintLess := 0;
+  HintTotal := 0;
+  for i := 0 to F.ActionList1.ActionCount - 1 do
+    if F.ActionList1.Actions[i] is TCustomAction then
+      with TCustomAction(F.ActionList1.Actions[i]) do
+        if Trim(StringReplace(Caption, '&', '', [rfReplaceAll])) <> '' then
+        begin
+          Inc(HintTotal);
+          if Hint = '' then Inc(HintLess);
+        end;
+  Check('there are actions to hint at all', HintTotal > 50);
+  CheckEqInt('and every one of them has a hint', 0, HintLess);
+  { Derived from the caption, and carrying the shortcut so the tooltip says
+    which key does it. }
+  Check('a hint drops the caption''s accelerator',
+    Pos('&', F.actSave.Hint) = 0);
+  Check('and names the shortcut', Pos('Ctrl+S', F.actSave.Hint) > 0);
+
   { gtk2 draws the menus itself, at Xft.dpi, and knows nothing about the
     desktop's integer window-scaling factor -- so on a scaled display led's
     menu bar sat at half the height of every other application's while its own
     text, which goes through TFont, had already grown.  Led.UI.Dpi closes that
     with a gtk resource style; these are the parts of it that can be checked
     on a display of any shape. }
+  { The LCL builds its message and unhandled-exception dialogs itself and
+    shows them without led ever holding a reference, so they used to arrive at
+    their design size with 10-point text -- a third of the window that raised
+    them.  CreateMessageDialog is that construction without the modal loop, so
+    the scaling can be checked rather than screenshotted.
+
+    What has to hold is that the labels' point size came up with the display.
+    They start at the system font's size, which is the one size
+    LedScalePointSizesOn is allowed to touch. }
+  MsgDlg := CreateMessageDialog('The selected item does not exist on disk',
+    mtError, [mbOK, mbAbort]);
+  try
+    { The font every control on the dialog inherits.  Measuring the labels
+      themselves is no good: they carry no font of their own, which is the
+      whole point -- they take the form's. }
+    MsgBefore := Abs(MsgDlg.Font.Height);
+    LedScaleForm(MsgDlg);
+    MsgAfter := Abs(MsgDlg.Font.Height);
+
+    { Nothing of its own to begin with, and that is the trap: gtk2 draws a
+      font carrying neither a size nor a height at a hard-coded ten points --
+      "use some default", in CreateFontIndirectEx -- and ten points at the Xft
+      DPI is 21 pixels inside a window laid out for 48. }
+    CheckEqInt('the LCL''s own dialog starts with no font height at all',
+      0, MsgBefore);
+    { Scaling materialises one, and a height is what gtk2 renders as an
+      absolute pixel size instead of re-reading at the Xft DPI.  On a desktop
+      that is already at the design PPI there is nothing to materialise, and
+      the hard-coded ten points are the right ten points. }
+    if LedDesiredPPI > 96 then
+      Check('and scaling it gives one sized for the display',
+        MsgAfter >= LedScale96(10))
+    else
+      CheckEqInt('and an unscaled desktop leaves it alone', 0, MsgAfter);
+    { Once only.  AutoAdjustLayout records the PPI it scaled to and returns
+      immediately when asked again, which is what stops the startup sweep and
+      the visible-changed hook from scaling the same form twice. }
+    LedScaleForm(MsgDlg);
+    CheckEqInt('and scaling it again changes nothing', MsgAfter,
+      Abs(MsgDlg.Font.Height));
+  finally
+    MsgDlg.Free;
+  end;
+
   Check('the menu-font correction never shrinks the theme font',
     LedChromeFontFactor >= 1.0);
   MenuFont := LedScaledChromeFont;
@@ -3231,6 +3401,30 @@ begin
   Pump;
   Check('showing a pane reveals its edge', F.Dock.EdgeVisible[ledBottom]);
   Check('and the pane itself is visible', F.Dock.PaneVisible('output'));
+  { And opens at a size you can see something in.  EdgeDefault is written at
+    96 dpi like every other literal in the dock, but it is weighed against a
+    budget taken from live geometry -- so unscaled it asked for 180 pixels of
+    a 300-PPI display, which is 58 at the design scale and less than the
+    pane's own header.  The edge became visible and appeared to hold nothing,
+    which is what "the bottom pane does not show when clicked" was. }
+  Check('and opens tall enough to hold something',
+    F.Dock.EdgeSize[ledBottom] >= LedScale96(120));
+  Say(Format('    bottom edge opened at %d px, floor %d',
+    [F.Dock.EdgeSize[ledBottom], LedScale96(120)]));
+
+  { The side edges are the same literal read the same way. }
+  F.Dock.EdgeVisible[ledLeft] := False;
+  Pump;
+  F.Dock.ShowPane('files');
+  Pump;
+  Check('a side edge opens wide enough too',
+    F.Dock.EdgeSize[ledLeft] >= LedScale96(140));
+  Say(Format('    left edge opened at %d px', [F.Dock.EdgeSize[ledLeft]]));
+  { Put it back: TestFileBrowser toggles this edge and expects the toggle to
+    open it, which it will not do from here if this probe left it open. }
+  F.Dock.HidePane('files');
+  F.Dock.EdgeVisible[ledLeft] := False;
+  Pump;
   F.Dock.HidePane('output');
   Pump;
 

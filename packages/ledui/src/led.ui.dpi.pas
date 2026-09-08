@@ -41,6 +41,27 @@ procedure LedScaleForm(AForm: TCustomForm);
   after the forms are created. }
 procedure LedApplyAdaptiveScale;
 
+{ Scale every form from the moment it is first shown, for the rest of the
+  session.  Call once at startup.
+
+  LedApplyAdaptiveScale only reaches the forms that exist when it runs, and
+  LedScaleForm has to be called by hand for the rest -- which works for led's
+  own dialogs and not at all for the ones the LCL builds internally.  A
+  message box, and the dialog TApplication puts up for an unhandled
+  exception, are created deep inside the LCL and shown without led ever
+  holding a reference: they came up at their design size, a third of the
+  window that raised them, with text to match.
+
+  Hooked on visibility rather than on creation.  Screen.AddForm fires from
+  TCustomForm.CreateNew, before the .lfm is read and before any descendant
+  constructor has added a control, so a form scaled there would be an empty
+  one.  By the time Visible turns on, the form is furnished.
+
+  Scaling is idempotent, so this and the startup sweep cannot compound:
+  TCustomDesignControl.AutoAdjustLayout returns immediately when the form is
+  already at the target PPI, and records the new one when it is not. }
+procedure LedInstallFormScaler;
+
 { Re-read the desktop scale and re-scale everything if it moved.  Returns True
   when a change was applied.  Suitable for a low-frequency timer: gtk2 never
   tells us the desktop scale changed. }
@@ -296,23 +317,29 @@ begin
 end;
 
 { Hand gtk the scaled font as a resource style, for the widgets led does not
-  own and so cannot scale through a TFont: its menus, its status bar, and the
-  three dialogs the LCL delegates to gtk outright.
+  own and so cannot scale through a TFont: its menus, its status bar, and
+  every dialog the widgetset builds for itself.
 
   A style rather than a font on the widgets because TMenuItem has no Font to
   set -- the LCL gives menus none, on any widgetset -- because a status bar
   panel is a GtkStatusbar whose label the LCL only ever hands text to, and
-  because the file chooser's contents belong to gtk from top to bottom.  A
-  style also reaches what is built later, at run time: popup menus, and a
-  dialog that does not exist until the moment it is opened.
+  because these dialogs are gtk widget trees from top to bottom with no LCL
+  control anywhere inside them.  A style also reaches what is built later, at
+  run time: popup menus, and a dialog that does not exist until it is opened.
 
-  Each pattern names a container and, through the trailing wildcard, matches
-  everything inside it.  Menu captions are the inner labels of a GtkMenuItem
-  -- the LCL builds each item as an hbox holding a caption and a shortcut --
-  a TStatusBar is an event box of GtkStatusbars, one per panel, and the
-  dialogs are gtk's own widget trees.  None of them has an LCL control inside
-  it, so the patterns stay narrow enough that nothing led scales itself can
-  match -- which is what keeps the default style read above the theme's own.
+  GtkDialog covers the lot, and covering the lot is the point.  The file
+  chooser and the font and colour selectors are the three the LCL creates
+  from TCommonDialog, but they are not the ones that hurt: PromptUser --
+  which is what an unhandled exception and Application.MessageBox both come
+  out as -- is a gtk_message_dialog_new, and that is why the ignore-or-abort
+  dialog kept its 24-pixel lines while the window that raised it was scaled
+  for 48.  Naming the base class takes all of them, including whichever one
+  the widgetset reaches for next.
+
+  It cannot over-reach onto led's own windows: an LCL form is a gtk_window_new
+  and GtkDialog is a subclass of GtkWindow, not the other way round, so no
+  form led scales itself can match.  That is also what keeps the default style
+  read above the theme's own.
 
   gtk sizes all of these from their font metrics, so a larger font grows the
   widget rather than crowding it: nothing here sets a default size, and the
@@ -332,9 +359,7 @@ begin
     '}'#10 +
     'widget_class "*<GtkMenuItem>*" style "led_scaled_chrome"'#10 +
     'widget_class "*<GtkStatusbar>*" style "led_scaled_chrome"'#10 +
-    'widget_class "*<GtkFileChooserDialog>*" style "led_scaled_chrome"'#10 +
-    'widget_class "*<GtkFontSelectionDialog>*" style "led_scaled_chrome"'#10 +
-    'widget_class "*<GtkColorSelectionDialog>*" style "led_scaled_chrome"'#10));
+    'widget_class "*<GtkDialog>*" style "led_scaled_chrome"'#10));
   { The menu bar exists by the time the startup sweep runs, and a resource
     style otherwise only reaches widgets created after it was parsed. }
   gtk_rc_reset_styles(gtk_settings_get_default);
@@ -389,6 +414,36 @@ end;
 procedure LedApplyAdaptiveScale;
 begin
   LedApplyScaleAll(LedDesiredPPI);
+end;
+
+type
+  { Screen's handler lists take a method, and this unit is otherwise all
+    plain procedures, so one hidden instance carries the callback. }
+  TLedFormScaler = class
+    procedure FormVisibleChanged(Sender: TObject; AForm: TCustomForm);
+  end;
+
+procedure TLedFormScaler.FormVisibleChanged(Sender: TObject;
+  AForm: TCustomForm);
+begin
+  if (AForm = nil) or (not AForm.Visible) then Exit;
+  try
+    LedScaleForm(AForm);
+  except
+    { As everywhere else here: a form that will not scale is a cosmetic
+      problem, and this one runs while another dialog is being shown -- quite
+      possibly the one reporting an error already. }
+  end;
+end;
+
+var
+  GFormScaler: TLedFormScaler = nil;
+
+procedure LedInstallFormScaler;
+begin
+  if GFormScaler <> nil then Exit;
+  GFormScaler := TLedFormScaler.Create;
+  Screen.AddHandlerFormVisibleChanged(@GFormScaler.FormVisibleChanged);
 end;
 
 function LedRefreshScale: Boolean;
@@ -502,5 +557,15 @@ begin
   { Only Windows has a title bar to darken this way. }
 end;
 {$ENDIF}
+
+finalization
+  { Screen outlives this unit's data, so the handler has to come off before
+    the object it points into goes away. }
+  if GFormScaler <> nil then
+  begin
+    if Screen <> nil then
+      Screen.RemoveHandlerFormVisibleChanged(@GFormScaler.FormVisibleChanged);
+    FreeAndNil(GFormScaler);
+  end;
 
 end.

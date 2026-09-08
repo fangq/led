@@ -57,7 +57,8 @@ procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
   that take a Glyph rather than an image list index.  The caller owns the
   result only through the control it assigns it to -- TSpeedButton.Glyph
   copies, so the bitmap is freed here. }
-function LedIconBitmap(const AName: string; AColour: TColor): TBitmap;
+function LedIconBitmap(const AName: string; AColour: TColor;
+  ASize: Integer = 16): TBitmap;
 
 implementation
 
@@ -576,19 +577,26 @@ end;
 var
   FGlyph: TBitmap = nil;
 
-function LedIconBitmap(const AName: string; AColour: TColor): TBitmap;
+function LedIconBitmap(const AName: string; AColour: TColor;
+  ASize: Integer): TBitmap;
 begin
+  if ASize < 1 then ASize := 16;
   { One bitmap reused for every call: Glyph.Assign copies, so nothing outside
-    keeps a reference, and this avoids leaking one per button. }
+    keeps a reference, and this avoids leaking one per button.  Resized when
+    the caller asks for a different size, which on a scaled display it does.
+    This was fixed at sixteen, so the file browser's navigation buttons grew
+    with the rest of the pane and kept a sixteen-pixel glyph rattling about
+    inside them. }
   if FGlyph = nil then
   begin
     FGlyph := TBitmap.Create;
     FGlyph.PixelFormat := pf24bit;
-    FGlyph.SetSize(16, 16);
   end;
+  if (FGlyph.Width <> ASize) or (FGlyph.Height <> ASize) then
+    FGlyph.SetSize(ASize, ASize);
   FGlyph.Canvas.Brush.Color := MaskColour;
   FGlyph.Canvas.Brush.Style := bsSolid;
-  FGlyph.Canvas.FillRect(0, 0, 16, 16);
+  FGlyph.Canvas.FillRect(0, 0, ASize, ASize);
   FGlyph.Canvas.AntialiasingMode := amOff;
   LedDrawIcon(FGlyph, AName, AColour);
   FGlyph.TransparentColor := MaskColour;
