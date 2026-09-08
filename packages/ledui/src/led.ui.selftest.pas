@@ -978,13 +978,23 @@ begin
     Pane := TLedTerminalPane.Create(F);
     try
       Pane.Parent := F;
-      Pane.Width := 600;
-      Pane.Height := 300;
+      { The same 96-dpi literals as in TestTerminal, scaled for the same
+        reason.  Nothing here counts columns, so this was not failing -- but
+        it rests on the same assumption. }
+      Pane.Width := LedScale96(600);
+      Pane.Height := LedScale96(300);
       Pane.Visible := False;
       Pump;
 
       Check('the pane starts a terminal', Pane.Start(GetTempDir));
       CheckEqInt('one to begin with', 1, Pane.Count);
+
+      { The terminal drew at the Xft DPI while the window around it was scaled
+        to the display -- the same gtk2 point-size trap the editor was in.  It
+        showed up worse here than elsewhere because the cell grid is measured
+        off the font, so the whole terminal was small, not just its text. }
+      CheckEqInt('the terminal font is scaled for the display',
+        LedScalePointSize(10), Pane.Active.Font.Size);
 
       Pane.Split(False);
       Pump;
@@ -2774,8 +2784,13 @@ begin
   Term := TLedTermView.Create(F);
   try
     Term.Parent := F;
-    Term.Width := 480;
-    Term.Height := 240;
+    { Scaled, because the terminal's cell size now is.  These numbers were
+      picked to give a shell a comfortable number of columns, and a literal
+      480 is a quarter as many on a display scaled by two -- few enough that
+      the marker below wraps and no single row holds it, which is exactly how
+      this test failed when the terminal font started being scaled. }
+    Term.Width := LedScale96(480);
+    Term.Height := LedScale96(240);
     Term.Visible := False;
     Pump;
 
@@ -2923,6 +2938,8 @@ procedure TestMenusAndDetection(F: TLedMainForm);
 var
   Doc: TLedDocument;
   Path, MakeDir: string;
+  MenuFont, MenuFace: string;
+  MenuSize: Integer;
   L: TStringList;
 
   function CountLeaves(AItem: TMenuItem): Integer;
@@ -2948,6 +2965,29 @@ begin
   Check('the language menu has entries', CountLeaves(F.miLanguage) > 100);
   Check('the encoding menu has entries', F.miEncoding.Count > 5);
   Check('the line-ending menu has three', F.miLineEnd.Count = 3);
+
+  { gtk2 draws the menus itself, at Xft.dpi, and knows nothing about the
+    desktop's integer window-scaling factor -- so on a scaled display led's
+    menu bar sat at half the height of every other application's while its own
+    text, which goes through TFont, had already grown.  Led.UI.Dpi closes that
+    with a gtk resource style; these are the parts of it that can be checked
+    on a display of any shape. }
+  Check('the menu-font correction never shrinks the theme font',
+    LedChromeFontFactor >= 1.0);
+  MenuFont := LedScaledChromeFont;
+  if LedChromeFontFactor > 1.0 then
+  begin
+    LedParseFontSpec(MenuFont, MenuFace, MenuSize);
+    Check('a window-scaled desktop gets a bigger menu font',
+      MenuSize >= Screen.SystemFont.Size);
+    { The style is scoped to menu items precisely so that the font it is
+      derived from -- the default style's -- never gets scaled itself.  Were
+      it not, every refresh would multiply the factor in again. }
+    Check('and asking a second time does not compound the factor',
+      LedScaledChromeFont = MenuFont);
+  end
+  else
+    Check('a desktop that needs no correction gets none', MenuFont = '');
 
   { Save As has to re-decide the language: "new file, type C, save as main.c"
     was staying plain text. }
@@ -3001,7 +3041,8 @@ procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
   Doc: TLedDocument;
-  i: Integer;
+  FontFace: string;
+  FontPts, i: Integer;
   Found: Boolean;
 begin
   Say('the document led starts with');
@@ -3055,6 +3096,19 @@ begin
 
   { Editor/font was a preference that nothing read.  A view whose font is the
     old hard-coded 10 regardless of the preference is the symptom. }
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontFace, FontPts);
+  CheckEqInt('the editor draws the font preference, at the display''s scale',
+    LedScalePointSize(FontPts), Tab.ActiveView.Font.Size);
+
+  { That scaling is the whole of high-DPI support for the editor's text.  On
+    gtk2 a font is rendered from its point size at the Xft DPI, and the height
+    it carries is ignored on purpose -- so a preference of 10 points drew 21
+    pixels tall inside a window scaled to 300 PPI, and neither Font.Height nor
+    Font.PixelsPerInch would move it.  Points are the only lever; this asserts
+    the lever is connected and pulls the right way. }
+  Check('and never smaller than the preference asked for',
+    LedScalePointSize(FontPts) >= FontPts);
+
   { SynEdit's own keymap binds Ctrl+M to ecLineBreak and Ctrl+N to
     ecInsertLine, and it handles a key before the form's accelerators see it
     -- so File > New Tab did nothing and Ctrl+N inserted a newline instead.

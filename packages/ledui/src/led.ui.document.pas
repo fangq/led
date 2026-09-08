@@ -248,7 +248,13 @@ begin
     medit's zoom is temporary in the same way. }
   LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontName, FontSize);
   AView.Font.Name := FontName;
-  AView.Font.Size := FontSize;
+  { Scaled on the way in, not on the way out: the preference keeps the size
+    the user chose -- Preferences reads prefs.ini, not this font -- and only
+    what is drawn is multiplied up to the display.  Ctrl+wheel zoom reads
+    Font.Size back, so it now steps from the scaled value: a step is a
+    smaller proportion of a bigger number, which is a finer zoom rather than
+    a broken one, and LedMinFontSize..LedMaxFontSize still bracket it. }
+  AView.Font.Size := LedScalePointSize(FontSize);
   { SynEdit's own constructor hard-codes fqNonAntialiased (SynDefaultFontQuality
     in synedit.pp) -- crisp-but-jagged was a deliberate default once, but it
     reads as a bug next to every other application on a modern display.

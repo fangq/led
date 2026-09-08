@@ -17,6 +17,12 @@ interface
 uses
   Classes, SysUtils, Types, Controls, Graphics, Forms, ExtCtrls, LCLType,
   LCLIntf,
+  { On the same terms Led.Term.Pane uses Led.UI.Splitter: LCL-only, with no
+    led dependency of its own, so ledterm still builds on its own.  Unlike the
+    focus guard below -- four lines, and so repeated rather than imported --
+    what this gives is the one place the display scale is decided, and a copy
+    of that here would be a second answer to the same question. }
+  Led.UI.Dpi,
   Led.Term.Pty, Led.Term.Screen;
 
 type
@@ -299,7 +305,11 @@ begin
     select from. }
   Cursor := crIBeam;
   Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
-  Font.Size := 10;
+  { Scaled, for the reason spelled out over LedScalePointSize: on gtk2 the
+    point size is the only thing that moves the rendered height.  The cell
+    size follows from it -- the metrics are measured off the canvas -- so the
+    grid grows with the glyphs rather than clipping them. }
+  Font.Size := LedScalePointSize(10);
 
   FPty := TLedPty.Create;
   FScreen := TLedTermScreen.Create(80, 24);
