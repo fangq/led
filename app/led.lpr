@@ -102,6 +102,10 @@ begin
       server refuses shared memory, and GTK's handler answers that by
       calling exit() on an editor holding unsaved work. }
     LedInstallXErrorHandler;
+    { Before the first form, so that every form there will ever be is scaled
+      as it is shown -- including the message boxes and the unhandled-exception
+      dialog the LCL builds where led cannot reach them. }
+    LedInstallFormScaler;
     Application.CreateForm(TLedMainForm, LedMainForm);
     { The window icon, from the PNG copy of the artwork embedded by
       packaging/windows/led.rc.

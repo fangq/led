@@ -55,9 +55,13 @@ type
     FCaseSensitiveSort: Boolean;
     FMenu: TPopupMenu;
     FRoot: string;
+    FCrumbWidth: Integer;
     FOnOpenFile: TLedOpenFileEvent;
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
+    procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
+    procedure NavResize(Sender: TObject);
+    procedure SortTree;
     procedure ListDblClick(Sender: TObject);
     procedure TreeDblClick(Sender: TObject);
     procedure FilterChange(Sender: TObject);
@@ -109,17 +113,109 @@ type
       write SetCaseSensitiveSort;
 
     property FileList: TShellListView read FList;
+    { And the tree, so a check can select its root -- which used to raise. }
+    property FileTree: TShellTreeView read FTree;
+
+    { The crumb trail, by the numbers: how many buttons it has, and how far
+      the last of them reaches.  Exposed because "the breadcrumb bar
+      disappeared" has two quite different causes -- no buttons at all, or
+      buttons that run off the right-hand edge -- and they need different
+      fixes. }
+    function CrumbCount: Integer;
+    function CrumbsWidth: Integer;
+    function CrumbBarWidth: Integer;
+    { The glyph on a navigation button, and the button under it.  Exposed
+      because the two came apart: the buttons scaled with the pane and the
+      glyph stayed at the sixteen pixels the icons are drawn at, which is
+      what "huge buttons with tiny icons" was. }
+    function NavGlyphSize: Integer;
+    function NavButtonSize: Integer;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
 
 implementation
 
 uses
-  Clipbrd;
+  Clipbrd, Led.UI.Dpi;
 
 function TLedSplitter.Target: TControl;
 begin
   Result := FindAlignControl;
+end;
+
+{ Divides the navigation row between the buttons and the trail, and refits the
+  trail when its share of the width changes -- otherwise dragging the pane
+  wider leaves components hidden that would now fit, and narrower pushes the
+  current folder back off the edge.
+
+  Hung off the row's own OnResize rather than the browser's Resize, which is
+  the mistake worth recording: the browser's Resize runs before the alignment
+  pass has given FNav its new width, so it divided up the old one and nothing
+  came along afterwards to correct it -- the trail simply never appeared. }
+procedure TLedFileBrowser.NavResize(Sender: TObject);
+var
+  Edge: Integer;
+begin
+  if (FNav = nil) or (FCrumbs = nil) or
+     (FBtnHome = nil) or (FBtnBack = nil) then Exit;
+
+  { Measured off the buttons rather than computed, so it stays right whatever
+    the sweep scaled them to: past the last one, plus the margin the first one
+    was given. }
+  Edge := FBtnHome.Left + FBtnHome.Width + FBtnBack.Left;
+  if FNav.ClientWidth - Edge < 1 then Exit;
+  FCrumbs.SetBounds(Edge, 0, FNav.ClientWidth - Edge, FNav.ClientHeight);
+
+  { The pane roots itself the first time it has real geometry, instead of
+    waiting to be told.  Only the two pane toggles told it, so a session that
+    restored with the Files pane already open left FRoot empty for the whole
+    session: the tree still filled -- the constructor roots that separately --
+    but the crumb trail is built from FRoot, so it came up with nothing in it
+    every time.  That is what "the breadcrumb bar disappeared" actually was.
+
+    Here rather than in Resize because this runs when the row has been given
+    its real width, which is also when the tree's control is realized enough
+    for TShellTreeView to populate. }
+  if (FRoot = '') and HandleAllocated then
+    EnsureRoot(GetCurrentDir)
+  else if (FRoot <> '') and (FCrumbs.ClientWidth <> FCrumbWidth) then
+    BuildCrumbs;
+end;
+
+function TLedFileBrowser.CrumbCount: Integer;
+begin
+  Result := FCrumbs.ControlCount;
+end;
+
+function TLedFileBrowser.CrumbsWidth: Integer;
+var
+  i: Integer;
+  C: TControl;
+begin
+  Result := 0;
+  for i := 0 to FCrumbs.ControlCount - 1 do
+  begin
+    C := FCrumbs.Controls[i];
+    if C.Left + C.Width > Result then Result := C.Left + C.Width;
+  end;
+end;
+
+function TLedFileBrowser.NavGlyphSize: Integer;
+begin
+  Result := 0;
+  if (FBtnBack <> nil) and (FBtnBack.Glyph <> nil) then
+    Result := FBtnBack.Glyph.Height;
+end;
+
+function TLedFileBrowser.NavButtonSize: Integer;
+begin
+  Result := 0;
+  if FBtnBack <> nil then Result := FBtnBack.Height;
+end;
+
+function TLedFileBrowser.CrumbBarWidth: Integer;
+begin
+  Result := FCrumbs.ClientWidth;
 end;
 
 function TLedFileBrowser.SplitterTarget: TControl;
@@ -136,13 +232,20 @@ var
   begin
     Result := TSpeedButton.Create(Self);
     Result.Parent := FNav;
-    Result.SetBounds(ALeft, 2, 24, 22);
+    { Plain numbers, not LedScale96.  The browser is built in FormCreate, so
+      the startup sweep still has AutoAdjustLayout to run over it and scales
+      these itself -- handing it sizes that were already scaled put the four
+      buttons 253 pixels apart where 81 was meant.  Only what is built after
+      the sweep, further down, scales its own. }
+    Result.SetBounds(ALeft, 2, 20, 20);
     Result.Hint := AHint;
     Result.ShowHint := True;
     Result.Flat := True;
     Result.Tag := LedIconIndex(AIcon);
     Result.OnClick := @NavClick;
-    Result.Glyph.Assign(LedIconBitmap(AIcon, clBtnText));
+    { At the size the button actually is, not the sixteen pixels the icons are
+      designed at -- same as the toolbar's image list. }
+    Result.Glyph.Assign(LedIconBitmap(AIcon, clBtnText, LedScale96(14)));
   end;
 
   procedure AddMenu(const ACaption: string; AHandler: TNotifyEvent);
@@ -173,21 +276,24 @@ begin
   FNav := TPanel.Create(Self);
   FNav.Parent := Self;
   FNav.Align := alTop;
-  FNav.Height := 26;
+  FNav.Height := 24;
   FNav.BevelOuter := bvNone;
   FNav.Caption := '';
 
   FBtnBack := MakeNavButton('back', 'Back', 2);
-  FBtnForward := MakeNavButton('forward', 'Forward', 28);
-  FBtnUp := MakeNavButton('up', 'Up one folder', 54);
-  FBtnHome := MakeNavButton('home', 'Home folder', 80);
+  FBtnForward := MakeNavButton('forward', 'Forward', 24);
+  FBtnUp := MakeNavButton('up', 'Up one folder', 46);
+  FBtnHome := MakeNavButton('home', 'Home folder', 68);
 
+  { On the same row as the buttons, to the right of them.  Two rows left an
+    empty strip as tall as the buttons sitting between the trail and the
+    tree, and the trail wants horizontal room, not vertical.  Its bounds are
+    set in Resize, once the row has a width to divide up. }
   FCrumbs := TPanel.Create(Self);
-  FCrumbs.Parent := Self;
-  FCrumbs.Align := alTop;
-  FCrumbs.Height := 26;
+  FCrumbs.Parent := FNav;
   FCrumbs.BevelOuter := bvNone;
   FCrumbs.Caption := '';
+  FNav.OnResize := @NavResize;
 
   { The whole lower half is one container: the file list filling it and the
     filter row pinned to its foot.  It was three siblings all asking for
@@ -199,6 +305,12 @@ begin
   FBottom := TPanel.Create(Self);
   FBottom.Parent := Self;
   FBottom.Align := alBottom;
+  { Deliberately not scaled, unlike every other size here.  This is not a
+    piece of chrome that has to match the display -- it is where the splitter
+    starts, before the user drags it somewhere else.  Scaled to 712 on a
+    300-PPI target it was taller than a short pane, which left the tree above
+    it no height and the splitter no neighbour to resize: SplitterTarget went
+    from the file list to nothing at all. }
   FBottom.Height := 228;
   FBottom.BevelOuter := bvNone;
   FBottom.Caption := '';
@@ -258,11 +370,41 @@ begin
     usual culprit.
     First, too, because ObjectTypes and FileSortType each repopulate the
     tree: setting the root last would run those over the drive list. }
+  { Before the root, because SetRoot expands the root node as it builds it and
+    that expand is the one nothing else will repeat. }
+  FTree.OnExpanded := @TreeExpanded;
   if DirectoryExists(GetCurrentDir) then FTree.Root := GetCurrentDir;
   FTree.ObjectTypes := [otFolders];
-  FTree.FileSortType := fstFoldersFirst;
   FTree.ReadOnly := True;
   FTree.OnDblClick := @TreeDblClick;
+  { Sorted by led rather than by the LCL, and not as a matter of taste.
+    Assigning FileSortType runs TCustomShellTreeView.SetFileSortType, which
+    rebuilds the tree -- but not the way SetRoot does.  SetRoot gives the root
+    node the file info that makes it a directory:
+
+      TShellTreeNode(RootNode).FFileInfo.Attr := FileGetAttr(FRoot);
+
+    SetFileSortType's rebuild does only
+
+      RootNode := Items.AddChild(nil, FRoot);
+
+    and leaves FFileInfo zeroed, so IsDirectory came back False for the top
+    row.  Clicking it then took DoSelectionChanged's branch for files, which
+    raises when the file is not on disk -- and a folder never is:
+
+      The selected item does not exist on disk: "/home/..."
+
+    Unhandled, so it arrives as the LCL's ignore-or-abort dialog.  It only
+    showed when the pane's first root was the one the constructor had already
+    set, because SetRoot early-exits on an unchanged path and any other path
+    rebuilt the node correctly: that is, when the editor was run from the
+    folder it was browsing.
+
+    FFileInfo is private, so the node cannot be repaired from here, and
+    setting the sort before the root would send the LCL enumerating every
+    logical drive.  So the LCL is not asked to sort.  Nothing is lost: with
+    otFolders the tree holds only folders, so fstFoldersFirst was doing no
+    more than ordering them by name, which is what AlphaSort does. }
 
   { Selecting a folder in the tree fills the list.  This is the whole reason
     the pair exists, and it is one assignment. }
@@ -305,6 +447,9 @@ begin
   if (FRoot = '') or (FRoot = ExtractFileDrive(Full)) then
     FRoot := Full;
   FTree.Root := FRoot;
+  { A new root's children arrive in readdir order; see the constructor for why
+    the LCL is not the one sorting them. }
+  SortTree;
   FList.Root := FRoot;
   BuildCrumbs;
   { Moving through the history is not itself a place to come back to. }
@@ -433,45 +578,127 @@ begin
   ShowMessage(Info);
 end;
 
-{ One button per path component.  Clicking a component makes it the root,
-  which is the point: two clicks to get anywhere above you. }
+{ One button per path component, laid out from the right so that the folder
+  you are actually in is the one you can always see.
+
+  Left to right was the obvious way round and the wrong one.  A path a few
+  folders deep is wider than the pane: /home/fangq/space/git/Temp/led measures
+  982 pixels of buttons in a 937-pixel bar, and that was a wide pane.  What
+  ran off the edge was the tail -- which is the only part anyone needs -- so
+  the trail looked like it had been replaced by "/ home fangq" and nothing
+  else.  Now the leading components are the ones that go, and a button in
+  their place still reaches them. }
 procedure TLedFileBrowser.BuildCrumbs;
 var
   Parts: TStringArray;
-  i, X: Integer;
-  Btn: TSpeedButton;
-  Accum, Crumb: string;
+  Caps, Hints: array of string;
+  Wide: array of Integer;
+  i, n, First, Avail, Total, X, EllipsisWide: Integer;
+  Accum: string;
+
+  function AddCrumb(const ACaption, AHint: string;
+    AWidth: Integer): TSpeedButton;
+  begin
+    Result := TSpeedButton.Create(FCrumbs);
+    Result.Parent := FCrumbs;
+    Result.Caption := ACaption;
+    Result.Left := X;
+    Result.Top := LedScale96(2);
+    Result.Height := LedScale96(22);
+    Result.Width := AWidth;
+    Result.Flat := True;
+    { The hint carries the path this crumb goes to, which CrumbClick reads
+      back -- and which is worth showing, now that a truncated trail means
+      the caption alone may not say where you would land. }
+    Result.Hint := AHint;
+    Result.ShowHint := True;
+    Result.OnClick := @CrumbClick;
+    X := X + AWidth + LedScale96(1);
+  end;
+
 begin
   FCrumbs.DestroyComponents;
-  X := 2;
 
-  Btn := TSpeedButton.Create(FCrumbs);
-  Btn.Parent := FCrumbs;
-  Btn.Caption := {$IFDEF WINDOWS}'Drives'{$ELSE}'/'{$ENDIF};
-  Btn.Left := X; Btn.Top := 2; Btn.Height := 22; Btn.Width := 34;
-  Btn.Flat := True;
-  Btn.Hint := {$IFDEF WINDOWS}''{$ELSE}'/'{$ENDIF};
-  Btn.OnClick := @CrumbClick;
-  X := X + Btn.Width + 1;
+  { Measured in the font the buttons will actually draw in.  A TPanel's canvas
+    carries whatever font it was last prepared with, which outside a paint is
+    not necessarily its own -- and every crumb's width comes from this. }
+  FCrumbs.Canvas.Font.Assign(FCrumbs.Font);
 
+  { The root, then one entry per component. }
   Parts := FRoot.Split([PathDelim]);
+  n := 1;
+  for i := 0 to High(Parts) do
+    if Parts[i] <> '' then Inc(n);
+  SetLength(Caps, n);
+  SetLength(Hints, n);
+  SetLength(Wide, n);
+
+  Caps[0] := {$IFDEF WINDOWS}'Drives'{$ELSE}'/'{$ENDIF};
+  Hints[0] := {$IFDEF WINDOWS}''{$ELSE}'/'{$ENDIF};
+  n := 1;
   Accum := '';
   for i := 0 to High(Parts) do
   begin
     if Parts[i] = '' then Continue;
     Accum := Accum + PathDelim + Parts[i];
-    Crumb := Parts[i];
-
-    Btn := TSpeedButton.Create(FCrumbs);
-    Btn.Parent := FCrumbs;
-    Btn.Caption := Crumb;
-    Btn.Left := X; Btn.Top := 2; Btn.Height := 22;
-    Btn.Width := FCrumbs.Canvas.TextWidth(Crumb) + 18;
-    Btn.Flat := True;
-    Btn.Hint := Accum;
-    Btn.OnClick := @CrumbClick;
-    X := X + Btn.Width + 1;
+    Caps[n] := Parts[i];
+    Hints[n] := Accum;
+    Inc(n);
   end;
+
+  for i := 0 to n - 1 do
+    Wide[i] := FCrumbs.Canvas.TextWidth(Caps[i]) + LedScale96(20);
+  EllipsisWide := FCrumbs.Canvas.TextWidth('<<') + LedScale96(20);
+
+  { Drop leading components until the rest fit.  A bar with no width yet --
+    BuildCrumbs runs from SetRoot, which can be long before the pane is laid
+    out -- keeps all of them; Resize builds the trail again once there is a
+    width to fit it to. }
+  Avail := FCrumbs.ClientWidth - LedScale96(4);
+  First := 0;
+  if Avail > 0 then
+    repeat
+      Total := 0;
+      for i := First to n - 1 do
+        Total := Total + Wide[i] + LedScale96(1);
+      if First > 0 then
+        Total := Total + EllipsisWide + LedScale96(1);
+      if (Total <= Avail) or (First >= n - 1) then Break;
+      Inc(First);
+    until False;
+
+  X := LedScale96(2);
+  { Whatever was dropped is still one click away: this goes to the deepest of
+    the components that did not fit. }
+  if First > 0 then
+    AddCrumb('<<', Hints[First - 1], EllipsisWide);
+  for i := First to n - 1 do
+    AddCrumb(Caps[i], Hints[i], Wide[i]);
+
+  FCrumbWidth := FCrumbs.ClientWidth;
+end;
+
+{ TCustomTreeView.AlphaSort sorts the top level, and the top level here is the
+  single node standing for the root folder -- every name the user actually
+  reads is one of its children.  So sort those, and let OnExpanded take the
+  deeper levels as they open. }
+procedure TLedFileBrowser.SortTree;
+var
+  N: TTreeNode;
+begin
+  N := FTree.Items.GetFirstNode;
+  while N <> nil do
+  begin
+    N.AlphaSort;
+    N := N.GetNextSibling;
+  end;
+end;
+
+{ Children are populated when a folder is first opened, so this is where they
+  need ordering.  See the constructor for why it is not the LCL doing it. }
+procedure TLedFileBrowser.TreeExpanded(Sender: TObject; ANode: TTreeNode);
+begin
+  if ANode <> nil then ANode.AlphaSort;
 end;
 
 procedure TLedFileBrowser.CrumbClick(Sender: TObject);

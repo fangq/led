@@ -245,6 +245,11 @@ const
     layout decides, and after that the user does. }
   EdgeAlign: array[TLedDockEdge] of TAlign =
     (alLeft, alRight, alTop, alBottom);
+  { At 96 dpi, like every other size written as a literal here.  Read through
+    LedScale96 wherever the number is compared against, or handed to,
+    something that is already in device pixels -- the pane forms' own bounds
+    below are the exception, because those are set before the startup sweep
+    and AutoAdjustLayout scales them itself. }
   EdgeDefault: array[TLedDockEdge] of Integer = (220, 220, 150, 180);
 
 { TLedPaneForm }
@@ -648,7 +653,11 @@ begin
   TotalWant := 0;
   for i := 0 to n - 1 do
   begin
-    Wants[i] := EdgeDefault[AEdge];
+    { Scaled: this is a real pixel size, weighed below against a budget taken
+      from the live geometry.  Unscaled it asked for 180 pixels of a
+      300-PPI display -- 58 at the design scale, less than the pane's own
+      header -- so the bottom edge opened with nothing visible in it. }
+    Wants[i] := LedScale96(EdgeDefault[AEdge]);
     Inc(TotalWant, Wants[i]);
   end;
 
@@ -1027,7 +1036,8 @@ var
   Pane: TLedPaneForm;
   Site: TCustomForm;
 begin
-  Result := EdgeDefault[AEdge];
+  { Scaled, because every other answer this can give is a live site size. }
+  Result := LedScale96(EdgeDefault[AEdge]);
   for i := 0 to FPanes.Count - 1 do
   begin
     Pane := TLedPaneForm(FPanes[i]);
@@ -1047,7 +1057,8 @@ var
   Pane: TLedPaneForm;
   Site: TCustomForm;
 begin
-  if AValue < 40 then Exit;
+  { A floor, in device pixels like the value it is guarding. }
+  if AValue < LedScale96(40) then Exit;
   for i := 0 to FPanes.Count - 1 do
   begin
     Pane := TLedPaneForm(FPanes[i]);
