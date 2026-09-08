@@ -15,7 +15,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, Menus, StdCtrls, SynEdit, SynEditTypes,
-  SynEditMarkupSpecialLine, Led.Core.OutputFilter;
+  SynEditMarkupSpecialLine, Led.Core.OutputFilter, Led.UI.Dpi;
 
 type
   TLedJumpEvent = procedure(const AFileName: string; ALine, AColumn: Integer)
@@ -65,7 +65,8 @@ begin
   Options := Options + [eoNoCaret];
   ScrollBars := ssAutoBoth;
   Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
-  Font.Size := 9;
+  { Scaled for the same reason the editor's is; see LedScalePointSize. }
+  Font.Size := LedScalePointSize(9);
   OnSpecialLineColors := @SpecialLineColors;
   OnDblClick := @PaneDblClick;
 end;

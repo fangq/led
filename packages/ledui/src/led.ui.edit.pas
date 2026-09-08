@@ -379,7 +379,10 @@ begin
   FGuideColour := clNone;
 
   Font.Name := LedDefaultFontName;
-  Font.Size := LedDefaultFontSize;
+  { Through LedScalePointSize, because on gtk2 the point size is the only
+    thing that moves the rendered height: assigned raw, the default would
+    draw at the Xft DPI while the window around it is scaled to twice that. }
+  Font.Size := LedScalePointSize(LedDefaultFontSize);
 
   { Anything the menus claim is dropped from the editor's own keymap, so the
     accelerator reaches the action instead of being spent here. }

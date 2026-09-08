@@ -17,6 +17,13 @@ unit Led.UI.Dpi;
 
 {$mode objfpc}{$H+}
 
+{ The font correction near the bottom of this unit is gtk2's alone.  Split out
+  so the interface can promise the same functions on every target and answer
+  "nothing to correct" everywhere else. }
+{$IF DEFINED(LINUX) and DEFINED(LCLGtk2)}
+  {$DEFINE LED_GTK2_CHROME}
+{$ENDIF}
+
 interface
 
 uses
@@ -43,6 +50,31 @@ function LedRefreshScale: Boolean;
   -- gutter widths, icon paddings -- do not go through AutoAdjustLayout when
   the control is created after the form was scaled, so they need this. }
 function LedScale96(APixels: Integer): Integer;
+
+{ The point size to actually assign to a font so that a preference of
+  APoints ends up the size led's windows are scaled to.  The sibling of
+  LedScale96, for point sizes rather than pixel constants.
+
+  Not a matter of Font.Height or Font.PixelsPerInch: on gtk2 neither moves
+  the rendered size by a pixel.  CreateFontIndirectEx builds the pango
+  description from the point size the font carries and says so in its own
+  comment -- "if font specified size, prefer this instead of 'possibly'
+  inaccurate lfHeight" -- and pango then renders those points at the screen's
+  resolution, which is the Xft DPI and not the PPI the forms were scaled to.
+  So the number of points is the only lever there is.
+
+  Windows and macOS do honour the height, and there the factor is 1 and this
+  returns APoints untouched. }
+function LedScalePointSize(APoints: Integer): Integer;
+
+{ How much bigger the text gtk draws for itself has to be to sit at the same
+  size as everything led scales.  1 when there is nothing to correct. }
+function LedChromeFontFactor: Double;
+
+{ The desktop's own UI font at that factor, as a pango description string --
+  "Ubuntu 20" -- or '' when the factor is 1 or the platform draws its own
+  widgets at the right size already.  Public for the self-test. }
+function LedScaledChromeFont: string;
 
 { The point size the editor should use when the user has expressed no
   preference: the system UI font's size, so led does not open smaller than
@@ -75,7 +107,7 @@ implementation
   Led.Core.FileIO. }
 {$IFDEF LINUX}
 uses
-  Process;
+  Process{$IFDEF LED_GTK2_CHROME}, Glib2, Gtk2, Pango{$ENDIF};
 {$ENDIF}
 {$IFDEF WINDOWS}
 uses
@@ -110,6 +142,7 @@ end;
 
 var
   GAppliedPPI: Integer = 0;   { the PPI every form is currently scaled to }
+  GAppliedChromeFont: string = '';  { what gtk was last told to draw its own widgets in }
 
 function LedDesiredPPI: Integer;
 var
@@ -145,19 +178,173 @@ begin
     Result := Result * Wsf;
 end;
 
-function LedScale96(APixels: Integer): Integer;
-var
-  Ppi: Integer;
+{ The PPI the windows are actually at: the applied one once the startup sweep
+  has run, the desired one before it. }
+function ActivePPI: Integer;
 begin
-  Ppi := GAppliedPPI;
-  if Ppi <= 0 then
-    Ppi := LedDesiredPPI;
-  if Ppi <= 0 then
-    Ppi := 96;
-  Result := (APixels * Ppi) div 96;
+  Result := GAppliedPPI;
+  if Result <= 0 then
+    Result := LedDesiredPPI;
+  if Result <= 0 then
+    Result := 96;
+end;
+
+function LedScale96(APixels: Integer): Integer;
+begin
+  Result := (APixels * ActivePPI) div 96;
   if (APixels > 0) and (Result < 1) then
     Result := 1;
 end;
+
+{ Every string gtk2 draws -- its own menu captions, and the text of any font
+  led hands it -- is rendered from a point size at the pango resolution, which
+  is Xft.dpi.  Nothing about that resolution follows the desktop's integer
+  window-scaling factor, and nothing about it follows the PPI the forms were
+  scaled to either: gtk2 ignores the first and never hears about the second.
+
+  So on a 150-dpi Xft desktop scaled by 2, everything drawn from a point size
+  lands at 150 dpi inside windows laid out for 300 -- a menu bar half the
+  height of every other application's, and an editor whose 10-point
+  preference draws 21 pixels tall in a window scaled for 42.
+
+  This is the one ratio that closes both gaps, and it is why the two fixes
+  below share it: LedScalePointSize multiplies the sizes led assigns, and the
+  resource style multiplies the size gtk uses for the widgets led does not
+  own.  Never below 1 -- the theme font is the user's own choice of size, and
+  shrinking it would answer a complaint nobody made. }
+function LedChromeFontFactor: Double;
+{$IFDEF LED_GTK2_CHROME}
+var
+  Base: Integer;
+begin
+  Base := Screen.PixelsPerInch;      { the DPI gtk2 will draw its menus at }
+  if Base <= 0 then
+    Exit(1.0);
+  Result := ActivePPI / Base;
+  if Result < 1.0 then
+    Result := 1.0;
+end;
+{$ELSE}
+begin
+  { Windows and macOS scale their menus with the rest of the window, and gtk3
+    and qt both honour the desktop's scaling factor themselves. }
+  Result := 1.0;
+end;
+{$ENDIF}
+
+function LedScaledChromeFont: string;
+{$IFDEF LED_GTK2_CHROME}
+var
+  Factor: Double;
+  Style: PGtkStyle;
+  Scaled: PPangoFontDescription;
+  Size: gint;
+  Spec: PChar;
+begin
+  Result := '';
+  Factor := LedChromeFontFactor;
+  { Not "<= 1": the factor is a ratio of two integer DPIs, and a fraction of a
+    point either way is not worth overriding the theme for. }
+  if Factor <= 1.001 then
+    Exit;
+
+  { The theme's font, read from the default style rather than from a widget
+    the style below matches.  That style is narrowly scoped precisely so that
+    this one stays the theme's own: read a scaled widget's style here and
+    every refresh would multiply the factor in again. }
+  Style := gtk_widget_get_default_style;
+  if (Style = nil) or (Style^.font_desc = nil) then
+    Exit;
+  Size := pango_font_description_get_size(Style^.font_desc);
+  if Size <= 0 then
+    Exit;                { a description that carries no size; nothing to do }
+
+  Scaled := pango_font_description_copy(Style^.font_desc);
+  if Scaled = nil then
+    Exit;
+  try
+    { A size is in points or in device pixels, and the two are set by
+      different calls: set_size on an absolute description would quietly
+      reinterpret its pixels as points. }
+    if pango_font_description_get_size_is_absolute(Scaled) then
+      pango_font_description_set_absolute_size(Scaled, Size * Factor)
+    else
+      pango_font_description_set_size(Scaled, Round(Size * Factor));
+    Spec := pango_font_description_to_string(Scaled);
+    if Spec <> nil then
+    begin
+      Result := StrPas(Spec);
+      g_free(Spec);
+    end;
+  finally
+    pango_font_description_free(Scaled);
+  end;
+end;
+{$ELSE}
+begin
+  Result := '';
+end;
+{$ENDIF}
+
+function LedScalePointSize(APoints: Integer): Integer;
+begin
+  Result := Round(APoints * LedChromeFontFactor);
+  { A factor of 1 -- and any font whose size is unset -- comes back unchanged
+    rather than rounded to nothing. }
+  if Result < 1 then
+    Result := APoints;
+end;
+
+{ Hand gtk the scaled font as a resource style, for the widgets led does not
+  own and so cannot scale through a TFont: its menus, its status bar, and the
+  three dialogs the LCL delegates to gtk outright.
+
+  A style rather than a font on the widgets because TMenuItem has no Font to
+  set -- the LCL gives menus none, on any widgetset -- because a status bar
+  panel is a GtkStatusbar whose label the LCL only ever hands text to, and
+  because the file chooser's contents belong to gtk from top to bottom.  A
+  style also reaches what is built later, at run time: popup menus, and a
+  dialog that does not exist until the moment it is opened.
+
+  Each pattern names a container and, through the trailing wildcard, matches
+  everything inside it.  Menu captions are the inner labels of a GtkMenuItem
+  -- the LCL builds each item as an hbox holding a caption and a shortcut --
+  a TStatusBar is an event box of GtkStatusbars, one per panel, and the
+  dialogs are gtk's own widget trees.  None of them has an LCL control inside
+  it, so the patterns stay narrow enough that nothing led scales itself can
+  match -- which is what keeps the default style read above the theme's own.
+
+  gtk sizes all of these from their font metrics, so a larger font grows the
+  widget rather than crowding it: nothing here sets a default size, and the
+  LCL only forces one on a dialog that was given a Width. }
+procedure LedApplyChromeFont;
+{$IFDEF LED_GTK2_CHROME}
+var
+  Spec: string;
+begin
+  Spec := LedScaledChromeFont;
+  if (Spec = '') or (Spec = GAppliedChromeFont) then
+    Exit;
+  gtk_rc_parse_string(PChar(
+    'style "led_scaled_chrome"'#10 +
+    '{'#10 +
+    '  font_name = "' + Spec + '"'#10 +
+    '}'#10 +
+    'widget_class "*<GtkMenuItem>*" style "led_scaled_chrome"'#10 +
+    'widget_class "*<GtkStatusbar>*" style "led_scaled_chrome"'#10 +
+    'widget_class "*<GtkFileChooserDialog>*" style "led_scaled_chrome"'#10 +
+    'widget_class "*<GtkFontSelectionDialog>*" style "led_scaled_chrome"'#10 +
+    'widget_class "*<GtkColorSelectionDialog>*" style "led_scaled_chrome"'#10));
+  { The menu bar exists by the time the startup sweep runs, and a resource
+    style otherwise only reaches widgets created after it was parsed. }
+  gtk_rc_reset_styles(gtk_settings_get_default);
+  GAppliedChromeFont := Spec;
+end;
+{$ELSE}
+begin
+  { Nothing to hand anyone: LedScaledMenuFont is empty off gtk2. }
+end;
+{$ENDIF}
 
 { Scale one form between two PPI values, in either direction. }
 procedure LedScaleFormTo(AForm: TCustomForm; ATargetPPI: Integer);
@@ -195,6 +382,8 @@ begin
       { Scaling is cosmetic and must never take the editor down with it. }
     end;
   GAppliedPPI := ATargetPPI;
+  { After GAppliedPPI, which is the target the menu font is measured against. }
+  LedApplyChromeFont;
 end;
 
 procedure LedApplyAdaptiveScale;
