@@ -64,6 +64,35 @@ function LedHexTextColumn(AIndexInLine: Integer): Integer;
   inverse of the two above, and the reason they exist. }
 function LedHexColumnToIndex(AColumn: Integer): Integer;
 
+{ Which half of a byte a hex column edits: 0 for the high nibble, 1 for the
+  low one, -1 for a column that is not a hex digit.  Typing has to know,
+  because a byte takes two keystrokes and the caret sits between them. }
+function LedHexColumnToNibble(AColumn: Integer): Integer;
+
+{ True when AColumn is in the text half of the row rather than the hex half.
+  The two take different keys: a hex digit on the left, the character itself
+  on the right. }
+function LedHexColumnIsText(AColumn: Integer): Boolean;
+
+{ The column the caret should move to after editing the one it is on, so that
+  typing a byte in either half advances the way it does in hexedit: across
+  the two digits of a byte and on to the next, or one character at a time on
+  the right.  Returns 0 at the end of a row, meaning "the next row". }
+function LedHexNextColumn(AColumn: Integer): Integer;
+
+{ ARaw's byte at AOffset with one nibble replaced.  AValue is 0..15. }
+function LedHexSetNibble(AByte: Byte; AHighNibble: Boolean;
+  AValue: Byte): Byte;
+
+{ The value of a hex digit, or -1 when AChar is not one.  Accepts either
+  case; a hex editor that only took lower case would be a nuisance. }
+function LedHexDigitValue(AChar: Char): Integer;
+
+{ One row of the dump, for ABytes' AOffset onwards.  Editing a byte re-renders
+  its row rather than the whole file, which for a file of any size is the
+  difference between a keystroke and a pause. }
+function LedHexDumpLine(const ARaw: string; AOffset: Integer): string;
+
 implementation
 
 const
@@ -121,11 +150,113 @@ begin
   Result := -1;
 end;
 
+function LedHexColumnToNibble(AColumn: Integer): Integer;
+var
+  i: Integer;
+begin
+  for i := 0 to LedHexBytesPerLine - 1 do
+  begin
+    if AColumn = LedHexByteColumn(i) then Exit(0);
+    if AColumn = LedHexByteColumn(i) + 1 then Exit(1);
+  end;
+  Result := -1;
+end;
+
+function LedHexColumnIsText(AColumn: Integer): Boolean;
+begin
+  Result := (AColumn >= LedHexTextColumn(0)) and
+            (AColumn <= LedHexTextColumn(LedHexBytesPerLine - 1));
+end;
+
+function LedHexNextColumn(AColumn: Integer): Integer;
+var
+  Index: Integer;
+begin
+  Index := LedHexColumnToIndex(AColumn);
+  if Index < 0 then Exit(AColumn);
+
+  if LedHexColumnIsText(AColumn) then
+  begin
+    if Index >= LedHexBytesPerLine - 1 then Exit(0);
+    Exit(LedHexTextColumn(Index + 1));
+  end;
+
+  { The high nibble advances to the low one; the low one moves on to the next
+    byte, which is what makes typing two digits enter one byte. }
+  if LedHexColumnToNibble(AColumn) = 0 then
+    Exit(LedHexByteColumn(Index) + 1);
+  if Index >= LedHexBytesPerLine - 1 then Exit(0);
+  Result := LedHexByteColumn(Index + 1);
+end;
+
+function LedHexSetNibble(AByte: Byte; AHighNibble: Boolean;
+  AValue: Byte): Byte;
+begin
+  AValue := AValue and $0F;
+  if AHighNibble then
+    Result := (AByte and $0F) or (AValue shl 4)
+  else
+    Result := (AByte and $F0) or AValue;
+end;
+
+function LedHexDigitValue(AChar: Char): Integer;
+begin
+  case AChar of
+    '0'..'9': Result := Ord(AChar) - Ord('0');
+    'a'..'f': Result := Ord(AChar) - Ord('a') + 10;
+    'A'..'F': Result := Ord(AChar) - Ord('A') + 10;
+  else
+    Result := -1;
+  end;
+end;
+
+function LedHexDumpLine(const ARaw: string; AOffset: Integer): string;
+var
+  i, Index: Integer;
+  B: Byte;
+begin
+  Result := LowerCase(IntToHex(AOffset, 8)) + '  ';
+
+  for i := 0 to LedHexBytesPerLine - 1 do
+  begin
+    Index := AOffset + i + 1;
+    if (Index >= 1) and (Index <= Length(ARaw)) then
+    begin
+      B := Byte(ARaw[Index]);
+      Result := Result + HexDigits[(B shr 4) + 1] + HexDigits[(B and $0F) + 1];
+    end
+    else
+      { Padded, not omitted: the text column of a short last row has to start
+        where every other row's does. }
+      Result := Result + '  ';
+    Result := Result + ' ';
+    if i = LedHexGroup - 1 then Result := Result + ' ';
+  end;
+
+  Result := Result + ' |';
+  for i := 0 to LedHexBytesPerLine - 1 do
+  begin
+    Index := AOffset + i + 1;
+    if (Index < 1) or (Index > Length(ARaw)) then
+      Result := Result + ' '
+    else
+    begin
+      B := Byte(ARaw[Index]);
+      { The printable ASCII range and nothing else.  A dot for the rest,
+        including the high half: what a byte above 127 looks like depends on
+        an encoding, and the whole point here is that there is not one. }
+      if (B >= 32) and (B < 127) then
+        Result := Result + Chr(B)
+      else
+        Result := Result + '.';
+    end;
+  end;
+  Result := Result + '|';
+end;
+
 function LedHexDump(const ARaw: string): string;
 var
-  Rows, Row, i, Index: Integer;
-  Line: string;
-  B: Byte;
+  Rows, Row: Integer;
   Out_: TStringList;
 begin
   if ARaw = '' then Exit('');
@@ -136,48 +267,7 @@ begin
     { A partial last row still counts. }
     Rows := (Length(ARaw) + LedHexBytesPerLine - 1) div LedHexBytesPerLine;
     for Row := 0 to Rows - 1 do
-    begin
-      Line := LowerCase(IntToHex(Row * LedHexBytesPerLine, 8)) + '  ';
-
-      for i := 0 to LedHexBytesPerLine - 1 do
-      begin
-        Index := Row * LedHexBytesPerLine + i + 1;
-        if Index <= Length(ARaw) then
-        begin
-          B := Byte(ARaw[Index]);
-          Line := Line + HexDigits[(B shr 4) + 1] + HexDigits[(B and $0F) + 1];
-        end
-        else
-          { Padded, not omitted: the text column of a short last row has to
-            start where every other row's does. }
-          Line := Line + '  ';
-        Line := Line + ' ';
-        if i = LedHexGroup - 1 then Line := Line + ' ';
-      end;
-
-      Line := Line + ' |';
-      for i := 0 to LedHexBytesPerLine - 1 do
-      begin
-        Index := Row * LedHexBytesPerLine + i + 1;
-        if Index > Length(ARaw) then
-          Line := Line + ' '
-        else
-        begin
-          B := Byte(ARaw[Index]);
-          { The printable ASCII range and nothing else.  A dot for the rest,
-            including the high half: what a byte above 127 looks like depends
-            on an encoding, and the whole point here is that there is not
-            one. }
-          if (B >= 32) and (B < 127) then
-            Line := Line + Chr(B)
-          else
-            Line := Line + '.';
-        end;
-      end;
-      Line := Line + '|';
-
-      Out_.Add(Line);
-    end;
+      Out_.Add(LedHexDumpLine(ARaw, Row * LedHexBytesPerLine));
     Result := Out_.Text;
     { TStringList.Text ends every line, including the last; the buffer this
       feeds counts that as an extra empty line. }

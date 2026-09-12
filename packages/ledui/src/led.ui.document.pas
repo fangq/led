@@ -28,6 +28,15 @@ uses
   Led.UI.LongLine;
 
 type
+  { One byte changed, so it can be changed back.  A hex edit never inserts or
+    removes, so an undo record is a position and the value that was there --
+    no ranges, no reflowing, and undoing in reverse order restores exactly
+    the file that was loaded. }
+  TLedHexUndo = record
+    Offset: Integer;
+    Value: Byte;
+  end;
+
   TLedDocument = class;
 
   TLedDocumentEvent = procedure(ADoc: TLedDocument) of object;
@@ -42,8 +51,15 @@ type
     FConfig: TLedDocConfig;
     FDiskAge: LongInt;          // mtime as of the last load or save
     FDiskSize: Int64;
-    FIsBinary: Boolean;         // shown as a hex dump, and not saveable
+    FIsBinary: Boolean;         // shown as a hex dump rather than as text
     FForceText: Boolean;        // the user asked for the text editor anyway
+    { The bytes themselves, when the document is a dump.  This is the file;
+      the buffer the views show is a rendering of it, rebuilt a row at a time
+      as bytes change. }
+    FBytes: string;
+    FHexUndo: array of TLedHexUndo;
+    FHexUndoCount: Integer;
+    FHexDirty: Boolean;
     FOnChanged: TLedDocumentEvent;
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
@@ -52,6 +68,9 @@ type
     procedure ConfigChanged(Sender: TObject; AId: Integer);
     procedure NoteDiskState;
     procedure ApplyConfigToView(AView: TLedEdit);
+    procedure RenderHexRow(AOffset: Integer);
+    procedure HexKey(Sender: TObject; AOffset, ANibble: Integer;
+      const AChar: string; var AHandled: Boolean);
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -73,6 +92,24 @@ type
       detection is a heuristic -- a NUL early on -- and a heuristic needs a
       way to be overruled. }
     procedure OpenAsText;
+
+    { Replaces the byte at AOffset and re-renders the row it is in.  The unit
+      of editing in a dump: bytes are overwritten, never inserted, because the
+      offsets down the left are part of what the reader is reading. }
+    procedure SetHexByte(AOffset: Integer; AValue: Byte);
+    { Puts back the last byte SetHexByte changed, and returns where it was so
+      the caller can show it -- an undo you cannot see is hard to trust.  -1
+      when there was nothing to undo.
+
+      One keystroke, one record: a byte typed in the hex column takes two
+      presses and undoes in two.  That is the rule everywhere else in the
+      editor too -- undo takes back the last thing done, not the last thing
+      finished. }
+    function UndoHexByte: Integer;
+    function CanUndoHex: Boolean;
+    { The byte at AOffset, or -1 past the end. }
+    function HexByte(AOffset: Integer): Integer;
+    function HexSize: Integer;
     procedure Reload(const AForcedEncoding: string = '');
     procedure SaveToFile(const AFileName: string);
     procedure Save;
@@ -284,11 +321,16 @@ begin
     Font.Quality at all), so this only changes anything here. }
   AView.Font.Quality := fqAntialiased;
 
-  { A dump cannot be edited into anything meaningful and must not be saved,
-    so it is not offered for editing at all.  The alternative -- letting it be
-    typed into and refusing at the save -- loses the typing and says so far
-    too late. }
+  { A dump's buffer is a rendering of bytes this document owns, so SynEdit's
+    own editing must never touch it -- the rows would stop matching the file.
+    The view stays read-only as far as SynEdit is concerned and routes keys
+    to HexKey instead, which edits a byte and re-renders its row. }
   AView.ReadOnly := FIsBinary;
+  AView.HexMode := FIsBinary;
+  if FIsBinary then
+    AView.OnHexKey := @HexKey
+  else
+    AView.OnHexKey := nil;
 
   AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
   AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
@@ -415,6 +457,9 @@ end;
 
 function TLedDocument.GetModified: Boolean;
 begin
+  { A dump's buffer is rewritten row by row rather than typed into, so
+    FMaster.Modified says nothing about it -- the bytes are what changed. }
+  if FIsBinary then Exit(FHexDirty);
   Result := FMaster.Modified;
 end;
 
@@ -539,6 +584,9 @@ begin
     { No decoding, no encoding, no line-ending convention: the buffer holds a
       rendering of the file rather than the file, and saying otherwise would
       invite the save path to write it back. }
+    FBytes := Raw;
+    FHexUndoCount := 0;
+    FHexDirty := False;
     Text := LedHexDump(Raw);
     FInfo := LedDefaultTextInfo;
     { Claim neither.  The buffer is a rendering of the bytes, so it has no
@@ -550,6 +598,9 @@ begin
   end
   else
   begin
+    FBytes := '';
+    FHexUndoCount := 0;
+    FHexDirty := False;
     Encodings := TStringList.Create;
     try
       LedParseEncodingList(
@@ -602,6 +653,130 @@ begin
   ApplyConfigToViews;
 
   if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+{ Re-renders just the row AOffset falls in.  A file of any size makes
+  re-rendering the whole dump per keystroke the difference between typing and
+  waiting, and a row is self-contained -- its offset and its sixteen bytes are
+  all it needs. }
+procedure TLedDocument.RenderHexRow(AOffset: Integer);
+var
+  Row: Integer;
+begin
+  Row := AOffset div LedHexBytesPerLine;
+  if (Row < 0) or (Row >= FMaster.Lines.Count) then Exit;
+  { Straight into the buffer rather than through an edit command: the views
+    are read-only, and an undo of led's own is what SetHexByte keeps. }
+  FMaster.Lines[Row] := LedHexDumpLine(FBytes, Row * LedHexBytesPerLine);
+end;
+
+function TLedDocument.HexSize: Integer;
+begin
+  Result := Length(FBytes);
+end;
+
+function TLedDocument.HexByte(AOffset: Integer): Integer;
+begin
+  if (AOffset < 0) or (AOffset >= Length(FBytes)) then Exit(-1);
+  Result := Byte(FBytes[AOffset + 1]);
+end;
+
+procedure TLedDocument.SetHexByte(AOffset: Integer; AValue: Byte);
+begin
+  if not FIsBinary then Exit;
+  if (AOffset < 0) or (AOffset >= Length(FBytes)) then Exit;
+  if Byte(FBytes[AOffset + 1]) = AValue then Exit;
+
+  if FHexUndoCount >= Length(FHexUndo) then
+    SetLength(FHexUndo, Length(FHexUndo) * 2 + 64);
+  FHexUndo[FHexUndoCount].Offset := AOffset;
+  FHexUndo[FHexUndoCount].Value := Byte(FBytes[AOffset + 1]);
+  Inc(FHexUndoCount);
+
+  FBytes[AOffset + 1] := Chr(AValue);
+  FHexDirty := True;
+  RenderHexRow(AOffset);
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+function TLedDocument.CanUndoHex: Boolean;
+begin
+  Result := FIsBinary and (FHexUndoCount > 0);
+end;
+
+function TLedDocument.UndoHexByte: Integer;
+var
+  Offset: Integer;
+begin
+  Result := -1;
+  if not CanUndoHex then Exit;
+  Dec(FHexUndoCount);
+  Offset := FHexUndo[FHexUndoCount].Offset;
+  FBytes[Offset + 1] := Chr(FHexUndo[FHexUndoCount].Value);
+  { Back to where it started only when every change has been undone -- the
+    records are the file's original bytes, so an empty stack means the file on
+    disk and the buffer agree again. }
+  FHexDirty := FHexUndoCount > 0;
+  RenderHexRow(Offset);
+  Result := Offset;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+{ A key over a dump.  Which byte and which half of it the view worked out;
+  what the key means is decided here, because it depends on the column it was
+  typed in: a hex digit on the left replaces one nibble, and a character on
+  the right replaces the whole byte.
+
+  Overwrite only.  Inserting would move every byte after the caret and
+  renumber every offset below it, which is not what a hex editor does and not
+  what the offsets down the left-hand side would still be describing. }
+procedure TLedDocument.HexKey(Sender: TObject; AOffset, ANibble: Integer;
+  const AChar: string; var AHandled: Boolean);
+var
+  Digit, Old: Integer;
+  Ch: Char;
+  View: TLedEdit;
+  NextCol: Integer;
+begin
+  AHandled := False;
+  if (not FIsBinary) or (Length(AChar) <> 1) then Exit;
+  Old := HexByte(AOffset);
+  if Old < 0 then Exit;
+  Ch := AChar[1];
+
+  if ANibble >= 0 then
+  begin
+    Digit := LedHexDigitValue(Ch);
+    { Anything that is not a hex digit is simply not a keystroke here. }
+    if Digit < 0 then Exit;
+    SetHexByte(AOffset, LedHexSetNibble(Byte(Old), ANibble = 0, Byte(Digit)));
+  end
+  else
+  begin
+    { The text column takes the character itself.  Only the printable ASCII
+      range, because that is the only range the column can show back: a byte
+      typed here has to be one a reader could recognise in the same place. }
+    if (Ch < ' ') or (Ch >= #127) then Exit;
+    SetHexByte(AOffset, Byte(Ch));
+  end;
+
+  AHandled := True;
+
+  { Move on the way hexedit does -- across the two digits of a byte, then to
+    the next byte, and from the end of a row to the start of the next. }
+  View := TLedEdit(Sender);
+  NextCol := LedHexNextColumn(View.CaretX);
+  if NextCol = 0 then
+  begin
+    if View.CaretY < FMaster.Lines.Count then
+    begin
+      if ANibble >= 0 then NextCol := LedHexByteColumn(0)
+      else NextCol := LedHexTextColumn(0);
+      View.CaretXY := Point(NextCol, View.CaretY + 1);
+    end;
+  end
+  else
+    View.CaretX := NextCol;
 end;
 
 procedure TLedDocument.OpenAsText;
@@ -684,13 +859,21 @@ procedure TLedDocument.SaveToFile(const AFileName: string);
 var
   Renamed: Boolean;
 begin
-  { The buffer is a picture of the file, not the file.  Saving it would write
-    the offsets and the bars over the bytes they describe -- and the text path
-    would normalise the line endings on the way, so even a dump that happened
-    to parse back would not come out the same.  Refused here rather than in
-    the menu, because Save has more ways in than one. }
+  { A dump saves its bytes, never its buffer.  Writing the buffer would put
+    the offsets and the bars over the bytes they describe, and the text path
+    would normalise the line endings on the way out for good measure -- so
+    this deliberately does not go near LedSaveTextFile. }
   if FIsBinary then
-    raise ELedFileError.Create(lfeNotText, AFileName);
+  begin
+    LedWriteRawFile(AFileName, FBytes,
+      LedPrefs.GetBool(LedPrefMakeBackups, False));
+    FFileName := AFileName;
+    FHexDirty := False;
+    FHexUndoCount := 0;
+    NoteDiskState;
+    if Assigned(FOnChanged) then FOnChanged(Self);
+    Exit;
+  end;
   Renamed := not SameText(AFileName, FFileName);
   LedSaveTextFile(AFileName, PreparedText, FInfo,
     LedPrefs.GetBool(LedPrefMakeBackups, False));

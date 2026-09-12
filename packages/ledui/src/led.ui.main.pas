@@ -16,7 +16,7 @@ uses
   PairSplitter, SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
-  Led.Core.Config, Led.Core.Encodings, Led.Core.Paths,
+  Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
@@ -389,6 +389,7 @@ type
     procedure actToggleBottomPaneExecute(Sender: TObject);
     procedure actToggleLeftPaneExecute(Sender: TObject);
     procedure actUnsplitExecute(Sender: TObject);
+    function HexUndo(ATab: TLedTab): Boolean;
     procedure actOpenAsTextExecute(Sender: TObject);
     procedure actReloadExecute(Sender: TObject);
     procedure FormActivate(Sender: TObject);
@@ -1908,6 +1909,7 @@ end;
 
 procedure TLedMainForm.actUndoExecute(Sender: TObject);
 begin
+  if HexUndo(ActiveTab) then Exit;
   if CurrentView <> nil then CurrentView.Undo;
 end;
 
@@ -3364,6 +3366,25 @@ end;
 { The way out of the hex view.  Detection is a heuristic -- a NUL byte early
   on -- and a file that trips it is still a file someone may have meant to
   read as text, so the heuristic is overridable rather than final. }
+{ Undo over a dump puts back the last byte that changed.  SynEdit's undo
+  would put back a row of rendered text, which is not the same thing and
+  would leave the buffer disagreeing with the bytes. }
+function TLedMainForm.HexUndo(ATab: TLedTab): Boolean;
+var
+  Offset: Integer;
+begin
+  Result := (ATab <> nil) and ATab.Document.IsBinary;
+  if not Result then Exit;
+  Offset := ATab.Document.UndoHexByte;
+  { Show what was put back.  The caret is wherever typing left it, which may
+    be rows away from the byte an undo just restored. }
+  if (Offset >= 0) and (ATab.ActiveView <> nil) then
+    ATab.ActiveView.CaretXY := Point(
+      LedHexByteColumn(Offset mod LedHexBytesPerLine),
+      Offset div LedHexBytesPerLine + 1);
+  UpdateStatusBar;
+end;
+
 procedure TLedMainForm.actOpenAsTextExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -3704,15 +3725,16 @@ begin
   actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
   { Only offered where there is something to overrule. }
   actOpenAsText.Enabled := HasDoc and Tab.Document.IsBinary;
-  { A dump is a rendering of the file, not the file: there is nothing to save
-    and saving would overwrite the bytes with their own description. }
-  if HasDoc and Tab.Document.IsBinary then
-  begin
-    actSave.Enabled := False;
-    actSaveAs.Enabled := False;
-  end;
   actUndo.Enabled := HasDoc and Tab.ActiveView.CanUndo;
   actRedo.Enabled := HasDoc and Tab.ActiveView.CanRedo;
+  { After the two above, not before: a dump's undo is the document's own --
+    the buffer is rewritten a row at a time rather than typed into, so
+    SynEdit's undo knows nothing about it and CanUndo is always false. }
+  if HasDoc and Tab.Document.IsBinary then
+  begin
+    actUndo.Enabled := Tab.Document.CanUndoHex;
+    actRedo.Enabled := False;
+  end;
   actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;
   actCopy.Enabled := actCut.Enabled;
   actPaste.Enabled := CanPaste;

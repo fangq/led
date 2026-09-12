@@ -96,6 +96,12 @@ function LedDecodeText(const ARaw: string; const AForcedEncoding: string;
   and what deciding whether a file is text at all has to look at.  Raises
   ELedFileError. }
 function LedReadRawFile(const AFileName: string): string;
+{ Writes AData byte for byte, with none of the encoding or line-ending work
+  LedSaveTextFile does -- for a file whose contents are not text and have to
+  come back exactly as they went in.  Honours the same backup setting.
+  Raises ELedFileError. }
+procedure LedWriteRawFile(const AFileName, AData: string;
+  AMakeBackup: Boolean = False);
 
 { Loads AFileName, normalising every line ending to LF.  Raises
   ELedFileError. }
@@ -477,6 +483,34 @@ begin
   finally
     Src.Free;
   end;
+end;
+
+procedure LedWriteRawFile(const AFileName, AData: string;
+  AMakeBackup: Boolean);
+var
+  Stream: TFileStream;
+begin
+  if AMakeBackup and FileExists(AFileName) and LedIsRegularFile(AFileName) then
+    try
+      CopyFileTo(AFileName, AFileName + '~');
+    except
+      { A backup that cannot be written must not block the save itself. }
+    end;
+
+  try
+    Stream := TFileStream.Create(AFileName, fmCreate);
+  except
+    on E: EFCreateError do
+      raise ELedFileError.Create(lfeAccessDenied, AFileName, E.Message);
+  end;
+  try
+    if AData <> '' then
+      Stream.WriteBuffer(AData[1], Length(AData));
+  except
+    on E: EStreamError do
+      raise ELedFileError.Create(lfeIOError, AFileName, E.Message);
+  end;
+  Stream.Free;
 end;
 
 procedure LedSaveTextFile(const AFileName, AText: string;
