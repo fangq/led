@@ -12,7 +12,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
-  ExtCtrls, Math, Graphics, ImgList, Clipbrd, LCLIntf, ToolWin,
+  ExtCtrls, Math, Graphics, ImgList, Clipbrd, LCLIntf, ToolWin, Buttons,
   PairSplitter, SynEdit, SynEditTypes,
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
@@ -509,12 +509,19 @@ type
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
     FCheckingDisk: Boolean;
+    { One per tab group: the button at the right-hand end of the tab strip
+      that closes the current tab. }
+    FTabClose: array[0..1] of TSpeedButton;
     { Whether the clipboard holds something the Paste actions could use, and
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
     FClipAsked: Boolean;
     FClipAskedAt: QWord;
     function ClipboardHasText(AView: TLedEdit): Boolean;
+    procedure ApplyMinimumSize;
+    procedure TabCloseClick(Sender: TObject);
+    procedure BookResize(Sender: TObject);
+    procedure PlaceTabCloseButtons;
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
     procedure SyncPreviewToLine;
@@ -682,6 +689,10 @@ type
     function AddTab(ADoc: TLedDocument): TLedTab;
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
+    { The tab strip's close button, for the self-test: it is placed from
+      measured geometry, and the thing worth checking is that it lands on the
+      strip rather than off the top of the window. }
+    function TabCloseButton(AIndex: Integer): TSpeedButton;
     property Notebook: TPageControl read FBook;
     { The second tab group, nil unless the window is split. }
     property Notebook2: TPageControl read FBook2;
@@ -884,6 +895,7 @@ begin
   FBook.Align := alClient;
   FBook.OnChange := @BookChange;
   FBook.OnEnter := @BookEnter;
+  FBook.OnResize := @BookResize;
   FBook.Images := ImageList1;
   FBook.PopupMenu := PopupTab;
 
@@ -3043,6 +3055,7 @@ begin
     FBook.Align := alClient;
 
     FBook2 := TPageControl.Create(Self);
+    FBook2.OnResize := @BookResize;
     FBook2.Parent := FBookSplit.Sides[1];
     FBook2.Align := alClient;
     FBook2.OnChange := @BookChange;
@@ -3337,8 +3350,144 @@ begin
   LedTryFocus(ActiveView);
 end;
 
+{ The close button at the right-hand end of the tab strip, as medit has.
+
+  One button per tab group rather than one per tab: that is what medit does,
+  and it is also the only shape that travels.  The LCL will not draw a tab
+  itself -- OwnerDraw and OnDrawTab are commented out of TPageControl and no
+  widgetset implements them -- and nboShowCloseButtons is declared but
+  unimplemented on gtk2, so a per-tab cross would exist on some platforms and
+  not others.  A button placed over the strip is drawn by led on all of them.
+
+  It is a sibling of the page control, not a child: a TPageControl's children
+  are its pages, and anything else parented to one is not reliably drawn over
+  the strip.  Created after the book, so it sits above it. }
+function TLedMainForm.TabCloseButton(AIndex: Integer): TSpeedButton;
+begin
+  if (AIndex < 0) or (AIndex > 1) then Exit(nil);
+  Result := FTabClose[AIndex];
+end;
+
+procedure TLedMainForm.TabCloseClick(Sender: TObject);
+begin
+  { Whichever group was clicked becomes the active one first, so the action
+    closes the tab the user aimed at rather than the one that had focus. }
+  SetActiveBook(TSpeedButton(Sender).Tag);
+  actCloseTabExecute(Sender);
+end;
+
+procedure TLedMainForm.BookResize(Sender: TObject);
+begin
+  PlaceTabCloseButtons;
+end;
+
+procedure TLedMainForm.PlaceTabCloseButtons;
+var
+  i, Sz, Pad: Integer;
+  Book: TPageControl;
+  Btn: TSpeedButton;
+  R: TRect;
+begin
+  for i := 0 to 1 do
+  begin
+    Book := BookByIndex(i);
+    Btn := FTabClose[i];
+
+    { No strip, no button: with a single tab the strip is hidden, and there
+      is nothing to put a cross at the end of. }
+    if (Book = nil) or (not Book.ShowTabs) or (Book.PageCount = 0) or
+       (Book.Parent = nil) then
+    begin
+      if Btn <> nil then Btn.Visible := False;
+      Continue;
+    end;
+
+    if Btn = nil then
+    begin
+      Btn := TSpeedButton.Create(Self);
+      Btn.Flat := True;
+      Btn.ShowHint := True;
+      Btn.Hint := 'Close this tab';
+      Btn.Tag := i;
+      Btn.OnClick := @TabCloseClick;
+      Btn.Images := ImageList1;
+      Btn.ImageIndex := LedIconIndex('close');
+      { No icon to be had: the character says the same thing, and is better
+        than a blank square. }
+      if Btn.ImageIndex < 0 then Btn.Caption := 'x';
+      FTabClose[i] := Btn;
+    end;
+
+    { Above the book, and in whatever the book's parent is now -- a split
+      moves the book into a splitter side and the button has to follow. }
+    Btn.Parent := Book.Parent;
+    Btn.BringToFront;
+
+    { Tabs along the top is the only arrangement this button knows where to
+      sit in; led never sets anything else, but a skin that did should get no
+      button rather than one in the wrong place. }
+    if Book.TabPosition <> tpTop then
+    begin
+      Btn.Visible := False;
+      Continue;
+    end;
+
+    { Only the strip's *height* is taken from TabRect.  Its origin is not
+      usable here: gtk2 reports the rectangle relative to the page area, so
+      the strip comes back with a negative top -- reading it as a control
+      coordinate put the button above the window.  The height is the same
+      number either way, and the strip is at the top of the control by the
+      test just above, so that is all this needs. }
+    R := Book.TabRect(0);
+    Sz := R.Bottom - R.Top;
+    if Sz < LedScale96(12) then Sz := LedScale96(16);
+    Pad := LedScale96(2);
+
+    Btn.SetBounds(Book.Left + Book.Width - Sz - Pad * 2,
+                  Book.Top + Pad, Sz - Pad, Sz - Pad);
+    Btn.Visible := True;
+  end;
+end;
+
+{ The smallest the window may be made.
+
+  TToolBar is wrapable, so a window narrowed past the buttons pushes the last
+  of them onto a second row and the whole toolbar grows a band taller -- the
+  warping that made a small window look broken.  Nothing stopped that: the
+  form carried no constraints at all.
+
+  The floor is the buttons' own width, read back at the size they were laid
+  out at rather than written down as a constant.  That way it follows the
+  display scale on its own, with no second copy of the number to keep in step
+  and nothing to get wrong about which side of the startup sweep it is on --
+  everything read here is already in device pixels, so nothing is scaled
+  twice.  Recomputed on every activation, which is also how it picks up a
+  desktop whose scale changed while led was running. }
+procedure TLedMainForm.ApplyMinimumSize;
+var
+  i, W: Integer;
+begin
+  if ToolBar1 = nil then Exit;
+  W := 0;
+  for i := 0 to ToolBar1.ButtonCount - 1 do
+    if ToolBar1.Buttons[i].Visible then
+      Inc(W, ToolBar1.Buttons[i].Width);
+  if W <= 0 then Exit;
+
+  { The frame the window manager puts around the client area, plus a little
+    slack so the last button is not flush against it. }
+  Inc(W, (Width - ClientWidth) + LedScale96(8));
+  Constraints.MinWidth := W;
+
+  { Tall enough for the menu, the toolbar, a tab strip, a few lines of text
+    and the status bar.  Below that the editor is not something you could
+    work in, and the panes start fighting each other for rows. }
+  Constraints.MinHeight := (Height - ClientHeight) + LedScale96(260);
+end;
+
 procedure TLedMainForm.FormActivate(Sender: TObject);
 begin
+  ApplyMinimumSize;
   { The editor could not be focused while the window was still being built,
     so the first activation is where it actually happens. }
   if not FFocusedOnce then
@@ -3648,6 +3797,9 @@ begin
     FBook.ShowTabs := Always or (FBook.PageCount > 1);
   if FBook2 <> nil then
     FBook2.ShowTabs := Always or (FBook2.PageCount > 1);
+  { Every route that adds, removes or hides a tab comes through here, so this
+    is the one place the button has to be put back. }
+  PlaceTabCloseButtons;
 end;
 
 function TLedMainForm.DialogStartDir: string;

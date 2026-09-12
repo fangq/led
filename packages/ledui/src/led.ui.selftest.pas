@@ -30,6 +30,7 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
+  Buttons,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Splitter, Led.UI.Dpi,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
@@ -1540,6 +1541,61 @@ begin
     F.Dock.HidePane(Ids[i]);
     Pump;
   end;
+end;
+
+{ The tab strip's close button, the window's minimum size, and the band that
+  marks the active terminal -- the three medit details that could be had the
+  same way on every platform.  The fourth, a coloured line along the top of
+  the active tab, could not: no widgetset implements owner-drawn tabs, so it
+  would have existed on none of them. }
+procedure TestMeditTrim(F: TLedMainForm);
+var
+  Btn: TSpeedButton;
+  R: TRect;
+  Before, TbH, W0, H0: Integer;
+begin
+  Say('medit trim');
+
+  W0 := F.Width;
+  H0 := F.Height;
+
+  { The minimum size.  TToolBar is wrapable, so without a floor the buttons
+    fold onto a second row and the toolbar grows a band taller. }
+  TbH := F.ToolBar1.Height;
+  F.Width := 100;
+  F.Height := 80;
+  Pump; Pump;
+  CheckGt('the window will not shrink past its toolbar', 200, F.Width);
+  CheckEqInt('and the toolbar does not wrap to a second row', TbH,
+    F.ToolBar1.Height);
+
+  F.Width := W0;
+  F.Height := H0;
+  Pump; Pump;
+
+  { The close button.  Two tabs, so the strip is certainly showing. }
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  F.actNewExecute(nil);
+  Pump;
+  Btn := F.TabCloseButton(0);
+  Check('the tab strip has a close button', Btn <> nil);
+  if Btn = nil then Exit;
+  Check('and it is showing', Btn.Visible);
+
+  { On the strip, not above the window.  gtk2 reports TabRect relative to the
+    page area, so a naive placement put it at a negative top. }
+  R := F.Notebook.TabRect(0);
+  Check('it sits inside the tab strip, not off the top',
+    (Btn.Top >= F.Notebook.Top) and
+    (Btn.Top + Btn.Height <= F.Notebook.Top + (R.Bottom - R.Top) + 2));
+  Check('and at the right-hand end of it',
+    Btn.Left + Btn.Width <= F.Notebook.Left + F.Notebook.Width);
+  CheckGt('well to the right of the middle', F.Notebook.Width div 2, Btn.Left);
+
+  Before := F.TabCount;
+  Btn.Click;
+  Pump;
+  CheckEqInt('clicking it closes a tab', Before - 1, F.TabCount);
 end;
 
 procedure TestDockEdges(F: TLedMainForm);
@@ -5607,6 +5663,7 @@ begin
   TestSharedDocuments(F);
   TestProjectList(F);
   TestSpelling(F);
+  TestMeditTrim(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   WriteLn;
