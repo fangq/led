@@ -14,10 +14,17 @@ name: Package
 # build -- and packaging breaks in a way compiling does not, so it is worth
 # finding on the commit that caused it rather than at release time.
 #
-# led reads its grammars, themes and shipped tools from a data directory at
-# run time, so every package here has to carry data/ as well as the binary --
-# a packager that ships only the executable produces an editor that opens
-# every file as plain text.
+# led reads its grammars, themes, word list, shipped tools and bundled fonts
+# from a data directory at run time, so every package here has to carry data/
+# as well as the binary -- a packager that ships only the executable produces
+# an editor that opens every file as plain text, spell-checks against nothing
+# and falls back to whatever the desktop calls "Monospace".
+#
+# Each job therefore checks its own artifact before uploading it.  That is not
+# belt and braces: the list of data subdirectories used to be written out in
+# six places, and the Windows portable zip had quietly been shipping without
+# data/dict in it.  Packaging fails silently -- the build is green and the
+# download is simply missing something -- so it has to be asserted.
 
 on:
   push:
@@ -94,6 +101,22 @@ jobs:
         # The same script `make deb` runs, so this path is exercised on a
         # laptop and not only in CI.
         run: packaging/linux/build-deb.sh "$PWD" "$VERSION"
+
+      - name: The package carries data/
+        run: |
+          deb=$(ls dist/*.deb)
+          for sub in grammars themes tools langs dict fonts; do
+            dpkg-deb -c "$deb" | grep -q "usr/share/led/$sub/" \
+              || { echo "$deb has no data/$sub" >&2; exit 1; }
+          done
+          dpkg-deb -c "$deb" | grep -q "fonts/OFL.txt" \
+            || { echo "the fonts ship without their licence" >&2; exit 1; }
+          tgz=$(ls dist/*.tar.gz)
+          for sub in grammars themes tools langs dict fonts; do
+            tar tzf "$tgz" | grep -q "/data/$sub/" \
+              || { echo "$tgz has no data/$sub" >&2; exit 1; }
+          done
+          echo "deb and tarball both carry every data directory"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -244,13 +267,28 @@ jobs:
           Copy-Item bin\led.exe "$stage\bin\"
           # data\ must sit next to the executable's folder; led looks for
           # <exe>\data on Windows.
-          Copy-Item -Recurse data\grammars, data\themes, data\tools, data\langs `
+          # All of data\, not a list of subdirectories: this copy had already
+          # fallen behind and was shipping a portable zip with no data\dict
+          # in it at all, so spell-check found no words.
+          Copy-Item -Recurse data\* `
                     -Destination (New-Item -ItemType Directory -Force -Path "$stage\bin\data")
           Copy-Item README.md, PARITY.md $stage -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "$stage\*" `
             -DestinationPath "dist\led-$env:VERSION-win64.zip" -Force
           Get-ChildItem dist
+
+      - name: The portable tree carries data
+        shell: bash
+        run: |
+          stage=$(ls -d led-*-win64 | head -1)
+          for sub in grammars themes tools langs dict fonts; do
+            [ -d "$stage/bin/data/$sub" ] \
+              || { echo "$stage has no data/$sub" >&2; exit 1; }
+          done
+          [ -f "$stage/bin/data/fonts/OFL.txt" ] \
+            || { echo "the fonts ship without their licence" >&2; exit 1; }
+          echo "the portable tree carries every data directory"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -336,6 +374,25 @@ jobs:
 
       - name: Build led.app + .dmg
         run: packaging/macos/build-app.sh "$PWD" "$VERSION"
+
+      # The .dmg, not the staging tree: build-app.sh assembles led.app inside
+      # a mktemp directory and only the image survives, so the image is also
+      # the only thing there is to check -- and it is what people download.
+      - name: The disk image carries data/
+        run: |
+          dmg=$(ls dist/*.dmg)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+          rc=0
+          for sub in grammars themes tools langs dict fonts; do
+            [ -d "$mnt/led.app/Contents/Resources/data/$sub" ] \
+              || { echo "$dmg has no data/$sub" >&2; rc=1; }
+          done
+          [ -f "$mnt/led.app/Contents/Resources/data/fonts/OFL.txt" ] \
+            || { echo "the fonts ship without their licence" >&2; rc=1; }
+          hdiutil detach "$mnt" || true
+          [ $rc -eq 0 ] || exit 1
+          echo "led.app in the image carries every data directory"
 
       - uses: actions/upload-artifact@v4
         with:

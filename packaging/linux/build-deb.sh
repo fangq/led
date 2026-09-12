@@ -25,12 +25,11 @@ mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin" "$PKG/usr/share/led" \
 
 install -m 0755 bin/led "$PKG/usr/bin/led"
 
-# The grammars, themes and shipped tools are read at run time.  A package that
-# ships only the executable produces an editor that opens every file as plain
-# text, so this is not optional.
-for sub in grammars themes tools langs dict; do
-  [ -d "data/$sub" ] && cp -r "data/$sub" "$PKG/usr/share/led/"
-done
+# Everything under data/ is read at run time.  A package that ships only the
+# executable produces an editor that opens every file as plain text, so this
+# is not optional.  Copied wholesale: naming the subdirectories meant the same
+# list in six places, and it had already drifted.
+cp -r data/. "$PKG/usr/share/led/"
 
 install -m 0644 packaging/linux/led.desktop \
         "$PKG/usr/share/applications/led.desktop"
@@ -71,9 +70,7 @@ STAGE="led-${VERSION}-linux-$(uname -m)"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/bin" "$STAGE/data"
 cp bin/led "$STAGE/bin/"
-for sub in grammars themes tools langs dict; do
-  [ -d "data/$sub" ] && cp -r "data/$sub" "$STAGE/data/"
-done
+cp -r data/. "$STAGE/data/"
 for f in README.md PARITY.md install.sh; do
   [ -f "$f" ] && cp "$f" "$STAGE/"
 done

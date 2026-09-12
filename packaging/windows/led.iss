@@ -74,12 +74,12 @@ Source: "{#SrcDir}\README.md";     DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SrcDir}\PARITY.md";     DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; The grammars, themes and shipped tools are read at run time.  led looks for
 ; data\ next to the executable on Windows, so the layout here is not optional.
-Source: "{#SrcDir}\data\grammars\*"; DestDir: "{app}\data\grammars"; Flags: ignoreversion recursesubdirs
-Source: "{#SrcDir}\data\themes\*";   DestDir: "{app}\data\themes";   Flags: ignoreversion recursesubdirs
-Source: "{#SrcDir}\data\tools\*";    DestDir: "{app}\data\tools";    Flags: ignoreversion recursesubdirs
-Source: "{#SrcDir}\data\langs\*";    DestDir: "{app}\data\langs";    Flags: ignoreversion recursesubdirs
-; The spell-check word list and the SCOWL notice that must travel with it.
-Source: "{#SrcDir}\data\dict\*";     DestDir: "{app}\data\dict";     Flags: ignoreversion recursesubdirs
+; Everything under data\ in one line, rather than a Source per subdirectory:
+; that list lived in six places and had already drifted.  createallsubdirs is
+; what makes a recursive copy keep empty directories and nested ones.
+; This carries the spell-check word list and the SCOWL notice that must
+; travel with it, and the bundled fonts with their OFL.txt.
+Source: "{#SrcDir}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\led";           Filename: "{app}\{#AppExe}"
