@@ -14,7 +14,7 @@ uses
   SynEditKeyCmds, LCLType,
   SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
   Led.Core.Hex,
-  Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.LongLine,
+  Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
 
 {$I led.lazversion.inc}
@@ -77,6 +77,7 @@ type
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
     FHexMode: Boolean;
+    FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
@@ -105,7 +106,8 @@ type
     procedure DrawLongLineMarkers;
     procedure CompletionSearch(var APosition: Integer);
     procedure CollectWords(const APrefix: string; AInto: TStrings);
-    procedure SnapHexCaret;
+    function SnapHexColumn(ACol: Integer): Integer;
+    procedure SetHexMode(AValue: Boolean);
   protected
     procedure Paint; override;
     { Keeps the long-line view's live range on the caret and the selection.
@@ -120,6 +122,10 @@ type
     { Typing over a dump edits a byte rather than inserting a character, so
       the key never reaches SynEdit's own input. }
     procedure UTF8KeyPress(var Key: TUTF8Char); override;
+    { Where the caret is allowed to be.  Overridden rather than corrected
+      afterwards in StatusChanged: that is SynEdit's own notification, and a
+      caret moved from inside it does not take. }
+    procedure SetCaretXY(Value: TPoint); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -127,7 +133,11 @@ type
     { Turns the view into a hex editor: the caret only rests on a byte, and
       keys go to OnHexKey instead of into the buffer.  The buffer is a
       rendering of bytes the document owns, so nothing else may write to it. }
-    property HexMode: Boolean read FHexMode write FHexMode;
+    property HexMode: Boolean read FHexMode write SetHexMode;
+    { The markup that colours the three columns.  Exposed so the theme can
+      be handed to it -- the colours are derived from the editor's own, and
+      only the caller knows when those have changed. }
+    property HexMarkup: TLedHexMarkup read FHexMarkup;
     property OnHexKey: TLedHexKeyEvent read FOnHexKey write FOnHexKey;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
@@ -1037,6 +1047,21 @@ begin
   Result := FSpell;
 end;
 
+{ Created on first use and owned by the markup manager, as the spell markup
+  is.  An ordinary document never asks for one. }
+procedure TLedEdit.SetHexMode(AValue: Boolean);
+begin
+  if FHexMode = AValue then Exit;
+  FHexMode := AValue;
+  if FHexMode and (FHexMarkup = nil) then
+  begin
+    FHexMarkup := TLedHexMarkup.Create(Self);
+    MarkupManager.AddMarkUp(FHexMarkup);
+  end;
+  if FHexMarkup <> nil then FHexMarkup.Enabled := FHexMode;
+  Invalidate;
+end;
+
 procedure TLedEdit.SetSpellScope(AScope: TLedSpellScope);
 begin
   { Nothing is created while spell checking is off, so the dictionary is
@@ -1238,32 +1263,47 @@ begin
     end;
   end;
   inherited MouseDown(AButton, AShift, X, Y);
+
+  { SynEdit places a clicked caret through its own machinery rather than
+    through SetCaretXY, so a click in the offset column would otherwise land
+    there whatever the setter says.  Put back afterwards, which is the one
+    place a caret can be corrected without fighting the notification it came
+    from. }
+  if FHexMode then CaretX := SnapHexColumn(CaretX);
 end;
 
-{ Keeps the caret on a byte.  A dump's row is mostly punctuation -- spaces
-  between the pairs, the bar before the text -- and a caret resting on any of
-  it has nothing to edit, so arrowing across a row would produce dead columns
-  where typing did nothing.  Landing on one moves forward to the next real
-  column, which makes left and right walk the bytes and nothing else. }
-procedure TLedEdit.SnapHexCaret;
-var
-  Col, Best, i: Integer;
-begin
-  if not FHexMode then Exit;
-  Col := CaretX;
-  if LedHexColumnToIndex(Col) >= 0 then Exit;
+{ The nearest column the caret may occupy, at or after ACol.
 
-  Best := LedHexByteColumn(0);
-  if Col > LedHexTextColumn(LedHexBytesPerLine - 1) then
-    Best := LedHexTextColumn(LedHexBytesPerLine - 1)
-  else if Col > LedHexByteColumn(0) then
-    for i := 0 to LedHexBytesPerLine - 1 do
-    begin
-      if LedHexByteColumn(i) >= Col then begin Best := LedHexByteColumn(i); Break; end;
-      if LedHexTextColumn(i) >= Col then begin Best := LedHexTextColumn(i); Break; end;
-      Best := LedHexTextColumn(LedHexBytesPerLine - 1);
-    end;
-  if Best <> Col then CaretX := Best;
+  A dump's row is mostly punctuation -- the offset down the left, the spaces
+  between the pairs, the bars around the text -- and a caret resting on any of
+  it has nothing to edit.  Left alone, arrowing across a row would pass
+  through dead columns and clicking the offset would put the caret in a label.
+  Every position is moved forward to the next real one, so the offset is
+  readable and unreachable, which is what a line number should be. }
+function TLedEdit.SnapHexColumn(ACol: Integer): Integer;
+var
+  i: Integer;
+begin
+  if LedHexColumnToIndex(ACol) >= 0 then Exit(ACol);
+  if ACol <= LedHexByteColumn(0) then Exit(LedHexByteColumn(0));
+  if ACol >= LedHexTextColumn(LedHexBytesPerLine - 1) then
+    Exit(LedHexTextColumn(LedHexBytesPerLine - 1));
+
+  { The byte columns first, all of them, and only then the text ones.  Taken
+    together in one pass, every column in the hex half would find text
+    column 0 waiting -- it is greater than all of them -- and a caret nudged
+    off a byte would jump the width of the row. }
+  for i := 0 to LedHexBytesPerLine - 1 do
+    if LedHexByteColumn(i) >= ACol then Exit(LedHexByteColumn(i));
+  for i := 0 to LedHexBytesPerLine - 1 do
+    if LedHexTextColumn(i) >= ACol then Exit(LedHexTextColumn(i));
+  Result := LedHexTextColumn(LedHexBytesPerLine - 1);
+end;
+
+procedure TLedEdit.SetCaretXY(Value: TPoint);
+begin
+  if FHexMode then Value.X := SnapHexColumn(Value.X);
+  inherited SetCaretXY(Value);
 end;
 
 procedure TLedEdit.UTF8KeyPress(var Key: TUTF8Char);
@@ -1303,8 +1343,10 @@ var
   A, B: Integer;
 begin
   inherited StatusChanged(AChanges);
-  if FHexMode and (AChanges * [scCaretX, scCaretY] <> []) then
-    SnapHexCaret;
+  { The offset of the row the caret is on is drawn differently, so moving
+    between rows changes the painting of two rows and neither of them knows
+    it. }
+  if FHexMode and (scCaretY in AChanges) then Invalidate;
   if FLongLines = nil then Exit;
   if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
 

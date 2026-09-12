@@ -357,6 +357,14 @@ begin
   AView.GuideColour :=
     LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
 
+  { After the theme has been applied, because the column colours are mixed
+    from the editor's own -- asking earlier would mix them from the last
+    theme's. }
+  if FIsBinary and (AView.HexMarkup <> nil) then
+    AView.HexMarkup.SetColours(AView.Font.Color, AView.Color,
+      AView.Gutter.LineNumberPart.MarkupInfo.Foreground,
+      AView.LineHighlightColor.Background);
+
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
 end;
