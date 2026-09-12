@@ -32,7 +32,11 @@ type
     FTimer: TTimer;
     FResizeTimer: TTimer;
     FHasRendered: Boolean;
+    FPendingRender: Boolean;
     FRenderedWidth: Integer;
+    FRenderedText: string;
+    FRenderedTitle: string;
+    FRenderedWiki: Boolean;
     FPendingText: string;
     FPendingTitle: string;
     function CodeColumns: Integer;
@@ -156,11 +160,12 @@ end;
 procedure TLedPreviewPane.ResizeSettled(Sender: TObject);
 begin
   FResizeTimer.Enabled := False;
-  if not FHasRendered then Exit;
+  if not (FHasRendered or FPendingRender) then Exit;
   { The page was built for a width -- its code blocks are wrapped to it, see
     CodeColumns -- so a pane that is no longer that width needs the page
-    rebuilt rather than merely shown again. }
-  if FHtml.ClientWidth <> FRenderedWidth then
+    rebuilt rather than merely shown again.  This is also where a render that
+    arrived before the pane had a size gets made good. }
+  if FPendingRender or (FHtml.ClientWidth <> FRenderedWidth) then
     Render(nil)
   else
     FHtml.Visible := True;
@@ -198,6 +203,8 @@ begin
   FNote.Visible := True;
   FHtml.Visible := False;
   FHasRendered := False;
+  FPendingRender := False;
+  FRenderedText := '';
   FTimer.Enabled := False;
 end;
 
@@ -261,13 +268,47 @@ var
   Page: string;
 begin
   FTimer.Enabled := False;
+
+  { Laying a page out costs more than everything else the pane does put
+    together -- half a second for a README -- so it is worth some care about
+    not doing it twice.
+
+    Before the window is on screen the pane has whatever width the form was
+    designed at, not the one it is about to be given: the files named on the
+    command line are opened there, and a page laid out then is laid out for a
+    pane 170 pixels wide and thrown away a moment later.  It waits for the
+    size instead -- asked of the pane, not of the HTML control, which is
+    hidden until there is a page in it and so is never showing. }
+  if not Showing then
+  begin
+    FPendingRender := True;
+    Exit;
+  end;
+
+  { And the same document at the same width is the same page.  Opening a file
+    asks for the preview from more than one direction -- the tab change, the
+    command line, the pane appearing -- and each of them is right to ask. }
+  if FHasRendered and (not FPendingRender) and
+     (FHtml.ClientWidth = FRenderedWidth) and (FIsWiki = FRenderedWiki) and
+     (FPendingTitle = FRenderedTitle) and (FPendingText = FRenderedText) then
+  begin
+    FHtml.Visible := True;
+    Exit;
+  end;
+
   if FIsWiki then
     Page := LedWikiToPage(FPendingText, FPendingTitle)
   else
     Page := LedMarkdownToPage(FPendingText, FPendingTitle);
   try
-    FHtml.SetHtmlFromStr(LedWrapPreLines(Page, CodeColumns));
+    { Both adjustments are for the renderer rather than for the document:
+      see LedWrapPreLines and LedSplitInlineRuns. }
+    FHtml.SetHtmlFromStr(LedSplitInlineRuns(LedWrapPreLines(Page, CodeColumns)));
     FRenderedWidth := FHtml.ClientWidth;
+    FRenderedText := FPendingText;
+    FRenderedTitle := FPendingTitle;
+    FRenderedWiki := FIsWiki;
+    FPendingRender := False;
     FNote.Visible := False;
     FHtml.Visible := True;
     FHasRendered := True;
