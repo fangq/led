@@ -515,7 +515,7 @@ type
     FClipAsked: Boolean;
     FClipAskedAt: QWord;
     function ClipboardHasText(AView: TLedEdit): Boolean;
-    procedure RefreshPreview;
+    procedure RefreshPreview(AImmediate: Boolean = False);
     procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
@@ -1154,7 +1154,7 @@ begin
   FDock.EdgeVisible[ledBottom] := True;
 end;
 
-procedure TLedMainForm.RefreshPreview;
+procedure TLedMainForm.RefreshPreview(AImmediate: Boolean);
 var
   Doc: TLedDocument;
   First: string;
@@ -1170,7 +1170,7 @@ begin
   begin
     FPreview.IsWiki := LedIsWikiFile(Doc.FileName, First);
     FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
-      ExtractFileDir(Doc.FileName));
+      ExtractFileDir(Doc.FileName), AImmediate);
   end
   else
     FPreview.ShowMessage_('This is not a Markdown or wiki file.');
@@ -1182,7 +1182,9 @@ begin
   if FPreview = nil then Exit;
   FDock.ShowPane('preview');
   FDock.EdgeVisible[ledRight] := True;
-  RefreshPreview;
+  { Immediately: the pane has just appeared with nothing in it, and a quarter
+    second of blank panel reads as a pane that does not work. }
+  RefreshPreview(True);
 end;
 
 procedure TLedMainForm.actPrintExecute(Sender: TObject);
@@ -2725,8 +2727,9 @@ begin
     Application.QueueAsyncCall(@StartTerminalDeferred, 0)
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
-      button it would otherwise sit blank until something else refreshed it. }
-    RefreshPreview;
+      button it would otherwise sit blank until something else refreshed it.
+      Immediately, for the same reason: the pane is on screen now. }
+    RefreshPreview(True);
 end;
 
 

@@ -17,6 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
+  LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki;
 
@@ -31,8 +32,10 @@ type
     FTimer: TTimer;
     FResizeTimer: TTimer;
     FHasRendered: Boolean;
+    FRenderedWidth: Integer;
     FPendingText: string;
     FPendingTitle: string;
+    function CodeColumns: Integer;
     procedure Render(Sender: TObject);
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
@@ -50,9 +53,14 @@ type
     procedure ResizeSettled(Sender: TObject);
   public
     constructor Create(AOwner: TComponent); override;
-    { Shows AText rendered as Markdown.  Debounced, because it is called on
-      every keystroke and IPro relays out the whole document each time. }
-    procedure Update(const AText, ATitle, ABaseDir: string);
+    { Shows AText rendered as Markdown.  Debounced by default, because a
+      refresh can arrive several times over in a row -- a tab change is three
+      notifications -- and IPro relays out the whole document each time.
+      AImmediate is for the one case where the quarter second is all the user
+      would see: opening the pane, where waiting means looking at a blank
+      panel for as long as it takes to notice it is blank. }
+    procedure Update(const AText, ATitle, ABaseDir: string;
+      AImmediate: Boolean = False);
     { Which dialect to render.  Set from the file name, so a .wiki and a .md
       in adjacent tabs each render as themselves. }
     property IsWiki: Boolean read FIsWiki write FIsWiki;
@@ -130,7 +138,13 @@ end;
 procedure TLedPreviewPane.ResizeSettled(Sender: TObject);
 begin
   FResizeTimer.Enabled := False;
-  if FHasRendered then
+  if not FHasRendered then Exit;
+  { The page was built for a width -- its code blocks are wrapped to it, see
+    CodeColumns -- so a pane that is no longer that width needs the page
+    rebuilt rather than merely shown again. }
+  if FHtml.ClientWidth <> FRenderedWidth then
+    Render(nil)
+  else
     FHtml.Visible := True;
 end;
 
@@ -169,15 +183,58 @@ begin
   FTimer.Enabled := False;
 end;
 
-procedure TLedPreviewPane.Update(const AText, ATitle, ABaseDir: string);
+procedure TLedPreviewPane.Update(const AText, ATitle, ABaseDir: string;
+  AImmediate: Boolean);
 begin
   FPendingText := AText;
   FPendingTitle := ATitle;
   FBaseDir := ABaseDir;
-  { Restarting the timer on each call is the debounce: the render happens a
-    quarter-second after typing stops, not during it. }
   FTimer.Enabled := False;
+  if AImmediate then
+  begin
+    Render(nil);
+    Exit;
+  end;
+  { Restarting the timer on each call is the debounce: a burst of refreshes
+    renders once, at the end. }
   FTimer.Enabled := True;
+end;
+
+{ How many characters of a code block fit across the pane.
+
+  A <pre> is the one thing on a page that will not narrow: its minimum width
+  is its longest line, and IPro, which cannot scroll a single block, answers
+  by laying the whole document out that wide -- which is how an eighty-column
+  code sample pushes the prose off the right of a pane half that wide.  So
+  the page is built to fit, and this is the measurement it is built to.
+
+  Measured in the font IPro actually uses for a <pre>: the fixed typeface at
+  two points under the document size, which is what TIpHtmlNodePRE.SetProps
+  does.  Measured against the panel rather than assumed, because the point
+  size here is the scaled one.
+
+  The allowances are the vertical scrollbar, which a preview of anything long
+  has and which comes out of the width the layout gets, and IPro's page
+  margin.  Only one margin turns up in the page width it computes -- both are
+  subtracted, and the difference is the slack that keeps a rounding error
+  from costing a column. }
+function TLedPreviewPane.CodeColumns: Integer;
+var
+  CharW, Usable: Integer;
+begin
+  Result := 0;
+  if FHtml.ClientWidth <= 0 then Exit;
+  FHtml.Canvas.Font.Name := FHtml.FixedTypeface;
+  FHtml.Canvas.Font.Size := FHtml.DefaultFontSize - 2;
+  { Over twenty characters, because a single one rounds badly. }
+  CharW := FHtml.Canvas.TextWidth(StringOfChar('0', 20)) div 20;
+  if CharW < 1 then Exit;
+  Usable := FHtml.ClientWidth - 2 * FHtml.MarginWidth -
+            GetSystemMetrics(SM_CXVSCROLL);
+  Result := Usable div CharW;
+  { Narrower than this and the wrapping is worse than the overflow it is
+    there to prevent. }
+  if Result < 16 then Result := 16;
 end;
 
 procedure TLedPreviewPane.Render(Sender: TObject);
@@ -208,7 +265,9 @@ begin
       whatever the font's PixelsPerInch says; it only makes the measuring
       canvas agree with the painting one. }
     FHtml.Font.PixelsPerInch := Screen.PixelsPerInch;
-    FHtml.SetHtmlFromStr(Page);
+    { After the PPI, which is what the measuring below is measured in. }
+    FHtml.SetHtmlFromStr(LedWrapPreLines(Page, CodeColumns));
+    FRenderedWidth := FHtml.ClientWidth;
     FNote.Visible := False;
     FHtml.Visible := True;
     FHasRendered := True;

@@ -19,13 +19,30 @@ unit Led.Core.Markdown;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils, StrUtils;
 
 { Converts Markdown to an HTML fragment.  Wrap it yourself, or use
   LedMarkdownToPage for a whole document with a stylesheet. }
 function LedMarkdownToHTML(const AText: string): string;
 function LedMarkdownToPage(const AText, ATitle: string): string;
 function LedHtmlEscape(const AText: string): string;
+
+{ Breaks the lines inside <pre> blocks so none is wider than AColumns
+  characters.  AColumns <= 0 leaves AHtml alone.
+
+  A preformatted block is the one thing on an HTML page that refuses to
+  narrow: its minimum width is its longest line, and a renderer that cannot
+  scroll a block on its own -- IpHtmlPanel cannot -- lays the whole document
+  out at that width instead.  One eighty-column code sample in a preview pane
+  half that wide therefore pushes every paragraph past the right edge, where
+  a preview pane has nowhere to put them.  Wrapping the code is the only
+  lever that does not cost the rest of the page.
+
+  Breaks fall at a space where the line has one to spare, and mid-token
+  otherwise, because a path or a URL with no spaces in it still has to fit.
+  Markup and entities inside the block are stepped over rather than counted:
+  a tag takes no columns and "&amp;" takes one, and neither may be split. }
+function LedWrapPreLines(const AHtml: string; AColumns: Integer): string;
 
 implementation
 
@@ -35,6 +52,157 @@ begin
   Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
   Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
   Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
+end;
+
+{ --- wrapping preformatted text -------------------------------------------- }
+
+type
+  { One indivisible piece of a line: a character, an entity, or a tag.  Cols
+    is what it costs across the page -- nothing for a tag, and for an entity
+    its own length, because IpHtmlPanel does not decode entities inside a
+    <pre> and draws "&quot;" as those six characters.  Sp marks the spaces,
+    which are where a break is preferred. }
+  TLedPreUnit = record
+    Pos, Len, Cols: Integer;
+    Sp: Boolean;
+  end;
+  TLedPreUnits = array of TLedPreUnit;
+
+{ ALine split into units.  Cheap enough to redo per line: a code line is
+  short and the alternative is counting columns backwards through entities. }
+function SplitPreUnits(const ALine: string): TLedPreUnits;
+var
+  i, j, N: Integer;
+begin
+  Result := nil;
+  SetLength(Result, Length(ALine));
+  N := 0;
+  i := 1;
+  while i <= Length(ALine) do
+  begin
+    Result[N].Pos := i;
+    Result[N].Sp := False;
+    if ALine[i] = '<' then
+    begin
+      j := i;
+      while (j <= Length(ALine)) and (ALine[j] <> '>') do Inc(j);
+      if j > Length(ALine) then j := Length(ALine);
+      Result[N].Len := j - i + 1;
+      Result[N].Cols := 0;
+    end
+    else if ALine[i] = '&' then
+    begin
+      j := i + 1;
+      { A bare ampersand in text that was never escaped is not an entity; the
+        limit keeps it from swallowing the rest of the line. }
+      while (j <= Length(ALine)) and (j - i <= 8) and (ALine[j] <> ';') do Inc(j);
+      if (j <= Length(ALine)) and (ALine[j] = ';') then
+        Result[N].Len := j - i + 1
+      else
+        Result[N].Len := 1;
+      { Wide, but still one piece: cutting an entity in half is the one break
+        that could turn text into markup. }
+      Result[N].Cols := Result[N].Len;
+    end
+    else
+    begin
+      Result[N].Len := 1;
+      Result[N].Sp := (ALine[i] = ' ') or (ALine[i] = #9);
+      { A CR left on the end of a CRLF line is not a column. }
+      if ALine[i] = #13 then Result[N].Cols := 0 else Result[N].Cols := 1;
+    end;
+    Inc(i, Result[N].Len);
+    Inc(N);
+  end;
+  SetLength(Result, N);
+end;
+
+function WrapPreLine(const ALine: string; AColumns: Integer): string;
+var
+  U: TLedPreUnits;
+  i, k, Col, Seg, LastSp, Brk: Integer;
+begin
+  U := SplitPreUnits(ALine);
+  Result := '';
+  Seg := 0;
+  Col := 0;
+  LastSp := -1;
+  i := 0;
+  while i < Length(U) do
+  begin
+    { Never before a space: a space that overruns the width is invisible at
+      the end of a line, and breaking in front of one would start the next
+      line with it. }
+    if (U[i].Cols > 0) and (not U[i].Sp) and (Col >= AColumns) then
+    begin
+      { At a space if this line has one, so that a command keeps its words
+        together; otherwise wherever we stand, because the alternative to a
+        broken token is a document laid out to its width. }
+      if LastSp >= Seg then Brk := LastSp + 1 else Brk := i;
+      if Brk <= Seg then Brk := i;
+      Result := Result + Copy(ALine, U[Seg].Pos, U[Brk].Pos - U[Seg].Pos) + #10;
+      Seg := Brk;
+      { What has already been carried onto the new line -- at most a word. }
+      Col := 0;
+      LastSp := -1;
+      for k := Seg to i - 1 do
+      begin
+        Inc(Col, U[k].Cols);
+        if U[k].Sp then LastSp := k;
+      end;
+    end;
+    Inc(Col, U[i].Cols);
+    if U[i].Sp then LastSp := i;
+    Inc(i);
+  end;
+  if Length(U) > 0 then
+    Result := Result + Copy(ALine, U[Seg].Pos, MaxInt);
+end;
+
+{ Every line of ABlock wrapped, with the line breaks it came with left
+  exactly as they were: a preformatted block is whitespace, and a round trip
+  through a string list would quietly drop the last break. }
+function WrapPreBlock(const ABlock: string; AColumns: Integer): string;
+var
+  i, Start: Integer;
+begin
+  Result := '';
+  Start := 1;
+  i := 1;
+  while i <= Length(ABlock) do
+  begin
+    if ABlock[i] = #10 then
+    begin
+      Result := Result + WrapPreLine(Copy(ABlock, Start, i - Start), AColumns) + #10;
+      Start := i + 1;
+    end;
+    Inc(i);
+  end;
+  Result := Result + WrapPreLine(Copy(ABlock, Start, MaxInt), AColumns);
+end;
+
+function LedWrapPreLines(const AHtml: string; AColumns: Integer): string;
+var
+  Lower_, Block: string;
+  i, OpenAt, BodyAt, CloseAt: Integer;
+begin
+  if AColumns <= 0 then Exit(AHtml);
+  Lower_ := LowerCase(AHtml);
+  Result := '';
+  i := 1;
+  repeat
+    OpenAt := PosEx('<pre', Lower_, i);
+    if OpenAt = 0 then Break;
+    BodyAt := PosEx('>', AHtml, OpenAt);
+    if BodyAt = 0 then Break;
+    CloseAt := PosEx('</pre', Lower_, BodyAt);
+    if CloseAt = 0 then Break;
+    Block := Copy(AHtml, BodyAt + 1, CloseAt - BodyAt - 1);
+    Result := Result + Copy(AHtml, i, BodyAt - i + 1) +
+              WrapPreBlock(Block, AColumns);
+    i := CloseAt;
+  until False;
+  Result := Result + Copy(AHtml, i, MaxInt);
 end;
 
 { --- inline spans ---------------------------------------------------------- }
