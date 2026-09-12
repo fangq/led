@@ -26,7 +26,7 @@ uses
   Classes, SysUtils, DateUtils, Forms, ComCtrls,
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
-  ShellCtrls, Dialogs,
+  ShellCtrls, Dialogs, Led.Core.Hex,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -3315,6 +3315,28 @@ begin
   Check('the view is in hex mode', Tab.ActiveView.HexMode);
   Check('and has somewhere to send its keys',
     Assigned(Tab.ActiveView.OnHexKey));
+
+  { The offset down the left is a label, not somewhere to type, so the caret
+    never rests in it -- clicking there lands on the first byte instead.  The
+    same goes for the spaces between the pairs: a caret on one would have
+    nothing to edit, and arrowing across a row would pass through dead
+    columns where typing did nothing. }
+  Tab.ActiveView.CaretXY := Point(3, 1);
+  Pump;
+  CheckEqInt('the caret cannot rest in the offset column',
+    LedHexByteColumn(0), Tab.ActiveView.CaretX);
+  Tab.ActiveView.CaretXY := Point(LedHexByteColumn(2) + 2, 1);
+  Pump;
+  CheckEqInt('nor in the space between two bytes',
+    LedHexByteColumn(3), Tab.ActiveView.CaretX);
+  Tab.ActiveView.CaretXY := Point(LedHexTextColumn(4), 1);
+  Pump;
+  CheckEqInt('but it rests in the text column',
+    LedHexTextColumn(4), Tab.ActiveView.CaretX);
+
+  { The three columns are told apart by colour, which is what makes the text
+    column findable without counting across. }
+  Check('the view has a hex markup', Tab.ActiveView.HexMarkup <> nil);
 
   { Driving that wiring directly, which is what a keystroke does once the
     view has worked out the byte and the half.  A hex digit on the left
