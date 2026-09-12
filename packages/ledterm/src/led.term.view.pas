@@ -40,6 +40,8 @@ type
     FTimer: TTimer;
     FLastCols, FLastRows: Integer;
     FCharW, FCharH: Integer;
+    FTopMargin: Integer;
+    FActiveMark: Boolean;
     { Mouse selection, in cell coordinates on the visible screen.  Anchor is
       where the drag began and Head where it is now; either may be the
       earlier of the two, so the pair is ordered only when it is used. }
@@ -51,6 +53,7 @@ type
     FOnTitleChange: TNotifyEvent;
     FOnExited: TNotifyEvent;
     procedure Poll(Sender: TObject);
+    procedure SetActiveMark(AValue: Boolean);
     procedure MeasureFont;
     function ColourOf(AIndex: SmallInt; ADefault: TColor): TColor;
     procedure SendKey(const S: string);
@@ -75,6 +78,12 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    { Marks this terminal as the one the pane is working in.  Drawn as a band
+      across the top, the way medit marks its active panel.  The band is part
+      of the layout whether or not it is lit: making it appear only when
+      active would change how many rows fit and send the shell a SIGWINCH
+      every time the focus moved. }
+    property ActiveMark: Boolean read FActiveMark write SetActiveMark;
 
     function Start(const ACommand, AWorkDir: string): Boolean;
     procedure Stop;
@@ -175,7 +184,8 @@ function TLedTermView.CellAt(X, Y: Integer): TPoint;
 begin
   if FCharW < 1 then Exit(Point(0, 0));
   Result.X := X div FCharW;
-  Result.Y := Y div FCharH;
+  Result.Y := (Y - FTopMargin) div FCharH;
+  if Result.Y < 0 then Result.Y := 0;
   if Result.X < 0 then Result.X := 0;
   if Result.Y < 0 then Result.Y := 0;
   if Result.X > FScreen.Cols then Result.X := FScreen.Cols;
@@ -364,6 +374,13 @@ begin
   Invalidate;
 end;
 
+procedure TLedTermView.SetActiveMark(AValue: Boolean);
+begin
+  if FActiveMark = AValue then Exit;
+  FActiveMark := AValue;
+  Invalidate;
+end;
+
 procedure TLedTermView.MeasureFont;
 begin
   Canvas.Font := Font;
@@ -373,6 +390,11 @@ begin
   if FCharW < 1 then FCharW := 8;
   FCharH := Canvas.TextHeight('Mg');
   if FCharH < 1 then FCharH := 16;
+  { The band across the top that marks the active terminal.  Off the character
+    height so it follows the display scale with everything else, and reserved
+    whether or not it is lit -- see ActiveMark. }
+  FTopMargin := FCharH div 7;
+  if FTopMargin < 2 then FTopMargin := 2;
 end;
 
 function TLedTermView.Start(const ACommand, AWorkDir: string): Boolean;
@@ -385,7 +407,7 @@ begin
 
   MeasureFont;
   C := Width div FCharW;
-  R := Height div FCharH;
+  R := (Height - FTopMargin) div FCharH;
   if C < 10 then C := 80;
   if R < 3 then R := 24;
 
@@ -460,7 +482,7 @@ begin
   inherited Resize;
   if FCharW < 1 then Exit;
   C := Width div FCharW;
-  R := Height div FCharH;
+  R := (Height - FTopMargin) div FCharH;
   if (C < 1) or (R < 1) then Exit;
 
   { Dragging a splitter delivers a resize per pixel, and most of those land
@@ -512,6 +534,16 @@ begin
   Canvas.Brush.Color := Schemes[FScheme].Background;
   Canvas.FillRect(ClientRect);
 
+  { The active band.  clHighlight rather than a colour of led's own: it is the
+    desktop's own selection colour, so it is the blue the rest of the session
+    already uses and it follows a theme led knows nothing about. }
+  if FActiveMark then
+  begin
+    Canvas.Brush.Color := clHighlight;
+    Canvas.FillRect(0, 0, ClientWidth, FTopMargin);
+    Canvas.Brush.Color := Schemes[FScheme].Background;
+  end;
+
   for Y := 0 to FScreen.Rows - 1 do
   begin
     Row := Y - FScrollOffset;
@@ -524,7 +556,7 @@ begin
     end;
     if Line = nil then Continue;
 
-    PxY := Y * FCharH;
+    PxY := FTopMargin + Y * FCharH;
     for X := 0 to High(Line) do
     begin
       C := Line[X];
@@ -567,8 +599,10 @@ begin
   if FScreen.CursorVisible and (FScrollOffset = 0) and Focused then
   begin
     Canvas.Brush.Color := Schemes[FScheme].Cursor;
-    Canvas.FillRect(FScreen.CursorX * FCharW, FScreen.CursorY * FCharH,
-      FScreen.CursorX * FCharW + FCharW, FScreen.CursorY * FCharH + FCharH);
+    Canvas.FillRect(FScreen.CursorX * FCharW,
+      FTopMargin + FScreen.CursorY * FCharH,
+      FScreen.CursorX * FCharW + FCharW,
+      FTopMargin + FScreen.CursorY * FCharH + FCharH);
   end;
 end;
 

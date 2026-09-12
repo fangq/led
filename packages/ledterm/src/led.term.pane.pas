@@ -43,6 +43,7 @@ type
     FMenuIcons: TStringList;
     FWorkDir: string;
     function AddTerminal(AParent: TWinControl): TLedTermView;
+    procedure SetActiveTerm(AValue: TLedTermView);
     procedure TermEnter(Sender: TObject);
     procedure TermExited(Sender: TObject);
     procedure BuildMenu;
@@ -235,12 +236,23 @@ begin
   Result.OnEnter := @TermEnter;
   Result.OnExited := @TermExited;
   FTerminals.Add(Result);
-  if FActive = nil then FActive := Result;
+  if FActive = nil then SetActiveTerm(Result);
+end;
+
+{ One terminal at a time wears the active band, so a split says which half
+  the keys are going to. }
+procedure TLedTerminalPane.SetActiveTerm(AValue: TLedTermView);
+var
+  i: Integer;
+begin
+  FActive := AValue;
+  for i := 0 to FTerminals.Count - 1 do
+    TLedTermView(FTerminals[i]).ActiveMark := (TLedTermView(FTerminals[i]) = AValue);
 end;
 
 procedure TLedTerminalPane.TermEnter(Sender: TObject);
 begin
-  FActive := TLedTermView(Sender);
+  SetActiveTerm(TLedTermView(Sender));
 end;
 
 procedure TLedTerminalPane.TermExited(Sender: TObject);
@@ -249,7 +261,7 @@ begin
     does.  The last one is left in place rather than leaving an empty pane. }
   if FTerminals.Count > 1 then
   begin
-    FActive := TLedTermView(Sender);
+    SetActiveTerm(TLedTermView(Sender));
     CloseActive;
   end;
 end;
@@ -295,7 +307,7 @@ begin
   NewTerm := AddTerminal(Splitter.Sides[1]);
   CentreSplitter(Splitter);
   NewTerm.Start('', FWorkDir);
-  FActive := NewTerm;
+  SetActiveTerm(NewTerm);
 end;
 
 procedure TLedTerminalPane.CloseActive;
@@ -338,7 +350,7 @@ begin
   Application.ReleaseComponent(Splitter);
 
   if FTerminals.Count > 0 then
-    FActive := TLedTermView(FTerminals[0]);
+    SetActiveTerm(TLedTermView(FTerminals[0]));
 end;
 
 function TLedTerminalPane.Running: Boolean;
