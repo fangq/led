@@ -190,6 +190,24 @@ begin
   else
     Page := LedMarkdownToPage(FPendingText, FPendingTitle);
   try
+    { IPro measures a page on one canvas and paints it on another: the layout
+      runs against the control's own canvas, and the paint against a TBitmap
+      it allocates for the purpose.  A TCustomControl copies its PixelsPerInch
+      onto its canvas -- customcontrol.inc:66 -- and the startup scale sweep
+      has put 300 there, while a fresh TBitmap gets the screen's 150.  Same
+      point size, two pixel heights: every word is measured at twice the size
+      it is drawn at, so each one is advanced by about double its own width
+      and the line falls apart into gaps that grow with the word.
+
+      Measured on this display: "led" drawn 88 pixels wide, the next word
+      starting at 190.  The glyphs were always the right size -- it is the
+      spacing between them that was doubled.
+
+      So the control is put back on the screen's PPI before each render.  It
+      changes no drawn size, because gtk2 renders a point size at the Xft DPI
+      whatever the font's PixelsPerInch says; it only makes the measuring
+      canvas agree with the painting one. }
+    FHtml.Font.PixelsPerInch := Screen.PixelsPerInch;
     FHtml.SetHtmlFromStr(Page);
     FNote.Visible := False;
     FHtml.Visible := True;
