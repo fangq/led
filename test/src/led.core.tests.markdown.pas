@@ -33,6 +33,13 @@ type
     procedure HtmlIsEscaped;
     procedure BackslashEscape;
     procedure WholePageHasAStylesheet;
+    procedure WrappingLeavesShortCodeAlone;
+    procedure WrappingBreaksALongCodeLineAtASpace;
+    procedure WrappingBreaksATokenThatHasNoSpaces;
+    procedure WrappingLeavesTheProseAlone;
+    procedure WrappingNeverSplitsAnEntity;
+    procedure WrappingKeepsEveryLineOfABlock;
+    procedure WrappingOffIsTheDocumentItself;
   end;
 
 implementation
@@ -189,6 +196,73 @@ begin
   AssertHas('title', P, '<title>doc</title>');
   AssertHas('style', P, '<style>');
   AssertHas('body', P, '<h1>Hi</h1>');
+end;
+
+{ --- wrapping preformatted text -------------------------------------------- }
+
+procedure TTestMarkdown.WrappingLeavesShortCodeAlone;
+begin
+  AssertEquals('<pre>make all</pre>',
+    LedWrapPreLines('<pre>make all</pre>', 40));
+end;
+
+procedure TTestMarkdown.WrappingBreaksALongCodeLineAtASpace;
+var
+  H: string;
+begin
+  { Twelve columns: "make all and" is as much as fits, and the break goes
+    after a space rather than through "install". }
+  H := LedWrapPreLines('<pre>make all and install it</pre>', 12);
+  AssertHas('broken', H, #10);
+  AssertHas('at the space', H, 'make all and ' + #10);
+  AssertHas('with the rest following', H, 'install it</pre>');
+end;
+
+procedure TTestMarkdown.WrappingBreaksATokenThatHasNoSpaces;
+var
+  H: string;
+begin
+  { A path or a URL has to fit too, so a token with nowhere to break is cut. }
+  H := LedWrapPreLines('<pre>aaaaaaaaaa</pre>', 4);
+  AssertEquals('<pre>aaaa' + #10 + 'aaaa' + #10 + 'aa</pre>', H);
+end;
+
+procedure TTestMarkdown.WrappingLeavesTheProseAlone;
+var
+  H: string;
+begin
+  { Paragraphs wrap themselves -- it is only the block that cannot that is
+    touched. }
+  H := LedWrapPreLines('<p>a paragraph much longer than four columns</p>', 4);
+  AssertEquals('<p>a paragraph much longer than four columns</p>', H);
+end;
+
+procedure TTestMarkdown.WrappingNeverSplitsAnEntity;
+var
+  H: string;
+begin
+  { IpHtmlPanel draws "&amp;" inside a <pre> as those five characters rather
+    than as an ampersand, so that is what it costs; what must not happen
+    either way is "&am" on one line and "p;" on the next. }
+  H := LedWrapPreLines('<pre>ab&amp;cd</pre>', 3);
+  AssertEquals('<pre>ab&amp;' + #10 + 'cd</pre>', H);
+end;
+
+procedure TTestMarkdown.WrappingKeepsEveryLineOfABlock;
+var
+  H: string;
+begin
+  H := LedWrapPreLines('<pre>' + #10 + 'one two' + #10 + 'three' + #10 +
+    '</pre>', 3);
+  AssertHas('the first line is wrapped', H, 'one ' + #10 + 'two');
+  AssertHas('the second as well', H, 'thr' + #10 + 'ee');
+  AssertHas('and the break before the close tag survives', H, #10 + '</pre>');
+end;
+
+procedure TTestMarkdown.WrappingOffIsTheDocumentItself;
+begin
+  AssertEquals('<pre>a very long line indeed</pre>',
+    LedWrapPreLines('<pre>a very long line indeed</pre>', 0));
 end;
 
 initialization
