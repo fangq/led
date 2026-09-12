@@ -3233,6 +3233,87 @@ end;
   caret at line 1 column 1 of an empty "Untitled 1" and shows that line's
   number in the gutter; this asserts led does the same, because "it opened
   looking wrong" is otherwise a report nobody can act on. }
+{ Opening something that is not text.  The dump itself is covered headlessly
+  in the core suite; what matters here is that the editor notices, refuses to
+  write the dump back over the file, and can still be told it was wrong. }
+procedure TestBinaryFiles(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Raw, Saved: string;
+  L: TStringList;
+  Failed: string;
+begin
+  Say('binary files');
+
+  Raw := 'MZ' + #0#0 + 'header' + #0 + StringOfChar(#1, 40);
+  Path := TempName('probe.bin');
+  L := TStringList.Create;
+  try
+    L.LineBreak := #10;
+    L.Text := Raw;
+    { Written as bytes, not as lines -- a TStringList would add a terminator
+      and change the very thing under test. }
+    with TFileStream.Create(Path, fmCreate) do
+      try
+        Write(Raw[1], Length(Raw));
+      finally
+        Free;
+      end;
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('a file with NUL bytes opens as a dump', Doc.IsBinary);
+  Check('and the dump is what the buffer holds',
+    Pos('00000000  4d 5a 00 00', Doc.Master.Lines.Text) = 1);
+  { The view is not offered for editing: letting it be typed into and
+    refusing at the save would lose the typing and say so far too late. }
+  Check('the view is read-only', Tab.ActiveView.ReadOnly);
+  { No encoding and no line ending are claimed, because the buffer is not the
+    file and neither would be true of it. }
+  CheckEq('no encoding is claimed', '', Doc.Info.Encoding);
+  Check('and no language is detected', Doc.LangInfo = nil);
+
+  { The one that matters.  Saving the dump would write the offsets and the
+    bars over the bytes they describe, and the text path would normalise the
+    line endings on the way out for good measure. }
+  Failed := '';
+  try
+    Doc.SaveToFile(Path);
+  except
+    on E: Exception do Failed := E.Message;
+  end;
+  Check('saving a dump is refused', Failed <> '');
+  Saved := '';
+  with TFileStream.Create(Path, fmOpenRead) do
+    try
+      SetLength(Saved, Size);
+      if Size > 0 then Read(Saved[1], Size);
+    finally
+      Free;
+    end;
+  CheckEq('and the file on disk is untouched', Raw, Saved);
+
+  { Detection is a heuristic, so it has to be possible to overrule. }
+  Doc.OpenAsText;
+  Pump;
+  Check('opening as text turns the dump off', not Doc.IsBinary);
+  Check('and the buffer is the file again',
+    Pos('MZ', Doc.Master.Lines.Text) = 1);
+  Check('and the view can be edited', not Tab.ActiveView.ReadOnly);
+
+  DeleteFile(Path);
+end;
+
 procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -5342,6 +5423,7 @@ begin
   { First, before anything else has had a chance to open a tab or move a
     caret: this section is about the state led actually starts in. }
   TestStartupDocument(F);
+  TestBinaryFiles(F);
   WriteLn;
 
   TestLineEndDetection;

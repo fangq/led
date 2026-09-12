@@ -40,7 +40,8 @@ type
     lfeAccessDenied,
     lfeEncodingFailed,    // no candidate encoding could decode the bytes
     lfeEncodingUnsupported,
-    lfeIOError
+    lfeIOError,
+    lfeNotText            // open as a hex dump; the buffer is not the file
   );
 
   ELedFileError = class(Exception)
@@ -90,6 +91,11 @@ function LedIsRegularFile(const APath: string): Boolean;
 function LedDecodeText(const ARaw: string; const AForcedEncoding: string;
   const ACachedEncoding: string; ACandidates: TStrings;
   out AText: string; out AInfo: TLedTextInfo): TLedFileError;
+
+{ The file's bytes, with nothing interpreted.  What a hex dump is made from,
+  and what deciding whether a file is text at all has to look at.  Raises
+  ELedFileError. }
+function LedReadRawFile(const AFileName: string): string;
 
 { Loads AFileName, normalising every line ending to LF.  Raises
   ELedFileError. }
@@ -158,6 +164,9 @@ begin
     lfeEncodingUnsupported:
       Result := Format('%s uses a character encoding led cannot read.', [N]);
     lfeIOError:       Result := Format('%s could not be read or written.', [N]);
+    lfeNotText:
+      Result := Format('%s is open as a hex dump, which cannot be saved back '
+        + 'over the file it describes.', [N]);
   else
     Result := '';
   end;
@@ -411,6 +420,11 @@ begin
       raise ELedFileError.Create(lfeIOError, AFileName, E.Message);
   end;
   Stream.Free;
+end;
+
+function LedReadRawFile(const AFileName: string): string;
+begin
+  Result := ReadWholeFile(AFileName);
 end;
 
 procedure LedLoadTextFile(const AFileName, AForcedEncoding: string;

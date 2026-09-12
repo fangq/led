@@ -20,7 +20,8 @@ interface
 uses
   Classes, SysUtils, Contnrs, Graphics, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
-  Led.Core.Types, Led.Core.FileIO, Led.Core.Encodings, Led.Core.Config,
+  Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.Encodings,
+  Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
   Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup,
@@ -41,6 +42,8 @@ type
     FConfig: TLedDocConfig;
     FDiskAge: LongInt;          // mtime as of the last load or save
     FDiskSize: Int64;
+    FIsBinary: Boolean;         // shown as a hex dump, and not saveable
+    FForceText: Boolean;        // the user asked for the text editor anyway
     FOnChanged: TLedDocumentEvent;
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
@@ -66,6 +69,10 @@ type
       document last used, then the user's candidate list. }
     procedure LoadFromFile(const AFileName: string;
       const AForcedEncoding: string = '');
+    { Reopens a file that was shown as hex in the ordinary text editor.  The
+      detection is a heuristic -- a NUL early on -- and a heuristic needs a
+      way to be overruled. }
+    procedure OpenAsText;
     procedure Reload(const AForcedEncoding: string = '');
     procedure SaveToFile(const AFileName: string);
     procedure Save;
@@ -87,6 +94,11 @@ type
     property Info: TLedTextInfo read FInfo;
     property Config: TLedDocConfig read FConfig;
     property Modified: Boolean read GetModified;
+    { True when the file was opened as a hex dump because it does not look
+      like text.  The buffer then holds the dump, not the file, so it is
+      read-only and Save refuses: writing the dump back would destroy the
+      file it came from. }
+    property IsBinary: Boolean read FIsBinary;
     property Master: TSynEdit read FMaster;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
@@ -271,6 +283,12 @@ begin
     non-Windows widgetset (nothing in the GTK2 or Cocoa backends reads
     Font.Quality at all), so this only changes anything here. }
   AView.Font.Quality := fqAntialiased;
+
+  { A dump cannot be edited into anything meaningful and must not be saved,
+    so it is not offered for editing at all.  The alternative -- letting it be
+    typed into and refusing at the save -- loses the typing and says so far
+    too late. }
+  AView.ReadOnly := FIsBinary;
 
   AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
   AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
@@ -504,20 +522,51 @@ end;
 procedure TLedDocument.LoadFromFile(const AFileName: string;
   const AForcedEncoding: string);
 var
-  Text, Cached: string;
+  Text, Cached, Raw: string;
   Encodings: TStringList;
+  Err: TLedFileError;
 begin
-  Encodings := TStringList.Create;
-  try
-    LedParseEncodingList(
-      LedPrefs.GetStr(LedPrefEncodings, LedDefaultEncodingList), Encodings);
-    { A document that already knows its own encoding keeps it across a
-      reload, so a file does not change its mind between openings. }
-    Cached := FInfo.Encoding;
-    if FFileName <> AFileName then Cached := '';
-    LedLoadTextFile(AFileName, AForcedEncoding, Cached, Encodings, Text, FInfo);
-  finally
-    Encodings.Free;
+  { The bytes first, because whether this is text at all is decided from
+    them and a hex dump is made from them.  One read either way: the text
+    path decodes what is already in hand rather than opening the file
+    again. }
+  Raw := LedReadRawFile(AFileName);
+  FIsBinary := (not FForceText) and (AForcedEncoding = '') and
+    LedLooksBinary(Raw);
+
+  if FIsBinary then
+  begin
+    { No decoding, no encoding, no line-ending convention: the buffer holds a
+      rendering of the file rather than the file, and saying otherwise would
+      invite the save path to write it back. }
+    Text := LedHexDump(Raw);
+    FInfo := LedDefaultTextInfo;
+    { Claim neither.  The buffer is a rendering of the bytes, so it has no
+      encoding and no line-ending convention of its own, and recording the
+      defaults would put a guess into the session file and onto the status
+      bar as though it were known. }
+    FInfo.Encoding := '';
+    FInfo.LineEnd := leUnknown;
+  end
+  else
+  begin
+    Encodings := TStringList.Create;
+    try
+      LedParseEncodingList(
+        LedPrefs.GetStr(LedPrefEncodings, LedDefaultEncodingList), Encodings);
+      { A document that already knows its own encoding keeps it across a
+        reload, so a file does not change its mind between openings. }
+      Cached := FInfo.Encoding;
+      if FFileName <> AFileName then Cached := '';
+      { The same error LedLoadTextFile would have raised; only the reading is
+        done differently, so "Reopen with encoding" still reports what went
+        wrong with the encoding it was given. }
+      Err := LedDecodeText(Raw, AForcedEncoding, Cached, Encodings, Text, FInfo);
+      if Err <> lfeNone then
+        raise ELedFileError.Create(Err, AFileName);
+    finally
+      Encodings.Free;
+    end;
   end;
 
   FMaster.BeginUpdate;
@@ -539,8 +588,13 @@ begin
   FConfig.UnsetBySource(lcsAuto);
   FConfig.SetStr(LedSetEncoding, FInfo.Encoding, lcsAuto);
   FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
-  ReadModelines;
-  DetectLanguage;
+  { A dump has no modeline and no language: what it looks like is decided
+    here, not by anything in the file. }
+  if not FIsBinary then
+  begin
+    ReadModelines;
+    DetectLanguage;
+  end;
   { Glob rules are applied after detection because a rule may select on the
     language, and they outrank the modeline read just above. }
   LedFilterSettings.ApplyTo(FConfig, FFileName, FConfig.GetStr(LedSetLang));
@@ -548,6 +602,19 @@ begin
   ApplyConfigToViews;
 
   if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.OpenAsText;
+begin
+  if FFileName = '' then Exit;
+  FForceText := True;
+  try
+    LoadFromFile(FFileName);
+  finally
+    { One reopening, not a standing decision: a later Reload of a file that
+      really is binary should go back to showing the dump. }
+    FForceText := False;
+  end;
 end;
 
 procedure TLedDocument.Reload(const AForcedEncoding: string);
@@ -617,6 +684,13 @@ procedure TLedDocument.SaveToFile(const AFileName: string);
 var
   Renamed: Boolean;
 begin
+  { The buffer is a picture of the file, not the file.  Saving it would write
+    the offsets and the bars over the bytes they describe -- and the text path
+    would normalise the line endings on the way, so even a dump that happened
+    to parse back would not come out the same.  Refused here rather than in
+    the menu, because Save has more ways in than one. }
+  if FIsBinary then
+    raise ELedFileError.Create(lfeNotText, AFileName);
   Renamed := not SameText(AFileName, FFileName);
   LedSaveTextFile(AFileName, PreparedText, FInfo,
     LedPrefs.GetBool(LedPrefMakeBackups, False));
