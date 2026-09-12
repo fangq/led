@@ -314,7 +314,9 @@ begin
     which reads as "nothing here to select" over a terminal you can in fact
     select from. }
   Cursor := crIBeam;
-  Font.Name := {$IFDEF WINDOWS}'Consolas'{$ELSE}'Monospace'{$ENDIF};
+  { The same default the editor uses, rather than a second opinion spelled
+    out here: led ships a font and the terminal should be in it too. }
+  Font.Name := LedDefaultFontName;
   { Scaled, for the reason spelled out over LedScalePointSize: on gtk2 the
     point size is the only thing that moves the rendered height.  The cell
     size follows from it -- the metrics are measured off the canvas -- so the
