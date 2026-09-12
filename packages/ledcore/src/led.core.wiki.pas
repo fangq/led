@@ -38,9 +38,11 @@ uses
   Classes, SysUtils, StrUtils, Led.Core.Markdown;
 
 { Converts wiki markup to an HTML fragment. }
-function LedWikiToHTML(const AText: string): string;
+function LedWikiToHTML(const AText: string;
+  ALineIds: Boolean = False): string;
 { ...and to a whole page, with the same stylesheet the Markdown preview uses. }
-function LedWikiToPage(const AText, ATitle: string): string;
+function LedWikiToPage(const AText, ATitle: string;
+  ALineIds: Boolean = False): string;
 
 { True when this looks like a wiki file: the extensions medit claims, or a
   first line of "<!-- wiki -->". }
@@ -75,6 +77,12 @@ type
     InPara: Boolean;
     InTable: Boolean;
     AnchorsSeen: TStringList;
+    { The source line being converted, and whether the caller wants it on the
+      blocks.  Carried in the context because every block is written by a
+      helper that already has one -- see LedMarkdownToHTML for what the ids
+      are for. }
+    Line: Integer;
+    LineIds: Boolean;
   end;
 
 const
@@ -116,6 +124,15 @@ begin
   end;
   while (Result <> '') and (Result[Length(Result)] = '-') do
     Delete(Result, Length(Result), 1);
+end;
+
+{ The source line of the block about to be written, as an id attribute. }
+function LineId(const C: TWikiCtx): string;
+begin
+  if C.LineIds and (C.Line > 0) then
+    Result := ' id="L' + IntToStr(C.Line) + '"'
+  else
+    Result := '';
 end;
 
 function SaveRaw(var C: TWikiCtx; const AHtml: string): string;
@@ -417,11 +434,12 @@ begin
   end;
   if AKind = 'd' then
   begin
-    if ATerm <> '' then Emit(C, '<dt>' + ATerm + '</dt>');
-    Emit(C, '<dd>' + AHtml);
+    if ATerm <> '' then
+      Emit(C, '<dt' + LineId(C) + '>' + ATerm + '</dt>');
+    Emit(C, '<dd' + LineId(C) + '>' + AHtml);
   end
   else
-    Emit(C, '<li>' + AHtml);
+    Emit(C, '<li' + LineId(C) + '>' + AHtml);
   C.Lists[I].ItemOpen := True;
 end;
 
@@ -441,7 +459,7 @@ begin
 
   if not C.InTable then
   begin
-    Emit(C, '<table class="wikitable">');
+    Emit(C, '<table class="wikitable"' + LineId(C) + '>');
     C.InTable := True;
   end;
 
@@ -456,7 +474,7 @@ begin
   try
     Parts.StrictDelimiter := True;
     Parts.Text := StringReplace(Body, Sep, LineEnding, [rfReplaceAll]);
-    Row := '<tr>';
+    Row := '<tr' + LineId(C) + '>';
     for i := 0 to Parts.Count - 1 do
       Row := Row + '<' + Tag + '>' + WikiInline(C, Trim(Parts[i])) +
              '</' + Tag + '>';
@@ -511,8 +529,11 @@ begin
       [ALevel, LedHtmlEscape(Anchor), LedHtmlEscape(Number),
        WikiInline(C, Display), ALevel]))
   else
-    Emit(C, Format('<h%d>%s</h%d>',
-      [ALevel, WikiInline(C, Display), ALevel]));
+    { A heading in the table of contents already carries the id its own
+      link points at, and an element has only one; those lines are found
+      through the block above or below them instead. }
+    Emit(C, Format('<h%d%s>%s</h%d>',
+      [ALevel, LineId(C), WikiInline(C, Display), ALevel]));
 end;
 
 procedure ParagraphLine(var C: TWikiCtx; const ALine: string);
@@ -521,7 +542,7 @@ begin
   CloseListsTo(C, 0);
   if not C.InPara then
   begin
-    Emit(C, '<p>');
+    Emit(C, '<p' + LineId(C) + '>');
     C.InPara := True;
   end;
   Emit(C, WikiInline(C, ALine));
@@ -606,7 +627,7 @@ begin
   Result := Result + '</ul></div>';
 end;
 
-function LedWikiToHTML(const AText: string): string;
+function LedWikiToHTML(const AText: string; ALineIds: Boolean): string;
 var
   C: TWikiCtx;
   Lines: TStringList;
@@ -616,6 +637,7 @@ var
   AllDash: Boolean;
 begin
   FillChar(C, SizeOf(C), 0);
+  C.LineIds := ALineIds;
   C.Out_ := TStringList.Create;
   C.Saved := TStringList.Create;
   C.AnchorsSeen := TStringList.Create;
@@ -628,6 +650,7 @@ begin
     begin
       Line := Lines[i];
       Trimmed := TrimRight(Line);
+      C.Line := i + 1;
 
       if Trim(Trimmed) = '' then
       begin
@@ -771,14 +794,17 @@ begin
   end;
 end;
 
-function LedWikiToPage(const AText, ATitle: string): string;
+function LedWikiToPage(const AText, ATitle: string;
+  ALineIds: Boolean): string;
 var
   Body: string;
 begin
   { The Markdown page wrapper carries the stylesheet the preview pane
     expects, so a wiki page is that wrapper around this body -- rendered
     through a marker no document can contain. }
-  Body := LedWikiToHTML(AText);
+  Body := LedWikiToHTML(AText, ALineIds);
+  { The wrapper is not part of the document and carries no line of it: its
+    paragraph is the one the body replaces. }
   Result := LedMarkdownToPage('%LEDWIKIBODY%', ATitle);
   Result := StringReplace(Result, '<p>%LEDWIKIBODY%</p>', Body, [rfReplaceAll]);
   Result := StringReplace(Result, '%LEDWIKIBODY%', Body, [rfReplaceAll]);

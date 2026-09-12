@@ -49,6 +49,9 @@ type
     procedure DoesNotClaimOtherFiles;
     procedure EmptyInputIsHarmless;
     procedure PageWrapsTheBody;
+    procedure LineIdsAreOffUnlessAskedFor;
+    procedure LineIdsMarkTheBlocks;
+    procedure ATocHeadingKeepsItsOwnId;
   end;
 
 implementation
@@ -370,6 +373,37 @@ begin
   AssertHas('the page is a document', '<html', LowerCase(S));
   AssertHas('carrying the rendered body', '<h1>Title</h1>', S);
   AssertHasNot('and no placeholder is left behind', '%LEDWIKIBODY%', S);
+end;
+
+procedure TTestWiki.LineIdsAreOffUnlessAskedFor;
+begin
+  AssertHasNot('nothing changes for callers that did not ask',
+    'id="L', H('= Title =' + LineEnding + LineEnding + 'Words.'));
+end;
+
+procedure TTestWiki.LineIdsMarkTheBlocks;
+var
+  S: string;
+begin
+  { What the preview needs to scroll with the text beside it: the source line
+    on every block it can point at. }
+  S := LedWikiToHTML('= Title =' + LineEnding + LineEnding + 'Words.' +
+    LineEnding + LineEnding + '* one' + LineEnding + '* two', True);
+  AssertHas('the heading', '<h1 id="L1">', S);
+  AssertHas('the paragraph', '<p id="L3">', S);
+  AssertHas('the first item', '<li id="L5">', S);
+  AssertHas('the second item', '<li id="L6">', S);
+end;
+
+procedure TTestWiki.ATocHeadingKeepsItsOwnId;
+var
+  S: string;
+begin
+  { A numbered heading's id is what its entry in the table of contents links
+    to, and an element has only one.  The link wins. }
+  S := LedWikiToHTML('= # Numbered =', True);
+  AssertHas('the anchor is the slug', 'id="numbered"', S);
+  AssertHasNot('not the line', 'id="L1"', S);
 end;
 
 initialization

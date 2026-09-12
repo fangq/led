@@ -47,6 +47,12 @@ type
     procedure SplittingLeavesPreformattedTextAlone;
     procedure SplittingKeepsTheAttributesOfATag;
     procedure SplittingPutsAWholeRunOfSpacesOutside;
+    procedure LineIdsAreOffUnlessAskedFor;
+    procedure LineIdsMarkEveryBlock;
+    procedure AParagraphBelongsToItsFirstLine;
+    procedure LineIdsCountBlankLines;
+    procedure ListItemsAreMarkedOneByOne;
+    procedure LineIdsSurviveTheWholePage;
   end;
 
 implementation
@@ -321,6 +327,68 @@ begin
     span holding nothing but a space. }
   AssertEquals('<b>two</b>  <b>words</b>',
     LedSplitInlineRuns('<b>two  words</b>'));
+end;
+
+{ --- source line ids ------------------------------------------------------- }
+
+procedure TTestMarkdown.LineIdsAreOffUnlessAskedFor;
+begin
+  { The converter's own output is unchanged for every caller that has no use
+    for them. }
+  AssertEquals('<h1>Title</h1>' + LineEnding, LedMarkdownToHTML('# Title'));
+end;
+
+procedure TTestMarkdown.LineIdsMarkEveryBlock;
+var
+  H: string;
+begin
+  H := LedMarkdownToHTML('# Title' + LineEnding + LineEnding + 'Words.' +
+    LineEnding + LineEnding + '> quoted' + LineEnding + LineEnding +
+    '    code', True);
+  AssertHas('the heading', H, '<h1 id="L1">');
+  AssertHas('the paragraph', H, '<p id="L3">');
+  AssertHas('the quote', H, '<blockquote id="L5">');
+  AssertHas('the code block', H, '<pre id="L7">');
+end;
+
+procedure TTestMarkdown.AParagraphBelongsToItsFirstLine;
+var
+  H: string;
+begin
+  { A hard-wrapped paragraph is one block; scrolling to it means scrolling to
+    where it starts. }
+  H := LedMarkdownToHTML('one' + LineEnding + 'two' + LineEnding + 'three',
+    True);
+  AssertHas('starts at line 1', H, '<p id="L1">');
+  AssertFalse('and is not three paragraphs', Pos('<p id="L2">', H) > 0);
+end;
+
+procedure TTestMarkdown.LineIdsCountBlankLines;
+var
+  H: string;
+begin
+  { The line number has to be the editor's, or the preview scrolls to the
+    wrong place in any document with a blank line in it -- which is all of
+    them. }
+  H := LedMarkdownToHTML(LineEnding + LineEnding + LineEnding + 'Words.', True);
+  AssertHas('', H, '<p id="L4">');
+end;
+
+procedure TTestMarkdown.ListItemsAreMarkedOneByOne;
+var
+  H: string;
+begin
+  H := LedMarkdownToHTML('- one' + LineEnding + '- two', True);
+  AssertHas('first item', H, '<li id="L1">');
+  AssertHas('second item', H, '<li id="L2">');
+end;
+
+procedure TTestMarkdown.LineIdsSurviveTheWholePage;
+begin
+  AssertHas('the page carries them too',
+    LedMarkdownToPage('# Title', 'doc', True), '<h1 id="L1">');
+  AssertFalse('and does not when it was not asked',
+    Pos('id="L1"', LedMarkdownToPage('# Title', 'doc')) > 0);
 end;
 
 initialization
