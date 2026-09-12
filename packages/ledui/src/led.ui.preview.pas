@@ -16,12 +16,16 @@ unit Led.UI.Preview;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
+  Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki;
 
 type
+  { Fired when the reader clicks a place in the rendered page, with the source
+    line that place came from. }
+  TLedPreviewLineEvent = procedure(Sender: TObject; ALine: Integer) of object;
+
   TLedPreviewPane = class(TPanel)
   private
     FHtml: TIpHtmlPanel;
@@ -39,7 +43,14 @@ type
     FRenderedWiki: Boolean;
     FPendingText: string;
     FPendingTitle: string;
+    FLineIds: array of Integer;   { the source lines the page carries, rising }
+    FSyncedLine: Integer;         { the last line scrolled to, to not repeat }
+    FOnJumpToLine: TLedPreviewLineEvent;
     function CodeColumns: Integer;
+    procedure CollectLineIds(const APage: string);
+    function NearestLineId(ALine: Integer): Integer;
+    function LineUnderCursor: Integer;
+    procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
@@ -74,6 +85,16 @@ type
       exception into a message label, so "it rendered" and "it quietly gave
       up" look identical from outside. }
     function RenderNow: Boolean;
+
+    { Scrolls the rendered page to the block the given source line belongs to,
+      and says whether there was one to scroll to.  The mapping is per block:
+      a line inside a paragraph scrolls to the paragraph. }
+    function ScrollToLine(ALine: Integer): Boolean;
+
+    { Clicking a place in the page reports the line it was made from, which is
+      how the text view follows the preview. }
+    property OnJumpToLine: TLedPreviewLineEvent
+      read FOnJumpToLine write FOnJumpToLine;
   end;
 
 { True when this document is one the preview understands. }
@@ -136,6 +157,10 @@ begin
     double-buffers its own expose events, so on this widgetset there is
     nothing to lose. }
   FHtml.UsePaintBuffer := False;
+  { Only a click that did not drag and did not land on a link gets here --
+    TIpHtmlInternalPanel.MouseUp sees to that -- so selecting text in the
+    preview and following a link both still mean what they meant. }
+  FHtml.OnClick := @HtmlClicked;
 
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 250;
@@ -205,6 +230,8 @@ begin
   FHasRendered := False;
   FPendingRender := False;
   FRenderedText := '';
+  SetLength(FLineIds, 0);
+  FSyncedLine := 0;
   FTimer.Enabled := False;
 end;
 
@@ -263,6 +290,130 @@ begin
   if Result < 16 then Result := 16;
 end;
 
+{ --- the line mapping ------------------------------------------------------
+
+  The page carries the source line of every block it was made from, as
+  id="L<n>" (see LedMarkdownToHTML).  Those ids are the whole mapping: one
+  way through MakeAnchorVisible, which IPro resolves against element ids as
+  well as anchors, and the other by reading the id off the block under the
+  mouse.  Nothing here needs a document model, and nothing here is finer than
+  a block -- which is as far as a preview can honestly point. }
+
+{ The lines the page carries, in the order they appear, which for a document
+  is ascending.  Read back off the finished page rather than kept by the
+  converter: that keeps the converter a string-to-string function, and the
+  scan costs a millisecond on a page that takes half a second to lay out. }
+procedure TLedPreviewPane.CollectLineIds(const APage: string);
+const
+  Marker = ' id="L';
+var
+  P, Q, N, Count_: Integer;
+begin
+  SetLength(FLineIds, 0);
+  Count_ := 0;
+  P := Pos(Marker, APage);
+  while P > 0 do
+  begin
+    Q := P + Length(Marker);
+    N := 0;
+    while (Q <= Length(APage)) and (APage[Q] in ['0'..'9']) do
+    begin
+      N := N * 10 + (Ord(APage[Q]) - Ord('0'));
+      Inc(Q);
+    end;
+    { Strictly rising, so the array can be searched rather than scanned.  An
+      id out of order would be a converter bug; dropping it here is better
+      than a binary search that quietly lies. }
+    if (N > 0) and ((Count_ = 0) or (N > FLineIds[Count_ - 1])) then
+    begin
+      if Count_ = Length(FLineIds) then
+        SetLength(FLineIds, Count_ * 2 + 32);
+      FLineIds[Count_] := N;
+      Inc(Count_);
+    end;
+    P := PosEx(Marker, APage, Q);
+  end;
+  SetLength(FLineIds, Count_);
+end;
+
+{ The last block at or before ALine -- the block that line is inside.  Before
+  the first block, the first block: scrolling a title page to nothing would
+  look like a preview that had stopped following. }
+function TLedPreviewPane.NearestLineId(ALine: Integer): Integer;
+var
+  Lo, Hi, Mid: Integer;
+begin
+  Result := 0;
+  if Length(FLineIds) = 0 then Exit;
+  if ALine <= FLineIds[0] then Exit(FLineIds[0]);
+  Lo := 0;
+  Hi := High(FLineIds);
+  while Lo < Hi do
+  begin
+    Mid := (Lo + Hi + 1) div 2;
+    if FLineIds[Mid] <= ALine then Lo := Mid else Hi := Mid - 1;
+  end;
+  Result := FLineIds[Lo];
+end;
+
+function TLedPreviewPane.ScrollToLine(ALine: Integer): Boolean;
+var
+  N: Integer;
+begin
+  Result := False;
+  if (not FHasRendered) or (not FHtml.Visible) then Exit;
+  N := NearestLineId(ALine);
+  if N = 0 then Exit;
+  Result := True;
+  { Already showing that block.  Worth the check: this runs on every line the
+    text view scrolls past, and each move repaints the page. }
+  if N = FSyncedLine then Exit;
+  FSyncedLine := N;
+  FHtml.MakeAnchorVisible('L' + IntToStr(N));
+end;
+
+{ The source line of the block under the mouse.  IPro keeps the element the
+  pointer last moved over; the line is on the block that element belongs to,
+  so this walks out of the text and up to the first ancestor that carries one
+  -- a word in a paragraph reports the paragraph. }
+function TLedPreviewPane.LineUnderCursor: Integer;
+var
+  Node: TIpHtmlNode;
+  Id: string;
+begin
+  Result := 0;
+  if FHtml.CurElement = nil then Exit;
+  Node := FHtml.CurElement^.Owner;
+  while Node <> nil do
+  begin
+    if Node is TIpHtmlNodeCore then
+    begin
+      Id := TIpHtmlNodeCore(Node).Id;
+      if (Length(Id) > 1) and (Id[1] = 'L') then
+      begin
+        Result := StrToIntDef(Copy(Id, 2, MaxInt), 0);
+        if Result > 0 then Exit;
+      end;
+    end;
+    Node := Node.ParentNode;
+  end;
+end;
+
+procedure TLedPreviewPane.HtmlClicked(Sender: TObject);
+var
+  L: Integer;
+begin
+  if not Assigned(FOnJumpToLine) then Exit;
+  L := LineUnderCursor;
+  if L <= 0 then Exit;
+  { The text view is about to move, and its move comes back here as a scroll
+    request.  Recording the block now means that round trip finds the preview
+    already where it should be and leaves it alone, instead of jumping the
+    thing the reader just clicked to the top of the pane. }
+  FSyncedLine := NearestLineId(L);
+  FOnJumpToLine(Self, L);
+end;
+
 procedure TLedPreviewPane.Render(Sender: TObject);
 var
   Page: string;
@@ -297,13 +448,18 @@ begin
   end;
 
   if FIsWiki then
-    Page := LedWikiToPage(FPendingText, FPendingTitle)
+    Page := LedWikiToPage(FPendingText, FPendingTitle, True)
   else
-    Page := LedMarkdownToPage(FPendingText, FPendingTitle);
+    Page := LedMarkdownToPage(FPendingText, FPendingTitle, True);
   try
     { Both adjustments are for the renderer rather than for the document:
       see LedWrapPreLines and LedSplitInlineRuns. }
-    FHtml.SetHtmlFromStr(LedSplitInlineRuns(LedWrapPreLines(Page, CodeColumns)));
+    Page := LedSplitInlineRuns(LedWrapPreLines(Page, CodeColumns));
+    FHtml.SetHtmlFromStr(Page);
+    { From the page as it was handed over: neither adjustment touches an id,
+      but this is the string the control is actually holding. }
+    CollectLineIds(Page);
+    FSyncedLine := 0;
     FRenderedWidth := FHtml.ClientWidth;
     FRenderedText := FPendingText;
     FRenderedTitle := FPendingTitle;

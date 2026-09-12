@@ -3809,6 +3809,70 @@ end;
   What that cannot see is the wiring: whether opening a .wiki file picks the
   grammar up, and whether the preview pane chooses the wiki renderer over the
   Markdown one. }
+{ The line mapping between the text and the preview.
+
+  The page carries the source line of every block as id="L<n>", and the pane
+  turns that into two things: scrolling the page to a line, and reporting the
+  line under a click.  Only the first can be driven from here -- a click needs
+  a mouse over a laid-out page -- but the mapping itself is the same one, and
+  the headless tests cover the ids in the markup. }
+procedure TestPreviewLineMapping(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+begin
+  Say('preview line mapping');
+  if F.Preview = nil then Exit;
+
+  P := TempName('mapped.md');
+  L := TStringList.Create;
+  try
+    L.Add('# Title');          { line 1 }
+    L.Add('');
+    L.Add('First paragraph.'); { line 3 }
+    L.Add('');
+    L.Add('## Second');        { line 5 }
+    L.Add('');
+    L.Add('Another paragraph');{ line 7 }
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+
+  F.actTogglePreviewExecute(nil);
+  Pump;
+  Check('the preview rendered the document', F.Preview.RenderNow);
+
+  Check('a line with a block of its own is found',
+    F.Preview.ScrollToLine(5));
+  Check('and so is a line inside one -- it maps to the block it is in',
+    F.Preview.ScrollToLine(6));
+  Check('the first block covers everything above it',
+    F.Preview.ScrollToLine(1));
+
+  { A document with nothing in it has no block to point at, and the pane has
+    to say so rather than scroll somewhere arbitrary. }
+  F.Preview.Update('', 'empty', '');
+  Pump;
+  F.Preview.RenderNow;
+  Check('an empty document maps nowhere', not F.Preview.ScrollToLine(1));
+
+  { Put it back the way the wiki section leaves it, or the docking checks
+    further down see an edge nobody opened. }
+  F.Dock.EdgeVisible[ledRight] := False;
+  Pump;
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 procedure TestWikiMarkup(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -5569,6 +5633,7 @@ begin
   TestFoldGuides(F);
   TestLongLines(F);
   TestWikiMarkup(F);
+  TestPreviewLineMapping(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);

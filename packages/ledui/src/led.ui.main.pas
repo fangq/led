@@ -516,6 +516,8 @@ type
     FClipAskedAt: QWord;
     function ClipboardHasText(AView: TLedEdit): Boolean;
     procedure RefreshPreview(AImmediate: Boolean = False);
+    procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
+    procedure SyncPreviewToLine;
     procedure SymbolJump(ALine: Integer);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
@@ -925,6 +927,7 @@ begin
     preview renders nothing until asked -- so they are registered here with
     the rest, and LoadLayout finds everything it names. }
   FPreview := TLedPreviewPane.Create(Self);
+  FPreview.OnJumpToLine := @PreviewJumpToLine;
   FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
 
   { Except where there is no pseudo-terminal to be had.  Registering it there
@@ -1172,6 +1175,9 @@ begin
     FPreview.IsWiki := LedIsWikiFile(Doc.FileName, First);
     FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
       ExtractFileDir(Doc.FileName), AImmediate);
+    { A page that has just been built starts at the top; the document may not
+      be.  Only worth doing where the page is already there to scroll. }
+    if AImmediate then SyncPreviewToLine;
   end
   else
     FPreview.ShowMessage_('This is not a Markdown or wiki file.');
@@ -3536,6 +3542,40 @@ procedure TLedMainForm.ViewStatusChange(Sender: TObject;
 begin
   if AChanges * [scCaretX, scCaretY, scSelection, scModified] <> [] then
     UpdateStatusBar;
+  { The preview follows the text: scrolling the document scrolls the page to
+    the block the top line belongs to.  scTopLine covers the scrollbar, the
+    wheel and the keys alike; the caret moving is not enough on its own,
+    since a caret can move without the view going anywhere. }
+  if scTopLine in AChanges then
+    SyncPreviewToLine;
+end;
+
+{ The block the top of the text view is in, shown at the top of the preview.
+
+  Cheap enough to do on every scrolled line: the page is already laid out, so
+  this is a scroll and a repaint of what is on screen -- about five
+  milliseconds -- and the pane skips even that when the line is still inside
+  the block it is already showing. }
+procedure TLedMainForm.SyncPreviewToLine;
+var
+  View: TLedEdit;
+begin
+  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  View := ActiveView;
+  if View = nil then Exit;
+  FPreview.ScrollToLine(View.TopLine);
+end;
+
+{ And the text follows the preview: a click on the page puts the caret on the
+  line that part of the page was made from. }
+procedure TLedMainForm.PreviewJumpToLine(Sender: TObject; ALine: Integer);
+var
+  View: TLedEdit;
+begin
+  View := ActiveView;
+  if View = nil then Exit;
+  LedGotoLine(View, ALine);
+  LedTryFocus(View);
 end;
 
 procedure TLedMainForm.UpdateStatusBar;

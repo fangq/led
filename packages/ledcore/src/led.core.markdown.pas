@@ -22,9 +22,18 @@ uses
   Classes, SysUtils, StrUtils;
 
 { Converts Markdown to an HTML fragment.  Wrap it yourself, or use
-  LedMarkdownToPage for a whole document with a stylesheet. }
-function LedMarkdownToHTML(const AText: string): string;
-function LedMarkdownToPage(const AText, ATitle: string): string;
+  LedMarkdownToPage for a whole document with a stylesheet.
+
+  With ALineIds, every block carries the source line it came from as
+  id="L<n>" -- a heading, a paragraph, a list item, a table row.  That is all
+  a preview needs to scroll with the text beside it and to send a click back
+  to the line it came from, and it is deliberately all: the mapping is per
+  block, not per character, which is the same choice VS Code makes with its
+  data-line attributes.  Anything finer would mean a document model with
+  source spans, and the preview would still only be able to use the block. }
+function LedMarkdownToHTML(const AText: string; ALineIds: Boolean = False): string;
+function LedMarkdownToPage(const AText, ATitle: string;
+  ALineIds: Boolean = False): string;
 function LedHtmlEscape(const AText: string): string;
 
 { Breaks the lines inside <pre> blocks so none is wider than AColumns
@@ -117,6 +126,8 @@ begin
   Result := '';
   Depth := 0;
   InPre := False;
+  Open_ := nil;
+  Names := nil;
   SetLength(Open_, 8);
   SetLength(Names, 8);
   i := 1;
@@ -520,7 +531,7 @@ begin
   Result := True;
 end;
 
-function LedMarkdownToHTML(const AText: string): string;
+function LedMarkdownToHTML(const AText: string; ALineIds: Boolean): string;
 var
   Lines: TStringList;
   Out_: TStringList;
@@ -528,13 +539,24 @@ var
   Line, Trimmed, Content, Fence: string;
   InCode: Boolean;
   Para: string;
+  ParaLine: Integer;           { where the paragraph being gathered began }
   ListStack: TStringList;      { open list tags, innermost last }
+
+  { The id for a block that starts on ALine, counting from one as an editor
+    does, or nothing at all when the caller did not ask for them. }
+  function Anchor(ALine: Integer): string;
+  begin
+    if ALineIds then
+      Result := ' id="L' + IntToStr(ALine) + '"'
+    else
+      Result := '';
+  end;
 
   procedure FlushPara;
   begin
     if Para <> '' then
     begin
-      Out_.Add('<p>' + InlineSpans(Para) + '</p>');
+      Out_.Add('<p' + Anchor(ParaLine) + '>' + InlineSpans(Para) + '</p>');
       Para := '';
     end;
   end;
@@ -548,7 +570,7 @@ var
     end;
   end;
 
-  procedure EmitTableRow(const ARow: string; AHeader: Boolean);
+  procedure EmitTableRow(const ARow: string; AHeader: Boolean; ALine: Integer);
   var
     Cells: TStringArray;
     c: Integer;
@@ -560,7 +582,7 @@ var
       SetLength(Cell, Length(Cell) - 1);
     Cells := Cell.Split(['|']);
     if AHeader then Tag := 'th' else Tag := 'td';
-    Out_.Add('<tr>');
+    Out_.Add('<tr' + Anchor(ALine) + '>');
     for c := 0 to High(Cells) do
       Out_.Add(Format('<%s>%s</%s>', [Tag, InlineSpans(Trim(Cells[c])), Tag]));
     Out_.Add('</tr>');
@@ -591,6 +613,7 @@ begin
     InCode := False;
     InTable := False;
     Para := '';
+    ParaLine := 1;
     Fence := '';
 
     i := 0;
@@ -620,7 +643,7 @@ begin
         FlushPara;
         CloseLists(0);
         Fence := Copy(Trimmed, 1, 3);
-        Out_.Add('<pre>');
+        Out_.Add('<pre' + Anchor(i + 1) + '>');
         InCode := True;
         Inc(i);
         Continue;
@@ -643,7 +666,7 @@ begin
       begin
         FlushPara;
         CloseLists(0);
-        Out_.Add('<hr>');
+        Out_.Add('<hr' + Anchor(i + 1) + '>');
         Inc(i);
         Continue;
       end;
@@ -658,8 +681,9 @@ begin
         begin
           FlushPara;
           CloseLists(0);
-          Out_.Add(Format('<h%d>%s</h%d>',
-            [Level, InlineSpans(Trim(Copy(Trimmed, Level + 1, MaxInt))), Level]));
+          Out_.Add(Format('<h%d%s>%s</h%d>',
+            [Level, Anchor(i + 1),
+             InlineSpans(Trim(Copy(Trimmed, Level + 1, MaxInt))), Level]));
           Inc(i);
           Continue;
         end;
@@ -669,7 +693,7 @@ begin
       begin
         FlushPara;
         CloseLists(0);
-        Out_.Add('<blockquote>' +
+        Out_.Add('<blockquote' + Anchor(i + 1) + '>' +
           InlineSpans(Trim(Copy(Trimmed, 2, MaxInt))) + '</blockquote>');
         Inc(i);
         Continue;
@@ -682,8 +706,9 @@ begin
       begin
         FlushPara;
         CloseLists(0);
-        Out_.Add('<table border="1" cellspacing="0" cellpadding="3">');
-        EmitTableRow(Line, True);
+        Out_.Add('<table border="1" cellspacing="0" cellpadding="3"' +
+          Anchor(i + 1) + '>');
+        EmitTableRow(Line, True, i + 1);
         InTable := True;
         Inc(i, 2);
         Continue;
@@ -692,7 +717,7 @@ begin
       begin
         if Pos('|', Line) > 0 then
         begin
-          EmitTableRow(Line, False);
+          EmitTableRow(Line, False, i + 1);
           Inc(i);
           Continue;
         end;
@@ -710,7 +735,7 @@ begin
           Out_.Add('<ul>');
           ListStack.Add('ul');
         end;
-        Out_.Add('<li>' + InlineSpans(Content) + '</li>');
+        Out_.Add('<li' + Anchor(i + 1) + '>' + InlineSpans(Content) + '</li>');
         Inc(i);
         Continue;
       end;
@@ -725,7 +750,7 @@ begin
           Out_.Add('<ol>');
           ListStack.Add('ol');
         end;
-        Out_.Add('<li>' + InlineSpans(Content) + '</li>');
+        Out_.Add('<li' + Anchor(i + 1) + '>' + InlineSpans(Content) + '</li>');
         Inc(i);
         Continue;
       end;
@@ -733,13 +758,22 @@ begin
       { An indented block with no list open is a code block. }
       if (IndentOf(Line) >= 4) and (ListStack.Count = 0) and (Para = '') then
       begin
-        Out_.Add('<pre>' + LedHtmlEscape(Copy(Line, 5, MaxInt)) + '</pre>');
+        Out_.Add('<pre' + Anchor(i + 1) + '>' +
+          LedHtmlEscape(Copy(Line, 5, MaxInt)) + '</pre>');
         Inc(i);
         Continue;
       end;
 
       CloseLists(0);
-      if Para = '' then Para := Trimmed else Para := Para + ' ' + Trimmed;
+      if Para = '' then
+      begin
+        Para := Trimmed;
+        { The line the paragraph starts on, not the one it ends on: a
+          hard-wrapped paragraph is one block and belongs to its first line. }
+        ParaLine := i + 1;
+      end
+      else
+        Para := Para + ' ' + Trimmed;
       Inc(i);
     end;
 
@@ -755,7 +789,8 @@ begin
   end;
 end;
 
-function LedMarkdownToPage(const AText, ATitle: string): string;
+function LedMarkdownToPage(const AText, ATitle: string;
+  ALineIds: Boolean): string;
 begin
   Result :=
     '<html><head><title>' + LedHtmlEscape(ATitle) + '</title>' +
@@ -765,7 +800,8 @@ begin
     'code { background: #f4f4f4; }' +
     'blockquote { color: #555; border-left: 3px solid #ccc; padding-left: 8px; }' +
     'table { border-collapse: collapse; }' +
-    '</style></head><body>' + LedMarkdownToHTML(AText) + '</body></html>';
+    '</style></head><body>' + LedMarkdownToHTML(AText, ALineIds) +
+    '</body></html>';
 end;
 
 end.
