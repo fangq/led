@@ -155,13 +155,14 @@ install:
 	  echo "    sudo make install PREFIX=/usr/local # system-wide"; \
 	  exit 1; }
 	install -Dm755 $(BIN) $(PREFIX)/bin/led
-	@# Grammars, themes and the shipped tools are read at run time.
-	@for sub in grammars themes tools langs dict fonts; do \
-	  if [ -d "data/$$sub" ]; then \
-	    mkdir -p "$(PREFIX)/share/led/$$sub"; \
-	    cp -r "data/$$sub/." "$(PREFIX)/share/led/$$sub/"; \
-	  fi; \
-	done
+	@# Everything under data/ is read at run time -- grammars, themes, tools,
+	@# the word list, and the bundled fonts.  Copied wholesale rather than
+	@# named subdirectory by subdirectory: that list was written out in six
+	@# places and had already drifted, with the Windows portable zip missing
+	@# data/dict entirely.  A directory added to data/ now ships everywhere
+	@# without six edits and a bug in whichever one was forgotten.
+	mkdir -p "$(PREFIX)/share/led"
+	cp -r data/. "$(PREFIX)/share/led/"
 	install -Dm644 packaging/linux/led.desktop $(PREFIX)/share/applications/led.desktop
 	install -Dm644 packaging/icons/led.svg \
 	  $(PREFIX)/share/icons/hicolor/scalable/apps/led.svg
