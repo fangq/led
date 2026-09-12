@@ -2754,6 +2754,7 @@ var
   Fresh: TLedFileBrowser;
   Root: TTreeNode;
   RootRaised: string;
+  EditH, i: Integer;
 begin
   Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
@@ -2768,6 +2769,32 @@ begin
     takes the nearest control below it -- which came down to creation order,
     and the filter row won.  Asking the splitter what it would resize is the
     only way to check this without a mouse. }
+  { A widget is measured as it is built, and what it measures against is its
+    own style font -- not the TFont the LCL may put on it later, which for an
+    entry it never does.  Built before the scaled style was installed, a
+    GtkEntry asked for the height of 21-pixel text and kept that answer: a
+    34-pixel edit box holding 42-pixel text, in the debug pane's watch and
+    command rows and anywhere else an edit is autosized.  Asked against the
+    scaled style it comes out 57.
+
+    Checked on the debug pane because that is where it was reported, and
+    against the font rather than a constant, so it still means something at
+    any scale. }
+  F.Dock.ShowPane('debug');
+  Pump;
+  EditH := 0;
+  for i := 0 to F.DebugPane.ControlCount - 1 do
+    if F.DebugPane.Controls[i] is TCustomEdit then
+      EditH := F.DebugPane.Controls[i].Height;
+  Check('an autosized edit is tall enough for the text in it',
+    EditH >= LedScale96(16));
+  Say(Format('    debug pane edit box is %d px tall, floor %d',
+    [EditH, LedScale96(16)]));
+  { Put the pane back: the checks further on open panes of their own and
+    expect the dock to be where they left it. }
+  F.Dock.HidePane('debug');
+  Pump;
+
   { The glyph and the button under it came apart twice over.  First the
     glyphs were drawn at a fixed sixteen pixels while the buttons scaled with
     the pane -- four big empty buttons.  Then the buttons were given
@@ -3123,15 +3150,14 @@ begin
       DPI is 21 pixels inside a window laid out for 48. }
     CheckEqInt('the LCL''s own dialog starts with no font height at all',
       0, MsgBefore);
-    { Scaling materialises one, and a height is what gtk2 renders as an
-      absolute pixel size instead of re-reading at the Xft DPI.  On a desktop
-      that is already at the design PPI there is nothing to materialise, and
-      the hard-coded ten points are the right ten points. }
-    if LedDesiredPPI > 96 then
-      Check('and scaling it gives one sized for the display',
-        MsgAfter >= LedScale96(10))
-    else
-      CheckEqInt('and an unscaled desktop leaves it alone', 0, MsgAfter);
+    { And scaling has to leave it that way.  gtk2 resolves a font carrying
+      neither size nor height from the default style, and the default style is
+      the scaled one led installs -- so the dialog is already drawn at the
+      right size and there is nothing to put right.  Materialising a height
+      here would read it back off that same scaled widget and multiply it by
+      the PPI ratio a second time: 42 pixels became 84. }
+    CheckEqInt('and scaling leaves it for the scaled theme to answer',
+      0, MsgAfter);
     { Once only.  AutoAdjustLayout records the PPI it scaled to and returns
       immediately when asked again, which is what stops the startup sweep and
       the visible-changed hook from scaling the same form twice. }

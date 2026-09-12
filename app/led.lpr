@@ -102,6 +102,10 @@ begin
       server refuses shared memory, and GTK's handler answers that by
       calling exit() on an editor holding unsaved work. }
     LedInstallXErrorHandler;
+    { Before the first widget of all: a widget is measured as it is built, and
+      an entry measured with the theme's own font is 34 pixels tall holding
+      42-pixel text for the rest of the session. }
+    LedInstallChromeStyle;
     { Before the first form, so that every form there will ever be is scaled
       as it is shown -- including the message boxes and the unhandled-exception
       dialog the LCL builds where led cannot reach them. }

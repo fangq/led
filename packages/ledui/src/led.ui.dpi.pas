@@ -41,6 +41,14 @@ procedure LedScaleForm(AForm: TCustomForm);
   after the forms are created. }
 procedure LedApplyAdaptiveScale;
 
+{ Install the resource style that scales everything gtk draws for itself.
+  Call once at startup, before the first widget exists: a widget is asked how
+  big it wants to be as it is built, and both gtk and the LCL keep the answer,
+  so a style arriving later changes what things are drawn with and not how big
+  they were made.  Called again when the desktop scale moves, where
+  re-styling is all that is wanted. }
+procedure LedInstallChromeStyle;
+
 { Scale every form from the moment it is first shown, for the rest of the
   session.  Call once at startup.
 
@@ -164,6 +172,14 @@ end;
 var
   GAppliedPPI: Integer = 0;   { the PPI every form is currently scaled to }
   GAppliedChromeFont: string = '';  { what gtk was last told to draw its own widgets in }
+  { The theme's own font, read once and kept.  The style installed below is
+    global, so after it has been installed the default style no longer reports
+    the theme's size -- it reports ours.  Everything that needs the original
+    reads it from here instead, which is what stops a second pass multiplying
+    the factor in again. }
+  GBaseFontSpec: string = '';
+  GBaseFontSize: Integer = 0;
+  GBaseFontTaken: Boolean = False;
 
 function LedDesiredPPI: Integer;
 var
@@ -253,37 +269,63 @@ begin
 end;
 {$ENDIF}
 
+{ Reads the theme's font once and remembers it.  Must run before the style
+  below is installed, which it does: the first thing that wants a scaled font
+  has to ask for the unscaled one to build it from. }
+procedure TakeBaseFont;
+{$IFDEF LED_GTK2_CHROME}
+var
+  Style: PGtkStyle;
+  Spec: PChar;
+begin
+  if GBaseFontTaken then Exit;
+  GBaseFontTaken := True;
+  Style := gtk_widget_get_default_style;
+  if (Style = nil) or (Style^.font_desc = nil) then Exit;
+  GBaseFontSize := pango_font_description_get_size(Style^.font_desc);
+  if not pango_font_description_get_size_is_absolute(Style^.font_desc) then
+    GBaseFontSize := GBaseFontSize div PANGO_SCALE;
+  Spec := pango_font_description_to_string(Style^.font_desc);
+  if Spec <> nil then
+  begin
+    GBaseFontSpec := StrPas(Spec);
+    g_free(Spec);
+  end;
+end;
+{$ELSE}
+begin
+end;
+{$ENDIF}
+
 function LedScaledChromeFont: string;
 {$IFDEF LED_GTK2_CHROME}
 var
   Factor: Double;
-  Style: PGtkStyle;
   Scaled: PPangoFontDescription;
   Size: gint;
   Spec: PChar;
 begin
   Result := '';
+  TakeBaseFont;
   Factor := LedChromeFontFactor;
   { Not "<= 1": the factor is a ratio of two integer DPIs, and a fraction of a
     point either way is not worth overriding the theme for. }
   if Factor <= 1.001 then
     Exit;
 
-  { The theme's font, read from the default style rather than from a widget
-    the style below matches.  That style is narrowly scoped precisely so that
-    this one stays the theme's own: read a scaled widget's style here and
-    every refresh would multiply the factor in again. }
-  Style := gtk_widget_get_default_style;
-  if (Style = nil) or (Style^.font_desc = nil) then
+  { Built from the remembered theme font, not from whatever the default style
+    says now -- the style below is global, so by the second call the default
+    style is already ours. }
+  if GBaseFontSpec = '' then
     Exit;
-  Size := pango_font_description_get_size(Style^.font_desc);
-  if Size <= 0 then
-    Exit;                { a description that carries no size; nothing to do }
-
-  Scaled := pango_font_description_copy(Style^.font_desc);
+  Scaled := pango_font_description_from_string(PChar(GBaseFontSpec));
   if Scaled = nil then
     Exit;
   try
+    Size := pango_font_description_get_size(Scaled);
+    { A description that carries no size; nothing to scale. }
+    if Size <= 0 then
+      Exit;
     { A size is in points or in device pixels, and the two are set by
       different calls: set_size on an absolute description would quietly
       reinterpret its pixels as points. }
@@ -316,35 +358,35 @@ begin
     Result := APoints;
 end;
 
-{ Hand gtk the scaled font as a resource style, for the widgets led does not
-  own and so cannot scale through a TFont: its menus, its status bar, and
-  every dialog the widgetset builds for itself.
+{ Hand gtk the scaled font as a resource style, for every widget it draws.
 
-  A style rather than a font on the widgets because TMenuItem has no Font to
-  set -- the LCL gives menus none, on any widgetset -- because a status bar
-  panel is a GtkStatusbar whose label the LCL only ever hands text to, and
-  because these dialogs are gtk widget trees from top to bottom with no LCL
-  control anywhere inside them.  A style also reaches what is built later, at
-  run time: popup menus, and a dialog that does not exist until it is opened.
+  Scoped to menus, the status bar and dialogs to begin with, on the theory
+  that everything else went through a TFont led controls.  It does not.  A
+  gtk widget's own style font stays the theme's until the LCL decides to
+  override it per widget, and a great deal is sized from that style rather
+  than from the font:
 
-  GtkDialog covers the lot, and covering the lot is the point.  The file
-  chooser and the font and colour selectors are the three the LCL creates
-  from TCommonDialog, but they are not the ones that hurt: PromptUser --
-  which is what an unhandled exception and Application.MessageBox both come
-  out as -- is a gtk_message_dialog_new, and that is why the ignore-or-abort
-  dialog kept its 24-pixel lines while the window that raised it was scaled
-  for 48.  Naming the base class takes all of them, including whichever one
-  the widgetset reaches for next.
+    - gtk_widget_size_request, which is where an AutoSize control gets its
+      height.  A TEdit came out 34 pixels tall holding 42-pixel text, because
+      the GtkEntry was asked how tall it wanted to be while it still had the
+      21-pixel theme font.
+    - a tree view's column headers, which are buttons of gtk's own and never
+      see the font the LCL puts on the tree.
 
-  It cannot over-reach onto led's own windows: an LCL form is a gtk_window_new
-  and GtkDialog is a subclass of GtkWindow, not the other way round, so no
-  form led scales itself can match.  That is also what keeps the default style
-  read above the theme's own.
+  So the style is global now.  It cannot reach anything led sizes itself: a
+  control whose TFont carries a height pushes that font to its widget with
+  gtk_widget_modify_font, and a modification beats a style.  What is left is
+  exactly the set that was wrong -- widgets still drawing with the theme's
+  font because nothing had told them otherwise.
 
-  gtk sizes all of these from their font metrics, so a larger font grows the
-  widget rather than crowding it: nothing here sets a default size, and the
-  LCL only forces one on a dialog that was given a Width. }
-procedure LedApplyChromeFont;
+  What this does not carry is a check box's indicator, which is not text but a
+  style property in device pixels.  Setting GtkCheckButton::indicator-size in
+  this same style does move it for a check button built by hand -- measured,
+  40 instead of 13 -- and does not move the ones the LCL builds, through any
+  of the three pattern forms.  So a check box is still a 16-pixel box beside
+  40-pixel text, and the cause is not yet understood.  Left out rather than
+  left in and not working. }
+procedure LedInstallChromeStyle;
 {$IFDEF LED_GTK2_CHROME}
 var
   Spec: string;
@@ -357,11 +399,9 @@ begin
     '{'#10 +
     '  font_name = "' + Spec + '"'#10 +
     '}'#10 +
-    'widget_class "*<GtkMenuItem>*" style "led_scaled_chrome"'#10 +
-    'widget_class "*<GtkStatusbar>*" style "led_scaled_chrome"'#10 +
-    'widget_class "*<GtkDialog>*" style "led_scaled_chrome"'#10));
-  { The menu bar exists by the time the startup sweep runs, and a resource
-    style otherwise only reaches widgets created after it was parsed. }
+    'class "*" style "led_scaled_chrome"'#10));
+  { For the refresh: at startup this runs before there is anything to
+    re-style, but when the desktop scale moves every widget already exists. }
   gtk_rc_reset_styles(gtk_settings_get_default);
   GAppliedChromeFont := Spec;
 end;
@@ -371,10 +411,49 @@ begin
 end;
 {$ENDIF}
 
+{ Puts back the fonts of every control that did not have one of its own.
+
+  With the resource style in place the theme font is already the right size,
+  so a control that never set a font is already drawn correctly -- gtk2
+  resolves a font carrying neither size nor height from the default style, and
+  the default style is ours.  AutoAdjustLayout does not know that: it reads
+  the height back off that same scaled widget and multiplies it by the PPI
+  ratio, which turns 42 pixels into 84.
+
+  So the ones that were untouched before the scaling are made untouched again
+  afterwards.  Only those: a control that carries a real size keeps it, which
+  is what the editor, the terminal and the output pane rely on.
+
+  The alternative was to leave the style until after the forms were built,
+  which keeps the fonts right and leaves every widget the wrong size -- an
+  AutoSize control is measured as it is built, and a TEdit measured with the
+  21-pixel theme font is 34 pixels tall for ever after.  Asking it again later
+  does not help: the widget still has the theme's font, because the LCL never
+  pushes a font to an entry that inherits one. }
+procedure LedKeepDefaultFonts(AControl: TControl; ACollect: Boolean;
+  AList: TFPList);
+var
+  i: Integer;
+begin
+  if AControl = nil then Exit;
+  if ACollect then
+  begin
+    if (AControl.Font <> nil) and (AControl.Font.Height = 0) and
+       (AControl.Font.Size = 0) then
+      AList.Add(AControl);
+  end
+  else if AList.IndexOf(AControl) >= 0 then
+    AControl.Font.Height := 0;
+  if AControl is TWinControl then
+    for i := 0 to TWinControl(AControl).ControlCount - 1 do
+      LedKeepDefaultFonts(TWinControl(AControl).Controls[i], ACollect, AList);
+end;
+
 { Scale one form between two PPI values, in either direction. }
 procedure LedScaleFormTo(AForm: TCustomForm; ATargetPPI: Integer);
 var
   Cur: Integer;
+  Untouched: TFPList;
 begin
   if (AForm = nil) or (ATargetPPI <= 0) then
     Exit;
@@ -382,8 +461,17 @@ begin
   if Cur <= 0 then
     Cur := 96;
   if ATargetPPI <> Cur then
-    AForm.AutoAdjustLayout(lapAutoAdjustForDPI, Cur, ATargetPPI,
-      AForm.Width, Round(AForm.Width * ATargetPPI / Cur));
+  begin
+    Untouched := TFPList.Create;
+    try
+      LedKeepDefaultFonts(AForm, True, Untouched);
+      AForm.AutoAdjustLayout(lapAutoAdjustForDPI, Cur, ATargetPPI,
+        AForm.Width, Round(AForm.Width * ATargetPPI / Cur));
+      LedKeepDefaultFonts(AForm, False, Untouched);
+    finally
+      Untouched.Free;
+    end;
+  end;
 end;
 
 procedure LedScaleForm(AForm: TCustomForm);
@@ -408,7 +496,7 @@ begin
     end;
   GAppliedPPI := ATargetPPI;
   { After GAppliedPPI, which is the target the menu font is measured against. }
-  LedApplyChromeFont;
+  LedInstallChromeStyle;
 end;
 
 procedure LedApplyAdaptiveScale;
@@ -511,12 +599,21 @@ end;
 
 function LedDefaultFontSize: Integer;
 begin
+  { The theme's own size, taken before the resource style replaced it.  Asking
+    Screen.SystemFont now would hand back the scaled one, and this number is
+    multiplied by the same factor again on its way to the editor -- the
+    desktop's ten points would come back as twenty, be clamped to sixteen, and
+    open the editor at thirty-two. }
+  Result := 0;
+  {$IFDEF LED_GTK2_CHROME}
+  TakeBaseFont;
+  Result := GBaseFontSize;
+  {$ENDIF}
   { Screen.SystemFont carries the desktop's UI font.  A negative Size means it
     was given in pixels and a zero means "widgetset default"; neither is a
     point size, and converting a pixel height here would need the font's own
     DPI, so fall back rather than guess. }
-  Result := 0;
-  if Screen.SystemFont <> nil then
+  if (Result <= 0) and (Screen.SystemFont <> nil) then
     Result := Screen.SystemFont.Size;
   if Result <= 0 then
     Result := 10;
