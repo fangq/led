@@ -40,6 +40,13 @@ type
     procedure WrappingNeverSplitsAnEntity;
     procedure WrappingKeepsEveryLineOfABlock;
     procedure WrappingOffIsTheDocumentItself;
+    procedure SplittingBreaksAMultiWordSpan;
+    procedure SplittingLeavesAOneWordSpanAlone;
+    procedure SplittingKeepsNestingInOrder;
+    procedure SplittingLeavesAnUnderlineWhole;
+    procedure SplittingLeavesPreformattedTextAlone;
+    procedure SplittingKeepsTheAttributesOfATag;
+    procedure SplittingPutsAWholeRunOfSpacesOutside;
   end;
 
 implementation
@@ -263,6 +270,57 @@ procedure TTestMarkdown.WrappingOffIsTheDocumentItself;
 begin
   AssertEquals('<pre>a very long line indeed</pre>',
     LedWrapPreLines('<pre>a very long line indeed</pre>', 0));
+end;
+
+{ --- splitting inline runs ------------------------------------------------- }
+
+procedure TTestMarkdown.SplittingBreaksAMultiWordSpan;
+begin
+  AssertEquals('<p><b>two</b> <b>words</b></p>',
+    LedSplitInlineRuns('<p><b>two words</b></p>'));
+end;
+
+procedure TTestMarkdown.SplittingLeavesAOneWordSpanAlone;
+begin
+  AssertEquals('<p>a <b>word</b> here</p>',
+    LedSplitInlineRuns('<p>a <b>word</b> here</p>'));
+end;
+
+procedure TTestMarkdown.SplittingKeepsNestingInOrder;
+begin
+  { Closed innermost first and reopened outermost first, or the document
+    stops being well formed. }
+  AssertEquals('<b><i>two</i></b> <b><i>words</i></b>',
+    LedSplitInlineRuns('<b><i>two words</i></b>'));
+end;
+
+procedure TTestMarkdown.SplittingLeavesAnUnderlineWhole;
+begin
+  { The line runs through the space, so breaking the span would show. }
+  AssertEquals('<u>two words</u>', LedSplitInlineRuns('<u>two words</u>'));
+  AssertEquals('<s>two words</s>', LedSplitInlineRuns('<s>two words</s>'));
+end;
+
+procedure TTestMarkdown.SplittingLeavesPreformattedTextAlone;
+begin
+  AssertEquals('<pre><code>two words</code></pre>',
+    LedSplitInlineRuns('<pre><code>two words</code></pre>'));
+end;
+
+procedure TTestMarkdown.SplittingKeepsTheAttributesOfATag;
+var
+  H: string;
+begin
+  H := LedSplitInlineRuns('<code class="x">two words</code>');
+  AssertEquals('<code class="x">two</code> <code class="x">words</code>', H);
+end;
+
+procedure TTestMarkdown.SplittingPutsAWholeRunOfSpacesOutside;
+begin
+  { Both spaces belong to neither word; reopening between them would leave a
+    span holding nothing but a space. }
+  AssertEquals('<b>two</b>  <b>words</b>',
+    LedSplitInlineRuns('<b>two  words</b>'));
 end;
 
 initialization

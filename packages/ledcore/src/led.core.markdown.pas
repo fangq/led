@@ -44,6 +44,24 @@ function LedHtmlEscape(const AText: string): string;
   a tag takes no columns and "&amp;" takes one, and neither may be split. }
 function LedWrapPreLines(const AHtml: string; AColumns: Integer): string;
 
+{ Breaks a multi-word inline span into one span per word:
+
+    <b>two words</b>   ->   <b>two</b> <b>words</b>
+
+  Same page, drawn the same, and between forty and a hundred times cheaper to
+  lay out in IpHtmlPanel.  A space inside a span is measured against that
+  span's own font, which IPro does not manage to reuse between spans: the
+  measurement is repeated for every one, and the cost climbs faster than the
+  document does.  Outside the span the space is the paragraph's own, measured
+  once for the whole page.  Measured, 400 paragraphs: <b>bold words</b> 2700
+  ms, <b>bold</b> <b>words</b> 22 ms.
+
+  Only the tags that change the font are broken -- bold, italic, the
+  monospaced ones -- because for those a space inside the span and a space
+  outside it are the same ink.  An underline or a strikethrough would show
+  the difference, so those are left whole. }
+function LedSplitInlineRuns(const AHtml: string): string;
+
 implementation
 
 function LedHtmlEscape(const AText: string): string;
@@ -52,6 +70,108 @@ begin
   Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
   Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
   Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
+end;
+
+{ --- splitting inline runs ------------------------------------------------- }
+
+{ The tags whose spaces are indistinguishable inside and out.  Deliberately
+  not <u>, <s>, <strike>, <ins> or <del>: their line runs through the space,
+  and breaking the span would break the line. }
+function IsFontOnlyTag(const AName: string): Boolean;
+begin
+  case AName of
+    'b', 'strong', 'i', 'em', 'code', 'tt', 'kbd', 'samp', 'var', 'cite',
+    'dfn', 'big', 'small': Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+{ The tag name of the markup starting at APos, lowercased, with ASlash set
+  when it is a closing tag. }
+function TagNameAt(const AHtml: string; APos, AEnd: Integer;
+  out ASlash: Boolean): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  i := APos + 1;
+  ASlash := (i <= AEnd) and (AHtml[i] = '/');
+  if ASlash then Inc(i);
+  while (i <= AEnd) and (AHtml[i] in ['a'..'z', 'A'..'Z', '0'..'9']) do
+  begin
+    Result := Result + AHtml[i];
+    Inc(i);
+  end;
+  Result := LowerCase(Result);
+end;
+
+function LedSplitInlineRuns(const AHtml: string): string;
+var
+  Open_: array of string;   { the opening tags still in force, verbatim }
+  Names: array of string;
+  Depth, i, TagEnd, k, Run: Integer;
+  Name_: string;
+  Slash, InPre: Boolean;
+begin
+  Result := '';
+  Depth := 0;
+  InPre := False;
+  SetLength(Open_, 8);
+  SetLength(Names, 8);
+  i := 1;
+  while i <= Length(AHtml) do
+  begin
+    if AHtml[i] = '<' then
+    begin
+      TagEnd := i;
+      while (TagEnd <= Length(AHtml)) and (AHtml[TagEnd] <> '>') do Inc(TagEnd);
+      if TagEnd > Length(AHtml) then TagEnd := Length(AHtml);
+      Name_ := TagNameAt(AHtml, i, TagEnd, Slash);
+      if Name_ = 'pre' then
+        InPre := not Slash
+      else if (not InPre) and IsFontOnlyTag(Name_) then
+      begin
+        if Slash then
+        begin
+          { Unbalanced markup is left alone rather than guessed at. }
+          if (Depth > 0) and (Names[Depth - 1] = Name_) then Dec(Depth);
+        end
+        else
+        begin
+          if Depth >= Length(Open_) then
+          begin
+            SetLength(Open_, Depth * 2);
+            SetLength(Names, Depth * 2);
+          end;
+          Open_[Depth] := Copy(AHtml, i, TagEnd - i + 1);
+          Names[Depth] := Name_;
+          Inc(Depth);
+        end;
+      end;
+      Result := Result + Copy(AHtml, i, TagEnd - i + 1);
+      i := TagEnd + 1;
+      Continue;
+    end;
+
+    if (Depth > 0) and (not InPre) and (AHtml[i] = ' ') then
+    begin
+      { The whole run of spaces goes outside, so the reopened span starts at
+        the next word rather than at the last space. }
+      Run := i;
+      while (Run <= Length(AHtml)) and (AHtml[Run] = ' ') do Inc(Run);
+      for k := Depth - 1 downto 0 do
+        Result := Result + '</' + Names[k] + '>';
+      Result := Result + Copy(AHtml, i, Run - i);
+      for k := 0 to Depth - 1 do
+        Result := Result + Open_[k];
+      i := Run;
+      Continue;
+    end;
+
+    Result := Result + AHtml[i];
+    Inc(i);
+  end;
 end;
 
 { --- wrapping preformatted text -------------------------------------------- }
