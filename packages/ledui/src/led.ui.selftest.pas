@@ -1552,6 +1552,7 @@ end;
 procedure TestMeditTrim(F: TLedMainForm);
 var
   Btn: TSpeedButton;
+  Host: TWinControl;
   R: TRect;
   Before, TbH, W0, H0: Integer;
 begin
@@ -1581,22 +1582,45 @@ begin
   Btn := F.TabCloseButton(0);
   Check('the tab strip has a close button', Btn <> nil);
   if Btn = nil then Exit;
-  Check('and it is showing', Btn.Visible);
+  Host := Btn.Parent;
+  Check('and it is showing', Btn.Visible and Host.Visible);
+
+  { It has a window of its own, and that is the point of the host.
+
+    A TSpeedButton is a TGraphicControl: no handle, painted onto whatever it
+    is parented to.  Parented straight onto the panel the notebook sits in it
+    was drawn in the right place and did nothing at all when clicked -- the
+    windowed controls stacked above that panel took the mouse first.  It
+    looked correct and was inert, which is exactly the shape of bug a test
+    that calls Btn.Click cannot see, because that calls the handler directly
+    and never asks whether a click could have reached it.
+
+    Measured with a synthetic X button event at the middle of the cross, two
+    tabs open:
+
+      button on the shared panel   2 tabs -> 2 tabs, nothing happened
+      button in a windowed host    2 tabs -> 1 tab
+
+    So what is asserted here is the structure that made the difference: the
+    button lives in its own windowed host, not in the panel that also holds
+    the notebook. }
+  Check('the close button has a host of its own, not the notebook''s panel',
+    Host <> F.Notebook.Parent);
 
   { On the strip, not above the window.  gtk2 reports TabRect relative to the
     page area, so a naive placement put it at a negative top. }
   R := F.Notebook.TabRect(0);
   Check('it sits inside the tab strip, not off the top',
-    (Btn.Top >= F.Notebook.Top) and
-    (Btn.Top + Btn.Height <= F.Notebook.Top + (R.Bottom - R.Top) + 2));
+    (Host.Top >= F.Notebook.Top) and
+    (Host.Top + Host.Height <= F.Notebook.Top + (R.Bottom - R.Top) + 2));
   Check('and at the right-hand end of it',
-    Btn.Left + Btn.Width <= F.Notebook.Left + F.Notebook.Width);
-  CheckGt('well to the right of the middle', F.Notebook.Width div 2, Btn.Left);
+    Host.Left + Host.Width <= F.Notebook.Left + F.Notebook.Width);
+  CheckGt('well to the right of the middle', F.Notebook.Width div 2, Host.Left);
 
   Before := F.TabCount;
   Btn.Click;
   Pump;
-  CheckEqInt('clicking it closes a tab', Before - 1, F.TabCount);
+  CheckEqInt('and closing a tab is what it does', Before - 1, F.TabCount);
 end;
 
 { The font led brings with it.

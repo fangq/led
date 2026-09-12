@@ -512,6 +512,8 @@ type
     { One per tab group: the button at the right-hand end of the tab strip
       that closes the current tab. }
     FTabClose: array[0..1] of TSpeedButton;
+    { The windowed host each of those sits in.  See PlaceTabCloseButtons. }
+    FTabCloseHost: array[0..1] of TPanel;
     { Whether the clipboard holds something the Paste actions could use, and
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
@@ -3386,6 +3388,7 @@ var
   i, Sz, Pad: Integer;
   Book: TPageControl;
   Btn: TSpeedButton;
+  Host: TPanel;
   R: TRect;
 begin
   for i := 0 to 1 do
@@ -3398,13 +3401,35 @@ begin
     if (Book = nil) or (not Book.ShowTabs) or (Book.PageCount = 0) or
        (Book.Parent = nil) then
     begin
-      if Btn <> nil then Btn.Visible := False;
+      if FTabCloseHost[i] <> nil then FTabCloseHost[i].Visible := False;
       Continue;
     end;
 
     if Btn = nil then
     begin
+      { A windowed host, and the button inside it.
+
+        The button on its own did not work: TSpeedButton is a
+        TGraphicControl, which has no window of its own and is painted onto
+        whatever it is parented to.  Parented to the panel behind the
+        notebook it was drawn -- so it looked right, and a self-test that
+        called Btn.Click passed -- but every windowed control stacked above
+        that panel took the mouse first.  Asked what a click at the middle of
+        the button would actually reach, the LCL answered TLedEdit: the
+        editor, straight through the cross.
+
+        A TPanel is a TWinControl, so it owns that rectangle of the screen
+        and the clicks land in it; the button fills it and gets them from
+        there. }
+      Host := TPanel.Create(Self);
+      Host.BevelOuter := bvNone;
+      Host.Caption := '';
+      Host.FullRepaint := False;
+      FTabCloseHost[i] := Host;
+
       Btn := TSpeedButton.Create(Self);
+      Btn.Parent := Host;
+      Btn.Align := alClient;
       Btn.Flat := True;
       Btn.ShowHint := True;
       Btn.Hint := 'Close this tab';
@@ -3418,17 +3443,21 @@ begin
       FTabClose[i] := Btn;
     end;
 
+    Host := FTabCloseHost[i];
+
     { Above the book, and in whatever the book's parent is now -- a split
-      moves the book into a splitter side and the button has to follow. }
-    Btn.Parent := Book.Parent;
-    Btn.BringToFront;
+      moves the book into a splitter side and the button has to follow.
+      BringToFront on a windowed control is a real z-order change, which is
+      what puts it over the notebook rather than under it. }
+    Host.Parent := Book.Parent;
+    Host.BringToFront;
 
     { Tabs along the top is the only arrangement this button knows where to
       sit in; led never sets anything else, but a skin that did should get no
       button rather than one in the wrong place. }
     if Book.TabPosition <> tpTop then
     begin
-      Btn.Visible := False;
+      Host.Visible := False;
       Continue;
     end;
 
@@ -3443,9 +3472,10 @@ begin
     if Sz < LedScale96(12) then Sz := LedScale96(16);
     Pad := LedScale96(2);
 
-    Btn.SetBounds(Book.Left + Book.Width - Sz - Pad * 2,
-                  Book.Top + Pad, Sz - Pad, Sz - Pad);
-    Btn.Visible := True;
+    Host.SetBounds(Book.Left + Book.Width - Sz - Pad * 2,
+                   Book.Top + Pad, Sz - Pad, Sz - Pad);
+    Host.Visible := True;
+    Host.BringToFront;
   end;
 end;
 
