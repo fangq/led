@@ -13,6 +13,10 @@ uses
   {$IFDEF UNIX}
   cthreads,
   {$ENDIF}
+  { Before Interfaces, and that is the point of it: Interfaces' own
+    initialization runs gtk_init, which builds pango's font map, and a font
+    registered after that is not seen.  See Led.Core.AppFont. }
+  Led.Core.AppFont,
   Interfaces, Forms, Classes, SysUtils,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
   Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons,

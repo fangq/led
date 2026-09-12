@@ -31,6 +31,7 @@ uses
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Buttons,
+  Led.Core.AppFont,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
   Led.UI.Splitter, Led.UI.Dpi,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
@@ -1596,6 +1597,45 @@ begin
   Btn.Click;
   Pump;
   CheckEqInt('clicking it closes a tab', Before - 1, F.TabCount);
+end;
+
+{ The font led brings with it.
+
+  Bundled rather than assumed installed, so the default is the same face on
+  every machine instead of whatever the desktop calls "Monospace".  The two
+  halves that can each fail quietly are checked separately: the platform
+  accepting the file, and the toolkit then being able to resolve the family
+  by name -- which is what every caller does, and what LedParseFontSpec
+  rejects an unknown name for.
+
+  Both must hold before the family may be the default, because a default the
+  toolkit cannot resolve is worse than the platform one: it falls back per
+  control, so the editor and the terminal can disagree. }
+procedure TestBundledFont(F: TLedMainForm);
+var
+  Term: TLedTermView;
+begin
+  Say('bundled font');
+
+  Check('the bundled fonts loaded', LedBundledFontsLoaded);
+  Check('and the toolkit can resolve the family',
+    Screen.Fonts.IndexOf(LedBundledFontName) >= 0);
+  CheckEq('so it is the default', LedBundledFontName, LedDefaultFontName);
+
+  { What the two consumers actually ended up with.  They are set from
+    LedDefaultFontName in different units, so agreeing is worth asserting. }
+  if F.ActiveView <> nil then
+    CheckEq('the editor is in it', LedBundledFontName, F.ActiveView.Font.Name);
+
+  F.Dock.ShowPane('terminal');
+  Pump; Pump;
+  Term := nil;
+  if F.Terminal <> nil then
+    Term := F.Terminal.Active;
+  if Term <> nil then
+    CheckEq('and so is the terminal', LedBundledFontName, Term.Font.Name);
+  F.Dock.HidePane('terminal');
+  Pump;
 end;
 
 procedure TestDockEdges(F: TLedMainForm);
@@ -5664,6 +5704,7 @@ begin
   TestProjectList(F);
   TestSpelling(F);
   TestMeditTrim(F);
+  TestBundledFont(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   WriteLn;

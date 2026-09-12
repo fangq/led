@@ -27,6 +27,7 @@ unit Led.UI.Dpi;
 interface
 
 uses
+  Led.Core.AppFont,
   Classes, SysUtils, Controls, Forms, Graphics;
 
 { The PPI forms should be scaled to right now.  Recomputed on every call, with
@@ -546,6 +547,17 @@ end;
 
 function LedDefaultFontName: string;
 begin
+  { The font led ships with, when it actually arrived.  Asking Screen.Fonts
+    as well as the loader is not belt and braces: the loader reports that the
+    platform accepted the file, and this reports that the toolkit can now
+    resolve the family -- which is the thing every caller goes on to do, and
+    the thing LedParseFontSpec rejects a name for.  A data directory without
+    the fonts in it, or a platform that would not take them, falls through to
+    the same default as before. }
+  if LedBundledFontsLoaded and
+     (Screen.Fonts.IndexOf(LedBundledFontName) >= 0) then
+    Exit(LedBundledFontName);
+
   Result := {$IFDEF WINDOWS}'Consolas'{$ELSE}
             {$IFDEF DARWIN}'Menlo'{$ELSE}'Monospace'{$ENDIF}{$ENDIF};
 end;
