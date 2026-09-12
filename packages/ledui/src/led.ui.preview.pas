@@ -114,6 +114,24 @@ begin
   FHtml.Align := alClient;
   FHtml.DataProvider := FProvider;
   FHtml.Visible := False;
+  { IPro lays a page out on the control's own canvas and then, by default,
+    paints it into a bitmap it allocates for the purpose.  Nothing makes the
+    two agree about resolution, and here they do not: the startup sweep puts
+    the control at the scaled PPI and a fresh TBitmap comes up at the
+    screen's.  Every word was measured at twice the size it was drawn at,
+    which is a page of text with a gap after every word that grows with the
+    word.
+
+    Painting straight onto the control's canvas makes the measuring and the
+    painting the same canvas at the same resolution -- and that resolution is
+    the scaled one, so the page is drawn at the size this display is scaled
+    to rather than at half of it.  Doing the same by putting the control back
+    on the screen's PPI also lines the two up, but lines them up small.
+
+    The buffer this gives up is what stops flicker on a repaint; gtk2
+    double-buffers its own expose events, so on this widgetset there is
+    nothing to lose. }
+  FHtml.UsePaintBuffer := False;
 
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 250;
@@ -210,8 +228,9 @@ end;
 
   Measured in the font IPro actually uses for a <pre>: the fixed typeface at
   two points under the document size, which is what TIpHtmlNodePRE.SetProps
-  does.  Measured against the panel rather than assumed, because the point
-  size here is the scaled one.
+  does.  Measured on the panel's own canvas rather than worked out, because
+  that canvas is the one the page is laid out on, at whatever PPI the startup
+  sweep left it.
 
   The allowances are the vertical scrollbar, which a preview of anything long
   has and which comes out of the width the layout gets, and IPro's page
@@ -223,7 +242,7 @@ var
   CharW, Usable: Integer;
 begin
   Result := 0;
-  if FHtml.ClientWidth <= 0 then Exit;
+  if (FHtml.ClientWidth <= 0) or not FHtml.HandleAllocated then Exit;
   FHtml.Canvas.Font.Name := FHtml.FixedTypeface;
   FHtml.Canvas.Font.Size := FHtml.DefaultFontSize - 2;
   { Over twenty characters, because a single one rounds badly. }
@@ -247,25 +266,6 @@ begin
   else
     Page := LedMarkdownToPage(FPendingText, FPendingTitle);
   try
-    { IPro measures a page on one canvas and paints it on another: the layout
-      runs against the control's own canvas, and the paint against a TBitmap
-      it allocates for the purpose.  A TCustomControl copies its PixelsPerInch
-      onto its canvas -- customcontrol.inc:66 -- and the startup scale sweep
-      has put 300 there, while a fresh TBitmap gets the screen's 150.  Same
-      point size, two pixel heights: every word is measured at twice the size
-      it is drawn at, so each one is advanced by about double its own width
-      and the line falls apart into gaps that grow with the word.
-
-      Measured on this display: "led" drawn 88 pixels wide, the next word
-      starting at 190.  The glyphs were always the right size -- it is the
-      spacing between them that was doubled.
-
-      So the control is put back on the screen's PPI before each render.  It
-      changes no drawn size, because gtk2 renders a point size at the Xft DPI
-      whatever the font's PixelsPerInch says; it only makes the measuring
-      canvas agree with the painting one. }
-    FHtml.Font.PixelsPerInch := Screen.PixelsPerInch;
-    { After the PPI, which is what the measuring below is measured in. }
     FHtml.SetHtmlFromStr(LedWrapPreLines(Page, CodeColumns));
     FRenderedWidth := FHtml.ClientWidth;
     FNote.Visible := False;

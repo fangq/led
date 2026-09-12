@@ -559,6 +559,7 @@ type
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure PaneShown(const AId: string);
     procedure StartTerminalDeferred(Data: PtrInt);
+    procedure RefreshPreviewDeferred(Data: PtrInt);
     procedure StartTerminal;
     { Tells the editor which keys the menus have claimed, so it stops
       handling them itself.  Called after the shortcuts are set up and again
@@ -1788,6 +1789,7 @@ begin
     end;
   end;
   UpdateStatusBar;
+  Application.QueueAsyncCall(@RefreshPreviewDeferred, 0);
 end;
 
 { --- find and replace ------------------------------------------------------ }
@@ -2714,6 +2716,14 @@ begin
     LedTryFocus(FTerminal.Active);
 end;
 
+{ Queued, because the files named on the command line are opened before the
+  window is on screen: a preview rendered there would be laid out for a pane
+  that has no width yet. }
+procedure TLedMainForm.RefreshPreviewDeferred(Data: PtrInt);
+begin
+  RefreshPreview(True);
+end;
+
 procedure TLedMainForm.PaneShown(const AId: string);
 begin
   if SameText(AId, 'terminal') then
@@ -3516,7 +3526,9 @@ begin
   if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
      (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
-  RefreshPreview;
+  { Immediately: this is a different document now, and a pane still holding
+    the last one for a quarter of a second is showing the wrong file. }
+  RefreshPreview(True);
 end;
 
 procedure TLedMainForm.ViewStatusChange(Sender: TObject;
@@ -3897,6 +3909,11 @@ begin
   PopulateRecentMenu;
   PopulateLanguageMenu;
   PopulateToolMenu;
+  { Opening a file is the moment the preview is most likely to be wanted, and
+    the tab may already have been the active one -- a reload, or a file
+    reopened from the recent list -- so the change notification cannot be
+    relied on to have fired. }
+  RefreshPreview(True);
 end;
 
 { Brings ADoc to the front of whichever window holds it, and says whether it
