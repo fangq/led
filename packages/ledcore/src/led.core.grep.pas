@@ -17,7 +17,7 @@ unit Led.Core.Grep;
 interface
 
 uses
-  Classes, SysUtils, Masks, RegExpr;
+  Classes, SysUtils, Masks, RegExpr, Led.Core.Hex;
 
 type
   TLedGrepMatch = record
@@ -72,10 +72,6 @@ type
     property OnDone: TLedGrepDoneEvent read FOnDone write FOnDone;
   end;
 
-{ True when the buffer looks like something no one wants to see in a search
-  result.  A NUL byte in the first few KB is the same test grep uses. }
-function LedLooksBinary(const AData: string): Boolean;
-
 implementation
 
 const
@@ -93,17 +89,6 @@ begin
   Result.SkipVCS := True;
   Result.SkipBinary := True;
   Result.MaxMatches := 5000;
-end;
-
-function LedLooksBinary(const AData: string): Boolean;
-var
-  i, Limit: Integer;
-begin
-  Limit := Length(AData);
-  if Limit > 8192 then Limit := 8192;
-  for i := 1 to Limit do
-    if AData[i] = #0 then Exit(True);
-  Result := False;
 end;
 
 constructor TLedGrepThread.Create(const AOptions: TLedGrepOptions);

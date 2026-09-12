@@ -40,6 +40,7 @@ type
     actOpen: TAction;
     actSave: TAction;
     actSaveAs: TAction;
+    actOpenAsText: TAction;
     actReload: TAction;
     actCloseTab: TAction;
     actPrint: TAction;
@@ -159,6 +160,7 @@ type
     mi_Open: TMenuItem;
     miOpenRecent: TMenuItem;
     miReopenEncoding: TMenuItem;
+    mi_OpenAsText: TMenuItem;
     mi_Reload: TMenuItem;
     miSep2: TMenuItem;
     mi_Save: TMenuItem;
@@ -387,6 +389,7 @@ type
     procedure actToggleBottomPaneExecute(Sender: TObject);
     procedure actToggleLeftPaneExecute(Sender: TObject);
     procedure actUnsplitExecute(Sender: TObject);
+    procedure actOpenAsTextExecute(Sender: TObject);
     procedure actReloadExecute(Sender: TObject);
     procedure FormActivate(Sender: TObject);
     procedure FormDropFiles(Sender: TObject; const FileNames: array of string);
@@ -3358,6 +3361,23 @@ begin
   end;
 end;
 
+{ The way out of the hex view.  Detection is a heuristic -- a NUL byte early
+  on -- and a file that trips it is still a file someone may have meant to
+  read as text, so the heuristic is overridable rather than final. }
+procedure TLedMainForm.actOpenAsTextExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsBinary) then Exit;
+  try
+    Tab.Document.OpenAsText;
+  except
+    on E: Exception do ReportError(E.Message);
+  end;
+  UpdateStatusBar;
+end;
+
 procedure TLedMainForm.actReloadExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -3502,12 +3522,24 @@ begin
   D := TLedDocument(V.Document);
   StatusBar1.Panels[0].Text :=
     Format('Line %d  Col %d', [V.CaretY, V.CaretX]);
-  StatusBar1.Panels[1].Text := D.Info.Encoding;
-  StatusBar1.Panels[2].Text := LedLineEndName(D.Info.LineEnd);
-  if D.LangInfo <> nil then
-    StatusBar1.Panels[3].Text := D.LangInfo.Name
+  if D.IsBinary then
+  begin
+    { A dump has no encoding and no line ending of its own -- showing the
+      defaults there would be claiming something about the file that is not
+      true.  The language column says what the window is instead. }
+    StatusBar1.Panels[1].Text := '';
+    StatusBar1.Panels[2].Text := '';
+    StatusBar1.Panels[3].Text := 'Binary (hex)';
+  end
   else
-    StatusBar1.Panels[3].Text := 'Plain text';
+  begin
+    StatusBar1.Panels[1].Text := D.Info.Encoding;
+    StatusBar1.Panels[2].Text := LedLineEndName(D.Info.LineEnd);
+    if D.LangInfo <> nil then
+      StatusBar1.Panels[3].Text := D.LangInfo.Name
+    else
+      StatusBar1.Panels[3].Text := 'Plain text';
+  end;
   if V.InsertMode then
     StatusBar1.Panels[4].Text := 'INS'
   else
@@ -3670,6 +3702,15 @@ begin
   actUnsplit.Enabled := HasDoc and (Tab.ViewCount > 1);
   actCycleViews.Enabled := HasDoc and (Tab.ViewCount > 1);
   actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
+  { Only offered where there is something to overrule. }
+  actOpenAsText.Enabled := HasDoc and Tab.Document.IsBinary;
+  { A dump is a rendering of the file, not the file: there is nothing to save
+    and saving would overwrite the bytes with their own description. }
+  if HasDoc and Tab.Document.IsBinary then
+  begin
+    actSave.Enabled := False;
+    actSaveAs.Enabled := False;
+  end;
   actUndo.Enabled := HasDoc and Tab.ActiveView.CanUndo;
   actRedo.Enabled := HasDoc and Tab.ActiveView.CanRedo;
   actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;

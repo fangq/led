@@ -33,7 +33,6 @@ type
     procedure VcsDirectoriesAreSkipped;
     procedure BinaryFilesAreSkipped;
     procedure MaxMatchesStopsTheSearch;
-    procedure BinaryDetection;
   end;
 
 implementation
@@ -267,13 +266,6 @@ begin
   O.Directory := FDir;
   O.MaxMatches := 10;
   AssertEquals(10, RunSearch(O));
-end;
-
-procedure TTestGrep.BinaryDetection;
-begin
-  AssertTrue(LedLooksBinary('abc'#0'def'));
-  AssertFalse(LedLooksBinary('plain text'));
-  AssertFalse(LedLooksBinary(''));
 end;
 
 initialization

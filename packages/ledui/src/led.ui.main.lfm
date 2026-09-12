@@ -68,6 +68,10 @@ object LedMainForm: TLedMainForm
       ImageIndex = 3
       OnExecute = actSaveAsExecute
     end
+    object actOpenAsText: TAction
+      Caption = 'Open as &Text'
+      OnExecute = actOpenAsTextExecute
+    end
     object actReload: TAction
       Caption = '&Reload from Disk'
       ShortCut = 116
@@ -563,6 +567,9 @@ object LedMainForm: TLedMainForm
       object miReopenEncoding: TMenuItem
         Caption = 'Reopen &with Encoding'
         OnClick = miReopenEncodingClick
+      end
+      object mi_OpenAsText: TMenuItem
+        Action = actOpenAsText
       end
       object mi_Reload: TMenuItem
         Action = actReload
