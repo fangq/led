@@ -26,6 +26,14 @@ type
     procedure ColumnsMapBackToBytes;
     procedure PunctuationMapsToNoByte;
     procedure NoTrailingNewline;
+    procedure ARowRendersTheSameAloneAsInADump;
+    procedure NibblesAreHighThenLow;
+    procedure TextColumnsAreNotHexColumns;
+    procedure TypingAdvancesAcrossAByteThenOn;
+    procedure TypingInTextAdvancesOneByte;
+    procedure TheEndOfARowSaysSo;
+    procedure SettingANibbleLeavesTheOtherAlone;
+    procedure HexDigitsAreEitherCase;
   end;
 
 implementation
@@ -166,6 +174,82 @@ begin
   D := LedHexDump('AB');
   AssertTrue('a trailing LF would show as an extra empty line',
     D[Length(D)] <> #10);
+end;
+
+procedure TTestHex.ARowRendersTheSameAloneAsInADump;
+var
+  Data: string;
+begin
+  { The dump is built from the single-row renderer, and editing re-renders one
+    row: the two have to agree or an edited row would not match its
+    neighbours. }
+  Data := StringOfChar('Q', 40);
+  AssertEquals(Line(LedHexDump(Data), 1), LedHexDumpLine(Data, 16));
+end;
+
+procedure TTestHex.NibblesAreHighThenLow;
+begin
+  AssertEquals('first digit is the high nibble',
+    0, LedHexColumnToNibble(LedHexByteColumn(3)));
+  AssertEquals('second is the low one',
+    1, LedHexColumnToNibble(LedHexByteColumn(3) + 1));
+  AssertEquals('the space after is neither',
+    -1, LedHexColumnToNibble(LedHexByteColumn(3) + 2));
+end;
+
+procedure TTestHex.TextColumnsAreNotHexColumns;
+begin
+  AssertTrue(LedHexColumnIsText(LedHexTextColumn(0)));
+  AssertTrue(LedHexColumnIsText(LedHexTextColumn(15)));
+  AssertFalse(LedHexColumnIsText(LedHexByteColumn(0)));
+  AssertFalse(LedHexColumnIsText(LedHexByteColumn(15) + 1));
+  AssertEquals('a text column has no nibble',
+    -1, LedHexColumnToNibble(LedHexTextColumn(0)));
+end;
+
+procedure TTestHex.TypingAdvancesAcrossAByteThenOn;
+begin
+  { Two keystrokes make a byte, so the caret crosses the pair and then moves
+    to the next byte -- which is what hexedit does and what makes typing a
+    run of bytes possible without touching the arrow keys. }
+  AssertEquals('high nibble goes to low',
+    LedHexByteColumn(0) + 1, LedHexNextColumn(LedHexByteColumn(0)));
+  AssertEquals('low nibble goes to the next byte',
+    LedHexByteColumn(1), LedHexNextColumn(LedHexByteColumn(0) + 1));
+end;
+
+procedure TTestHex.TypingInTextAdvancesOneByte;
+begin
+  AssertEquals(LedHexTextColumn(1), LedHexNextColumn(LedHexTextColumn(0)));
+end;
+
+procedure TTestHex.TheEndOfARowSaysSo;
+begin
+  { Zero rather than a column, so the caller moves to the next row instead of
+    running off the end of this one. }
+  AssertEquals('after the last byte',
+    0, LedHexNextColumn(LedHexByteColumn(LedHexBytesPerLine - 1) + 1));
+  AssertEquals('and after the last character',
+    0, LedHexNextColumn(LedHexTextColumn(LedHexBytesPerLine - 1)));
+end;
+
+procedure TTestHex.SettingANibbleLeavesTheOtherAlone;
+begin
+  AssertEquals($AF, LedHexSetNibble($3F, True, $A));
+  AssertEquals($3A, LedHexSetNibble($3F, False, $A));
+  { Only four bits are taken, so a caller cannot smear a digit across the
+    byte. }
+  AssertEquals($3A, LedHexSetNibble($3F, False, $FA));
+end;
+
+procedure TTestHex.HexDigitsAreEitherCase;
+begin
+  AssertEquals(0, LedHexDigitValue('0'));
+  AssertEquals(15, LedHexDigitValue('f'));
+  AssertEquals(15, LedHexDigitValue('F'));
+  AssertEquals(10, LedHexDigitValue('A'));
+  AssertEquals('not a digit', -1, LedHexDigitValue('g'));
+  AssertEquals('nor a space', -1, LedHexDigitValue(' '));
 end;
 
 initialization

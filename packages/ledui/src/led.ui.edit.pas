@@ -13,6 +13,7 @@ uses
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType,
   SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
+  Led.Core.Hex,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
 
@@ -65,10 +66,18 @@ type
   end;
   TLedGuideRuns = array of TLedGuideRun;
 
+  { A key pressed over a hex dump.  The view knows where the caret is and
+    which half of the row it is in; what a byte should become is the
+    document's business, so it is asked. }
+  TLedHexKeyEvent = procedure(Sender: TObject; AOffset: Integer;
+    ANibble: Integer; const AChar: string; var AHandled: Boolean) of object;
+
   TLedEdit = class(TSynEdit)
   private
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
+    FHexMode: Boolean;
+    FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FCompletion: TSynCompletion;
     FSpell: TLedSpellMarkup;
@@ -96,6 +105,7 @@ type
     procedure DrawLongLineMarkers;
     procedure CompletionSearch(var APosition: Integer);
     procedure CollectWords(const APrefix: string; AInto: TStrings);
+    procedure SnapHexCaret;
   protected
     procedure Paint; override;
     { Keeps the long-line view's live range on the caret and the selection.
@@ -107,10 +117,18 @@ type
     procedure MouseDown(AButton: TMouseButton; AShift: TShiftState;
       X, Y: Integer); override;
     procedure MouseMove(AShift: TShiftState; X, Y: Integer); override;
+    { Typing over a dump edits a byte rather than inserting a character, so
+      the key never reaches SynEdit's own input. }
+    procedure UTF8KeyPress(var Key: TUTF8Char); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     property Document: TObject read FDocument write FDocument;
+    { Turns the view into a hex editor: the caret only rests on a byte, and
+      keys go to OnHexKey instead of into the buffer.  The buffer is a
+      rendering of bytes the document owns, so nothing else may write to it. }
+    property HexMode: Boolean read FHexMode write FHexMode;
+    property OnHexKey: TLedHexKeyEvent read FOnHexKey write FOnHexKey;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
     { SynEdit tracks the physical row/column of the last mouse click here,
@@ -1222,11 +1240,71 @@ begin
   inherited MouseDown(AButton, AShift, X, Y);
 end;
 
+{ Keeps the caret on a byte.  A dump's row is mostly punctuation -- spaces
+  between the pairs, the bar before the text -- and a caret resting on any of
+  it has nothing to edit, so arrowing across a row would produce dead columns
+  where typing did nothing.  Landing on one moves forward to the next real
+  column, which makes left and right walk the bytes and nothing else. }
+procedure TLedEdit.SnapHexCaret;
+var
+  Col, Best, i: Integer;
+begin
+  if not FHexMode then Exit;
+  Col := CaretX;
+  if LedHexColumnToIndex(Col) >= 0 then Exit;
+
+  Best := LedHexByteColumn(0);
+  if Col > LedHexTextColumn(LedHexBytesPerLine - 1) then
+    Best := LedHexTextColumn(LedHexBytesPerLine - 1)
+  else if Col > LedHexByteColumn(0) then
+    for i := 0 to LedHexBytesPerLine - 1 do
+    begin
+      if LedHexByteColumn(i) >= Col then begin Best := LedHexByteColumn(i); Break; end;
+      if LedHexTextColumn(i) >= Col then begin Best := LedHexTextColumn(i); Break; end;
+      Best := LedHexTextColumn(LedHexBytesPerLine - 1);
+    end;
+  if Best <> Col then CaretX := Best;
+end;
+
+procedure TLedEdit.UTF8KeyPress(var Key: TUTF8Char);
+var
+  Index, Offset, Nibble: Integer;
+  Done: Boolean;
+begin
+  if not FHexMode then
+  begin
+    inherited UTF8KeyPress(Key);
+    Exit;
+  end;
+
+  Index := LedHexColumnToIndex(CaretX);
+  if (Index >= 0) and Assigned(FOnHexKey) then
+  begin
+    Offset := (CaretY - 1) * LedHexBytesPerLine + Index;
+    if LedHexColumnIsText(CaretX) then Nibble := -1
+    else Nibble := LedHexColumnToNibble(CaretX);
+    Done := False;
+    FOnHexKey(Self, Offset, Nibble, Key, Done);
+    if Done then
+    begin
+      Key := '';
+      Exit;
+    end;
+  end;
+  { Swallowed whether or not it edited anything.  A dump is a rendering of
+    bytes the document owns, so a character must never reach the buffer --
+    a key that means nothing here does nothing rather than typing itself in
+    and putting the rows out of step with the file. }
+  Key := '';
+end;
+
 procedure TLedEdit.StatusChanged(AChanges: TSynStatusChanges);
 var
   A, B: Integer;
 begin
   inherited StatusChanged(AChanges);
+  if FHexMode and (AChanges * [scCaretX, scCaretY] <> []) then
+    SnapHexCaret;
   if FLongLines = nil then Exit;
   if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
 

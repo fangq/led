@@ -3241,9 +3241,9 @@ var
   Path: string;
   Doc: TLedDocument;
   Tab: TLedTab;
-  Raw, Saved: string;
+  Raw, Saved, Expected: string;
   L: TStringList;
-  Failed: string;
+  Handled: Boolean;
 begin
   Say('binary files');
 
@@ -3283,16 +3283,83 @@ begin
   CheckEq('no encoding is claimed', '', Doc.Info.Encoding);
   Check('and no language is detected', Doc.LangInfo = nil);
 
-  { The one that matters.  Saving the dump would write the offsets and the
-    bars over the bytes they describe, and the text path would normalise the
-    line endings on the way out for good measure. }
-  Failed := '';
-  try
-    Doc.SaveToFile(Path);
-  except
-    on E: Exception do Failed := E.Message;
-  end;
-  Check('saving a dump is refused', Failed <> '');
+  { Editing.  A byte is overwritten, never inserted: inserting would move
+    every byte after it and renumber every offset below, which is not what
+    the left-hand column would still be describing. }
+  CheckEqInt('the bytes are the file', Length(Raw), Doc.HexSize);
+  CheckEqInt('and byte 0 is M', Ord('M'), Doc.HexByte(0));
+  Check('an untouched dump is not modified', not Doc.Modified);
+
+  Doc.SetHexByte(0, Ord('Z'));
+  Pump;
+  CheckEqInt('setting a byte changes it', Ord('Z'), Doc.HexByte(0));
+  Check('the row it is in is re-rendered',
+    Pos('00000000  5a 5a', Doc.Master.Lines.Text) = 1);
+  Check('and the document is modified', Doc.Modified);
+  CheckEqInt('the file is no longer than it was',
+    Length(Raw), Doc.HexSize);
+
+  { Undo is the document's own: the buffer is rewritten a row at a time
+    rather than typed into, so SynEdit's undo knows nothing about it. }
+  Check('there is something to undo', Doc.CanUndoHex);
+  CheckEqInt('and undo says which byte it put back', 0, Doc.UndoHexByte);
+  Pump;
+  CheckEqInt('undo puts the byte back', Ord('M'), Doc.HexByte(0));
+  CheckEqInt('and there is nothing left to undo', -1, Doc.UndoHexByte);
+  Check('and with nothing left to undo the document is clean',
+    not Doc.Modified);
+
+  { The view is a hex editor rather than a text one: the caret rests on bytes
+    and keys are routed to the document.  Typing itself needs a keyboard, so
+    what is checked here is the wiring that makes it possible. }
+  Check('the view is in hex mode', Tab.ActiveView.HexMode);
+  Check('and has somewhere to send its keys',
+    Assigned(Tab.ActiveView.OnHexKey));
+
+  { Driving that wiring directly, which is what a keystroke does once the
+    view has worked out the byte and the half.  A hex digit on the left
+    replaces one nibble ... }
+  Handled := False;
+  Tab.ActiveView.OnHexKey(Tab.ActiveView, 4, 0, 'a', Handled);
+  Check('a hex digit in the left column is taken', Handled);
+  CheckEqInt('and replaces the high nibble alone',
+    $A0 or (Ord('h') and $0F), Doc.HexByte(4));
+
+  Handled := False;
+  Tab.ActiveView.OnHexKey(Tab.ActiveView, 4, 1, '7', Handled);
+  CheckEqInt('the second press replaces the low one',
+    $A7, Doc.HexByte(4));
+
+  { ... and a character on the right replaces the whole byte. }
+  Handled := False;
+  Tab.ActiveView.OnHexKey(Tab.ActiveView, 4, -1, 'X', Handled);
+  Check('a character in the right column is taken', Handled);
+  CheckEqInt('and replaces the byte', Ord('X'), Doc.HexByte(4));
+
+  { A key that means nothing here changes nothing.  It still must not reach
+    the buffer, which UTF8KeyPress sees to; what matters at this level is
+    that no byte moves. }
+  Handled := False;
+  Tab.ActiveView.OnHexKey(Tab.ActiveView, 4, 0, 'z', Handled);
+  Check('a non-hex-digit in the left column is not', not Handled);
+  CheckEqInt('and leaves the byte alone', Ord('X'), Doc.HexByte(4));
+
+  Handled := False;
+  Tab.ActiveView.OnHexKey(Tab.ActiveView, 4, -1, #9, Handled);
+  Check('nor is an unprintable character on the right', not Handled);
+  CheckEqInt('which also leaves the byte alone', Ord('X'), Doc.HexByte(4));
+
+  { Put byte 4 back, so what follows measures what it means to. }
+  while Doc.CanUndoHex do Doc.UndoHexByte;
+  CheckEqInt('undoing everything restores the file',
+    Ord('h'), Doc.HexByte(4));
+  Check('and leaves it unmodified', not Doc.Modified);
+
+  { Saving writes the bytes, not the buffer -- no encoding, no line-ending
+    normalisation, nothing that would rewrite a CR sitting between two bytes
+    of a binary. }
+  Doc.SetHexByte(1, $FF);
+  Doc.SaveToFile(Path);
   Saved := '';
   with TFileStream.Create(Path, fmOpenRead) do
     try
@@ -3301,14 +3368,27 @@ begin
     finally
       Free;
     end;
-  CheckEq('and the file on disk is untouched', Raw, Saved);
+  CheckEqInt('the saved file is the same length', Length(Raw), Length(Saved));
+  Expected := Raw;
+  Expected[2] := Chr($FF);
+  CheckEq('and differs in exactly the byte that was edited', Expected, Saved);
+  Check('saving clears the modified flag', not Doc.Modified);
+
+  { Reloaded, the edit is there and nothing else moved. }
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('it is still a dump after saving', Doc.IsBinary);
+  CheckEqInt('and the edited byte survived the round trip',
+    $FF, Doc.HexByte(1));
 
   { Detection is a heuristic, so it has to be possible to overrule. }
   Doc.OpenAsText;
   Pump;
   Check('opening as text turns the dump off', not Doc.IsBinary);
+  { The file's own first byte, not the dump's first row.  Byte 1 was edited
+    above, so 'M' is as much of it as is still what it was. }
   Check('and the buffer is the file again',
-    Pos('MZ', Doc.Master.Lines.Text) = 1);
+    Copy(Doc.Master.Lines.Text, 1, 1) = 'M');
   Check('and the view can be edited', not Tab.ActiveView.ReadOnly);
 
   DeleteFile(Path);
