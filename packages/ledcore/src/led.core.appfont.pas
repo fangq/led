@@ -56,6 +56,37 @@ uses
   {$IFDEF WINDOWS}, Windows{$ENDIF}
   {$IFDEF DARWIN}, MacOSAll{$ENDIF};
 
+{ Declared here rather than taken from the platform unit, on both platforms
+  that needed it.
+
+  FPC's Windows unit has AddFontResource but not AddFontResourceEx, and no
+  FR_PRIVATE -- which is the whole point of using it, since it is what keeps
+  the font inside this process.  MacOSAll does declare
+  CTFontManagerRegisterFontsForURL, but with the CFError as a var parameter,
+  so there is no way to say "I do not want the error" and passing nil is a
+  compile error.  Writing both out takes the question of what a given FPC
+  version exposes out of the build. }
+{$IFDEF WINDOWS}
+const
+  FR_PRIVATE = $10;
+
+{ The wide form: a font under a path with a non-ASCII character in it is not
+  hypothetical on Windows, where the data directory sits beside the
+  executable and that can be anywhere. }
+function AddFontResourceExW(AFileName: PWideChar; AFlags: DWORD;
+  AReserved: Pointer): Integer; stdcall; external 'gdi32.dll'
+  name 'AddFontResourceExW';
+{$ENDIF}
+
+{$IFDEF DARWIN}
+const
+  kCTFontManagerScopeProcess = 1;
+
+{$LINKFRAMEWORK CoreText}
+function CTFontManagerRegisterFontsForURL(AURL: CFURLRef; AScope: LongInt;
+  AError: Pointer): LongBool; cdecl; external;
+{$ENDIF}
+
 {$IF DEFINED(UNIX) AND NOT DEFINED(DARWIN)}
 function FcInit: LongBool; cdecl; external 'fontconfig';
 function FcConfigAppFontAddFile(AConfig: Pointer; AFile: PChar): LongBool;
@@ -88,7 +119,8 @@ begin
   { FR_PRIVATE: visible to this process and gone when it exits, so led never
     touches the machine's installed fonts.  No WM_FONTCHANGE broadcast for the
     same reason -- there is nobody else to tell. }
-  Result := AddFontResourceEx(PChar(AFileName), FR_PRIVATE, nil) > 0;
+  Result := AddFontResourceExW(PWideChar(UnicodeString(AFileName)),
+    FR_PRIVATE, nil) > 0;
   {$ELSEIF DEFINED(DARWIN)}
   Path := CFStringCreateWithCString(nil, PChar(AFileName),
     kCFStringEncodingUTF8);
