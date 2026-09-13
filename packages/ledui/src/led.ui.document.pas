@@ -356,13 +356,20 @@ begin
   AView.GuideColour :=
     LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
 
+  { The caret's row is marked with a rule above and below rather than with a
+    band of colour behind it, so the theme's current-line colour moves off
+    SynEdit's own row fill and onto led's painter.  Taken before it is
+    cleared, and the hex markup keeps reading it from here. }
+  AView.CurrentLineColour := AView.LineHighlightColor.Background;
+  AView.LineHighlightColor.Background := clNone;
+
   { After the theme has been applied, because the column colours are mixed
     from the editor's own -- asking earlier would mix them from the last
     theme's. }
   if FIsBinary and (AView.HexMarkup <> nil) then
     AView.HexMarkup.SetColours(AView.Font.Color, AView.Color,
       AView.Gutter.LineNumberPart.MarkupInfo.Foreground,
-      AView.LineHighlightColor.Background);
+      AView.CurrentLineColour);
 
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');

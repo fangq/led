@@ -4909,6 +4909,92 @@ end;
   ink on any row is the chevron at its waist.  The background is taken as the
   commonest colour in the column rather than assumed, because led ships eight
   themes and half of them are light. }
+{ The commonest colour on scanline AY of the text area. }
+function DominantColour(V: TLedEdit; AY: Integer): TColor;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, x0, i, Best: Integer;
+  C: TFPColor;
+  Cols: array of record C: TColor; N: Integer; end;
+  Cur: TColor;
+  Found: Boolean;
+begin
+  Result := clNone;
+  if (AY < 0) or (AY >= V.Height) then Exit;
+  x0 := 0;
+  if V.Gutter.Visible then x0 := V.Gutter.Width;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      SetLength(Cols, 0);
+      for x := x0 to Img.Width - 1 do
+      begin
+        C := Img.Colors[x, AY];
+        Cur := RGBToColor(C.Red shr 8, C.Green shr 8, C.Blue shr 8);
+        Found := False;
+        for i := 0 to High(Cols) do
+          if Cols[i].C = Cur then begin Inc(Cols[i].N); Found := True; Break; end;
+        if not Found then
+        begin
+          SetLength(Cols, Length(Cols) + 1);
+          Cols[High(Cols)].C := Cur; Cols[High(Cols)].N := 1;
+        end;
+      end;
+      Best := -1;
+      for i := 0 to High(Cols) do
+        if (Best < 0) or (Cols[i].N > Cols[Best].N) then Best := i;
+      if Best >= 0 then Result := Cols[Best].C;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ How many pixels of scanline AY, across the text area, are exactly AColour. }
+function ScanlineCount(V: TLedEdit; AY: Integer; AColour: TColor): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, x0: Integer;
+  C, Want: TFPColor;
+begin
+  Result := 0;
+  if (AY < 0) or (AY >= V.Height) then Exit;
+  Want := TColorToFPColor(ColorToRGB(AColour));
+  x0 := 0;
+  if V.Gutter.Visible then x0 := V.Gutter.Width;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      for x := x0 to Img.Width - 1 do
+      begin
+        C := Img.Colors[x, AY];
+        if (C.Red = Want.Red) and (C.Green = Want.Green) and
+           (C.Blue = Want.Blue) then Inc(Result);
+      end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The width in pixels of the widest chevron painted in the fold column.
+
+  Nothing else is drawn in that column, so the widest run of non-background
+  ink on any row is the chevron at its waist. }
 function ChevronSpan(V: TLedEdit): Integer;
 var
   Bmp: TBitmap;
@@ -5785,6 +5871,127 @@ begin
     Span >= (V.Gutter.CodeFoldPart.Width * 2) div 5);
 end;
 
+{ Three ways a row is drawn, all reported as too loud or too loose.
+
+  The caret's row is marked with a rule above and below rather than a filled
+  band; a click past the last character lands on the last character; and a
+  selection stops where the text does instead of running out to the right
+  edge of the view.
+
+  Measured off the painted view, because every one of them is about ink. }
+procedure TestRowStyling(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Ymid, Wide, Past: Integer;
+begin
+  Say('row styling');
+
+  Dir := TempName('rowstyle');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'rows.txt';
+  L := TStringList.Create;
+  try
+    L.Add('short');
+    L.Add('a somewhat longer line of text to select across');
+    L.Add('tiny');
+    L.Add('another line so the caret has somewhere to be');
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  V.TopLine := 1;
+  V.SelectionMode := smNormal;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 3);
+  Pump;
+
+  { --- the caret's row: two rules, not a band --- }
+  Check('the row colour survived the move off SynEdit''s own fill',
+    V.CurrentLineColour <> clNone);
+  Check('and differs from the page, or there would be nothing to see',
+    V.CurrentLineColour <> V.Color);
+
+  { Which row the painter marked, rather than the ink it put down.  PaintTo
+    into a bitmap reproduces led's gutter drawing and not its text-area
+    drawing -- a full-width fill in the text area comes back with two pixels
+    of it -- so the rules themselves were checked on a real X server and what
+    is asserted here is the decision behind them. }
+  V.Repaint;
+  Pump;
+  CheckEqInt('the rules are drawn on the caret''s row', 2, V.CurrentLineRow);
+  CheckEqInt('and SynEdit no longer fills it', clNone,
+    V.LineHighlightColor.Background);
+
+  { A selection is the thing to look at, so the row markers stand down. }
+  V.BlockBegin := Point(1, 2);
+  V.BlockEnd := Point(4, 2);
+  V.Repaint;
+  Pump;
+  CheckEqInt('and stand down while something is selected', -1,
+    V.CurrentLineRow);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 3);
+  V.Repaint;
+  Pump;
+  CheckEqInt('coming back when it is cleared', 2, V.CurrentLineRow);
+
+  { --- a click past the end of a line --- }
+  V.CaretXY := Point(1, 1);
+  Pump;
+  TLedMousePoke.Press(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Release(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  Pump;
+  CheckEqInt('clicking past the end of a line lands on its end',
+    Length(V.Lines[0]) + 1, V.CaretX);
+
+  { A rectangle still reaches past it, which is what eoScrollPastEol is on
+    for -- clamping every click would have taken that with it. }
+  V.SelectionMode := smColumn;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(30, 3);
+  Pump;
+  CheckEqInt('a column selection still reaches past a short line', 30,
+    V.BlockEnd.X);
+  V.SelectionMode := smNormal;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Pump;
+
+  { --- a selection stops where the text does --- }
+  V.CaretXY := Point(1, 1);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(5, 3);
+  Pump;
+  Ymid := V.LineHeight div 2;          { line 1, "short" }
+  Wide := ScanlineCount(V, Ymid, V.SelectedColor.Background);
+  Say(Format('  (selection on a 5-char line: %d px shaded, char %d px)',
+    [Wide, V.CharWidth]));
+  CheckGt('the selected text is shaded', 0, Wide);
+  { Five characters and the newline after them; anything much past that is
+    empty space the selection has no business colouring. }
+  Past := (Length(V.Lines[0]) + 2) * V.CharWidth;
+  Check('but the empty space beyond the line is not', Wide <= Past);
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
 { Two independent tab groups in one window.
 
   The checks are about where tabs actually are and what happened to the
@@ -6179,6 +6386,7 @@ begin
   TestTools(F);
   WriteLn;
   TestFoldGuides(F);
+  TestRowStyling(F);
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);

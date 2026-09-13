@@ -77,6 +77,8 @@ type
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
     FHexMode: Boolean;
+    FCurrentLineColour: TColor;
+    FCurrentLineRow: Integer;
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
@@ -96,6 +98,8 @@ type
     procedure SetDebugLine(AValue: Integer);
     function MarksColumn(out ALeft, AWidth: Integer): Boolean;
     procedure DrawDebugMarks;
+    procedure DrawCurrentLineEdges;
+    procedure ClampCaretToLineEnd;
     procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
@@ -134,6 +138,17 @@ type
       keys go to OnHexKey instead of into the buffer.  The buffer is a
       rendering of bytes the document owns, so nothing else may write to it. }
     property HexMode: Boolean read FHexMode write SetHexMode;
+    { The colour of the two rules that mark the caret's row.  Set from the
+      theme's current-line style, which SynEdit would otherwise paint as a
+      filled band across the whole row. }
+    property CurrentLineColour: TColor
+      read FCurrentLineColour write FCurrentLineColour;
+    { The screen row the rules were last drawn on, or -1 when they were not
+      drawn at all.  Published because the ink itself cannot be checked from
+      a test: PaintTo into a bitmap reproduces led's gutter drawing and not
+      its text-area drawing, so what the painter decided is the most a
+      scripted run can see.  The rules themselves are checked by eye. }
+    property CurrentLineRow: Integer read FCurrentLineRow;
     { The markup that colours the three columns.  Exposed so the theme can
       be handed to it -- the colours are derived from the editor's own, and
       only the caller knows when those have changed. }
@@ -257,7 +272,13 @@ begin
        eoKeepCaretX]
     - [eoSmartTabs];
 
-  Options2 := Options2 + [eoEnhanceEndKey];   // smart End
+  { eoScrollPastEol above lets the caret sit past the last character, which
+    column selection needs -- and which also had an ordinary selection shade
+    the empty space out to the right edge of the view.  SynEdit has a switch
+    for exactly that, so a selection is now painted only as far as there is
+    text on the line. }
+  Options2 := Options2 + [eoEnhanceEndKey,           // smart End
+                          eoColorSelectionTillEol];
 
   { medit selected a rectangle with Ctrl+drag; SynEdit ships Alt+drag.  Both
     are bound, since Alt+drag is grabbed by the window manager on several
@@ -700,6 +721,65 @@ begin
   APts[7] := Point(ALeft,             ATop + C);
 end;
 
+{ Put the caret back on the last character of its line when it has landed
+  past the end.  Nothing to do when it has not, so this is safe to call on
+  every click. }
+procedure TLedEdit.ClampCaretToLineEnd;
+var
+  Last: Integer;
+begin
+  if FHexMode then Exit;       { a dump has its own snapping }
+  if (CaretY < 1) or (CaretY > Lines.Count) then Exit;
+  Last := Length(Lines[CaretY - 1]) + 1;
+  if CaretX > Last then CaretX := Last;
+end;
+
+{ The caret's row, marked with a rule above and below rather than filled in.
+
+  A band of colour behind the whole row competes with the syntax colouring it
+  sits under and, on a wide window, draws a stripe across mostly empty space.
+  Two rules say the same thing and leave the text alone -- which is what the
+  fold guides and the right margin already do.
+
+  Drawn over the text area only: the gutter has its own emphasis for the
+  caret's line, in the line number. }
+procedure TLedEdit.DrawCurrentLineEdges;
+var
+  FV: TSynEditFoldedView;
+  Row, TextIdx, Y, X0: Integer;
+begin
+  FCurrentLineRow := -1;
+  if FCurrentLineColour = clNone then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  if SelAvail then Exit;   { a selection is the thing to look at, not the row }
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+
+  X0 := 0;
+  if Gutter.Visible then X0 := Gutter.Width;
+
+  for Row := 0 to LinesInWindow do
+  begin
+    TextIdx := FV.ScreenLineToTextIndex(Row);
+    if TextIdx <> CaretY - 1 then Continue;
+
+    { Filled rather than stroked.  A one-pixel FillRect puts down exactly the
+      colour asked for; Canvas.Line goes through the pen, and the pen carries
+      state from whatever drew last -- which is how the first version of this
+      drew two pixels of the right colour and the rest in the page's. }
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := FCurrentLineColour;
+
+    Y := Row * LineHeight;
+    FCurrentLineRow := Row;
+    Canvas.FillRect(X0, Y, ClientWidth, Y + 1);
+    { The lower rule sits on the last row of the line rather than the first
+      row of the next one, or two adjacent lines share a rule and the pair
+      reads as one band again. }
+    Canvas.FillRect(X0, Y + LineHeight - 1, ClientWidth, Y + LineHeight);
+    Break;
+  end;
+end;
+
 procedure TLedEdit.DrawDebugMarks;
 var
   FV: TSynEditFoldedView;
@@ -946,6 +1026,7 @@ end;
 procedure TLedEdit.Paint;
 begin
   inherited Paint;
+  DrawCurrentLineEdges;
   DrawBlockGuides;
   DrawLongLineMarkers;
   DrawDebugMarks;
@@ -1250,6 +1331,17 @@ begin
     end;
   end;
 
+  { A click to the right of the last character puts the caret at the end of
+    the line rather than out in the empty space beside it.  eoScrollPastEol
+    is on because column selection needs it, and the side effect is a caret
+    that can sit where there is nothing -- so arrowing, typing or selecting
+    from there all begin somewhere the text does not reach.
+
+    Only for a plain click: a rectangle is selected by holding Ctrl or Alt
+    and is the one case that does want a column past the end of a short
+    line.  Applied after inherited, because SynEdit places a clicked caret
+    through its own machinery rather than through SetCaretXY -- the same
+    reason the hex view has to correct it here. }
   if (AButton = mbLeft) and (FLongLines <> nil) and (FLongLines.Limit > 0) then
   begin
     P := PixelsToRowColumn(Point(X, Y));
@@ -1263,6 +1355,12 @@ begin
     end;
   end;
   inherited MouseDown(AButton, AShift, X, Y);
+
+  { After inherited, not before: SynEdit places a clicked caret in there, so
+    clamping first corrects the position the caret was leaving. }
+  if (AButton = mbLeft) and (AShift * [ssCtrl, ssAlt] = []) and
+     (SelectionMode <> smColumn) then
+    ClampCaretToLineEnd;
 
   { SynEdit places a clicked caret through its own machinery rather than
     through SetCaretXY, so a click in the offset column would otherwise land
