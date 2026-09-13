@@ -4903,6 +4903,63 @@ begin
   end;
 end;
 
+{ The width in pixels of the widest chevron painted in the fold column.
+
+  Nothing else is drawn in that column, so the widest run of non-background
+  ink on any row is the chevron at its waist.  The background is taken as the
+  commonest colour in the column rather than assumed, because led ships eight
+  themes and half of them are light. }
+function ChevronSpan(V: TLedEdit): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, x0, x1, Lo, Hi: Integer;
+  C, Bg: TFPColor;
+begin
+  Result := 0;
+  if (V.Gutter.CodeFoldPart = nil) or (not V.Gutter.CodeFoldPart.Visible) then
+    Exit;
+  x0 := V.Gutter.CodeFoldPart.Left;
+  x1 := x0 + V.Gutter.CodeFoldPart.Width - 1;
+
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      if x1 >= Img.Width then x1 := Img.Width - 1;
+      if x1 < x0 then Exit;
+
+      for y := 0 to Img.Height - 1 do
+      begin
+        { This row's own background, read at the column's left edge.  Taken
+          per row rather than once for the view: the caret's line is painted
+          in a different colour, and against a single background every pixel
+          of that row counts as ink and the column measures full width. }
+        Bg := Img.Colors[x0, y];
+        Lo := -1; Hi := -1;
+        for x := x0 to x1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red <> Bg.Red) or (C.Green <> Bg.Green) or
+             (C.Blue <> Bg.Blue) then
+          begin
+            if Lo < 0 then Lo := x;
+            Hi := x;
+          end;
+        end;
+        if (Lo >= 0) and (Hi - Lo + 1 > Result) then Result := Hi - Lo + 1;
+      end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 { The same, in grey: a disabled breakpoint is drawn as a grey ring, and
   nothing else about the view says whether it reached the screen.
 
@@ -5610,6 +5667,7 @@ var
   i, Body, Opener, Closer, BodyCol: Integer;
   Before, After: Integer;
   Outer: Integer;
+  Span: Integer;
 
   { The column ACol if the line carries a guide there, otherwise 0. }
   function GuideCol(const ACols: array of Integer; ACol: Integer): Integer;
@@ -5708,6 +5766,23 @@ begin
     Length(V.ComputeBlockGuides(0, V.Lines.Count - 1)));
   V.SelText := V.SelText;      { leave the document as it was }
 
+  { How big the chevron actually comes out.
+
+    It is drawn at a fraction of its column, and the column is scaled with
+    the display -- so at 3.125x the old figure gave a chevron forty-nine
+    pixels across, which is a button, not a hint.  Measured off the painted
+    view rather than computed, because what matters is the ink: nothing else
+    is drawn in that column, so the widest row of it is the chevron.
+
+    Asserted as a proportion of the column, so it holds at every scale. }
+  Span := ChevronSpan(V);
+  Say(Format('  (fold column %d px, chevron %d px)',
+    [V.Gutter.CodeFoldPart.Width, Span]));
+  CheckGt('a chevron is painted at all', 0, Span);
+  Check('and it no longer fills its column',
+    Span <= (V.Gutter.CodeFoldPart.Width * 4) div 5);
+  Check('while staying wide enough to read',
+    Span >= (V.Gutter.CodeFoldPart.Width * 2) div 5);
 end;
 
 { Two independent tab groups in one window.

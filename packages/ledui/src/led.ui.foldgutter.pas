@@ -91,6 +91,10 @@ end;
   quarter, which lands in the same place. }
 procedure TLedGutterCodeFolding.DrawChevron(ACanvas: TCanvas;
   const ARect: TRect; ACollapsed: Boolean);
+const
+  { How much of the fold column the glyph fills.  Named because it is a
+    judgement about how loud the marker should be, not a derived number. }
+  ChevronScale = 0.7;
 var
   CX, CY, Target: Integer;
   Half, LW: Double;
@@ -116,7 +120,13 @@ begin
   CX := (ARect.Left + ARect.Right) div 2;
   CY := (ARect.Top + ARect.Bottom) div 2;
 
-  Target := Width - 4;
+  { Seven tenths of the column it sits in, rather than all but four pixels of
+    it.  The old figure is proportionally the same at every scale, which is
+    the trouble: on a 3.125x display an eighteen-pixel column is fifty-six,
+    and a chevron forty-nine across reads as a button rather than as a hint
+    at the edge of the text.  Fine detail does not have to grow with the
+    text, and the column keeps its width so the click target does not move. }
+  Target := Round((Width - 4) * ChevronScale);
   if Target < 6 then Target := 6;
   Half := Target / 2;
 
