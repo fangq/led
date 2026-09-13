@@ -180,18 +180,18 @@ end;
   pass has given FNav its new width, so it divided up the old one and nothing
   came along afterwards to correct it -- the trail simply never appeared. }
 procedure TLedFileBrowser.NavResize(Sender: TObject);
-var
-  Edge: Integer;
 begin
   if (FNav = nil) or (FCrumbs = nil) or
      (FBtnHome = nil) or (FBtnBack = nil) then Exit;
 
-  { Measured off the buttons rather than computed, so it stays right whatever
-    the sweep scaled them to: past the last one, plus the margin the first one
-    was given. }
-  Edge := FBtnHome.Left + FBtnHome.Width + FBtnBack.Left;
-  if FNav.ClientWidth - Edge < 1 then Exit;
-  FCrumbs.SetBounds(Edge, 0, FNav.ClientWidth - Edge, FNav.ClientHeight);
+  { The trail has a row of its own now and is aligned to it, so its bounds
+    are the layout's business and not this procedure's.
+
+    Setting them here is what crashed led on startup: an alTop control given
+    SetBounds is realigned, realignment raises OnResize, and OnResize set the
+    bounds again -- unbounded recursion, which arrives as an access violation
+    rather than as anything that names itself.  It only bit where the pane
+    was open when led started, which is why a scripted run never saw it. }
 
   { The pane roots itself the first time it has real geometry, instead of
     waiting to be told.  Only the two pane toggles told it, so a session that
