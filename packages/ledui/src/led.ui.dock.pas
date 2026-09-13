@@ -236,6 +236,11 @@ const
   lightened towards the header band so it sits on it rather than shouting
   from it.  Taken from the desktop rather than fixed, for the reason the
   terminal's active-pane band is -- it is the blue the session already uses. }
+{ Perceived brightness, and a colour lifted away from its surroundings.
+  Public so a check can ask whether a caption can be read off its band. }
+function LedColourLuma(AColour: TColor): Integer;
+function LedLiftColour(AColour: TColor; APercent: Integer): TColor;
+
 function LedHeaderCaptionColour: TColor;
 
 function LedHeaderStyleCaption(const AName: string): string;
@@ -245,18 +250,86 @@ implementation
 uses
   Led.UI.Icons, Led.Core.Prefs, Led.UI.Dpi;
 
-function LedHeaderCaptionColour: TColor;
+{ Toward white on a dark form, toward black on a light one, so "slightly
+  brighter than its surroundings" holds for either.  Shared, because the
+  caption colour has to know where the band it sits on ended up. }
+function LedLiftColour(AColour: TColor; APercent: Integer): TColor;
 var
-  Hl, Bg: LongInt;
+  R, G, B, Luma: Integer;
 begin
-  Hl := ColorToRGB(clHighlight);
-  Bg := ColorToRGB(clBtnFace);
-  { Two parts selection to one part band: recognisably that blue, without the
-    contrast of a selected row. }
-  Result := TColor(
-    (((2 * (Hl and $FF) + (Bg and $FF)) div 3) and $FF)
-    or ((((2 * ((Hl shr 8) and $FF) + ((Bg shr 8) and $FF)) div 3) and $FF) shl 8)
-    or ((((2 * ((Hl shr 16) and $FF) + ((Bg shr 16) and $FF)) div 3) and $FF) shl 16));
+  AColour := ColorToRGB(AColour);
+  R := AColour and $FF;
+  G := (AColour shr 8) and $FF;
+  B := (AColour shr 16) and $FF;
+  Luma := (R * 299 + G * 587 + B * 114) div 1000;
+  if Luma < 128 then
+  begin
+    R := R + ((255 - R) * APercent) div 100;
+    G := G + ((255 - G) * APercent) div 100;
+    B := B + ((255 - B) * APercent) div 100;
+  end
+  else
+  begin
+    R := R - (R * APercent) div 100;
+    G := G - (G * APercent) div 100;
+    B := B - (B * APercent) div 100;
+  end;
+  Result := TColor(R or (G shl 8) or (B shl 16));
+end;
+
+function LedColourLuma(AColour: TColor): Integer;
+begin
+  AColour := ColorToRGB(AColour);
+  Result := ((AColour and $FF) * 299 + ((AColour shr 8) and $FF) * 587
+            + ((AColour shr 16) and $FF) * 114) div 1000;
+end;
+
+function LedHeaderCaptionColour: TColor;
+
+  function Luma(AColour: TColor): Integer;
+  begin
+    Result := LedColourLuma(AColour);
+  end;
+
+  { One step of AColour towards ATarget. }
+  function Step(AColour, ATarget: TColor): TColor;
+  var
+    R, G, B, Tr, Tg, Tb: Integer;
+  begin
+    AColour := ColorToRGB(AColour);
+    ATarget := ColorToRGB(ATarget);
+    R := AColour and $FF;          Tr := ATarget and $FF;
+    G := (AColour shr 8) and $FF;  Tg := (ATarget shr 8) and $FF;
+    B := (AColour shr 16) and $FF; Tb := (ATarget shr 16) and $FF;
+    R := R + (Tr - R) div 5;
+    G := G + (Tg - G) div 5;
+    B := B + (Tb - B) div 5;
+    Result := TColor(R or (G shl 8) or (B shl 16));
+  end;
+
+var
+  Band, Toward: TColor;
+  Guard: Integer;
+begin
+  { The band the caption is drawn on, computed the way DrawLedPlainHeader
+    computes it, so the two cannot disagree. }
+  Band := LedLiftColour(clForm, 12);
+
+  Result := clHighlight;
+
+  { And lifted off that band until it can be read.  The desktop's selection
+    blue is chosen to carry white text on itself, not to be text on a dark
+    grey -- on a dark desktop the first version of this came out a muted
+    blue on dark grey, which is the report that prompted the loop.  Stepped
+    towards white on a dark band and towards black on a light one, so the
+    same rule serves both. }
+  if Luma(Band) < 128 then Toward := clWhite else Toward := clBlack;
+  Guard := 0;
+  while (Abs(Luma(Result) - Luma(Band)) < 90) and (Guard < 20) do
+  begin
+    Result := Step(Result, Toward);
+    Inc(Guard);
+  end;
 end;
 
 function LedHeaderStyleCaption(const AName: string): string;
@@ -426,37 +499,10 @@ procedure DrawLedPlainHeader(Canvas: TCanvas; Style: TADHeaderStyleDesc;
   r: TRect; Horizontal: boolean; Focused: boolean);
 var
   Base: TColor;
-
-  { Toward white on a dark form, toward black on a light one, so "slightly
-    brighter than its surroundings" holds for either. }
-  function Lift(AColour: TColor; APercent: Integer): TColor;
-  var
-    R, G, B, Luma: Integer;
-  begin
-    AColour := ColorToRGB(AColour);
-    R := AColour and $FF;
-    G := (AColour shr 8) and $FF;
-    B := (AColour shr 16) and $FF;
-    Luma := (R * 299 + G * 587 + B * 114) div 1000;
-    if Luma < 128 then
-    begin
-      R := R + ((255 - R) * APercent) div 100;
-      G := G + ((255 - G) * APercent) div 100;
-      B := B + ((255 - B) * APercent) div 100;
-    end
-    else
-    begin
-      R := R - (R * APercent) div 100;
-      G := G - (G * APercent) div 100;
-      B := B - (B * APercent) div 100;
-    end;
-    Result := TColor(R or (G shl 8) or (B shl 16));
-  end;
-
 begin
-  Base := Lift(clForm, 12);
+  Base := LedLiftColour(clForm, 12);
   if Focused then
-    Base := Lift(Base, 8);
+    Base := LedLiftColour(Base, 8);
   Canvas.Brush.Color := Base;
   Canvas.Brush.Style := bsSolid;
   Canvas.FillRect(r);

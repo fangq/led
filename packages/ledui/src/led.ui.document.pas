@@ -18,7 +18,7 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, Graphics, SynEdit, SynEditTypes,
+  Classes, SysUtils, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.Encodings,
   Led.Core.Config,
@@ -1054,15 +1054,52 @@ begin
   FItems.Add(Result);
 end;
 
+{ The document already open on AFileName, or nil.
+
+  Compared with the symbolic links followed, not merely expanded.  Two names
+  for one file is the ordinary case on this kind of tree -- a home directory
+  that links into a mounted volume, a project reached through both -- and a
+  match on the literal path opens the file a second time: two documents over
+  one file, each able to save over the other.  ResolveLink falls back to the
+  expanded name when a path cannot be resolved, so a file that does not exist
+  yet still compares sensibly. }
+{$IFDEF UNIX}
+function realpath(path: PChar; resolved: PChar): PChar; cdecl; external 'c';
+{$ENDIF}
+
 function TLedDocuments.FindByFileName(const AFileName: string): TLedDocument;
+
+  function ResolveLink(const APath: string): string;
+  {$IFDEF UNIX}
+  var
+    Buf: array[0..4095] of Char;
+    P: PChar;
+  {$ENDIF}
+  begin
+    Result := ExpandFileName(APath);
+    if Result = '' then Exit;
+    {$IFDEF UNIX}
+    { realpath(3) rather than LazFileUtils' TryReadAllLinks, which resolves a
+      link only in the final component: the case that matters here is a
+      *directory* in the middle of the path being the link -- a home
+      directory that points into a mounted volume -- and that one it returns
+      unchanged.  Measured: /tmp/x-viadir/link/a.c came back as itself.
+
+      realpath answers nil for a path that does not exist yet, which a
+      Save As target legitimately is, so the expanded name stands in. }
+    P := realpath(PChar(Result), @Buf[0]);
+    if P <> nil then Result := string(P);
+    {$ENDIF}
+  end;
+
 var
   i: Integer;
   Wanted: string;
 begin
-  Wanted := ExpandFileName(AFileName);
+  Wanted := ResolveLink(AFileName);
   for i := 0 to FItems.Count - 1 do
     if (not Items[i].IsUntitled) and
-       (ExpandFileName(Items[i].FileName) = Wanted) then
+       (ResolveLink(Items[i].FileName) = Wanted) then
       Exit(Items[i]);
   Result := nil;
 end;

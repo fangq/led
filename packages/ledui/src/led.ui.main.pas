@@ -663,6 +663,9 @@ type
     property Debugger: TLedDebugger read FDebugger;
     { For the suite: run a build and wait for it. }
     function BuildProjectNow(AThenDebug: Boolean): Boolean;
+    { What the file browser calls when a row is opened.  Public so a check
+      can take the same route a double-click does. }
+    procedure BrowserOpenFileNow(const AFileName: string);
     function ToolRunning: Boolean;
     property DebugPane: TLedDebugPane read FDebugPane;
     property BreakPane: TLedBreakPane read FBreakPane;
@@ -1293,6 +1296,11 @@ begin
 end;
 
 { --- the debugger ---------------------------------------------------------- }
+
+procedure TLedMainForm.BrowserOpenFileNow(const AFileName: string);
+begin
+  BrowserOpenFile(AFileName);
+end;
 
 function TLedMainForm.BuildProjectNow(AThenDebug: Boolean): Boolean;
 begin

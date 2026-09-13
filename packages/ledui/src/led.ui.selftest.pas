@@ -37,7 +37,7 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
-  Led.UI.HexMarkup, AnchorDocking,
+  Led.UI.HexMarkup, AnchorDocking, BaseUnix, LazFileUtils,
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
@@ -3274,8 +3274,8 @@ var
   Fresh: TLedFileBrowser;
   TabForIcon: TLedTab;
   Root, Node: TTreeNode;
-  RootRaised, BrowseDir, Names, Kinds: string;
-  EditH, i, x: Integer;
+  RootRaised, BrowseDir, Names, Kinds, LinkDir, LinkPath: string;
+  EditH, i, x, Tabs0, Tabs1: Integer;
   SavedOpen: TLedOpenFileEvent;
   Catcher: TBrowserOpenCatcher;
   Pane: TLedPaneForm;
@@ -3372,6 +3372,13 @@ begin
       9);
     CheckEqInt('in the colour the dock mixes for it',
       ColorToRGB(LedHeaderCaptionColour), ColorToRGB(Hdr.Font.Color));
+    { And that colour can actually be read off the band it sits on.  The
+      desktop's selection blue is chosen to carry white text, not to be text
+      on a dark grey, so on a dark desktop the first version of this was
+      unreadable. }
+    CheckGt('with enough contrast against the header band to read', 60,
+      Abs(LedColourLuma(LedHeaderCaptionColour) -
+          LedColourLuma(LedLiftColour(clForm, 12))));
   end;
 
   Check('the pane is a single tree', F.Browser.Tree <> nil);
@@ -3394,6 +3401,9 @@ begin
   Check('with the whole row selectable', F.Browser.Tree.RowSelect);
   Check('and a chevron beside anything that opens',
     F.Browser.Tree.ShowButtons);
+  { Drawn by led, not by the LCL: its three built-in signs are a themed box,
+    a plus-minus and an outlined triangle, and a file tree wants a chevron. }
+  Check('which led draws itself', F.Browser.DrawsOwnChevron);
   Check('and pictures to put on the rows',
     (F.Browser.Tree.Images <> nil) and (F.Browser.Tree.Images.Count > 0));
 
@@ -3546,6 +3556,64 @@ begin
   finally
     F.Browser.OnOpenFile := SavedOpen;
     Catcher.Free;
+  end;
+
+  { Opening a file that is already open goes to its tab instead of reading it
+    again -- which would be bad enough for the parse and worse for a file with
+    unsaved edits in it. }
+  Tabs0 := F.Notebook.PageCount;
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while (Node <> nil) and
+        (ExtractFileName(F.Browser.Tree.GetPathFromNode(Node)) <> 'a.c') do
+    Node := Node.GetNext;
+  if Node <> nil then
+  begin
+    F.BrowserOpenFileNow(F.Browser.Tree.GetPathFromNode(Node));
+    Pump;
+    Tabs1 := F.Notebook.PageCount;
+    CheckEqInt('opening a file adds one tab', Tabs0 + 1, Tabs1);
+
+    { Edit it, then ask for it again the way a double-click does. }
+    if F.ActiveView <> nil then
+    begin
+      F.ActiveView.CaretXY := Point(1, 1);
+      F.ActiveView.SelText := 'EDITED ';
+      Pump;
+      Check('the document is now modified', F.ActiveTab.Document.Modified);
+
+      F.BrowserOpenFileNow(F.Browser.Tree.GetPathFromNode(Node));
+      Pump;
+      CheckEqInt('asking for it again opens no second tab', Tabs1,
+        F.Notebook.PageCount);
+      Check('and the edit is still there',
+        Pos('EDITED', F.ActiveView.Lines[0]) > 0);
+      Check('which means it was not read from disk again',
+        F.ActiveTab.Document.Modified);
+
+      { And through a second name for the same file.  A home directory that
+        links into a mounted volume is the ordinary case here, and matching
+        on the literal path opened the file twice -- two documents over one
+        file, each able to save over the other. }
+      LinkDir := TempName('viadir');
+      if ForceDirectories(LinkDir) then
+      begin
+        LinkPath := LinkDir + PathDelim + 'link';
+        if FpSymlink(PChar(BrowseDir), PChar(LinkPath)) = 0 then
+        begin
+          F.BrowserOpenFileNow(LinkPath + PathDelim + 'a.c');
+          Pump;
+          CheckEqInt('reaching it by a symlinked path opens no second tab',
+            Tabs1, F.Notebook.PageCount);
+          Check('and still shows the edit',
+            Pos('EDITED', F.ActiveView.Lines[0]) > 0);
+        end;
+        DeleteDirectory(LinkDir, False);
+      end;
+
+      F.ActiveTab.Document.Master.Modified := False;
+      F.CloseActiveTab(False);
+      Pump;
+    end;
   end;
 
   { The filter row is a row, not a container with two hundred pixels of

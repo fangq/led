@@ -37,6 +37,10 @@ const
 function LedFormatSize(ABytes: Int64): string;
 
 type
+  { TCustomTreeView keeps the hook that draws an expander protected, and
+    TShellTreeView does not publish it. }
+  TLedTreeAccess = class(TCustomTreeView);
+
   { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
     is protected, so reaching it at all needs a descendant.  Worth the four
     lines: the browser's splitter used to resize the filter row instead of
@@ -78,6 +82,8 @@ type
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
     procedure TreeMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure TreeDrawArrow(Sender: TCustomTreeView; const ARect: TRect;
+      ACollapsed: Boolean);
     procedure IconiseNodes;
     procedure IconiseChildren(ANode: TTreeNode);
     function IconForPath(const APath: string; AIsDir: Boolean): Integer;
@@ -147,6 +153,10 @@ type
       instead, so a dark scheme in the editor sat beside a file list in
       whatever the widget theme happened to be. }
     procedure ApplyColours(AFore, ABack: TColor);
+    { True when led is drawing the expander rather than the LCL.  A function
+      because the hook is protected on TCustomTreeView, and Pascal's
+      protected reaches only within the unit that declares the descendant. }
+    function DrawsOwnChevron: Boolean;
     { And the tree, so a check can select its root -- which used to raise. }
     property FileTree: TShellTreeView read FTree;
 
@@ -359,6 +369,12 @@ begin
   end;
 end;
 
+function TLedFileBrowser.DrawsOwnChevron: Boolean;
+begin
+  Result := (FTree <> nil) and
+            Assigned(TLedTreeAccess(FTree).OnCustomDrawArrow);
+end;
+
 procedure TLedFileBrowser.ApplyColours(AFore, ABack: TColor);
 begin
   if (FTree = nil) or (AFore = clNone) or (ABack = clNone) then Exit;
@@ -557,6 +573,16 @@ begin
     being a list with columns. }
   FTree.ShowHint := True;
   FTree.OnMouseMove := @TreeMouseMove;
+  { led draws the expander.  The LCL offers a themed box, a plus-minus and an
+    outlined triangle, and none of them is the chevron a file tree has used
+    since VS Code made it the convention.  OnCustomDrawArrow hands over that
+    rectangle and nothing else -- the indent, the hit testing and the click
+    that toggles a node all stay the LCL's. }
+  { Protected on TCustomTreeView and published only by TTreeView, which
+    TShellTreeView is not -- so it is reached the way this project reaches
+    any other protected member, through a descendant declared for the
+    purpose. }
+  TLedTreeAccess(FTree).OnCustomDrawArrow := @TreeDrawArrow;
   { The selection is the whole row, as it is in every file tree worth using;
     a name-width highlight in a pane this narrow is hard to see and harder to
     aim at. }
@@ -973,6 +999,55 @@ begin
       Tip := Path + LineEnding + LedFormatSize(Size);
   end;
   FTree.Hint := Tip;
+end;
+
+{ A right-angle chevron: two arms meeting at ninety degrees, pointing right
+  when the folder is shut and down when it is open.
+
+  Square rather than the flatter proportions led's fold gutter uses.  That
+  one sits in a narrow column beside code and is drawn wide so it reads at a
+  glance; this one sits in a row of text where a wide chevron would look like
+  a mistake, and ninety degrees is what the eye expects beside a folder. }
+procedure TLedFileBrowser.TreeDrawArrow(Sender: TCustomTreeView;
+  const ARect: TRect; ACollapsed: Boolean);
+var
+  C: TCanvas;
+  Cx, Cy, Arm: Integer;
+begin
+  C := Sender.Canvas;
+  Cx := (ARect.Left + ARect.Right) div 2;
+  Cy := (ARect.Top + ARect.Bottom) div 2;
+
+  { Half the shorter side, less a pixel, so the arms stay inside the cell the
+    LCL measured for them. }
+  Arm := (ARect.Right - ARect.Left) div 2;
+  if (ARect.Bottom - ARect.Top) div 2 < Arm then
+    Arm := (ARect.Bottom - ARect.Top) div 2;
+  Dec(Arm);
+  if Arm < 2 then Arm := 2;
+
+  C.Pen.Color := Sender.ExpandSignColor;
+  if C.Pen.Color = clNone then C.Pen.Color := Sender.Font.Color;
+  C.Pen.Width := 1;
+  if Arm >= 5 then C.Pen.Width := 2;
+  C.Pen.Style := psSolid;
+  C.Pen.EndCap := pecRound;
+  C.Pen.JoinStyle := pjsRound;
+
+  if ACollapsed then
+  begin
+    { Pointing right: the apex on the right, arms back at ninety degrees. }
+    C.MoveTo(Cx - Arm div 2, Cy - Arm);
+    C.LineTo(Cx + Arm div 2, Cy);
+    C.LineTo(Cx - Arm div 2, Cy + Arm);
+  end
+  else
+  begin
+    { Pointing down. }
+    C.MoveTo(Cx - Arm, Cy - Arm div 2);
+    C.LineTo(Cx, Cy + Arm div 2);
+    C.LineTo(Cx + Arm, Cy - Arm div 2);
+  end;
 end;
 
 procedure TLedFileBrowser.TreeDblClick(Sender: TObject);
