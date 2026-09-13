@@ -355,6 +355,8 @@ begin
     control in ledui.  It supplies the colour, this applies it. }
   AView.GuideColour :=
     LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
+  AView.FoldedLineColour :=
+    LedThemeFoldedLineColour(LedCurrentTheme, AView.Font.Color, AView.Color);
 
   { The caret's row is marked with a rule above and below rather than with a
     band of colour behind it, so the theme's current-line colour moves off

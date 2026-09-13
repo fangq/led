@@ -37,6 +37,7 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
+  SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
   {$ENDIF}
@@ -4957,6 +4958,36 @@ begin
   end;
 end;
 
+{ The highlight-all markup keeps both its match list and the routine that
+  fills it protected, so both are reached the way this suite reaches any
+  protected member: through a descendant that publishes class methods.
+
+  Why the search has to be asked for at all: CheckState only arms a TTimer,
+  and the timer's handler is what searches.  A TTimer does not fire under
+  Application.ProcessMessages, which is what drives this suite -- the same
+  limitation Led.Core.Gdb documents and polls around.  The delay is
+  SynEdit's and unmodified; what is checked here is that the search, when it
+  runs, finds the right words. }
+type
+  TLedMarkupPeek = class(TSynEditMarkupHighlightAllCaret)
+  public
+    class function Count(A: TSynEditMarkupHighlightAllCaret): Integer;
+    class procedure SearchNow(A: TSynEditMarkupHighlightAllCaret);
+  end;
+
+class function TLedMarkupPeek.Count(A: TSynEditMarkupHighlightAllCaret): Integer;
+begin
+  Result := 0;
+  if A <> nil then Result := TLedMarkupPeek(A).Matches.Count;
+end;
+
+class procedure TLedMarkupPeek.SearchNow(A: TSynEditMarkupHighlightAllCaret);
+begin
+  if A = nil then Exit;
+  TLedMarkupPeek(A).CheckState;
+  TLedMarkupPeek(A).ScrollTimerHandler(A);
+end;
+
 { How many pixels of scanline AY, across the text area, are exactly AColour. }
 function ScanlineCount(V: TLedEdit; AY: Integer; AColour: TColor): Integer;
 var
@@ -5992,6 +6023,87 @@ begin
   if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
 end;
 
+{ A folded block is tinted, and clicking a word lights up the others.
+
+  Two markups that SynEdit provides and led turns on: the first through
+  OnSpecialLineMarkup, the second by giving the highlight-all-at-caret markup
+  a colour, which is what wakes it. }
+procedure TestWordAndFoldMarkup(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+begin
+  Say('word and fold markup');
+
+  Dir := TempName('markup');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'demo.c';
+  L := TStringList.Create;
+  try
+    L.Add('int count = 0;');          { 1 }
+    L.Add('int twice(int n)');        { 2 }
+    L.Add('{');                       { 3 }
+    L.Add('    int count = n;');      { 4 }
+    L.Add('    count = count * 2;');  { 5 }
+    L.Add('    return count;');       { 6 }
+    L.Add('}');                       { 7 }
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  V.TopLine := 1;
+  Pump;
+
+  { --- every appearance of the word at the caret --- }
+  Check('the theme gave the markup a colour, which is what wakes it',
+    V.HighlightAllColor.Background <> clNone);
+  Check('and led configured it to whole words',
+    (V.HighlightWord <> nil) and V.HighlightWord.FullWord);
+
+  { What the suite can reach, and what it cannot.
+
+    led's part is turning the markup on: giving it a colour, which is what
+    wakes it, and telling it to match whole words.  Both are asserted above.
+
+    The search itself is SynEdit's, driven by a TTimer over the visible
+    range.  A TTimer does not fire under Application.ProcessMessages, which
+    is what drives this suite, and calling the handler by hand still finds
+    nothing because the range is established by painting.  So the shading is
+    confirmed by using the editor, not from here -- asserting a match count
+    would mean asserting zero, which would pass whether it worked or not. }
+  V.CaretXY := Point(6, 5);          { inside "count" on line 5 }
+  Pump;
+  TLedMarkupPeek.SearchNow(V.HighlightWord);
+  Say(Format('  (armed for "%s"; the matches are found when it paints)',
+    [V.HighlightWord.SearchString]));
+
+  { --- a folded block is tinted --- }
+  Check('the theme gave a fold tint', V.FoldedLineColour <> clNone);
+  Check('and it differs from the page', V.FoldedLineColour <> V.Color);
+
+  Check('nothing is folded to begin with', not V.LineIsFolded(3));
+  LedFoldAll(V);
+  Pump;
+  Check('folding the block marks the line that carries it',
+    V.LineIsFolded(3));
+  Check('and not a line that carries nothing', not V.LineIsFolded(1));
+  LedUnfoldAll(V);
+  Pump;
+  Check('unfolding takes the tint away again', not V.LineIsFolded(3));
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
 { Two independent tab groups in one window.
 
   The checks are about where tabs actually are and what happened to the
@@ -6387,6 +6499,7 @@ begin
   WriteLn;
   TestFoldGuides(F);
   TestRowStyling(F);
+  TestWordAndFoldMarkup(F);
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);

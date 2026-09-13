@@ -65,6 +65,11 @@ function LedColourToTColor(AColour: TLedColour): TColor;
 function LedThemeGuideColour(ATheme: TLedTheme;
   ADefaultFg, ADefaultBg: TColor): TColor;
 
+{ The tint behind a line whose block is folded shut, mixed from the theme's
+  own text and page colours. }
+function LedThemeFoldedLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+
 implementation
 
 uses
@@ -448,6 +453,17 @@ begin
   if ATheme.Find(LedStyleCurrentLine, S) and (lsfBackground in S.Flags) then
     AEdit.LineHighlightColor.Background := LedColourToTColor(S.Background);
 
+  { Every other appearance of the word the caret is in, shaded in whatever
+    the theme uses for a search match -- the same idea, and defined by all
+    eight of the shipped schemes. }
+  if ATheme.Find(LedStyleSearchMatch, S) then
+  begin
+    if lsfBackground in S.Flags then
+      AEdit.HighlightAllColor.Background := LedColourToTColor(S.Background);
+    if lsfForeground in S.Flags then
+      AEdit.HighlightAllColor.Foreground := LedColourToTColor(S.Foreground);
+  end;
+
   { Three of the eight shipped schemes -- classic, medit, tango -- say
     nothing about line-numbers.  GtkSourceView then draws them in the
     widget's ordinary text colours, whereas SynEdit falls back to a pale
@@ -534,6 +550,37 @@ begin
     ((((2 * (Fg and $FF)) + 3 * (Bg and $FF)) div 5) and $FF)
     or ((((2 * ((Fg shr 8) and $FF)) + 3 * ((Bg shr 8) and $FF)) div 5) shl 8)
     or ((((2 * ((Fg shr 16) and $FF)) + 3 * ((Bg shr 16) and $FF)) div 5) shl 16));
+end;
+
+{ The tint behind a line whose block is folded shut.
+
+  One part text to nine parts page: enough to say "there is more here than
+  is showing" without competing with the syntax colouring on the line, and
+  mixed from the theme's own two colours so it works on the four dark
+  schemes as well as the four light ones. }
+function LedThemeFoldedLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+var
+  S: TLedStyle;
+  Fg, Bg: TColor;
+begin
+  Fg := clNone;
+  Bg := clNone;
+  if (ATheme <> nil) and ATheme.Find(LedStyleText, S) then
+  begin
+    if lsfForeground in S.Flags then Fg := LedColourToTColor(S.Foreground);
+    if lsfBackground in S.Flags then Bg := LedColourToTColor(S.Background);
+  end;
+  if Fg = clNone then Fg := ADefaultFg;
+  if Bg = clNone then Bg := ADefaultBg;
+  if (Fg = clNone) or (Bg = clNone) then Exit(clNone);
+
+  Fg := ColorToRGB(Fg);
+  Bg := ColorToRGB(Bg);
+  Result := TColor(
+    ((((Fg and $FF) + 9 * (Bg and $FF)) div 10) and $FF)
+    or (((((Fg shr 8) and $FF) + 9 * ((Bg shr 8) and $FF)) div 10) shl 8)
+    or (((((Fg shr 16) and $FF) + 9 * ((Bg shr 16) and $FF)) div 10) shl 16));
 end;
 
 procedure LedRetheme(ATheme: TLedTheme);

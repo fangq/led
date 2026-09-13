@@ -12,7 +12,8 @@ uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType,
-  SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
+  SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
+  SynEditMarkup, SynEditMiscClasses, LazVersion,
   Led.Core.Hex,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
@@ -79,6 +80,8 @@ type
     FHexMode: Boolean;
     FCurrentLineColour: TColor;
     FCurrentLineRow: Integer;
+    FFoldedLineColour: TColor;
+    FHighlightWord: TSynEditMarkupHighlightAllCaret;
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
@@ -99,6 +102,8 @@ type
     function MarksColumn(out ALeft, AWidth: Integer): Boolean;
     procedure DrawDebugMarks;
     procedure DrawCurrentLineEdges;
+    procedure SpecialLineMarkup(Sender: TObject; Line: Integer;
+      var Special: Boolean; AMarkup: TSynSelectedColor);
     procedure ClampCaretToLineEnd;
     procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
@@ -149,6 +154,14 @@ type
       its text-area drawing, so what the painter decided is the most a
       scripted run can see.  The rules themselves are checked by eye. }
     property CurrentLineRow: Integer read FCurrentLineRow;
+    { The tint behind a line whose block is folded shut.  Set from the theme
+      by the document, as the guide colour is. }
+    property FoldedLineColour: TColor
+      read FFoldedLineColour write FFoldedLineColour;
+    function LineIsFolded(ALine: Integer): Boolean;
+    { The markup that shades every other appearance of the word at the caret.
+      Published so a check can count what it found. }
+    property HighlightWord: TSynEditMarkupHighlightAllCaret read FHighlightWord;
     { The markup that colours the three columns.  Exposed so the theme can
       be handed to it -- the colours are derived from the editor's own, and
       only the caller knows when those have changed. }
@@ -308,6 +321,28 @@ begin
     So the Ctrl entries go in MouseTextActions too, and the stock selection
     entries get ssCtrl added to their masks so they stand down when it is
     held.  emAltSetsColumnMode stays on, which is what keeps Alt+drag. }
+  { Click a word and every other appearance of it in view is shaded.  SynEdit
+    ships the markup and adds it to every editor; it stays dormant until it
+    is given a colour, which the theme does.
+
+    FullWord so that clicking "count" does not light up "counter"; a quarter
+    second so it follows the caret without chasing every keystroke; and
+    keywords included, because "if" and "end" are exactly what one clicks
+    when trying to see the shape of a block. }
+  FHighlightWord :=
+    TSynEditMarkupHighlightAllCaret(MarkupByClass[TSynEditMarkupHighlightAllCaret]);
+  if FHighlightWord <> nil then
+  begin
+    FHighlightWord.WaitTime := 250;
+    FHighlightWord.FullWord := True;
+    FHighlightWord.IgnoreKeywords := False;
+    FHighlightWord.Trim := True;
+  end;
+
+  { A line whose block is folded shut is tinted, so a collapsed block reads
+    as one at a glance rather than only from the chevron beside it. }
+  OnSpecialLineMarkup := @SpecialLineMarkup;
+
   MouseOptions := MouseOptions + [emUseMouseActions, emAltSetsColumnMode];
   ResetMouseActions;
 
@@ -732,6 +767,37 @@ begin
   if (CaretY < 1) or (CaretY > Lines.Count) then Exit;
   Last := Length(Lines[CaretY - 1]) + 1;
   if CaretX > Last then CaretX := Last;
+end;
+
+{ Give a folded line its tint.  SynEdit asks this for every line it is about
+  to draw, so the answer has to be cheap: one lookup of the fold state of the
+  screen row the line is on. }
+procedure TLedEdit.SpecialLineMarkup(Sender: TObject; Line: Integer;
+  var Special: Boolean; AMarkup: TSynSelectedColor);
+begin
+  if FFoldedLineColour = clNone then Exit;
+  if not LineIsFolded(Line) then Exit;
+
+  Special := True;
+  AMarkup.Background := FFoldedLineColour;
+end;
+
+{ True when ALine, a 1-based text line, carries a block that is folded shut.
+
+  The same question the fold gutter asks to decide which way to point its
+  chevron, and public so it can be asked without painting -- which is how the
+  tint is checked. }
+function TLedEdit.LineIsFolded(ALine: Integer): Boolean;
+var
+  FV: TSynEditFoldedView;
+  Row: Integer;
+begin
+  Result := False;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+  Row := FV.TextIndexToScreenLine(ALine - 1);
+  if (Row < 0) or (Row > LinesInWindow) then Exit;
+  Result := cfCollapsedFold in FV.FoldType[Row];
 end;
 
 { The caret's row, marked with a rule above and below rather than filled in.
