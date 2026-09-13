@@ -111,10 +111,15 @@ One native binary per platform. Nothing to configure before you can use it.
 - **8 colour themes** — `classic`, `cobalt`, `kate`, `medit`, `oblivion`,
   `solarized-dark`, `solarized-light`, `tango` — switchable from
   **View ▸ Colour Theme**.
-- **Fira Code is bundled** and is the default, so a fresh install looks
-  identical on Linux, Windows and macOS. Nothing is installed on your system —
-  led registers the font for its own process only. Pick any other monospace
+- **Fira Code is bundled** and is the default, so led looks identical on
+  Linux, Windows and macOS. Nothing is installed on your system — led
+  registers the font for its own process only. Pick any other monospace
   family in **Preferences ▸ View ▸ Editor font**.
+- Upgrading from an older led? If your `prefs.ini` holds a generic name like
+  `Monospace` — which is what the Preferences dialog used to store when you
+  accepted it — led now reads that as "whatever this system calls monospace"
+  and gives you the bundled font instead. A real family you chose, such as
+  `DejaVu Sans Mono` or `Consolas`, is always kept.
 
 ### Finding things
 

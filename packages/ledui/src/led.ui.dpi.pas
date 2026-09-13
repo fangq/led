@@ -113,6 +113,11 @@ function LedScaledChromeFont: string;
 function LedDefaultFontSize: Integer;
 
 { The default monospace family for this platform. }
+{ True when AName names one of the toolkit's generic aliases -- "Monospace",
+  "Sans", "Serif" -- rather than an installed face.  Public because it is the
+  rule that decides whether a stored preference is a choice or a default. }
+function LedIsGenericFamily(const AName: string): Boolean;
+
 function LedDefaultFontName: string;
 
 { Split an "Editor/font" value into a family and a point size.  The
@@ -545,6 +550,26 @@ begin
     LedApplyScaleAll(D);
 end;
 
+{ True when AName is one of the toolkit's generic aliases rather than a face.
+
+  Spelled out rather than detected, because there is no way to ask the LCL:
+  Screen.Fonts lists these beside the real families, which is the whole
+  difficulty.  Both spellings of each, since fontconfig accepts the CSS ones
+  and pango reports the capitalised ones. }
+function LedIsGenericFamily(const AName: string): Boolean;
+const
+  Generic: array[0..5] of string =
+    ('monospace', 'sans', 'serif', 'sans-serif', 'cursive', 'fantasy');
+var
+  i: Integer;
+  N: string;
+begin
+  N := LowerCase(Trim(AName));
+  for i := 0 to High(Generic) do
+    if N = Generic[i] then Exit(True);
+  Result := False;
+end;
+
 function LedDefaultFontName: string;
 begin
   { The font led ships with, when it actually arrived.  Asking Screen.Fonts
@@ -599,13 +624,26 @@ begin
       at the system default rather than reverting to a hard-coded one. }
     AName := Spec;
 
-  { A family that is not actually installed -- "Monospace" surviving from a
-    Linux prefs.ini, or a bad literal an older build wrote to disk -- looks
-    pixelated at every size rather than merely wrong at one, so it gets the
-    same fallback an empty preference does.  Checked here rather than only
-    where the preference is read, so a value already on disk self-heals
-    without the user having to touch Preferences. }
-  if Screen.Fonts.IndexOf(AName) < 0 then
+  { A family that is not actually installed -- a bad literal an older build
+    wrote to disk -- looks pixelated at every size rather than merely wrong at
+    one, so it gets the same fallback an empty preference does.  Checked here
+    rather than only where the preference is read, so a value already on disk
+    self-heals without the user having to touch Preferences.
+
+    A generic alias gets the same treatment, and needs its own test because
+    the toolkit lists one as though it were a family: pango reports
+    "Monospace" among its families on this machine while no installed font
+    declares that name, so the check above passes and the alias survives.
+
+    It has to go because it is a default wearing a preference's clothes.  The
+    Preferences dialog stores the resolved default verbatim when it is
+    accepted, so anyone who opened it before the bundled font existed has
+    "Monospace 10" on disk -- and would never see the shipped font again,
+    however many times led was upgraded.  Asking for "Monospace" is asking
+    for whatever this system calls monospace, which is exactly what the
+    default is for.  A real family is never touched: choosing DejaVu Sans
+    Mono, Consolas or Menlo is choosing a face. }
+  if (Screen.Fonts.IndexOf(AName) < 0) or LedIsGenericFamily(AName) then
     AName := LedDefaultFontName;
 end;
 

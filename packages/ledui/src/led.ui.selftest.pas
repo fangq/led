@@ -1721,6 +1721,8 @@ end;
 procedure TestBundledFont(F: TLedMainForm);
 var
   Term: TLedTermView;
+  FontName: string;
+  FontSize: Integer;
 begin
   Say('bundled font');
 
@@ -1743,6 +1745,33 @@ begin
     CheckEq('and so is the terminal', LedBundledFontName, Term.Font.Name);
   F.Dock.HidePane('terminal');
   Pump;
+
+  { Upgrading from a prefs.ini written before the font was bundled.
+
+    "Monospace 10" is not a choice anyone made: it is what the Preferences
+    dialog stored when it was accepted, back when it was the resolved
+    default.  Left alone it shadows the shipped font for ever, and it
+    survives the not-installed check because the toolkit lists the alias
+    among its families -- which is why this is asserted rather than assumed. }
+  Check('the toolkit lists the alias as though it were a family',
+    Screen.Fonts.IndexOf('Monospace') >= 0);
+  Check('and it is recognised as an alias all the same',
+    LedIsGenericFamily('Monospace'));
+
+  LedParseFontSpec('Monospace 10', FontName, FontSize);
+  CheckEq('so an upgraded preference falls through to the bundled font',
+    LedBundledFontName, FontName);
+  CheckEqInt('keeping the size that was chosen', 10, FontSize);
+
+  { And a real face is left exactly where it is -- the whole point of the
+    distinction.  Checked with the bundled family itself, which is the one
+    name this suite knows is installed. }
+  LedParseFontSpec(LedBundledFontName + ' 13', FontName, FontSize);
+  CheckEq('a real family is never second-guessed',
+    LedBundledFontName, FontName);
+  CheckEqInt('nor its size', 13, FontSize);
+
+  Check('an alias is told from a face', not LedIsGenericFamily(LedBundledFontName));
 end;
 
 { Untitled numbering.
