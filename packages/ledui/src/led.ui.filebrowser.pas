@@ -48,13 +48,13 @@ type
   TLedFileBrowser = class(TPanel)
   private
     FCrumbs: TPanel;
-    FBottom: TPanel;
     FTree: TShellTreeView;
     FIcons: TImageList;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
     FNav: TPanel;
     FBtnBack, FBtnForward, FBtnUp, FBtnHome: TSpeedButton;
+    FBtnNewFolder, FBtnNewFile: TSpeedButton;
     { Where the pane has been, and where in that list it currently is.  Back
       and Forward move the index rather than trimming the list, so going
       back and then somewhere new is what truncates it -- the same rule a
@@ -84,6 +84,7 @@ type
     procedure HiddenChange(Sender: TObject);
     procedure MenuOpen(Sender: TObject);
     procedure MenuNewFolder(Sender: TObject);
+    procedure MenuNewFile(Sender: TObject);
     procedure MenuRename(Sender: TObject);
     procedure MenuDelete(Sender: TObject);
     procedure MenuCopyPath(Sender: TObject);
@@ -153,6 +154,9 @@ type
       what "huge buttons with tiny icons" was. }
     function NavGlyphSize: Integer;
     function NavButtonSize: Integer;
+    { How many buttons sit on the navigation row.  The breadcrumb trail is
+      made of speed buttons too, so counting them by class finds both. }
+    function NavButtonCount: Integer;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
 
@@ -332,6 +336,16 @@ begin
   Result := IconForPath(APath, DirectoryExists(APath));
 end;
 
+function TLedFileBrowser.NavButtonCount: Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  if FNav = nil then Exit;
+  for i := 0 to FNav.ControlCount - 1 do
+    if FNav.Controls[i] is TSpeedButton then Inc(Result);
+end;
+
 function TLedFileBrowser.SplitterTarget: TControl;
 begin
   Result := nil;
@@ -398,39 +412,33 @@ begin
   FBtnForward := MakeNavButton('forward', 'Forward', 24);
   FBtnUp := MakeNavButton('up', 'Up one folder', 46);
   FBtnHome := MakeNavButton('home', 'Home folder', 68);
+  { Making things, rather than only going places.  Both were on the context
+    menu and nowhere else, which is a poor place for the two actions someone
+    working in a tree reaches for most. }
+  FBtnNewFolder := MakeNavButton('folder', 'New folder...', 94);
+  FBtnNewFolder.OnClick := @MenuNewFolder;
+  FBtnNewFile := MakeNavButton('new', 'New file...', 116);
+  FBtnNewFile.OnClick := @MenuNewFile;
 
-  { On the same row as the buttons, to the right of them.  Two rows left an
-    empty strip as tall as the buttons sitting between the trail and the
-    tree, and the trail wants horizontal room, not vertical.  Its bounds are
-    set in Resize, once the row has a width to divide up. }
+  { A row of its own, under the buttons.  It shared the button row once,
+    which kept the chrome to one line but left the trail a few dozen pixels
+    of what a path needs -- and with six buttons there now rather than four
+    there is no room to share at all. }
   FCrumbs := TPanel.Create(Self);
-  FCrumbs.Parent := FNav;
+  FCrumbs.Parent := Self;
+  FCrumbs.Align := alTop;
+  FCrumbs.Height := 24;
   FCrumbs.BevelOuter := bvNone;
   FCrumbs.Caption := '';
-  FNav.OnResize := @NavResize;
+  FCrumbs.OnResize := @NavResize;
 
-  { The whole lower half is one container: the file list filling it and the
-    filter row pinned to its foot.  It was three siblings all asking for
-    alBottom, and which of them ended up next to the splitter came down to
-    creation order -- the filter row won, so TCustomSplitter.FindAlignControl
-    picked it as the nearest control below the splitter and dragging resized
-    the filter row while the table stayed put.  One container leaves the
-    splitter a single neighbour and nothing to choose between. }
-  FBottom := TPanel.Create(Self);
-  FBottom.Parent := Self;
-  FBottom.Align := alBottom;
-  { Deliberately not scaled, unlike every other size here.  This is not a
-    piece of chrome that has to match the display -- it is where the splitter
-    starts, before the user drags it somewhere else.  Scaled to 712 on a
-    300-PPI target it was taller than a short pane, which left the tree above
-    it no height and the splitter no neighbour to resize: SplitterTarget went
-    from the file list to nothing at all. }
-  FBottom.Height := 228;
-  FBottom.BevelOuter := bvNone;
-  FBottom.Caption := '';
-
+  { Just the filter row, at the foot.  It used to sit inside a container 228
+    pixels tall -- the height the file list wanted before the pane became one
+    tree.  With the list gone that container was a filter row with two
+    hundred pixels of nothing under it, which is what "a large empty space
+    below the filters" was. }
   Bar := TPanel.Create(Self);
-  Bar.Parent := FBottom;
+  Bar.Parent := Self;
   Bar.Align := alBottom;
   Bar.Height := 28;
   Bar.BevelOuter := bvNone;
@@ -531,6 +539,7 @@ begin
   AddMenu('Refresh', @MenuRefresh);
   AddMenu('-', nil);
   AddMenu('New Folder...', @MenuNewFolder);
+  AddMenu('New File...', @MenuNewFile);
   AddMenu('Rename...', @MenuRename);
   AddMenu('Delete...', @MenuDelete);
   AddMenu('-', nil);
@@ -869,9 +878,13 @@ var
 begin
   if FTree.Selected = nil then Exit;
   Path := FTree.GetPathFromNode(FTree.Selected);
-  { Descending by double-click, not only by expanding, keeps a deep tree
-    usable in a narrow pane. }
-  if DirectoryExists(Path) then SetRoot(Path);
+  { A folder descends, a file opens.  Opening was the file list's job before
+    the pane became one tree, and went with it -- leaving double-click doing
+    nothing on the rows most people double-click. }
+  if DirectoryExists(Path) then
+    SetRoot(Path)
+  else if FileExists(Path) and Assigned(FOnOpenFile) then
+    FOnOpenFile(Path);
 end;
 
 procedure TLedFileBrowser.Reload;
@@ -928,6 +941,53 @@ end;
 procedure TLedFileBrowser.MenuRefresh(Sender: TObject);
 begin
   Reload;
+end;
+
+{ A new, empty file in the folder the selection is in, opened once it is
+  made -- making one and then having to find it again is a step nobody wants.
+
+  Beside MenuNewFolder because the two belong together, and both are on the
+  toolbar now as well as the context menu. }
+procedure TLedFileBrowser.MenuNewFile(Sender: TObject);
+var
+  Base, NewName, Full: string;
+  L: TStringList;
+begin
+  Base := SelectedPath;
+  if (Base = '') or (not DirectoryExists(Base)) then
+    Base := ExtractFileDir(Base);
+  if (Base = '') or (not DirectoryExists(Base)) then Base := FRoot;
+  if not DirectoryExists(Base) then Exit;
+
+  NewName := 'untitled.txt';
+  if not InputQuery('New File', 'Name for the new file:', NewName) then Exit;
+  NewName := Trim(NewName);
+  if NewName = '' then Exit;
+
+  Full := IncludeTrailingPathDelimiter(Base) + NewName;
+  if FileExists(Full) or DirectoryExists(Full) then
+  begin
+    ShowMessage('There is already something called ' + NewName + ' there.');
+    Exit;
+  end;
+
+  L := TStringList.Create;
+  try
+    try
+      L.SaveToFile(Full);
+    except
+      on E: Exception do
+      begin
+        ShowMessage('Could not create ' + NewName + ': ' + E.Message);
+        Exit;
+      end;
+    end;
+  finally
+    L.Free;
+  end;
+
+  Reload;
+  if Assigned(FOnOpenFile) then FOnOpenFile(Full);
 end;
 
 procedure TLedFileBrowser.MenuNewFolder(Sender: TObject);

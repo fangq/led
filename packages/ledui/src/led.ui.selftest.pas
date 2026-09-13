@@ -3254,6 +3254,20 @@ begin
 
 end;
 
+type
+  { Catches what the browser asks to open, so a double-click can be checked
+    without the main form actually opening a tab for it.  A class because
+    TLedOpenFileEvent is a method pointer. }
+  TBrowserOpenCatcher = class
+    Last: string;
+    procedure Note(const AFileName: string);
+  end;
+
+procedure TBrowserOpenCatcher.Note(const AFileName: string);
+begin
+  Last := AFileName;
+end;
+
 procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
@@ -3261,6 +3275,8 @@ var
   Root, Node: TTreeNode;
   RootRaised, BrowseDir, Names, Kinds: string;
   EditH, i, x: Integer;
+  SavedOpen: TLedOpenFileEvent;
+  Catcher: TBrowserOpenCatcher;
   L: TStringList;
 begin
   Say('file browser');
@@ -3435,6 +3451,47 @@ begin
   Say('  (icons:      ' + Kinds + ')');
 
   Check('the folder is in the tree: ' + Names, Pos('sub ', Names) > 0);
+
+  { Double-clicking a file opens it.  Opening was the file list's job before
+    the pane became one tree, and went with the list -- leaving the gesture
+    doing nothing on the rows people double-click most.  Driven through the
+    handler the LCL calls, with a file selected. }
+  Catcher := TBrowserOpenCatcher.Create;
+  SavedOpen := F.Browser.OnOpenFile;
+  F.Browser.OnOpenFile := @Catcher.Note;
+  try
+    Node := F.Browser.Tree.Items.GetFirstNode;
+    while (Node <> nil) and
+          (ExtractFileName(F.Browser.Tree.GetPathFromNode(Node)) <> 'a.c') do
+      Node := Node.GetNext;
+    Check('a file row was found to click', Node <> nil);
+    if Node <> nil then
+    begin
+      Node.Selected := True;
+      Pump;
+      if Assigned(F.Browser.Tree.OnDblClick) then
+        F.Browser.Tree.OnDblClick(F.Browser.Tree);
+      Pump;
+      Check('double-clicking a file opens it: ' + Catcher.Last,
+        Pos('a.c', Catcher.Last) > 0);
+    end;
+  finally
+    F.Browser.OnOpenFile := SavedOpen;
+    Catcher.Free;
+  end;
+
+  { The filter row is a row, not a container with two hundred pixels of
+    nothing under it -- which is what it was when the file list it had been
+    sized for went away. }
+  CheckGt('the tree fills the pane rather than a third of it',
+    F.Browser.Height div 2, F.Browser.Tree.Height);
+
+  { Making things, not only going places. }
+  { The navigation row only -- the breadcrumb trail below it is made of
+    speed buttons as well, so counting them by class across the pane finds
+    both and answers eight. }
+  CheckEqInt('six buttons on the row: four to navigate, two to create', 6,
+    F.Browser.NavButtonCount);
   Check('every row got a picture', Pos('-1', Kinds) = 0);
   Check('and so are the files', (Pos('a.c ', Names) > 0) and
     (Pos('b.md ', Names) > 0) and (Pos('e.o ', Names) > 0));
