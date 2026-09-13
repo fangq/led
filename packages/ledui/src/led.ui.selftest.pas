@@ -1635,16 +1635,27 @@ begin
   end;
   F.Dock.HidePane('files');
   Pump; Pump;
-  { Narrow enough that one pane and the editor's floor genuinely do not both
-    fit -- 560 did, which is why this first asserted a growth that correctly
-    never happened. }
+  { As narrow as the window will go.  Not 400: the window has a floor of its
+    own -- the toolbar, checked further down -- and on a desktop whose fonts
+    make that floor 548, a pane and the editor's own floor both fit at it and
+    there is correctly nothing to grow for.  Asking for growth unconditionally
+    made this fail on the machine it was written on and pass elsewhere, which
+    says nothing about the dock either way.
+
+    So what is asserted is the property, which holds at any width: the pane
+    gets a usable size and the editor keeps its floor.  The growth is
+    asserted only where the two genuinely do not both fit. }
   F.Width := 400;
   Pump; Pump;
   W1 := F.Width;
   F.Dock.ShowPane('files');
   Pump; Pump;
-  CheckGt('a narrow window grows to fit a pane rather than shrinking it',
-    W1, F.Width);
+  if W1 < LedScale96(120) + LedScale96(240) then
+    CheckGt('a narrow window grows to fit a pane rather than shrinking it',
+      W1, F.Width)
+  else
+    Say(Format('  (the window will not go below %d, where a pane and the ' +
+      'editor both fit; no growth to check)', [W1]));
   CheckGt('and the pane it made room for is usable', 120,
     F.Dock.PaneSize('files'));
   CheckGt('and the editor keeps its floor', 200, F.Dock.Center.Width);
