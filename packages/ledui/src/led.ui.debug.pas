@@ -405,7 +405,7 @@ type
 implementation
 
 uses
-  LCLType, LazFileUtils;
+  LCLType, LazFileUtils, Led.UI.Icons;
 
 { --- TLedDebugPane --------------------------------------------------------- }
 
@@ -425,6 +425,9 @@ begin
   FBar.ShowCaptions := False;
   FBar.Flat := True;
   FBar.AutoSize := True;
+  { The same button painting the main toolbar uses, so a pointer over any of
+    led's toolbars gets the same answer. }
+  LedStyleToolBar(FBar);
 
   { Built right to left: a TToolBar lays its children out in reverse order of
     creation unless each is given a Left, and giving them one hard-codes a
@@ -959,6 +962,9 @@ begin
   FBar.List := True;
   FBar.Flat := True;
   FBar.AutoSize := True;
+  { The same button painting the main toolbar uses, so a pointer over any of
+    led's toolbars gets the same answer. }
+  LedStyleToolBar(FBar);
 
   { Back to front, so they read left to right: a TToolBar lays its children
     out in reverse unless each is given a Left.  Each carries its own tag so

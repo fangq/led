@@ -34,10 +34,6 @@ uses
 function LedWindows: TFPList;
 
 type
-  { TToolButton.Canvas is protected, and a button led paints itself has to be
-    drawn on something.  Two lines rather than a widget of led's own. }
-  TLedToolButton = class(TToolButton);
-
   TLedMainForm = class(TForm)
     ActionList1: TActionList;
     actNew: TAction;
@@ -542,7 +538,6 @@ type
       ALine: Integer);
     procedure DebugToggleBreakpoint(Sender: TObject);
     procedure ApplyThemeToBrowser;
-    procedure ToolPaintButton(Sender: TToolButton; State: Integer);
     procedure DebugPaneCommand(Sender: TObject; ACommand: TLedDebugCommand);
     procedure DebugConsole(Sender: TObject; const AText: string);
     procedure DebugStateChanged(Sender: TObject);
@@ -1021,7 +1016,7 @@ begin
     for it, so a toolbar of twenty flat glyphs gave no sign which one a click
     would reach.  Measured before the change: moving the pointer onto a
     button altered thirty pixels of the window, all of them the cursor. }
-  ToolBar1.OnPaintButton := @ToolPaintButton;
+  LedStyleToolBar(ToolBar1);
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
 
@@ -1429,86 +1424,6 @@ procedure TLedMainForm.DebugPaneCommand(Sender: TObject;
   ACommand: TLedDebugCommand);
 begin
   DebugCommand(ACommand);
-end;
-
-{ One toolbar button, drawn by led.
-
-  Assigning OnPaintButton takes the whole job: TToolButton.Paint hands over
-  and returns, so the background, the glyph and the separators are all this
-  procedure's to draw.  That is the price of the hook, and it is the only
-  per-button hook there is.
-
-  State is the themed element's own: 1 normal, 2 hot, 3 pressed, 4 disabled,
-  5 checked, 6 checked and hot.
-
-  The wash is mixed from the desktop's selection colour rather than being a
-  fixed grey, so it is the same blue the rest of the session uses and it
-  follows a theme led knows nothing about -- and it is mixed *towards* the
-  toolbar's own background, which is what keeps it a hint rather than a
-  block of colour, on a dark desktop as well as a light one. }
-procedure TLedMainForm.ToolPaintButton(Sender: TToolButton; State: Integer);
-
-  function Blend(A, B: TColor; ANum, ADen: Integer): TColor;
-  var
-    Ra, Ga, Ba, Rb, Gb, Bb: Integer;
-  begin
-    A := ColorToRGB(A);
-    B := ColorToRGB(B);
-    Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
-    Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
-    Result := TColor(
-      (((Ra * ANum + Rb * (ADen - ANum)) div ADen) and $FF)
-      or ((((Ga * ANum + Gb * (ADen - ANum)) div ADen) and $FF) shl 8)
-      or ((((Ba * ANum + Bb * (ADen - ANum)) div ADen) and $FF) shl 16));
-  end;
-
-var
-  C: TCanvas;
-  R: TRect;
-  Bg, Wash: TColor;
-  X, Y, Mid: Integer;
-begin
-  C := TLedToolButton(Sender).Canvas;
-  R := Sender.ClientRect;
-  Bg := ToolBar1.Color;
-  if Bg = clNone then Bg := clBtnFace;
-
-  C.Brush.Style := bsSolid;
-  C.Brush.Color := Bg;
-  C.FillRect(R);
-
-  if Sender.Style in [tbsSeparator, tbsDivider] then
-  begin
-    { A hairline rather than the platform's groove, which at this size is two
-      pixels of noise between every pair of buttons. }
-    Mid := (R.Left + R.Right) div 2;
-    C.Pen.Color := Blend(clBtnShadow, Bg, 1, 2);
-    C.Pen.Width := 1;
-    C.Line(Mid, R.Top + 4, Mid, R.Bottom - 4);
-    Exit;
-  end;
-
-  Wash := clNone;
-  case State of
-    2:       Wash := Blend(clHighlight, Bg, 1, 5);   { under the pointer }
-    3:       Wash := Blend(clHighlight, Bg, 2, 5);   { held down }
-    5, 6:    Wash := Blend(clHighlight, Bg, 3, 10);  { a toggle that is on }
-  end;
-  if Wash <> clNone then
-  begin
-    C.Brush.Color := Wash;
-    C.FillRect(R);
-  end;
-
-  if (ToolBar1.Images <> nil) and (Sender.ImageIndex >= 0) and
-     (Sender.ImageIndex < ToolBar1.Images.Count) then
-  begin
-    X := R.Left + (R.Right - R.Left - ToolBar1.Images.Width) div 2;
-    Y := R.Top + (R.Bottom - R.Top - ToolBar1.Images.Height) div 2;
-    { The last argument greys the glyph when the action is unavailable, which
-      is the other thing TToolButton.Paint was doing for us. }
-    ToolBar1.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
-  end;
 end;
 
 procedure TLedMainForm.actToggleBreakPaneExecute(Sender: TObject);
@@ -2918,8 +2833,15 @@ begin
       nothing worth putting in a tooltip. }
     if Tip = '' then Continue;
 
-    if Act.ShortCut <> 0 then
-      Tip := Tip + '  (' + ShortCutToText(Act.ShortCut) + ')';
+    { The shortcut is deliberately not added here.  The LCL appends it
+      already -- TControlActionLink.DoShowHint does it whenever
+      Application.HintShortCuts is on, which it is by default -- so a hint
+      that carried its own came out with the keys twice:
+
+        New  (Ctrl+N) (Ctrl+N)
+
+      Leaving it to the LCL also means the hand-written hints in the form
+      file get one without having to repeat it in each. }
     Act.Hint := Tip;
   end;
 end;

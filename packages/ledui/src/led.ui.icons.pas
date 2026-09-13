@@ -16,7 +16,7 @@ unit Led.UI.Icons;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList;
+  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls;
 
 const
   LedWindowIconRes = 'LEDICONPNG';   { see packaging/windows/led.rc }
@@ -64,6 +64,16 @@ function LedIconNames: TStringArray;
   intact.  Does nothing if the resource is missing, because a build without
   it should start with no icon rather than not start. }
 procedure LedApplyWindowIcon;
+
+{ Gives ABar led's own button painting: a wash under the pointer, a stronger
+  one while a button is held or checked, and hairline separators.
+
+  Needed because gtk2 asks for ttbButtonHot and draws nothing for it, so a
+  toolbar of flat glyphs gives no sign which button a click would reach.  One
+  call rather than a handler per toolbar, because led has four of them -- the
+  main bar, the debugger's, the breakpoint pane's -- and they should not each
+  answer the pointer differently. }
+procedure LedStyleToolBar(ABar: TToolBar);
 
 { Draws one icon into ABitmap, which must already be sized. }
 procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
@@ -114,6 +124,115 @@ const
       of these" rather than as two more ways to look at what is there. }
     'newfolder', 'newfile'
   );
+
+
+type
+  { OnPaintButton is a method pointer, so the shared painter needs an object
+    to hang off.  One instance for the process, created on first use. }
+  TLedToolPainter = class
+    procedure Paint(Sender: TToolButton; State: Integer);
+  end;
+
+  { TToolButton.Canvas is protected, and a button led paints itself has to be
+    drawn on something. }
+  TLedToolButtonAccess = class(TToolButton);
+
+var
+  GToolPainter: TLedToolPainter = nil;
+
+procedure TLedToolPainter.Paint(Sender: TToolButton; State: Integer);
+
+  function Blend(A, B: TColor; ANum, ADen: Integer): TColor;
+  var
+    Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+  begin
+    A := ColorToRGB(A);
+    B := ColorToRGB(B);
+    Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
+    Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
+    Result := TColor(
+      (((Ra * ANum + Rb * (ADen - ANum)) div ADen) and $FF)
+      or ((((Ga * ANum + Gb * (ADen - ANum)) div ADen) and $FF) shl 8)
+      or ((((Ba * ANum + Bb * (ADen - ANum)) div ADen) and $FF) shl 16));
+  end;
+
+var
+  Bar: TToolBar;
+  C: TCanvas;
+  R: TRect;
+  Bg, Wash: TColor;
+  X, Y, Mid: Integer;
+begin
+  Bar := Sender.Parent as TToolBar;
+  C := TLedToolButtonAccess(Sender).Canvas;
+  R := Sender.ClientRect;
+  Bg := Bar.Color;
+  if Bg = clNone then Bg := clBtnFace;
+
+  C.Brush.Style := bsSolid;
+  C.Brush.Color := Bg;
+  C.FillRect(R);
+
+  if Sender.Style in [tbsSeparator, tbsDivider] then
+  begin
+    Mid := (R.Left + R.Right) div 2;
+    C.Pen.Color := Blend(clBtnShadow, Bg, 1, 2);
+    C.Pen.Width := 1;
+    C.Line(Mid, R.Top + 4, Mid, R.Bottom - 4);
+    Exit;
+  end;
+
+  { 1 normal, 2 hot, 3 pressed, 4 disabled, 5 checked, 6 checked and hot. }
+  Wash := clNone;
+  case State of
+    2:    Wash := Blend(clHighlight, Bg, 1, 5);
+    3:    Wash := Blend(clHighlight, Bg, 2, 5);
+    5, 6: Wash := Blend(clHighlight, Bg, 3, 10);
+  end;
+  if Wash <> clNone then
+  begin
+    C.Brush.Color := Wash;
+    C.FillRect(R);
+  end;
+
+  if (Bar.Images <> nil) and (Sender.ImageIndex >= 0) and
+     (Sender.ImageIndex < Bar.Images.Count) then
+  begin
+    X := R.Left + (R.Right - R.Left - Bar.Images.Width) div 2;
+    Y := R.Top + (R.Bottom - R.Top - Bar.Images.Height) div 2;
+    { A caption, where the toolbar shows one, goes beside the glyph rather
+      than under it -- which is what TToolButton does with both, and what
+      cropped the breakpoint pane's labels. }
+    if Bar.ShowCaptions and (Sender.Caption <> '') then
+    begin
+      X := R.Left + 4;
+      Y := R.Top + (R.Bottom - R.Top - Bar.Images.Height) div 2;
+      Bar.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
+      C.Brush.Style := bsClear;
+      C.Font.Color := clBtnText;
+      if not Sender.Enabled then C.Font.Color := clGrayText;
+      C.TextOut(X + Bar.Images.Width + 4,
+        R.Top + (R.Bottom - R.Top - C.TextHeight('Ag')) div 2, Sender.Caption);
+      Exit;
+    end;
+    Bar.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
+  end
+  else if Bar.ShowCaptions and (Sender.Caption <> '') then
+  begin
+    C.Brush.Style := bsClear;
+    C.Font.Color := clBtnText;
+    if not Sender.Enabled then C.Font.Color := clGrayText;
+    C.TextOut(R.Left + 4,
+      R.Top + (R.Bottom - R.Top - C.TextHeight('Ag')) div 2, Sender.Caption);
+  end;
+end;
+
+procedure LedStyleToolBar(ABar: TToolBar);
+begin
+  if ABar = nil then Exit;
+  if GToolPainter = nil then GToolPainter := TLedToolPainter.Create;
+  ABar.OnPaintButton := @GToolPainter.Paint;
+end;
 
 procedure LedApplyWindowIcon;
 var
@@ -663,11 +782,19 @@ begin
       end;
     'help':
       begin
+        { The question mark is drawn, not typed.  TextOut goes through the
+          font renderer, which antialiases whatever the canvas is told about
+          shapes -- so the glyph's edges came out as blends of the ink and
+          the mask colour, and a masked bitmap is transparent only where a
+          pixel matches the mask exactly.  The leftovers are the purple
+          fringe that shows in a menu. }
         P.Ellipse(1.5, 1.5, 14.5, 14.5);
-        P.C.Font.Height := P.X(11);
-        P.C.Font.Color := AColour;
-        P.C.Brush.Style := bsClear;
-        P.C.TextOut(P.X(5.5), P.X(2.5), '?');
+        P.Width(1.6);
+        { The hook: up over the top and back down to the stem. }
+        P.Poly([5.6, 6.1, 6.6, 4.4, 9.4, 4.4, 10.4, 6.1, 9.6, 7.6, 8, 8.6,
+                8, 10]);
+        P.Ellipse(7.2, 11.2, 8.9, 12.9, True);
+        P.Width(1.2);
       end;
     'back', 'forward', 'up':
       begin
@@ -709,11 +836,12 @@ begin
       end;
     'about':
       begin
+        { Drawn rather than typed, for the reason 'help' gives. }
         P.Ellipse(1.5, 1.5, 14.5, 14.5);
-        P.C.Font.Height := P.X(11);
-        P.C.Font.Color := AColour;
-        P.C.Brush.Style := bsClear;
-        P.C.TextOut(P.X(6.5), P.X(2.5), 'i');
+        P.Ellipse(7.2, 3.6, 8.9, 5.3, True);
+        P.Width(1.8);
+        P.Line(8, 7, 8, 11.8);
+        P.Width(1.2);
       end;
   end;
 end;

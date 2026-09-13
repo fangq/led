@@ -1176,6 +1176,45 @@ begin
   DeleteFile(Path2);
 end;
 
+{ How many pixels of AName's icon, as the application builds it, are still
+  the mask colour -- which is what a purple block in a menu is. }
+function IconMaskLeak(const AName: string): Integer;
+var
+  Images: TImageList;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y: Integer;
+  C: TFPColor;
+begin
+  Result := 0;
+  Images := TImageList.Create(nil);
+  Bmp := TBitmap.Create;
+  try
+    Images.Width := 20;
+    Images.Height := 20;
+    LedBuildIconList(Images, [AName], clBtnText);
+    if Images.Count = 0 then Exit;
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(20, 20);
+    Images.GetBitmap(0, Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Alpha >= $4000) and (C.Red > $C000) and (C.Blue > $C000) and
+             (C.Green < $4000) then Inc(Result);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+    Images.Free;
+  end;
+end;
+
 { How many pixels of AName's icon, as the application builds it, are exactly
   AColour.  Built here rather than read out of ImageList1 so the check is of
   the drawing and not of one particular list. }
@@ -1400,6 +1439,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   x, y, Clear, Opaque, Purple, i, Blank: Integer;
+  Leaky: string;
   C: TFPColor;
   Hidden: TForm;
   Ed: TEdit;
@@ -1456,6 +1496,14 @@ begin
   finally
     Bmp.Free;
   end;
+
+  { Every icon, not just one of them.  Two in the Help menu were showing the
+    mask as a purple block, which a check on 'save' alone could never see. }
+  Leaky := '';
+  for i := 0 to High(LedIconNames) do
+    if IconMaskLeak(LedIconNames[i]) > 0 then
+      Leaky := Leaky + LedIconNames[i] + ' ';
+  CheckEq('no icon lets the mask colour through: ' + Leaky, '', Leaky);
 
   { Breakpoint against Run.  Both are solid shapes in the same ink on a
     monochrome toolbar, and a filled disc and a filled triangle at sixteen
@@ -3941,11 +3989,16 @@ begin
         end;
   Check('there are actions to hint at all', HintTotal > 50);
   CheckEqInt('and every one of them has a hint', 0, HintLess);
-  { Derived from the caption, and carrying the shortcut so the tooltip says
-    which key does it. }
+  { Derived from the caption, and deliberately *without* the shortcut in it.
+    The LCL appends one at display time -- TControlActionLink.DoShowHint does
+    it whenever Application.HintShortCuts is on -- so a hint that carried its
+    own showed the keys twice: "Save  (Ctrl+S) (Ctrl+S)". }
   Check('a hint drops the caption''s accelerator',
     Pos('&', F.actSave.Hint) = 0);
-  Check('and names the shortcut', Pos('Ctrl+S', F.actSave.Hint) > 0);
+  Check('and does not carry the shortcut itself',
+    Pos('Ctrl+S', F.actSave.Hint) = 0);
+  Check('because the LCL is the one that adds it',
+    Application.HintShortCuts);
 
   { gtk2 draws the menus itself, at Xft.dpi, and knows nothing about the
     desktop's integer window-scaling factor -- so on a scaled display led's
@@ -5547,6 +5600,14 @@ begin
     end;
   end;
   Check('the F9 button was found at all', Btn <> nil);
+
+  { Every toolbar led builds answers the pointer the same way.  The main one
+    got its painter first and the panes' did not, so a hover lit a button on
+    one toolbar and nothing on the others. }
+  Check('the main toolbar paints its own buttons',
+    Assigned(F.ToolBar1.OnPaintButton));
+  Check('and so does the debugger pane''s',
+    Assigned(F.DebugPane.Bar.OnPaintButton));
 
   Check('the debugger pane is registered', F.Dock.FindPane('debug') <> nil);
   Check('and the controller exists', F.Debugger <> nil);
