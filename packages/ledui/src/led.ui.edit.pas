@@ -1650,6 +1650,19 @@ begin
     InvalidateLine(FRuledLine);
   end;
 
+  { The appearance highlight stands down for a selection of several lines.
+
+    With a selection, SynEdit's markup searches for the selected text rather
+    than for the word at the caret.  Over one line that is useful and is what
+    a double-click is for -- select a word, see the others.  Over several it
+    is not: the selection matches itself, so the search-match colour is
+    painted over every selected row, which in oblivion is green filling the
+    page behind the selection.  Two answers to one question, one of them
+    shouting. }
+  if (scSelection in AChanges) and (FHighlightWord <> nil) then
+    FHighlightWord.Enabled :=
+      not (SelectionIsReal and (BlockBegin.Y <> BlockEnd.Y));
+
   if FLongLines = nil then Exit;
   if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
 

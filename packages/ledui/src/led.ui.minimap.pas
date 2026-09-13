@@ -102,6 +102,13 @@ begin
   Result := LedScale96(86);
 end;
 
+{ How wide the shadow down the left edge is, in device pixels. }
+function ShadowWidth: Integer;
+begin
+  Result := LedScale96(6);
+  if Result < 3 then Result := 3;
+end;
+
 constructor TLedMiniMap.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -242,7 +249,7 @@ begin
       of the file is still there. }
     i := 1;
     while (i <= Length(S)) and (S[i] in [#9, ' ']) do Inc(i);
-    X := (i - 1) * FColWidth;
+    X := ShadowWidth + (i - 1) * FColWidth;
     W := (Length(TrimRight(S)) - (i - 1)) * FColWidth;
     if W <= 0 then Exit;
     Canvas.Brush.Color := Ink;
@@ -270,7 +277,7 @@ begin
         of what a minimap shows. }
       if Trim(Copy(S, TokPos + 1, TokLen)) <> '' then
       begin
-        X := TokPos * FColWidth;
+        X := ShadowWidth + TokPos * FColWidth;
         W := TokLen * FColWidth;
         if X < Width then
         begin
@@ -343,6 +350,17 @@ begin
   begin
     PaintLine(i, Y);
     Inc(Y, FRowHeight);
+  end;
+
+  { A shadow down the left edge, so the strip reads as sitting above the page
+    rather than butted against it.  Six columns, each a little less of the
+    ink colour than the last -- a gradient rather than a rule, which is what
+    makes it read as depth instead of as a border. }
+  for i := 0 to ShadowWidth - 1 do
+  begin
+    Canvas.Brush.Color := LedMixColours(FEdit.Font.Color, Color,
+      14 - (14 * i) div ShadowWidth);
+    Canvas.FillRect(i, 0, i + 1, Height);
   end;
 
   { And its edges over everything, so the boundary is readable against bars

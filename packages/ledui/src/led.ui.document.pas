@@ -360,9 +360,17 @@ begin
 
   { The caret's row is marked with a rule above and below rather than with a
     band of colour behind it, so the theme's current-line colour moves off
-    SynEdit's own row fill and onto led's painter.  Taken before it is
-    cleared, and the hex markup keeps reading it from here. }
-  AView.CurrentLineColour := AView.LineHighlightColor.Background;
+    SynEdit's own row fill and onto LED's painter.
+
+    Not the theme's colour as it stands: a tint chosen to fill a whole row is
+    invisible in a one-pixel rule, which is what made the marker so faint in
+    most schemes.  LedThemeCurrentLineColour takes it and pushes it far
+    enough off the page to be seen -- and supplies one for a scheme that says
+    nothing about the current line, which used to leave no rules at all.
+
+    The hex markup keeps reading it from here. }
+  AView.CurrentLineColour := LedThemeCurrentLineColour(LedCurrentTheme,
+    AView.Font.Color, AView.Color);
   AView.LineHighlightColor.Background := clNone;
 
   { After the theme has been applied, because the column colours are mixed

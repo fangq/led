@@ -25,7 +25,8 @@ implementation
 uses
   Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
   FileUtil,
-  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
+  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
+  SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5827,6 +5828,9 @@ type
     { Whether those matches would be painted.  Not the same question as how
       many there are: SynEdit drops a lone match unless it is told not to. }
     class function Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
+    { Whether the painter will ask this markup for colours at all.  The
+      markup manager checks RealEnabled before every question it asks. }
+    class function Live(A: TSynEditMarkupHighlightAllCaret): Boolean;
   end;
 
 class function TLedMarkupPeek.Count(A: TSynEditMarkupHighlightAllCaret): Integer;
@@ -5838,6 +5842,11 @@ end;
 class function TLedMarkupPeek.Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
 begin
   Result := (A <> nil) and TLedMarkupPeek(A).HasVisibleMatch;
+end;
+
+class function TLedMarkupPeek.Live(A: TSynEditMarkupHighlightAllCaret): Boolean;
+begin
+  Result := (A <> nil) and TLedMarkupPeek(A).RealEnabled;
 end;
 
 class procedure TLedMarkupPeek.SearchNow(A: TSynEditMarkupHighlightAllCaret);
@@ -6946,6 +6955,19 @@ begin
   if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
 end;
 
+{ An attribute by its stored name, or nil. }
+function AttrNamed(AHighlighter: TSynCustomHighlighter;
+  const AName: string): TSynHighlighterAttributes;
+var
+  i: Integer;
+begin
+  Result := nil;
+  if AHighlighter = nil then Exit;
+  for i := 0 to AHighlighter.AttrCount - 1 do
+    if SameText(AHighlighter.Attribute[i].StoredName, AName) then
+      Exit(AHighlighter.Attribute[i]);
+end;
+
 { A folded block is tinted, and clicking a word lights up the others.
 
   Two markups that SynEdit provides and LED turns on: the first through
@@ -6954,6 +6976,42 @@ end;
 type
   { MouseDown and MouseUp are protected, and clicking is the thing to check. }
   TMapPoke = class(TLedMiniMap);
+
+{ The mean brightness of one pixel column of a control. }
+function ColumnLuma(AControl: TWinControl; AX: Integer): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  y, Total, Rows: Integer;
+  C: TFPColor;
+begin
+  Result := -1;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(AControl.Width, AControl.Height);
+    AControl.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      if (AX < 0) or (AX >= Img.Width) or (Img.Height = 0) then Exit;
+      Total := 0;
+      Rows := 0;
+      for y := 0 to Img.Height - 1 do
+      begin
+        C := Img.Colors[AX, y];
+        Inc(Total, (C.Red div 257) * 299 div 1000 +
+                   (C.Green div 257) * 587 div 1000 +
+                   (C.Blue div 257) * 114 div 1000);
+        Inc(Rows);
+      end;
+      if Rows > 0 then Result := Total div Rows;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
 
 { The minimap: the whole file too small to read, down the right of the view.
 
@@ -6971,6 +7029,7 @@ var
   Map: TLedMiniMap;
   i, Ink, Blank, Top0, Top1, MapTop0, MapTop1: Integer;
   ClickY, Wanted, ViewBefore: Integer;
+  Shade0, ShadeN: Integer;
   T0: QWord;
 
   { Pixels in the strip that are neither its background nor the box wash --
@@ -7103,6 +7162,20 @@ begin
     IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
     Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
 
+  { The shadow down the left edge: a gradient, not a rule.  Measured as the
+    mean brightness of each of the first few columns -- it has to fall away
+    from the strip's own colour as it approaches the page, and the column
+    against the page has to differ from the strip at all. }
+  Shade0 := ColumnLuma(Map, 0);
+  ShadeN := ColumnLuma(Map, LedScale96(6) - 1);
+  Say(Format('  (edge shadow: column 0 = %d, column %d = %d, strip = %d)',
+    [Shade0, LedScale96(6) - 1, ShadeN, LedColourLuma(Map.Color)]));
+  CheckGt('the edge shadow is darkest against the page',
+    Abs(ShadeN - LedColourLuma(Map.Color)),
+    Abs(Shade0 - LedColourLuma(Map.Color)));
+  CheckGt('and fades out before the bars start', 0,
+    Abs(Shade0 - LedColourLuma(Map.Color)));
+
   { A folded block is one line on screen, and the map has to agree.  SynEdit's
     TopLine counts screen lines, so a map that counted buffer lines scrolled
     to the wrong place the moment anything was folded -- and further wrong the
@@ -7147,6 +7220,11 @@ var
   Tab: TLedTab;
   V: TLedEdit;
   MarginGap: Integer;
+  DiagI, DiagJ: Integer;
+  StrAttr, Attr: TSynHighlighterAttributes;
+  KateString, Behind: TColor;
+  Ratio, Worst: Double;
+  WorstName: string;
 
   { Puts the caret where a click would and returns how many appearances the
     markup found.  The search is SynEdit's, driven by a timer that does not
@@ -7199,6 +7277,116 @@ begin
     this asserted a colour on an object the feature never consults -- and
     passed, while clicking a word did nothing.  Read it back off the markup
     LED actually configures. }
+  { --- and it stands down for a selection of several rows --- }
+
+  { With a selection, SynEdit's markup searches for the selected text rather
+    than for the word at the caret.  Over one line that is what a
+    double-click is for.  Over several the selection matches itself, so the
+    search-match colour was painted over every selected row -- oblivion's
+    green filling the page behind the selection. }
+  V.BlockBegin := Point(1, 4);
+  V.BlockEnd := Point(5, 6);
+  Pump;
+  Check('a selection of several rows silences the appearance highlight',
+    not TLedMarkupPeek.Live(V.HighlightWord));
+
+  V.BlockBegin := Point(5, 5);
+  V.BlockEnd := Point(10, 5);
+  Pump;
+  Check('but a selection on one line still lights up its other appearances',
+    TLedMarkupPeek.Live(V.HighlightWord));
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Pump;
+  Check('and it comes back when the selection goes',
+    TLedMarkupPeek.Live(V.HighlightWord));
+
+  { --- switching themes has to undo the last one --- }
+
+  { Applying a scheme colours the scopes that scheme mentions and leaves the
+    rest alone, so what one scheme colours and the next does not stays as the
+    first one left it.  Switching from kate to classic left strings red:
+    kate colours def:string, classic says nothing about it, and nothing put
+    it back.  SynEdit keeps each attribute's defaults privately and offers no
+    way to read them, so LED keeps its own copy and restores from it first. }
+  StrAttr := AttrNamed(V.Highlighter, 'def.string');
+  Check('the C highlighter has a string attribute', StrAttr <> nil);
+  if StrAttr <> nil then
+  begin
+    LedSetCurrentTheme('kate');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    KateString := StrAttr.Foreground;
+
+    LedSetCurrentTheme('classic');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    Check('switching schemes does not leave the last one'#39's string colour: ' +
+      Format('%.6x then %.6x', [ColorToRGB(KateString),
+        ColorToRGB(StrAttr.Foreground)]),
+      StrAttr.Foreground <> KateString);
+
+    { And back again, to the same answer as the first time: restoring must be
+      repeatable, not a one-way trip through the defaults. }
+    LedSetCurrentTheme('kate');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    CheckEqInt('and going back gives the same colour again',
+      KateString, StrAttr.Foreground);
+  end;
+
+  { --- every theme readable on its own page --- }
+
+  { A grammar's colours were chosen for whatever page its author had in mind,
+    and a scheme colours only the scopes it thinks about; what is left over
+    is a colour nobody picked for this background.  Measured before the floor
+    went in, on white: tango's strings at 1.5 to one, its keywords at 2.1,
+    solarized-light's strings at 1.4 -- a mustard yellow on white. }
+  Worst := 100;
+  WorstName := '';
+  for DiagI := 0 to LedThemes.Count - 1 do
+  begin
+    LedSetCurrentTheme(LedThemes[DiagI].Id);
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    for DiagJ := 0 to V.Highlighter.AttrCount - 1 do
+    begin
+      Attr := V.Highlighter.Attribute[DiagJ];
+      if (Attr = nil) or (Attr.Foreground = clNone) then Continue;
+      Behind := Attr.Background;
+      if Behind = clNone then Behind := V.Color;
+      Ratio := LedContrastRatio(Attr.Foreground, Behind);
+      if Ratio < Worst then
+      begin
+        Worst := Ratio;
+        WorstName := LedThemes[DiagI].Id + '/' + Attr.StoredName;
+      end;
+    end;
+
+    { The rules on the caret's row, which are drawn from the theme's
+      current-line colour -- a tint meant to fill a whole row, and invisible
+      in a one-pixel rule until it is pushed off the page. }
+    CheckGt('the current-line rule can be seen in ' + LedThemes[DiagI].Id,
+      25, Abs(LedColourLuma(LedThemeCurrentLineColour(LedCurrentTheme,
+        V.Font.Color, V.Color)) - LedColourLuma(V.Color)));
+
+    { And the word-appearance highlight has to be readable on its own
+      background, whatever the scheme did or did not say about it: kate's
+      search match is yellow with no foreground, so the word kept the
+      selection's white and was drawn white on yellow. }
+    if V.HighlightWord.MarkupInfo.Background <> clNone then
+      CheckGt('the appearance highlight is readable in ' + LedThemes[DiagI].Id,
+        40, Round(10 * LedContrastRatio(V.HighlightWord.MarkupInfo.Foreground,
+          V.HighlightWord.MarkupInfo.Background)));
+  end;
+  Check(Format('no syntax colour is unreadable on its own page ' +
+    '(worst: %s at %.1f to one)', [WorstName, Worst]), Worst >= 3.9);
+
+  LedSetCurrentTheme('medit');
+  LedRetheme(LedCurrentTheme);
+  LedApplyThemeToEditor(LedCurrentTheme, V);
+
   Check('the caret markup has a colour, which is what wakes it',
     (V.HighlightWord <> nil) and
     (V.HighlightWord.MarkupInfo.Background <> clNone));
