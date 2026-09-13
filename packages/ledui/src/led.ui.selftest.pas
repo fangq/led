@@ -5789,12 +5789,20 @@ type
   public
     class function Count(A: TSynEditMarkupHighlightAllCaret): Integer;
     class procedure SearchNow(A: TSynEditMarkupHighlightAllCaret);
+    { Whether those matches would be painted.  Not the same question as how
+      many there are: SynEdit drops a lone match unless it is told not to. }
+    class function Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
   end;
 
 class function TLedMarkupPeek.Count(A: TSynEditMarkupHighlightAllCaret): Integer;
 begin
   Result := 0;
   if A <> nil then Result := TLedMarkupPeek(A).Matches.Count;
+end;
+
+class function TLedMarkupPeek.Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
+begin
+  Result := (A <> nil) and TLedMarkupPeek(A).HasVisibleMatch;
 end;
 
 class procedure TLedMarkupPeek.SearchNow(A: TSynEditMarkupHighlightAllCaret);
@@ -6879,6 +6887,21 @@ var
   Tab: TLedTab;
   V: TLedEdit;
   MarginGap: Integer;
+
+  { Puts the caret where a click would and returns how many appearances the
+    markup found.  The search is SynEdit's, driven by a timer that does not
+    fire under ProcessMessages -- but calling its handler does the search,
+    and a repaint afterwards establishes the range it searches over. }
+  function MatchesAt(AX, AY: Integer): Integer;
+  begin
+    V.CaretXY := Point(AX, AY);
+    Pump;
+    TLedMarkupPeek.SearchNow(V.HighlightWord);
+    V.Repaint;
+    Pump;
+    Result := TLedMarkupPeek.Count(V.HighlightWord);
+  end;
+
 begin
   Say('word and fold markup');
 
@@ -6887,13 +6910,17 @@ begin
   Src := IncludeTrailingPathDelimiter(Dir) + 'demo.c';
   L := TStringList.Create;
   try
-    L.Add('int count = 0;');          { 1 }
-    L.Add('int twice(int n)');        { 2 }
-    L.Add('{');                       { 3 }
-    L.Add('    int count = n;');      { 4 }
-    L.Add('    count = count * 2;');  { 5 }
-    L.Add('    return count;');       { 6 }
-    L.Add('}');                       { 7 }
+    L.Add('int count = 0;');             { 1 }
+    L.Add('int twice(int n)');           { 2 }
+    L.Add('{');                          { 3 }
+    L.Add('    int count = n;');         { 4 }
+    L.Add('    count = count * 2;');     { 5 }
+    L.Add('    return count;');          { 6 }
+    L.Add('}');                          { 7 }
+    L.Add('/* count in a comment */');   { 8 }
+    L.Add('char *s = "count here";');    { 9 }
+    L.Add('int snake_case_2 = 0;');      { 10 }
+    L.Add('int b = snake_case_2;');      { 11 }
     L.SaveToFile(Src);
   finally
     L.Free;
@@ -6931,12 +6958,41 @@ begin
     nothing because the range is established by painting.  So the shading is
     confirmed by using the editor, not from here -- asserting a match count
     would mean asserting zero, which would pass whether it worked or not. }
-  V.CaretXY := Point(6, 5);          { inside "count" on line 5 }
+  { Every appearance, wherever it is.  Seven of "count": five in code, one in
+    a comment and one inside a string literal. }
+  CheckEqInt('clicking a word finds every appearance of it', 7,
+    MatchesAt(6, 5));
+  Check('and they are shaded', TLedMarkupPeek.Paints(V.HighlightWord));
+
+  { The caret at either end of a word, not only in the middle of one -- a
+    click lands where the pointer was, and that is often the first character
+    or the space after the last. }
+  CheckEqInt('the caret at the start of a word counts as being in it', 6,
+    MatchesAt(1, 2));
+  CheckEqInt('and so does the caret just past its end', 6, MatchesAt(4, 2));
+
+  { Whole words, so clicking "count" leaves "counter" alone.  Nothing here is
+    called counter; what this asserts is that the option survived, since
+    without it the count above would be the same. }
+  Check('whole words only', V.HighlightWord.FullWord);
+
+  { Underscores and digits are part of an identifier, not breaks in it.  A
+    word-boundary rule that disagreed would report the two halves of
+    snake_case_2 separately and shade the wrong span. }
+  CheckEqInt('an identifier with underscores and digits is one word', 2,
+    MatchesAt(9, 10));
+
+  { A word that appears once is shaded too.  SynEdit hides a lone match by
+    default, which from the outside is a click that answers for some words
+    and not others -- and that is what it looked like: clicking count lit up
+    the file and clicking twice, three lines above it, did nothing at all. }
+  CheckEqInt('a word that appears once is still found', 1, MatchesAt(6, 2));
+  Check('and it is still shaded, so the click is never ignored',
+    TLedMarkupPeek.Paints(V.HighlightWord));
+
+  V.CaretXY := Point(6, 5);
   Pump;
   TLedMarkupPeek.SearchNow(V.HighlightWord);
-  Say(Format('  (armed for "%s"; the matches are found when it paints)',
-    [V.HighlightWord.SearchString]));
-
   { Hovering with no debugger running says nothing at all.  It used to answer
     every word in an ordinary editing session with
 

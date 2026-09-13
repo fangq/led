@@ -342,6 +342,13 @@ begin
     FHighlightWord.FullWord := True;
     FHighlightWord.IgnoreKeywords := False;
     FHighlightWord.Trim := True;
+    { And a word that appears once is still shaded.  SynEdit hides a lone
+      match by default, on the reasoning that there is nothing to compare it
+      with -- but from the outside that is a click that sometimes answers and
+      sometimes does not, with no way to tell which it will be until it has
+      already not answered.  Shading it says both things at once: the click
+      registered, and this is the only one here. }
+    FHighlightWord.HideSingleMatch := False;
   end;
 
   { A line whose block is folded shut is tinted, so a collapsed block reads
