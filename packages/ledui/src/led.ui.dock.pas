@@ -68,6 +68,12 @@ type
   TLedDockHeader = class(TAnchorDockHeader)
   private
     procedure StylePicked(Sender: TObject);
+  protected
+    { The caption, upper-cased on its way in.  RealSetText is the one place
+      every route to a caption passes through -- AnchorDocking sets it when a
+      pane is docked, when a site is renamed and when a layout is restored --
+      so doing it here means not hunting those sites down. }
+    procedure RealSetText(const Value: TCaption); override;
   public
     constructor Create(TheOwner: TComponent); override;
     { The dock's own right-click menu is where the docking options already
@@ -226,12 +232,32 @@ const
   AddOrSetData(uppercase(StyleName)) -- so the registry hands back FRAME3D and
   THEMEDCAPTION, which is no way to label a menu.  These say what each style
   actually draws. }
+{ The colour a pane header's name is drawn in: the desktop's selection blue,
+  lightened towards the header band so it sits on it rather than shouting
+  from it.  Taken from the desktop rather than fixed, for the reason the
+  terminal's active-pane band is -- it is the blue the session already uses. }
+function LedHeaderCaptionColour: TColor;
+
 function LedHeaderStyleCaption(const AName: string): string;
 
 implementation
 
 uses
   Led.UI.Icons, Led.Core.Prefs, Led.UI.Dpi;
+
+function LedHeaderCaptionColour: TColor;
+var
+  Hl, Bg: LongInt;
+begin
+  Hl := ColorToRGB(clHighlight);
+  Bg := ColorToRGB(clBtnFace);
+  { Two parts selection to one part band: recognisably that blue, without the
+    contrast of a selected row. }
+  Result := TColor(
+    (((2 * (Hl and $FF) + (Bg and $FF)) div 3) and $FF)
+    or ((((2 * ((Hl shr 8) and $FF) + ((Bg shr 8) and $FF)) div 3) and $FF) shl 8)
+    or ((((2 * ((Hl shr 16) and $FF) + ((Bg shr 16) and $FF)) div 3) and $FF) shl 16));
+end;
 
 function LedHeaderStyleCaption(const AName: string): string;
 begin
@@ -361,9 +387,28 @@ end;
 constructor TLedDockHeader.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  { Deliberately nothing.  Shrinking the caption here was tried and read as
-    too small; the class is kept because HeaderClass is the only hook that
-    reaches every header, and the next thing that needs one will want it. }
+  { A pane's name in small capitals, the way an editor with side panels sets
+    one: the header labels what is below it rather than competing with the
+    document.  Two points down, bold, and in the desktop's own selection blue
+    so it reads as chrome and follows a theme led knows nothing about.
+
+    ParentFont first, and that is the whole trick: a control with ParentFont
+    left on has its font replaced with the parent's the moment AnchorDocking
+    parents it, which is after this runs -- so an earlier attempt at shrinking
+    the caption set a size that was thrown away before anything was drawn, and
+    read as "too small was tried and reverted" when nothing had changed at
+    all. }
+  ParentFont := False;
+  if Font.Size <= 0 then Font.Size := 9;
+  Font.Size := Font.Size - 2;
+  if Font.Size < 6 then Font.Size := 6;
+  Font.Style := Font.Style + [fsBold];
+  Font.Color := LedHeaderCaptionColour;
+end;
+
+procedure TLedDockHeader.RealSetText(const Value: TCaption);
+begin
+  inherited RealSetText(UpperCase(Value));
 end;
 
 { A header that is a name on a slightly lighter band, and nothing else.

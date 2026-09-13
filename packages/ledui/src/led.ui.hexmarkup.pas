@@ -38,8 +38,13 @@ type
     FCurrentFore: TColor;
     FCurrentBack: TColor;
     FTextFore: TColor;
+    FActiveBack: TColor;
+    FMirrorBack: TColor;
     function OffsetEndCol: Integer;
     function TextStartCol: Integer;
+    function ByteAtColumn(ACol: Integer): Integer;
+    function RowHighlight(ARow: Integer; out AFirst, ALast: Integer;
+      out AActiveIsText: Boolean): Boolean;
   public
     constructor Create(ASynEdit: TSynEditBase);
 
@@ -58,6 +63,10 @@ type
 
     { Off for an ordinary document, so the markup costs a comparison. }
     property Enabled: Boolean read FEnabled write FEnabled;
+    { What the markup would paint behind the cell at ACol on ARow, or clNone
+      where it paints nothing.  Public so the pairing can be checked without
+      a screen: which cells light up, and which of the two is the brighter. }
+    function BackgroundAt(ARow, ACol: Integer): TColor;
   end;
 
 implementation
@@ -146,6 +155,22 @@ begin
     the margin. }
   FTextFore := Blend(AText, ABack, 78, 100);
 
+  { The byte the caret is on, and the same byte on the other side.  Two
+    strengths of the one colour rather than two colours: they are the same
+    byte, and the pair should read as one thing seen twice.  The side being
+    typed into is the stronger, which is the only way to tell from the shading
+    alone which half a keystroke will reach. }
+  if ACurrentLine <> clNone then
+  begin
+    FActiveBack := Blend(ACurrentLine, ABack, 170, 100);
+    FMirrorBack := Blend(ACurrentLine, ABack, 80, 100);
+  end
+  else
+  begin
+    FActiveBack := Blend(AText, ABack, 34, 100);
+    FMirrorBack := Blend(AText, ABack, 16, 100);
+  end;
+
   { And the row being edited has its offset lifted back out.  The theme's
     current-line colour when it has one, so the band agrees with the row
     highlight the editor is already drawing. }
@@ -156,16 +181,121 @@ begin
     FCurrentBack := Blend(AText, ABack, 20, 100);
 end;
 
+
+{ The byte a column falls on, rounded onto the nearest one rather than
+  refusing.  Led.Core.Hex answers -1 for the punctuation between pairs, which
+  is right when deciding where a caret may rest and wrong when deciding what
+  a drag covered -- a selection that starts on a space still means the byte
+  beside it. }
+function TLedHexMarkup.BackgroundAt(ARow, ACol: Integer): TColor;
+var
+  FirstB, LastB, Idx: Integer;
+  ActiveIsText: Boolean;
+begin
+  Result := clNone;
+  if (not FEnabled) or (ACol <= OffsetEndCol) then Exit;
+  if not RowHighlight(ARow, FirstB, LastB, ActiveIsText) then Exit;
+  Idx := LedHexColumnToIndex(ACol);
+  if (Idx < FirstB) or (Idx > LastB) then Exit;
+  if LedHexColumnIsText(ACol) = ActiveIsText then
+    Result := FActiveBack
+  else
+    Result := FMirrorBack;
+end;
+
+function TLedHexMarkup.ByteAtColumn(ACol: Integer): Integer;
+var
+  i, Best, BestDist, C, D: Integer;
+begin
+  Result := LedHexColumnToIndex(ACol);
+  if Result >= 0 then Exit;
+
+  Best := -1;
+  BestDist := MaxInt;
+  for i := 0 to LedHexBytesPerLine - 1 do
+  begin
+    C := LedHexByteColumn(i);
+    D := Abs(ACol - C);
+    if D < BestDist then begin BestDist := D; Best := i; end;
+    C := LedHexTextColumn(i);
+    D := Abs(ACol - C);
+    if D < BestDist then begin BestDist := D; Best := i; end;
+  end;
+  Result := Best;
+end;
+
+{ Which bytes of ARow are being pointed at, and from which side.
+
+  A selection when there is one, the caret's own byte when there is not.  The
+  side is taken from where the caret is, because that is where a keystroke
+  would land -- including during a drag, where the caret travels with the
+  moving end of the block. }
+function TLedHexMarkup.RowHighlight(ARow: Integer; out AFirst, ALast: Integer;
+  out AActiveIsText: Boolean): Boolean;
+var
+  Ed: TSynEdit;
+  B1, B2: TPoint;
+begin
+  Result := False;
+  AFirst := -1;
+  ALast := -1;
+  Ed := TSynEdit(SynEdit);
+  AActiveIsText := LedHexColumnIsText(Ed.CaretX);
+
+  if Ed.SelAvail then
+  begin
+    B1 := Ed.BlockBegin;
+    B2 := Ed.BlockEnd;
+    if (ARow < B1.Y) or (ARow > B2.Y) then Exit;
+    AFirst := 0;
+    ALast := LedHexBytesPerLine - 1;
+    if ARow = B1.Y then AFirst := ByteAtColumn(B1.X);
+    if ARow = B2.Y then ALast := ByteAtColumn(B2.X - 1);
+  end
+  else
+  begin
+    if ARow <> Ed.CaretY then Exit;
+    AFirst := ByteAtColumn(Ed.CaretX);
+    ALast := AFirst;
+  end;
+
+  if (AFirst < 0) or (ALast < AFirst) then Exit;
+  if ALast > LedHexBytesPerLine - 1 then ALast := LedHexBytesPerLine - 1;
+  Result := True;
+end;
+
 function TLedHexMarkup.GetMarkupAttributeAtRowCol(const aRow: Integer;
   const aStartCol: TLazSynDisplayTokenBound;
   const AnRtlInfo: TLazSynDisplayRtlInfo): TSynSelectedColor;
 var
-  Col: Integer;
-  OnCaretRow: Boolean;
+  Col, Idx, FirstB, LastB: Integer;
+  OnCaretRow, ActiveIsText: Boolean;
 begin
   Result := nil;
   if (not FEnabled) or (FOffsetFore = clNone) then Exit;
   Col := aStartCol.Logical;
+
+  { The byte under the caret, or the run under the selection, shaded on both
+    sides of the row: strongly where the typing would go, faintly on the
+    matching cell opposite.  Reading a dump means going back and forth
+    between the two halves, and this is the line between them drawn. }
+  if (Col > OffsetEndCol) and RowHighlight(aRow, FirstB, LastB, ActiveIsText) then
+  begin
+    Idx := LedHexColumnToIndex(Col);
+    if (Idx >= FirstB) and (Idx <= LastB) then
+    begin
+      if LedHexColumnIsText(Col) then
+        MarkupInfo.Foreground := FTextFore
+      else
+        MarkupInfo.Foreground := clNone;
+      if LedHexColumnIsText(Col) = ActiveIsText then
+        MarkupInfo.Background := FActiveBack
+      else
+        MarkupInfo.Background := FMirrorBack;
+      MarkupInfo.SetFrameBoundsLog(Col, Col + 1);
+      Exit(MarkupInfo);
+    end;
+  end;
 
   if Col <= OffsetEndCol then
   begin
@@ -198,7 +328,8 @@ procedure TLedHexMarkup.GetNextMarkupColAfterRowCol(const aRow: Integer;
   const aStartCol: TLazSynDisplayTokenBound;
   const AnRtlInfo: TLazSynDisplayRtlInfo; out ANextPhys, ANextLog: Integer);
 var
-  Col: Integer;
+  Col, FirstB, LastB: Integer;
+  ActiveIsText: Boolean;
 begin
   ANextPhys := -1;
   ANextLog := -1;
@@ -211,6 +342,15 @@ begin
     ANextLog := OffsetEndCol + 1
   else if Col < TextStartCol then
     ANextLog := TextStartCol;
+
+  { On a row that carries the caret or part of the selection the colour can
+    change at every column, so the answer is the next column.  That is a
+    token per character on those rows and a handful on all the others, which
+    is the right way round: the rows it costs anything on are the ones being
+    looked at. }
+  if RowHighlight(aRow, FirstB, LastB, ActiveIsText) then
+    if (ANextLog < 0) or (Col + 1 < ANextLog) then
+      ANextLog := Col + 1;
 end;
 
 end.

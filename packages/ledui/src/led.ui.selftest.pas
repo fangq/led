@@ -37,6 +37,7 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
+  Led.UI.HexMarkup, AnchorDocking,
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
@@ -3277,6 +3278,9 @@ var
   EditH, i, x: Integer;
   SavedOpen: TLedOpenFileEvent;
   Catcher: TBrowserOpenCatcher;
+  Pane: TLedPaneForm;
+  Host: TWinControl;
+  Hdr: TAnchorDockHeader;
   L: TStringList;
 begin
   Say('file browser');
@@ -3340,6 +3344,36 @@ begin
   { One tree, holding folders and files together.  It replaced a folder tree
     over a file list, so what used to be checked here -- that the splitter
     resized the list and not the filter row -- has nothing left to be about. }
+  { The pane headers: a name in small capitals, in the desktop's blue. }
+  { The header belongs to the host site a pane is docked into, not to the
+    pane, so it is reached by walking up. }
+  Pane := F.Dock.FindPane('files');
+  Hdr := nil;
+  if Pane <> nil then
+  begin
+    Host := Pane.Parent;
+    while (Host <> nil) and (not (Host is TAnchorDockHostSite)) do
+      Host := Host.Parent;
+    if Host <> nil then Hdr := TAnchorDockHostSite(Host).Header;
+  end;
+  Check('the files pane has a header', Hdr <> nil);
+  if Hdr <> nil then
+  begin
+    Check('whose caption is not empty, so there is something to shape',
+      Trim(Hdr.Caption) <> '');
+    CheckEq('and is upper-cased', UpperCase(Hdr.Caption), Hdr.Caption);
+    { Against a real number rather than the form's, which reports 0 -- the
+      LCL's way of saying "whatever the desktop uses" -- so "smaller than the
+      form" compares 7 with 0 and means nothing. }
+    Check('sized explicitly rather than inherited', Hdr.Font.Size > 0);
+    Check('and set bold, which is what a smaller face needs back',
+      fsBold in Hdr.Font.Style);
+    CheckGt('and smaller than the nine points it derives from', Hdr.Font.Size,
+      9);
+    CheckEqInt('in the colour the dock mixes for it',
+      ColorToRGB(LedHeaderCaptionColour), ColorToRGB(Hdr.Font.Color));
+  end;
+
   Check('the pane is a single tree', F.Browser.Tree <> nil);
 
   { And painted in the editor's colours rather than the desktop's, so the two
@@ -6375,6 +6409,91 @@ begin
   if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
 end;
 
+{ A byte is two cells: one in the hex half, one in the text half.
+
+  Putting the caret on either lights both -- the side being typed into
+  strongly, its counterpart faintly -- so the eye can cross the row without
+  counting.  The same for a selection.  Asked of the markup rather than read
+  off the screen, because what is being checked is the pairing: which cells
+  light, and which of the pair is the brighter. }
+procedure TestHexPairing(F: TLedMainForm);
+var
+  Dir, Bin: string;
+  St: TFileStream;
+  B: array[0..31] of Byte;
+  i: Integer;
+  Tab: TLedTab;
+  V: TLedEdit;
+  M: TLedHexMarkup;
+  HexCol, TxtCol, Active, Mirror: Integer;
+begin
+  Say('hex pairing');
+
+  Dir := TempName('hexpair');
+  ForceDirectories(Dir);
+  Bin := IncludeTrailingPathDelimiter(Dir) + 'data.bin';
+  for i := 0 to High(B) do B[i] := i;
+  B[3] := 0;                      { a NUL, so led reads it as binary }
+  St := TFileStream.Create(Bin, fmCreate);
+  try
+    St.WriteBuffer(B, SizeOf(B));
+  finally
+    St.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Bin));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  Check('it opened as a dump', V.HexMode);
+  M := V.HexMarkup;
+  Check('and the dump has its markup', M <> nil);
+  if M = nil then Exit;
+
+  { Byte 5 of row 1, from the hex side. }
+  HexCol := LedHexByteColumn(5);
+  TxtCol := LedHexTextColumn(5);
+  V.CaretXY := Point(HexCol, 1);
+  Pump;
+
+  Active := ColorToRGB(M.BackgroundAt(1, HexCol));
+  Mirror := ColorToRGB(M.BackgroundAt(1, TxtCol));
+  Check('the byte under the caret is shaded', M.BackgroundAt(1, HexCol) <> clNone);
+  Check('and so is the same byte in the text column',
+    M.BackgroundAt(1, TxtCol) <> clNone);
+  Check('the two differ, so which side has the caret is visible',
+    Active <> Mirror);
+  Check('a byte the caret is not on stays unshaded',
+    M.BackgroundAt(1, LedHexByteColumn(9)) = clNone);
+
+  { Now from the text side: the same pair, the strengths swapped. }
+  V.CaretXY := Point(TxtCol, 1);
+  Pump;
+  CheckEqInt('crossing to the text side makes that cell the bright one',
+    Active, ColorToRGB(M.BackgroundAt(1, TxtCol)));
+  CheckEqInt('and the hex cell the faint one',
+    Mirror, ColorToRGB(M.BackgroundAt(1, HexCol)));
+
+  { A selection lights every byte in it, on both sides. }
+  V.CaretXY := Point(LedHexByteColumn(2), 1);
+  V.BlockBegin := Point(LedHexByteColumn(2), 1);
+  V.BlockEnd := Point(LedHexByteColumn(6), 1);
+  Pump;
+  Check('a selected byte is shaded in the hex half',
+    M.BackgroundAt(1, LedHexByteColumn(4)) <> clNone);
+  Check('and in the text half',
+    M.BackgroundAt(1, LedHexTextColumn(4)) <> clNone);
+  Check('while a byte outside it is not',
+    M.BackgroundAt(1, LedHexByteColumn(12)) = clNone);
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
 { Two independent tab groups in one window.
 
   The checks are about where tabs actually are and what happened to the
@@ -6771,6 +6890,7 @@ begin
   TestFoldGuides(F);
   TestRowStyling(F);
   TestWordAndFoldMarkup(F);
+  TestHexPairing(F);
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
