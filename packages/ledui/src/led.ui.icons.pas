@@ -72,7 +72,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..50] of string = (
+  IconNames: array[0..57] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -88,7 +88,12 @@ const
       file is an absolute position, so inserting here would silently move
       every icon after it. }
     'debug', 'stepover', 'stepinto', 'stepout', 'pause',
-    'breakpoint', 'debugline'
+    'breakpoint', 'debugline',
+    { The file browser's tree, one per kind of file it can recognise.  A page
+      with a mark on it, except the folder, so a row reads as "a file, of this
+      sort" rather than as an unrelated picture. }
+    'folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
+    'fileimage', 'filebinary'
   );
 
 procedure LedApplyWindowIcon;
@@ -465,6 +470,57 @@ begin
         { The arrow that says "execution is here". }
         P.Poly([3, 4.5, 9, 8, 3, 11.5], True);
         P.Line(10.5, 8, 13.5, 8);
+      end;
+    'folder':
+      begin
+        { A tab and a body, which is the one shape everybody reads as a
+          folder.  Narrower than the 'browser' icon beside it on the rail,
+          because this one sits in a row of text. }
+        P.Poly([1.5, 13, 1.5, 3.5, 6, 3.5, 7.5, 5.5, 14.5, 5.5, 14.5, 13,
+                1.5, 13]);
+      end;
+    'filesource':
+      begin
+        { A page with angle brackets on it: the mark every editor uses for
+          "this one is code". }
+        DrawPage(P);
+        P.Poly([7, 7.5, 5.5, 9.5, 7, 11.5]);
+        P.Poly([9.5, 7.5, 11, 9.5, 9.5, 11.5]);
+      end;
+    'filetext':
+      begin
+        { A page with lines of writing. }
+        DrawPage(P);
+        P.Line(5.5, 7.5, 10.5, 7.5);
+        P.Line(5.5, 9.5, 10.5, 9.5);
+        P.Line(5.5, 11.5, 8.5, 11.5);
+      end;
+    'filemarkdown':
+      begin
+        { A page with the two strokes of an M and the arrow beneath, which is
+          what the Markdown mark is. }
+        DrawPage(P);
+        P.Poly([5.5, 11.5, 5.5, 7.5, 7.5, 9.5, 9.5, 7.5, 9.5, 11.5]);
+      end;
+    'filepdf':
+      begin
+        { A page with a band across it, as a printed sheet is shown. }
+        DrawPage(P);
+        P.Box(5, 8, 11, 11.5, True);
+      end;
+    'fileimage':
+      begin
+        { A frame with a horizon and a sun: a picture rather than a page. }
+        P.Box(1.5, 3, 14.5, 13);
+        P.Ellipse(4, 5, 6.5, 7.5, True);
+        P.Poly([1.5, 13, 6, 8.5, 9, 11, 11.5, 8.5, 14.5, 13]);
+      end;
+    'filebinary':
+      begin
+        { A page with a one and a nought on it. }
+        DrawPage(P);
+        P.Line(6, 7.5, 6, 11.5);
+        P.Ellipse(8, 7.5, 11, 11.5);
       end;
     'terminal':
       begin

@@ -3215,9 +3215,10 @@ end;
 procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
-  Root: TTreeNode;
-  RootRaised: string;
-  EditH, i: Integer;
+  Root, Node: TTreeNode;
+  RootRaised, BrowseDir, Names, Kinds: string;
+  EditH, i, x: Integer;
+  L: TStringList;
 begin
   Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
@@ -3277,11 +3278,83 @@ begin
   Say(Format('    nav: %d px glyph on a %d px button',
     [F.Browser.NavGlyphSize, F.Browser.NavButtonSize]));
 
-  Check('the splitter has something to resize',
-    F.Browser.SplitterTarget <> nil);
-  Check('and it is the panel holding the file list, not the filter row',
-    (F.Browser.SplitterTarget <> nil) and
-    (F.Browser.FileList.Parent = F.Browser.SplitterTarget));
+  { One tree, holding folders and files together.  It replaced a folder tree
+    over a file list, so what used to be checked here -- that the splitter
+    resized the list and not the filter row -- has nothing left to be about. }
+  Check('the pane is a single tree', F.Browser.Tree <> nil);
+  Check('there is no splitter left to resize anything',
+    F.Browser.SplitterTarget = nil);
+  Check('and the tree shows files as well as folders',
+    (otNonFolders in F.Browser.Tree.ObjectTypes) and
+    (otFolders in F.Browser.Tree.ObjectTypes));
+  Check('with the whole row selectable', F.Browser.Tree.RowSelect);
+  Check('and a chevron beside anything that opens',
+    F.Browser.Tree.ShowButtons);
+  Check('and pictures to put on the rows',
+    (F.Browser.Tree.Images <> nil) and (F.Browser.Tree.Images.Count > 0));
+
+  { What is actually in the tree when it is pointed at a real folder.  The
+    structure above says the pane is built to show files; this says it does,
+    and that each one got the picture its extension asks for. }
+  BrowseDir := TempName('browse');
+  ForceDirectories(BrowseDir + PathDelim + 'sub');
+  for x := 0 to 4 do
+  begin
+    L := TStringList.Create;
+    try
+      L.Add('x');
+      case x of
+        0: L.SaveToFile(BrowseDir + PathDelim + 'a.c');
+        1: L.SaveToFile(BrowseDir + PathDelim + 'b.md');
+        2: L.SaveToFile(BrowseDir + PathDelim + 'c.txt');
+        3: L.SaveToFile(BrowseDir + PathDelim + 'd.pdf');
+        4: L.SaveToFile(BrowseDir + PathDelim + 'e.o');
+      end;
+    finally
+      L.Free;
+    end;
+  end;
+
+  F.Browser.SetRoot(BrowseDir);
+  Pump; Pump;
+  Names := '';
+  Kinds := '';
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while Node <> nil do
+  begin
+    if Node.Parent <> nil then
+    begin
+      { A directory's path comes back with a trailing separator, so the name
+        has to be taken from the path with it stripped. }
+      Names := Names + ExtractFileName(ExcludeTrailingPathDelimiter(
+        F.Browser.Tree.GetPathFromNode(Node))) + ' ';
+      Kinds := Kinds + IntToStr(Node.ImageIndex) + ' ';
+    end;
+    Node := Node.GetNext;
+  end;
+  Say('  (tree holds: ' + Names + ')');
+  Say('  (icons:      ' + Kinds + ')');
+
+  Check('the folder is in the tree: ' + Names, Pos('sub ', Names) > 0);
+  Check('every row got a picture', Pos('-1', Kinds) = 0);
+  Check('and so are the files', (Pos('a.c ', Names) > 0) and
+    (Pos('b.md ', Names) > 0) and (Pos('e.o ', Names) > 0));
+
+  { 0 folder, 1 source, 2 text, 3 markdown, 4 pdf, 5 image, 6 binary. }
+  CheckEqInt('a folder gets the folder icon', 0,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'sub'));
+  CheckEqInt('a C file gets the source icon', 1,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'a.c'));
+  CheckEqInt('a markdown file its own', 3,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'b.md'));
+  CheckEqInt('a text file its own', 2,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'c.txt'));
+  CheckEqInt('a pdf its own', 4,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'd.pdf'));
+  CheckEqInt('and an object file reads as binary', 6,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'e.o'));
+
+  if DirectoryExists(BrowseDir) then DeleteDirectory(BrowseDir, False);
 
   { Clicking the tree's top row -- the root folder itself -- used to raise
     EShellCtrl, "The selected item does not exist on disk", and arrive as the
