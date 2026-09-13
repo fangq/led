@@ -106,6 +106,19 @@ type
     procedure SpecialLineMarkup(Sender: TObject; Line: Integer;
       var Special: Boolean; AMarkup: TSynSelectedColor);
     procedure ClampCaretToLineEnd;
+    { The selection's own ends, clamped the same way.  Dragging is where the
+      caret clamp on its own is not enough: the drag carries the far end of
+      the selection past the line and the caret with it. }
+    procedure ClampSelectionToLineEnd;
+    { True when the selection covers any actual text.
+
+      A selection in the space past the end of a line is not nothing to
+      SynEdit: eoScrollPastEol lets a drag reach out there, and SelText comes
+      back as a run of spaces that are not in the buffer.  Nothing is drawn
+      for it -- LED stopped shading past the line end -- so treating it as a
+      selection meant a click that suppressed the current-line rules and put
+      nothing in their place. }
+    function SelectionIsReal: Boolean;
     procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
@@ -160,6 +173,16 @@ type
     property FoldedLineColour: TColor
       read FFoldedLineColour write FFoldedLineColour;
     function LineIsFolded(ALine: Integer): Boolean;
+
+    { The document as it is *shown*: folded blocks counted once, not once per
+      line inside them.  SynEdit calls this view space, and TopLine is in it
+      -- which is why anything that scrolls the view has to speak it.  The
+      minimap drew and scrolled in text lines instead, so a file with a block
+      folded shut scrolled to the wrong place and further wrong the more was
+      folded. }
+    function ViewLineCount: Integer;
+    { A 1-based view line to the 0-based text line it shows. }
+    function ViewLineToTextIndex(AViewPos: Integer): Integer;
     { The markup that shades every other appearance of the word at the caret.
       Published so a check can count what it found. }
     property HighlightWord: TSynEditMarkupHighlightAllCaret read FHighlightWord;
@@ -781,6 +804,57 @@ begin
   if CaretX > Last then CaretX := Last;
 end;
 
+procedure TLedEdit.ClampSelectionToLineEnd;
+
+  function Clamped(const P: TPoint): TPoint;
+  var
+    Last: Integer;
+  begin
+    Result := P;
+    if (Result.Y < 1) or (Result.Y > Lines.Count) then Exit;
+    Last := Length(Lines[Result.Y - 1]) + 1;
+    if Result.X > Last then Result.X := Last;
+  end;
+
+var
+  B, E: TPoint;
+begin
+  if FHexMode then Exit;
+  if SelectionMode = smColumn then Exit;   { a rectangle may reach past a line }
+  if not SelAvail then Exit;
+  B := Clamped(BlockBegin);
+  E := Clamped(BlockEnd);
+  if (B.X = BlockBegin.X) and (E.X = BlockEnd.X) then Exit;
+  { Assigned rather than set through SetCaretAndSelection, which is private
+    to TCustomSynEdit.  BlockBegin first: assigning it moves the anchor and
+    takes the far end with it. }
+  BlockBegin := B;
+  BlockEnd := E;
+end;
+
+function TLedEdit.SelectionIsReal: Boolean;
+
+  function Clamped(const P: TPoint): TPoint;
+  var
+    Last: Integer;
+  begin
+    Result := P;
+    if (Result.Y < 1) or (Result.Y > Lines.Count) then Exit;
+    Last := Length(Lines[Result.Y - 1]) + 1;
+    if Result.X > Last then Result.X := Last;
+  end;
+
+var
+  B, E: TPoint;
+begin
+  Result := SelAvail;
+  if not Result then Exit;
+  if SelectionMode = smColumn then Exit;
+  B := Clamped(BlockBegin);
+  E := Clamped(BlockEnd);
+  Result := (B.Y <> E.Y) or (B.X <> E.X);
+end;
+
 { Give a folded line its tint.  SynEdit asks this for every line it is about
   to draw, so the answer has to be cheap: one lookup of the fold state of the
   screen row the line is on. }
@@ -812,6 +886,23 @@ begin
   Result := cfCollapsedFold in FV.FoldType[Row];
 end;
 
+function TLedEdit.ViewLineCount: Integer;
+begin
+  if FoldedTextBuffer is TSynEditFoldedView then
+    Result := TSynEditFoldedView(FoldedTextBuffer).ViewedCount
+  else
+    Result := Lines.Count;
+end;
+
+function TLedEdit.ViewLineToTextIndex(AViewPos: Integer): Integer;
+begin
+  Result := AViewPos - 1;
+  if FoldedTextBuffer is TSynEditFoldedView then
+    Result := TSynEditFoldedView(FoldedTextBuffer).ViewToTextIndex(AViewPos - 1);
+  if Result < 0 then Result := 0;
+  if Result > Lines.Count - 1 then Result := Lines.Count - 1;
+end;
+
 { The caret's row, marked with a rule above and below rather than filled in.
 
   A band of colour behind the whole row competes with the syntax colouring it
@@ -829,7 +920,9 @@ begin
   FCurrentLineRow := -1;
   if FCurrentLineColour = clNone then Exit;
   if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
-  if SelAvail then Exit;   { a selection is the thing to look at, not the row }
+  { A selection is the thing to look at, not the row -- but only a selection
+    with something in it.  See SelectionIsReal. }
+  if SelectionIsReal then Exit;
   FV := TSynEditFoldedView(FoldedTextBuffer);
 
   X0 := 0;
@@ -1340,6 +1433,19 @@ var
   Expr: string;
 begin
   inherited MouseMove(AShift, X, Y);
+
+  { A drag stops at the end of the line, as a click does.  Without this every
+    click was a tiny drag into the space past the line -- a mouse moves a
+    pixel or two between press and release -- which left a selection of
+    virtual spaces: nothing drawn, nothing to see, and the current-line rules
+    suppressed because SynEdit said there was a selection. }
+  if (ssLeft in AShift) and (AShift * [ssCtrl, ssAlt] = []) and
+     (SelectionMode <> smColumn) then
+  begin
+    ClampCaretToLineEnd;
+    ClampSelectionToLineEnd;
+  end;
+
   if not Assigned(FOnHoverExpression) then Exit;
   Expr := ExpressionAtPixels(X, Y);
   if Expr = FHoverExpr then Exit;
@@ -1438,7 +1544,10 @@ begin
     clamping first corrects the position the caret was leaving. }
   if (AButton = mbLeft) and (AShift * [ssCtrl, ssAlt] = []) and
      (SelectionMode <> smColumn) then
+  begin
     ClampCaretToLineEnd;
+    ClampSelectionToLineEnd;
+  end;
 
   { SynEdit places a clicked caret through its own machinery rather than
     through SetCaretXY, so a click in the offset column would otherwise land

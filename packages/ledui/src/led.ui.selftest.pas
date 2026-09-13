@@ -6873,6 +6873,42 @@ begin
   Pump;
   CheckEqInt('clicking past the end of a line lands on its end',
     Length(V.Lines[0]) + 1, V.CaretX);
+  { The same click as a real mouse makes it: a press, a pixel or two of
+    movement, a release.  That is a drag as far as SynEdit is concerned, and
+    with eoScrollPastEol it reaches out into the space past the line -- where
+    it selects virtual spaces that are not in the buffer.  Nothing is drawn
+    for them, since LED stopped shading past the line end, so what the user
+    saw was a click that moved the caret and took the current-line rules away
+    with it, replacing them with nothing. }
+  TLedMousePoke.Press(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Move(V, [ssLeft],
+    V.Gutter.Width + 2 + 44 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Release(V, [],
+    V.Gutter.Width + 2 + 44 * V.CharWidth, V.LineHeight div 2);
+  Pump;
+  V.Repaint;
+  Pump;
+  CheckEqInt('a drag past the end of a line ends at the line end',
+    Length(V.Lines[0]) + 1, V.CaretX);
+  Check('and selects nothing, rather than a run of virtual spaces',
+    not V.SelAvail);
+  CheckEqInt('so the row keeps its rules', 0, V.CurrentLineRow);
+
+  { And if a selection out there is arrived at some other way -- the caret
+    put past the line end by code, with eoScrollPastEol -- the rules are
+    still drawn, because a selection of nothing is not a selection. }
+  V.BlockBegin := Point(Length(V.Lines[0]) + 1, 1);
+  V.BlockEnd := Point(Length(V.Lines[0]) + 20, 1);
+  V.CaretXY := Point(Length(V.Lines[0]) + 20, 1);
+  V.Repaint;
+  Pump;
+  CheckEqInt('a selection with no text in it leaves the rules alone', 0,
+    V.CurrentLineRow);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 1);
+  Pump;
 
   { A rectangle still reaches past it, which is what eoScrollPastEol is on
     for -- clamping every click would have taken that with it. }
@@ -6934,7 +6970,7 @@ var
   V: TLedEdit;
   Map: TLedMiniMap;
   i, Ink, Blank, Top0, Top1, MapTop0, MapTop1: Integer;
-  ClickY, Wanted: Integer;
+  ClickY, Wanted, ViewBefore: Integer;
   T0: QWord;
 
   { Pixels in the strip that are neither its background nor the box wash --
@@ -6976,12 +7012,21 @@ begin
   L := TStringList.Create;
   try
     { Long enough that it cannot fit in the strip, so the scrolling half of
-      this is exercised rather than skipped. }
-    for i := 1 to 600 do
-      if i mod 7 = 0 then
-        L.Add('')
-      else
-        L.Add('    int variable_' + IntToStr(i) + ' = ' + IntToStr(i) + ';');
+      this is exercised rather than skipped, and in blocks, so the folding
+      half is too. }
+    for i := 1 to 60 do
+    begin
+      L.Add('int function_' + IntToStr(i) + '(int x)');
+      L.Add('{');
+      L.Add('    int variable_' + IntToStr(i) + ' = ' + IntToStr(i) + ';');
+      L.Add('    int another_' + IntToStr(i) + ' = x;');
+      L.Add('    if (x > 0) {');
+      L.Add('        variable_' + IntToStr(i) + ' += another_' + IntToStr(i) + ';');
+      L.Add('    }');
+      L.Add('    return variable_' + IntToStr(i) + ';');
+      L.Add('}');
+      L.Add('');
+    end;
     L.SaveToFile(Src);
   finally
     L.Free;
@@ -7055,6 +7100,33 @@ begin
     in a minimap means "show me this", and what is wanted is that line with
     its surroundings. }
   Check('and the line clicked is in the middle of the view: ' +
+    IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
+    Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
+
+  { A folded block is one line on screen, and the map has to agree.  SynEdit's
+    TopLine counts screen lines, so a map that counted buffer lines scrolled
+    to the wrong place the moment anything was folded -- and further wrong the
+    more was folded, which is why dragging in it went nowhere near where it
+    was pointed. }
+  V.CaretXY := Point(1, 1);
+  ViewBefore := Map.LinesShown;
+  LedFoldAll(V);
+  Pump;
+  V.Repaint;
+  Pump;
+  CheckGt('folding hides lines from the view', V.ViewLineCount,
+    V.Lines.Count);
+  Check('and the map is of the view, not the buffer: ' +
+    IntToStr(Map.LinesShown) + ' of ' + IntToStr(V.ViewLineCount),
+    Map.LinesShown <= V.ViewLineCount);
+  CheckGt('so the map got shorter too', Map.LinesShown, ViewBefore);
+
+  ClickY := Map.Height div 2;
+  Wanted := Map.LineAtY(ClickY);
+  TMapPoke(Map).MouseDown(mbLeft, [], Map.Width div 2, ClickY);
+  TMapPoke(Map).MouseUp(mbLeft, [], Map.Width div 2, ClickY);
+  Pump;
+  Check('and a drag still lands where it is pointed with a block folded: ' +
     IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
     Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
 

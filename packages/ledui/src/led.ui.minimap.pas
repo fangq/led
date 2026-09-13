@@ -20,6 +20,12 @@
   editor's own scan -- this only replays them -- and because the highlighter's
   position is restored afterwards, which matters when two views share one.
 
+  Drawn in view space, not text space: a folded block is one line here
+  because it is one line on screen.  SynEdit's TopLine is in view space too,
+  so this is also the coordinate the scrolling has to be done in -- drawn and
+  scrolled in text lines instead, a file with anything folded shut scrolled
+  to the wrong place, and further wrong the more was folded.
+
   Only the lines that fit are drawn.  A minimap of a hundred-thousand-line
   file cannot show every line in three hundred pixels, and scaling lines
   together into one bar loses exactly the shape the thing exists to show, so
@@ -52,7 +58,7 @@ type
     function LinesThatFit: Integer;
     function DocLineCount: Integer;
     procedure ScrollTo(AY: Integer);
-    procedure PaintLine(AIndex, AY: Integer);
+    procedure PaintLine(AViewPos, AY: Integer);
   protected
     procedure Paint; override;
     procedure Resize; override;
@@ -156,8 +162,13 @@ procedure TLedMiniMap.ApplyTheme;
 begin
   if FEdit = nil then Exit;
   { A shade off the page rather than the page itself, so the strip reads as a
-    separate thing and its edge does not need a rule drawn down it. }
-  Color := LedMixColours(FEdit.Color, FEdit.Font.Color, 6);
+    separate thing and its edge does not need a rule drawn down it.
+
+    Six parts ink to ninety-four of page -- that way round.  Written the other
+    way it was ninety-four parts ink, which on a light theme is a black strip
+    down the side of a white page: not a shade off the page but the opposite
+    of it. }
+  Color := LedMixColours(FEdit.Font.Color, FEdit.Color, 6);
   Invalidate;
 end;
 
@@ -166,10 +177,11 @@ begin
   Result := FRowHeight;
 end;
 
+{ In view lines -- see the note at the top of the unit. }
 function TLedMiniMap.DocLineCount: Integer;
 begin
   Result := 0;
-  if FEdit <> nil then Result := FEdit.Lines.Count;
+  if FEdit <> nil then Result := FEdit.ViewLineCount;
 end;
 
 function TLedMiniMap.LinesThatFit: Integer;
@@ -203,8 +215,11 @@ begin
   Invalidate;
 end;
 
-procedure TLedMiniMap.PaintLine(AIndex, AY: Integer);
+{ AViewPos is 1-based and in view space; the text it shows may be any line of
+  the buffer, and is what the highlighter is asked about. }
+procedure TLedMiniMap.PaintLine(AViewPos, AY: Integer);
 var
+  AIndex: Integer;
   S: string;
   HL: TSynCustomHighlighter;
   Attr: TSynHighlighterAttributes;
@@ -212,12 +227,14 @@ var
   TokLen, TokPos, X, W, i: Integer;
   Ink: TColor;
 begin
-  if (FEdit = nil) or (AIndex < 0) or (AIndex >= FEdit.Lines.Count) then Exit;
+  if FEdit = nil then Exit;
+  AIndex := FEdit.ViewLineToTextIndex(AViewPos);
+  if (AIndex < 0) or (AIndex >= FEdit.Lines.Count) then Exit;
   S := FEdit.Lines[AIndex];
   if Trim(S) = '' then Exit;
 
   HL := FEdit.Highlighter;
-  Ink := LedMixColours(FEdit.Font.Color, Color, 58);
+  Ink := LedMixColours(FEdit.Font.Color, Color, 82);
 
   if HL = nil then
   begin
@@ -245,9 +262,9 @@ begin
     begin
       Attr := HL.GetTokenAttribute;
       if (Attr <> nil) and (Attr.Foreground <> clNone) then
-        Ink := LedMixColours(Attr.Foreground, Color, 58)
+        Ink := LedMixColours(Attr.Foreground, Color, 82)
       else
-        Ink := LedMixColours(FEdit.Font.Color, Color, 58);
+        Ink := LedMixColours(FEdit.Font.Color, Color, 82);
 
       { Whitespace leaves a gap -- that gap is the indentation, which is most
         of what a minimap shows. }
@@ -316,7 +333,7 @@ begin
   BoxBottom := BoxTop + FEdit.LinesInWindow * FRowHeight;
   if (BoxBottom > 0) and (BoxTop < Height) then
   begin
-    Wash := LedMixColours(FEdit.Color, FEdit.Font.Color, 14);
+    Wash := LedMixColours(FEdit.Font.Color, FEdit.Color, 14);
     Canvas.Brush.Color := Wash;
     Canvas.FillRect(0, BoxTop, Width, BoxBottom);
   end;
@@ -324,7 +341,7 @@ begin
   Y := 0;
   for i := FTopLine to Last do
   begin
-    PaintLine(i - 1, Y);
+    PaintLine(i, Y);
     Inc(Y, FRowHeight);
   end;
 
@@ -332,7 +349,7 @@ begin
     of any colour. }
   if (BoxBottom > 0) and (BoxTop < Height) then
   begin
-    Canvas.Brush.Color := LedMixColours(FEdit.Color, FEdit.Font.Color, 34);
+    Canvas.Brush.Color := LedMixColours(FEdit.Font.Color, FEdit.Color, 34);
     Canvas.FillRect(0, BoxTop, Width, BoxTop + 1);
     Canvas.FillRect(0, BoxBottom - 1, Width, BoxBottom);
   end;
@@ -350,7 +367,9 @@ begin
   Line := LineAtY(AY);
   First := Line - FEdit.LinesInWindow div 2;
   if First < 1 then First := 1;
-  if First > FEdit.Lines.Count then First := FEdit.Lines.Count;
+  { View lines, because TopLine is one.  Clamped against the view's own count
+    rather than the buffer's: with a block folded there are fewer of them. }
+  if First > FEdit.ViewLineCount then First := FEdit.ViewLineCount;
   FEdit.TopLine := First;
 end;
 
