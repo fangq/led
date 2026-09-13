@@ -3912,6 +3912,120 @@ begin
   end;
 end;
 
+{ The symbol pane follows the active document.
+
+  It is an outline of what ctags found in the file on screen, grouped by kind
+  -- functions, classes, headings in a Markdown file -- and clicking an entry
+  goes to its line.  Which makes showing the wrong file actively harmful: the
+  line numbers are still live, so a click goes somewhere arbitrary in a
+  document those symbols were never in. }
+procedure TestSymbolsFollowTheDocument(F: TLedMainForm);
+var
+  MdPath, CPath: string;
+  L: TStringList;
+  V: TLedEdit;
+  Node: TTreeNode;
+  i: Integer;
+
+  function TreeText: string;
+  var
+    i: Integer;
+  begin
+    Result := '';
+    if F.SymbolPane = nil then Exit;
+    for i := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+      Result := Result + F.SymbolPane.Tree.Items[i].Text + '|';
+  end;
+
+begin
+  Say('symbols follow the document');
+  if not LedCtagsAvailable then
+  begin
+    Say('  (ctags is not installed; skipped)');
+    Exit;
+  end;
+  if F.SymbolPane = nil then Exit;
+
+  MdPath := TempName('outline.md');
+  L := TStringList.Create;
+  try
+    L.Add('# MarkdownChapterOne');
+    L.Add('');
+    L.Add('Some prose.');
+    L.Add('');
+    L.Add('## MarkdownSectionTwo');
+    L.SaveToFile(MdPath);
+  finally
+    L.Free;
+  end;
+
+  CPath := TempName('outline.c');
+  L := TStringList.Create;
+  try
+    L.Add('static int a_c_function(int x)');
+    L.Add('{');
+    L.Add('  return x;');
+    L.Add('}');
+    L.SaveToFile(CPath);
+  finally
+    L.Free;
+  end;
+
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+
+  F.AddTab(F.Documents.OpenFile(MdPath));
+  Pump; Pump;
+  Check('the outline of a Markdown file lists its headings: ' + TreeText,
+    Pos('MarkdownChapterOne', TreeText) > 0);
+
+  F.AddTab(F.Documents.OpenFile(CPath));
+  Pump; Pump;
+  Check('switching document rebuilds the outline: ' + TreeText,
+    Pos('a_c_function', TreeText) > 0);
+  Check('and nothing of the old file is left in it',
+    Pos('Markdown', TreeText) = 0);
+  CheckEq('and the pane agrees about which file it is showing',
+    CPath, F.SymbolPane.FileName);
+
+  { Grouped by what the symbol is.  ctags is asked for whole-word kinds, and
+    the reader understood only the one-letter ones, so every symbol in every
+    file was filed under a single group called Other. }
+  Check('the groups say what the symbols are, not "Other": ' + TreeText,
+    Pos('Function', TreeText) > 0);
+
+  { The line a symbol is on, after the file has been typed in.  ctags read
+    the copy on disk, so every line below an edit has moved and the outline's
+    numbers are stale the moment anything is inserted above them. }
+  V := F.ActiveView;
+  if V <> nil then
+  begin
+    for i := 1 to 5 do
+      V.Lines.Insert(0, '/* inserted */');
+    Pump;
+    Node := nil;
+    for i := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+      if F.SymbolPane.Tree.Items[i].Text = 'a_c_function' then
+        Node := F.SymbolPane.Tree.Items[i];
+    Check('the function is in the tree', Node <> nil);
+    if Node <> nil then
+    begin
+      F.SymbolPane.Tree.Selected := Node;
+      if Assigned(F.SymbolPane.Tree.OnDblClick) then
+        F.SymbolPane.Tree.OnDblClick(F.SymbolPane.Tree);
+      Pump;
+      CheckEqInt('and clicking it lands on the function, not five lines above',
+        6, V.CaretY);
+    end;
+  end;
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  F.Dock.HidePane('symbols');
+  Pump;
+  DeleteFile(MdPath);
+  DeleteFile(CPath);
+end;
+
 procedure TestCompletionAndSymbols(F: TLedMainForm);
 var
   V: TLedEdit;
@@ -7385,6 +7499,7 @@ begin
   TestTerminal(F);
   WriteLn;
   TestCompletionAndSymbols(F);
+  TestSymbolsFollowTheDocument(F);
   WriteLn;
   TestFolding(F);
   WriteLn;

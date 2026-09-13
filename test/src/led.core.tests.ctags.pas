@@ -24,6 +24,9 @@ type
     procedure PatternAddressLeavesLineUnknown;
     procedure ShortLinesAreIgnored;
     procedure KindNames;
+    procedure RealCtagsOutputCarriesWholeWords;
+    procedure MarkdownHeadingsAreAnOutline;
+    procedure TyperefIsNotAScope;
   end;
 
 implementation
@@ -92,7 +95,52 @@ begin
   AssertEquals('Functions', FTags.KindName('f'));
   AssertEquals('Classes', FTags.KindName('c'));
   AssertEquals('Other', FTags.KindName(''));
-  AssertEquals('an unknown kind is shown as-is', 'zz', FTags.KindName('zz'));
+  { An unknown kind is still a group heading, so it is capitalised and made
+    plural rather than shown raw: ctags kinds are lower-case singular nouns,
+    and "zz" sat in the tree between Functions and Structs. }
+  AssertEquals('an unknown kind is made into a heading', 'Zzs',
+    FTags.KindName('zz'));
+  AssertEquals('and one already plural is left alone', 'Aliass',
+    FTags.KindName('aliass'));
+end;
+
+{ What ctags actually prints for --fields=+nKs, which is what LED asks it
+  for.  Every other case here was written against a tags file with one-letter
+  kinds, and against that the reader looked right; run over real output it
+  read no kind at all and filed everything under Other. }
+procedure TTestCtags.RealCtagsOutputCarriesWholeWords;
+begin
+  FTags.ParseText(
+    'S	t.c	5;"	struct	line:5	file:'#10 +
+    'a	t.c	5;"	member	line:5	struct:S	typeref:typename:int	file:'#10 +
+    'f	t.c	1;"	function	line:1	typeref:typename:int	file:'#10);
+  AssertEquals(3, FTags.Count);
+  AssertEquals('struct', FTags[0].Kind);
+  AssertEquals('Structs', FTags.KindName(FTags[0].Kind));
+  AssertEquals('member', FTags[1].Kind);
+  AssertEquals('S', FTags[1].Scope);
+  AssertEquals('function', FTags[2].Kind);
+  AssertEquals('Functions', FTags.KindName(FTags[2].Kind));
+end;
+
+procedure TTestCtags.MarkdownHeadingsAreAnOutline;
+begin
+  FTags.ParseText(
+    'One	t.md	1;"	chapter	line:1'#10 +
+    'Two	t.md	5;"	section	line:5	chapter:One'#10);
+  AssertEquals('chapter', FTags[0].Kind);
+  AssertEquals('Headings', FTags.KindName(FTags[0].Kind));
+  AssertEquals('Sections', FTags.KindName(FTags[1].Kind));
+  AssertEquals('the section knows the heading it is under', 'One',
+    FTags[1].Scope);
+end;
+
+procedure TTestCtags.TyperefIsNotAScope;
+begin
+  { typeref and file are spelled like a scope and are not one.  Reading them
+    as one puts "typename:int::" in front of a symbol's name. }
+  FTags.ParseText('f	t.c	1;"	function	line:1	typeref:typename:int	file:'#10);
+  AssertEquals('', FTags[0].Scope);
 end;
 
 initialization

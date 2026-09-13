@@ -510,6 +510,9 @@ type
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
+    { The document the panes were last built for.  Compared on idle, because
+      knowing which document is active is not the same as being told. }
+    FShownDoc: TObject;
     { Set while a click on the preview is moving the caret, so the scroll that
       move causes does not come straight back and move the page. }
     FPreviewJumping: Boolean;
@@ -533,7 +536,7 @@ type
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
     procedure SyncPreviewToLine;
-    procedure SymbolJump(ALine: Integer);
+    procedure SymbolJump(ALine: Integer; const AName: string);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
     procedure ToolItemClick(Sender: TObject);
@@ -631,6 +634,7 @@ type
     procedure BookmarkItemClick(Sender: TObject);
     procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
+    procedure SyncActiveDocument;
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure UpdateStatusBar;
@@ -685,6 +689,7 @@ type
       what the converter produced is not observable from anywhere else --
       the render path turns an exception into a message label. }
     property Preview: TLedPreviewPane read FPreview;
+    property SymbolPane: TLedSymbolPane read FSymbols;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
@@ -914,6 +919,20 @@ begin
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
   FBook.Align := alClient;
+  { OnChange for a page set in code too, not only for one the user clicked.
+
+    Without this the notification fires on a click and on nothing else, while
+    LED sets the active page from sixteen places -- opening a file, restoring
+    a session, dragging a tab, splitting, answering the file browser, closing
+    a tab.  Everything that follows the active document was therefore right
+    only when the switch came through the tab strip.  The symptom that found
+    it was the symbol tree: it kept the outline of the previous file, and its
+    line numbers stayed live, so clicking an entry jumped somewhere arbitrary
+    in a document those symbols were never in.
+
+    Two of the sixteen had a BookChange(nil) written after them by hand.  That
+    is the fix that has to be remembered every time; this one does not. }
+  FBook.Options := FBook.Options + [nboDoChangeOnSetIndex];
   FBook.OnChange := @BookChange;
   FBook.OnEnter := @BookEnter;
   FBook.OnResize := @BookResize;
@@ -1205,7 +1224,8 @@ var
   Doc: TLedDocument;
   First: string;
 begin
-  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  { The preview pane, not the edge it shares with the symbol tree. }
+  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
   if Doc.Master.Lines.Count > 0 then
@@ -1274,8 +1294,11 @@ end;
 
 procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
 begin
-  FDock.ToggleEdge(ledRight);
-  if FDock.EdgeVisible[ledRight] and (ActiveTab <> nil) then
+  { The pane, not the edge.  Toggling the edge shut the preview along with
+    the symbols, and toggling it open showed the preview when the symbols
+    were what was asked for. }
+  FDock.TogglePane('symbols');
+  if FDock.PaneVisible('symbols') and (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
 end;
 
@@ -2053,11 +2076,63 @@ begin
     LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
 end;
 
-procedure TLedMainForm.SymbolJump(ALine: Integer);
+{ Goes to a symbol: the line ctags gave, unless the symbol is not on it any
+  more, in which case the nearest line that does carry it.
+
+  ctags reads the file on disk.  Anything typed since it last ran moves every
+  line below the edit, so an outline a few minutes old sends a click past the
+  thing it names -- and the further down the file the symbol is, the further
+  out it lands.  The name is the part that does not drift, so it is what the
+  line is confirmed against.
+
+  Bounded, and it keeps the reported line when the search comes up empty: a
+  symbol that has been renamed or deleted should leave the caret roughly where
+  the outline said, not somewhere unrelated because a later file happens to
+  contain the word. }
+procedure TLedMainForm.SymbolJump(ALine: Integer; const AName: string);
+const
+  Radius = 400;
+var
+  V: TLedEdit;
+  Bare: string;
+  i, Best, P: Integer;
+
+  function Carries(ALineNo: Integer): Boolean;
+  begin
+    Result := (ALineNo >= 1) and (ALineNo <= V.Lines.Count) and
+              (Pos(Bare, V.Lines[ALineNo - 1]) > 0);
+  end;
+
 begin
-  if ActiveView <> nil then
-    LedGotoLine(ActiveView, ALine);
-  LedTryFocus(ActiveView);
+  V := ActiveView;
+  if V = nil then Exit;
+
+  { The name as it appears in the text: the tree shows Scope::Name, and the
+    scope is not on the line. }
+  Bare := AName;
+  P := Pos('::', Bare);
+  while P > 0 do
+  begin
+    Bare := Copy(Bare, P + 2, MaxInt);
+    P := Pos('::', Bare);
+  end;
+
+  Best := ALine;
+  if (Bare <> '') and (not Carries(ALine)) then
+    for i := 1 to Radius do
+      if Carries(ALine - i) then
+      begin
+        Best := ALine - i;
+        Break;
+      end
+      else if Carries(ALine + i) then
+      begin
+        Best := ALine + i;
+        Break;
+      end;
+
+  LedGotoLine(V, Best);
+  LedTryFocus(V);
 end;
 
 procedure TLedMainForm.BrowserOpenFile(const AFileName: string);
@@ -2860,6 +2935,14 @@ begin
       noticed, showed nothing at all until it was toggled again.  A queued
       call runs once the layout has settled. }
     Application.QueueAsyncCall(@StartTerminalDeferred, 0)
+  else if SameText(AId, 'symbols') then
+    { Same reasoning as the preview below: the outline is of the document in
+      front of you, and a pane opened from an edge button would otherwise sit
+      empty until the next time the document changed. }
+    begin
+      if (FSymbols <> nil) and (ActiveTab <> nil) then
+        FSymbols.Reload(ActiveTab.Document.FileName);
+    end
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
@@ -3172,6 +3255,7 @@ begin
     FBook2.OnResize := @BookResize;
     FBook2.Parent := FBookSplit.Sides[1];
     FBook2.Align := alClient;
+    FBook2.Options := FBook2.Options + [nboDoChangeOnSetIndex];
     FBook2.OnChange := @BookChange;
     FBook2.OnEnter := @BookEnter;
     FBook2.OnMouseDown := @BookTabMouseDown;
@@ -3852,8 +3936,29 @@ begin
   UpdateStatusBar;
 end;
 
+{ The backstop.  nboDoChangeOnSetIndex, set on both notebooks, means the
+  change notification now fires for a page set in code as well as one that was
+  clicked -- but a route that changes the active document without going near
+  a page index would still slip past it, and the panes that follow the
+  document are wrong in a way that is easy to miss and hard to explain when
+  one does.  Comparing what is on screen against what the panes were built
+  for costs a pointer comparison on idle and cannot miss a route. }
+procedure TLedMainForm.SyncActiveDocument;
+var
+  Doc: TObject;
+begin
+  Doc := nil;
+  if ActiveTab <> nil then Doc := ActiveTab.Document;
+  if Doc = FShownDoc then Exit;
+  BookChange(nil);
+end;
+
 procedure TLedMainForm.BookChange(Sender: TObject);
 begin
+  if ActiveTab <> nil then
+    FShownDoc := ActiveTab.Document
+  else
+    FShownDoc := nil;
   UpdateStatusBar;
   { The document-dependent menus -- which language is ticked, which encoding,
     which tools apply -- follow the active document. }
@@ -3862,8 +3967,11 @@ begin
   PopulateLineEndMenu;
   PopulateToolMenu;
   { Only refreshed when the pane is actually on screen: running ctags for a
-    pane nobody is looking at is pure cost. }
-  if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
+    pane nobody is looking at is pure cost.  Asked of the pane, not of the
+    edge it was registered on -- the right edge is shared with the preview,
+    so the edge answered yes for a symbol pane that was shut and no for one
+    that had been dragged to another edge. }
+  if (FSymbols <> nil) and FDock.PaneVisible('symbols') and
      (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
   { Immediately: this is a different document now, and a pane still holding
@@ -3894,7 +4002,7 @@ procedure TLedMainForm.SyncPreviewToLine;
 var
   View: TLedEdit;
 begin
-  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
   if FPreviewJumping then Exit;
   View := ActiveView;
   if View = nil then Exit;
@@ -4121,6 +4229,10 @@ var
   Tab: TLedTab;
   HasDoc, CanPaste: Boolean;
 begin
+  { Cheap: a pointer comparison, and it does anything at all only on the pass
+    after the document actually changed. }
+  SyncActiveDocument;
+
   Tab := ActiveTab;
   HasDoc := Tab <> nil;
   CanPaste := HasDoc and ClipboardHasText(Tab.ActiveView);
@@ -4187,7 +4299,7 @@ begin
                             (Tab.Document.FileName <> '');
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
   actToggleBreakPane.Checked := FDock.PaneVisible('breaks');
-  actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
+  actToggleSymbols.Checked := FDock.PaneVisible('symbols');
   actComplete.Enabled := HasDoc;
   actPrint.Enabled := HasDoc and LedPrinterAvailable;
   actTogglePreview.Enabled := True;
