@@ -32,6 +32,10 @@ const
     ('folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
      'fileimage', 'filebinary', 'doc');
 
+{ A byte count as a person reads one: 1.4 MB rather than 1468006.  Binary
+  multiples, since that is what a file system reports. }
+function LedFormatSize(ABytes: Int64): string;
+
 type
   { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
     is protected, so reaching it at all needs a descendant.  Worth the four
@@ -67,11 +71,13 @@ type
     FMenu: TPopupMenu;
     FRoot: string;
     FMask: string;
+    FHintNode: TTreeNode;
     FCrumbWidth: Integer;
     FOnOpenFile: TLedOpenFileEvent;
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
+    procedure TreeMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
     procedure IconiseNodes;
     procedure IconiseChildren(ANode: TTreeNode);
     function IconForPath(const APath: string; AIsDir: Boolean): Integer;
@@ -137,6 +143,10 @@ type
     { Which picture a path would get.  Public so the mapping can be checked
       without going through the tree's own enumeration. }
     function IconFor(const APath: string): Integer;
+    { Paints the tree in the editor's colours.  The pane used the desktop's
+      instead, so a dark scheme in the editor sat beside a file list in
+      whatever the widget theme happened to be. }
+    procedure ApplyColours(AFore, ABack: TColor);
     { And the tree, so a check can select its root -- which used to raise. }
     property FileTree: TShellTreeView read FTree;
 
@@ -349,6 +359,34 @@ begin
   end;
 end;
 
+procedure TLedFileBrowser.ApplyColours(AFore, ABack: TColor);
+begin
+  if (FTree = nil) or (AFore = clNone) or (ABack = clNone) then Exit;
+  FTree.Color := ABack;
+  FTree.Font.Color := AFore;
+  { The crumb trail and the filter row stay in the desktop's colours: they
+    are chrome, not content, and led does not theme its other chrome either. }
+end;
+
+function LedFormatSize(ABytes: Int64): string;
+const
+  Units: array[0..4] of string = ('bytes', 'KB', 'MB', 'GB', 'TB');
+var
+  i: Integer;
+  V: Double;
+begin
+  if ABytes < 1024 then
+    Exit(Format('%d bytes', [ABytes]));
+  V := ABytes;
+  i := 0;
+  while (V >= 1024) and (i < High(Units)) do
+  begin
+    V := V / 1024;
+    Inc(i);
+  end;
+  Result := Format('%.1f %s', [V, Units[i]]);
+end;
+
 function TLedFileBrowser.IconFor(const APath: string): Integer;
 begin
   Result := IconForPath(APath, DirectoryExists(APath));
@@ -513,6 +551,12 @@ begin
   FTree.ObjectTypes := [otFolders, otNonFolders];
   FTree.ReadOnly := True;
   FTree.OnDblClick := @TreeDblClick;
+  { The row under the pointer says where it is and how big it is.  A tree in
+    a narrow pane truncates names, and the size is the other thing anyone
+    asks of a file list -- it was the one thing lost when the pane stopped
+    being a list with columns. }
+  FTree.ShowHint := True;
+  FTree.OnMouseMove := @TreeMouseMove;
   { The selection is the whole row, as it is in every file tree worth using;
     a name-width highlight in a pane this narrow is hard to see and harder to
     aim at. }
@@ -894,6 +938,41 @@ begin
     SetRoot(Path)
   else if Assigned(FOnOpenFile) then
     FOnOpenFile(Path);
+end;
+
+{ What the row under the pointer is.  Rebuilt only when the row changes, so
+  moving along a row costs one comparison. }
+procedure TLedFileBrowser.TreeMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: Integer);
+var
+  Node: TTreeNode;
+  Path, Tip: string;
+  Size: Int64;
+  Rec: TSearchRec;
+begin
+  Node := FTree.GetNodeAt(X, Y);
+  if Node = FHintNode then Exit;
+  FHintNode := Node;
+  if Node = nil then
+  begin
+    FTree.Hint := '';
+    Exit;
+  end;
+
+  Path := ExcludeTrailingPathDelimiter(FTree.GetPathFromNode(Node));
+  Tip := Path;
+  if FileExists(Path) then
+  begin
+    Size := -1;
+    if FindFirst(Path, faAnyFile, Rec) = 0 then
+    begin
+      Size := Rec.Size;
+      FindClose(Rec);
+    end;
+    if Size >= 0 then
+      Tip := Path + LineEnding + LedFormatSize(Size);
+  end;
+  FTree.Hint := Tip;
 end;
 
 procedure TLedFileBrowser.TreeDblClick(Sender: TObject);

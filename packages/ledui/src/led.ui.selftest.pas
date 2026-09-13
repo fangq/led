@@ -3341,6 +3341,17 @@ begin
     over a file list, so what used to be checked here -- that the splitter
     resized the list and not the filter row -- has nothing left to be about. }
   Check('the pane is a single tree', F.Browser.Tree <> nil);
+
+  { And painted in the editor's colours rather than the desktop's, so the two
+    halves of the window agree. }
+  if F.ActiveView <> nil then
+  begin
+    CheckEqInt('the tree takes the editor''s page colour',
+      ColorToRGB(F.ActiveView.Color), ColorToRGB(F.Browser.Tree.Color));
+    CheckEqInt('and its text colour',
+      ColorToRGB(F.ActiveView.Font.Color),
+      ColorToRGB(F.Browser.Tree.Font.Color));
+  end;
   Check('there is no splitter left to resize anything',
     F.Browser.SplitterTarget = nil);
   Check('and the tree shows files as well as folders',
@@ -3392,6 +3403,9 @@ begin
   begin
     CheckEqInt('a C file''s tab wears the source icon',
       LedIconIndex('filesource'), TabForIcon.Sheet.ImageIndex);
+    { And says where the file is, which the strip has no room for. }
+    CheckEq('and its hint carries the whole path',
+      BrowseDir + PathDelim + 'tab.c', TabForIcon.Sheet.Hint);
     Check('which is not the plain page it used to wear',
       TabForIcon.Sheet.ImageIndex <> LedIconIndex('doc'));
 
@@ -3462,7 +3476,12 @@ begin
       ExtractFileName(ExcludeTrailingPathDelimiter(BrowseDir)), Node.Text);
     { Retitling it must not break the paths, which the tree builds from each
       node's own record rather than from what is written in it. }
-    Check('and the tree still knows where that row is',
+    { A row says where it is and, for a file, how big. }
+  CheckEq('a size reads as a person writes one', '1.5 KB',
+    LedFormatSize(1536));
+  CheckEq('and a small one stays in bytes', '12 bytes', LedFormatSize(12));
+
+  Check('and the tree still knows where that row is',
       SameFileName(ExcludeTrailingPathDelimiter(
         F.Browser.Tree.GetPathFromNode(Node)), BrowseDir));
   end;

@@ -576,7 +576,7 @@ function LedThemeFoldedLineColour(ATheme: TLedTheme;
   ADefaultFg, ADefaultBg: TColor): TColor;
 var
   S: TLedStyle;
-  Fg, Bg: TColor;
+  Fg, Bg, Tint: TColor;
 begin
   Fg := clNone;
   Bg := clNone;
@@ -589,12 +589,24 @@ begin
   if Bg = clNone then Bg := ADefaultBg;
   if (Fg = clNone) or (Bg = clNone) then Exit(clNone);
 
-  Fg := ColorToRGB(Fg);
+  { Mixed towards the theme's selection rather than towards its text.  Text
+    over page is a grey whatever the scheme, and a grey band behind a folded
+    line reads as the line being disabled rather than as the line having more
+    behind it.  The selection colour is already the one this scheme uses to
+    say "something is here", so a weak wash of it says the same thing
+    quietly. }
+  Tint := clNone;
+  if (ATheme <> nil) and ATheme.Find(LedStyleSelection, S) and
+     (lsfBackground in S.Flags) then
+    Tint := LedColourToTColor(S.Background);
+  if Tint = clNone then Tint := Fg;    { no selection colour: the old mix }
+
+  Fg := ColorToRGB(Tint);
   Bg := ColorToRGB(Bg);
   Result := TColor(
-    ((((Fg and $FF) + 9 * (Bg and $FF)) div 10) and $FF)
-    or (((((Fg shr 8) and $FF) + 9 * ((Bg shr 8) and $FF)) div 10) shl 8)
-    or (((((Fg shr 16) and $FF) + 9 * ((Bg shr 16) and $FF)) div 10) shl 16));
+    (((3 * (Fg and $FF) + 7 * (Bg and $FF)) div 10) and $FF)
+    or ((((3 * ((Fg shr 8) and $FF) + 7 * ((Bg shr 8) and $FF)) div 10) and $FF) shl 8)
+    or ((((3 * ((Fg shr 16) and $FF) + 7 * ((Bg shr 16) and $FF)) div 10) and $FF) shl 16));
 end;
 
 procedure LedRetheme(ATheme: TLedTheme);

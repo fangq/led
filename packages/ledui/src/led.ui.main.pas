@@ -541,6 +541,7 @@ type
     procedure DebugEditCondition(Sender: TObject; const AFileName: string;
       ALine: Integer);
     procedure DebugToggleBreakpoint(Sender: TObject);
+    procedure ApplyThemeToBrowser;
     procedure ToolPaintButton(Sender: TToolButton; State: Integer);
     procedure DebugPaneCommand(Sender: TObject; ACommand: TLedDebugCommand);
     procedure DebugConsole(Sender: TObject; const AText: string);
@@ -915,6 +916,8 @@ begin
     nothing ever themed -- so it sat there as a white rectangle in the middle
     of a dark window.  It takes the same theme the documents do. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
+  ApplyThemeToBrowser;
+  ApplyThemeToBrowser;
 
   FBrowser := TLedFileBrowser.Create(Self);
   FBrowser.OnOpenFile := @BrowserOpenFile;
@@ -1391,6 +1394,22 @@ end;
 procedure TLedMainForm.actToggleDebugPaneExecute(Sender: TObject);
 begin
   FDock.TogglePane('debug');
+end;
+
+{ The file tree in the editor's colours, so the two halves of the window
+  agree.  Read off a real editor when there is one, because that is where the
+  theme has actually been resolved -- the theme file gives names, and what a
+  name came out as is on the control. }
+procedure TLedMainForm.ApplyThemeToBrowser;
+var
+  V: TLedEdit;
+begin
+  if FBrowser = nil then Exit;
+  V := ActiveView;
+  if V <> nil then
+    FBrowser.ApplyColours(V.Font.Color, V.Color)
+  else if FOutput <> nil then
+    FBrowser.ApplyColours(FOutput.Font.Color, FOutput.Color);
 end;
 
 procedure TLedMainForm.DebugToggleBreakpoint(Sender: TObject);
@@ -3802,6 +3821,13 @@ begin
     ATab.Sheet.ImageIndex :=
       LedIconIndex(LedIconForFile(ATab.Document.FileName));
   ATab.Sheet.Caption := S;
+  { The strip truncates a caption long before a path runs out, and two files
+    of the same name in different folders are otherwise indistinguishable. }
+  if ATab.Document.FileName <> '' then
+    ATab.Sheet.Hint := ATab.Document.FileName
+  else
+    ATab.Sheet.Hint := ATab.Document.DisplayName;
+  ATab.Sheet.ShowHint := True;
 end;
 
 procedure TLedMainForm.DocChanged(ADoc: TLedDocument);

@@ -65,6 +65,19 @@ implementation
 { A between A and B, AFactorNum parts in AFactorDen.  The same mixing the
   fold gutter does, for the same reason: a colour that has to sit against the
   background without being invented. }
+{ How far apart two colours are, summed over the three channels.  Crude on
+  purpose: this decides whether one colour can be read off another, and a
+  perceptual metric would be a lot of arithmetic for a threshold that is
+  chosen by eye anyway. }
+function Contrast(A, B: TColor): Integer;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Result := Abs((A and $FF) - (B and $FF))
+          + Abs(((A shr 8) and $FF) - ((B shr 8) and $FF))
+          + Abs(((A shr 16) and $FF) - ((B shr 16) and $FF));
+end;
+
 function Blend(A, B: TColor; AFactorNum, AFactorDen: Integer): TColor;
 var
   R, G, Bl: Integer;
@@ -117,7 +130,17 @@ begin
   { A band behind the whole column, faint enough to be a boundary rather than
     a stripe.  This is what makes three columns visible as three columns even
     where a theme's foregrounds are close together. }
-  FOffsetBack := Blend(AText, ABack, 7, 100);
+  FOffsetBack := Blend(AText, ABack, 12, 100);
+
+  { And the offsets are pushed away from that band until they can be read
+    off it.  A theme's line-number colour is chosen to sit quietly against
+    the page, not against a band mixed from it -- on oblivion the two came
+    out close enough that the column was legible only if you knew it was
+    there.  Pushed towards the text, which is the direction that gains
+    contrast on a light scheme and on a dark one alike. }
+  while (Contrast(FOffsetFore, FOffsetBack) < 60) and
+        (FOffsetFore <> AText) do
+    FOffsetFore := Blend(AText, FOffsetFore, 20, 100);
 
   { The text column sits between the two: clearly not the bytes, clearly not
     the margin. }
