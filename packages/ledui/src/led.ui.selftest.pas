@@ -54,6 +54,13 @@ uses
   Controls,
   PairSplitter, LCLProc;
 
+type
+  { The gtk widget behind each menu item, watched for being replaced. }
+  TLedHandleArray = array of THandle;
+
+  { The view chain is protected on TSynEdit. }
+  TLedViewPeek = class(TLedEdit);
+
 var
   Failures: Integer = 0;
   Checks: Integer = 0;
@@ -79,6 +86,57 @@ begin
   begin
     Say('  FAIL  ' + AName);
     Inc(Failures);
+  end;
+end;
+
+{ Every menu item in the window that has a gtk widget, and the widget it has.
+
+  A handle is what is destroyed when the LCL rebuilds an item, so it is what
+  has to be watched.  Items with no handle yet -- a submenu nobody has opened
+  -- are skipped: they have nothing to lose. }
+procedure CollectMenuHandles(F: TLedMainForm; out AItems: TFPList;
+  out AHandles: TLedHandleArray);
+
+  procedure Walk(AItem: TMenuItem);
+  var
+    i: Integer;
+  begin
+    if AItem = nil then Exit;
+    if AItem.HandleAllocated then
+    begin
+      AItems.Add(AItem);
+      SetLength(AHandles, AItems.Count);
+      AHandles[AItems.Count - 1] := AItem.Handle;
+    end;
+    for i := 0 to AItem.Count - 1 do
+      Walk(AItem.Items[i]);
+  end;
+
+var
+  i: Integer;
+begin
+  AItems := TFPList.Create;
+  SetLength(AHandles, 0);
+  for i := 0 to F.ComponentCount - 1 do
+    if F.Components[i] is TMenu then
+      Walk(TMenu(F.Components[i]).Items);
+end;
+
+{ How many of them have been given a different widget since. }
+function ChangedHandles(AItems: TFPList;
+  const AHandles: TLedHandleArray): Integer;
+var
+  i: Integer;
+  Item: TMenuItem;
+begin
+  Result := 0;
+  for i := 0 to AItems.Count - 1 do
+  begin
+    Item := TMenuItem(AItems[i]);
+    if not Item.HandleAllocated then
+      Inc(Result)
+    else if Item.Handle <> AHandles[i] then
+      Inc(Result);
   end;
 end;
 
@@ -4203,6 +4261,82 @@ begin
   DeleteFile(Path);
 end;
 
+{ Word wrap, turned on and off and on again.
+
+  Once was fine and twice was fatal.  TLazSynEditLineWrapPlugin has no
+  destructor in Lazarus 2.2: its constructor puts a TSynEditLineMappingView
+  into the editor's view chain and hangs a display object on it holding a
+  back-reference to the plugin, and freeing the plugin undoes none of that.
+  The next repaint asked the freed plugin for its wrap column, in the middle
+  of drawing the text.
+
+  Taking the view out as well is what this covers, and it has to be taken out
+  in two steps: the manager's own RemoveSynTextView(..., True) frees the view
+  before unlinking it and then reconnects the chain through the corpse, which
+  is a segmentation fault rather than an exception.
+
+  Four toggles with a repaint after each, because the fault needs a paint to
+  show itself, and text long enough to actually wrap at this width. }
+procedure TestWordWrapToggling(F: TLedMainForm);
+var
+  V: TLedEdit;
+  i, WrapRows, PlainRows, W0: Integer;
+  Long: string;
+begin
+  Say('word wrap');
+
+  if F.ActiveTab = nil then F.actNewExecute(nil);
+  Pump;
+  V := F.ActiveView;
+  if V = nil then Exit;
+  { One line, long enough to wrap at any width this window can be. }
+  Long := '';
+  for i := 1 to 40 do
+    Long := Long + StringOfChar(Char(Ord('a') + i mod 26), 40) + ' ';
+  V.Lines.Text := Long;
+  Pump;
+
+  PlainRows := V.ViewLineCount;
+  for i := 1 to 4 do
+  begin
+    F.actWrapText.Execute;
+    Pump;
+    V.Repaint;
+    Pump;
+    if i = 1 then WrapRows := V.ViewLineCount;
+  end;
+
+  { It really wrapped the first time -- one line of text shown as several --
+    so what the repaints went through was the wrapped path and not a no-op. }
+  { One line of text, shown as many rows.  Counted off the top of the view
+    chain, which is the only view that sees both the folding below it and the
+    wrapping above: the folded view alone still says one. }
+  CheckEqInt('the text is one line', 1, V.Lines.Count);
+  CheckGt('turning wrap on shows it as several rows', PlainRows, WrapRows);
+  CheckEqInt('and turning it off puts them back', PlainRows, V.ViewLineCount);
+  Check('and LED is still running after four toggles', V.Parent <> nil);
+
+  { And a change of width once it is off.  The plugin registers a
+    status-changed handler for scCharsInWindow that nothing unregisters, so
+    with the plugin freed the next thing to resize the editor -- a window
+    resize, or opening a pane -- called into freed memory.  Reaching the next
+    line is the assertion: this was a hard crash, not an exception. }
+  W0 := F.Width;
+  F.Width := W0 - 60;
+  Pump;
+  F.Width := W0;
+  Pump;
+  F.Dock.ShowPane('files');
+  Pump;
+  F.Dock.HidePane('files');
+  Pump;
+  Check('and a width change after wrapping is off is harmless',
+    (V.Parent <> nil) and (F.ActiveView = V));
+
+  V.Lines.Text := '';
+  Pump;
+end;
+
 { Menus and language detection, both reported as broken from real use. }
 procedure TestMenusAndDetection(F: TLedMainForm);
 var
@@ -4215,6 +4349,12 @@ var
   MenuSize: Integer;
   FirstTheme, FirstLang: TMenuItem;
   ThemeCount, LangCount: Integer;
+  Handles: TLedHandleArray;
+  Items: TFPList;
+  Fresh: TMenuItem;
+  FreshHandle: THandle;
+  Recreated: Integer;
+  Handled: Boolean;
   L: TStringList;
 
   function CountLeaves(AItem: TMenuItem): Integer;
@@ -4240,6 +4380,82 @@ begin
   Check('the language menu has entries', CountLeaves(F.miLanguage) > 100);
   Check('the encoding menu has entries', F.miEncoding.Count > 5);
   Check('the line-ending menu has three', F.miLineEnd.Count = 3);
+
+  { Nor may the action-update pass destroy one.
+
+    gtk2 builds a plain menu item for anything that is not checked, is not a
+    radio item and has no icon, and a plain item cannot carry a tick -- so the
+    LCL answers Checked := True on one by destroying the widget and building a
+    check item in its place.  LED assigns Checked from the action-update pass,
+    which runs on every idle, including every idle while the pointer is moving
+    over an open menu: the shell keeps pointing at the widget that has just
+    been freed, which is both the several-rows-highlighted-at-once and the
+    access violation that followed it.
+
+    Handles, because that is what is destroyed.  The states are flipped both
+    ways first, so every toggle LED owns is actually assigned in the pass
+    rather than left at the value it already had -- which is what makes this
+    catch a toggle added later and not made checkable. }
+  { A menu item built the way the form builds them, then ticked once.
+
+    This is the transition that used to destroy the widget, and it only
+    happens once per item: by the time the suite runs, every item the window
+    started with has long since been rebuilt as a check item, so watching
+    those catches nothing.  A fresh one catches it. }
+  { An action with no icon and no tick yet, which is the case gtk builds a
+    plain item for -- actToggleLeftPane is one of the three the debugger
+    caught being rebuilt.  An action that carries an icon was never affected:
+    gtk builds a check item for those anyway. }
+  F.actToggleLeftPane.Checked := False;
+  Fresh := TMenuItem.Create(F);
+  Fresh.Action := F.actToggleLeftPane;
+  F.mnuWindow.Add(Fresh);
+  try
+    F.MakeTogglesCheckable;
+    Pump;
+    Check('the new item has a widget to lose', Fresh.HandleAllocated);
+    if Fresh.HandleAllocated then
+    begin
+      FreshHandle := Fresh.Handle;
+      F.actToggleLeftPane.Checked := True;
+      Pump;
+      Check('ticking a freshly built menu item does not rebuild it',
+        Fresh.HandleAllocated and (Fresh.Handle = FreshHandle));
+      F.actToggleLeftPane.Checked := False;
+      Pump;
+      Check('and unticking it does not either',
+        Fresh.HandleAllocated and (Fresh.Handle = FreshHandle));
+    end;
+  finally
+    F.mnuWindow.Remove(Fresh);
+    Fresh.Free;
+  end;
+
+  CollectMenuHandles(F, Items, Handles);
+  try
+    CheckGt('there are menu items to watch', 40, Items.Count);
+
+    { A document, because half of these are greyed without one and an action
+      that is disabled is not assigned. }
+    if F.ActiveTab = nil then F.actNewExecute(nil);
+    Pump;
+
+    Recreated := 0;
+    for i := 1 to 2 do
+    begin
+      F.actShowToolbar.Execute;
+      F.actToggleLeftPane.Execute;
+      F.actToggleOutput.Execute;
+      Pump;
+      Handled := False;
+      F.ActionList1Update(F.actSave, Handled);
+      Pump;
+      Inc(Recreated, ChangedHandles(Items, Handles));
+    end;
+    CheckEqInt('ticking a menu item does not destroy it', 0, Recreated);
+  finally
+    Items.Free;
+  end;
 
   { Refilling one must not destroy what is in it.
 
@@ -8084,6 +8300,7 @@ begin
   WriteLn;
   TestFolding(F);
   WriteLn;
+  TestWordWrapToggling(F);
   TestMenusAndDetection(F);
   WriteLn;
 

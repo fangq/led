@@ -617,6 +617,7 @@ type
     { Empties a dynamic submenu without destroying its items mid-event.  See
       the implementation for why TMenuItem.Clear cannot be used here. }
     procedure ClearMenu(AItem: TMenuItem);
+
     function MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
     procedure TrimMenu(AParent: TMenuItem; AUsed: Integer);
 
@@ -703,6 +704,11 @@ type
     procedure PopulateContextTools;
     { Public for the check that refilling a menu does not destroy what is in
       it -- which is what a hover does, and what used to crash. }
+    { Makes every menu item LED ever ticks able to carry a tick from the
+      moment it is built -- see the implementation for what happens to one
+      that cannot.  Public so the check can build an item the way the form
+      does and watch what ticking it costs. }
+    procedure MakeTogglesCheckable;
     procedure PopulateThemeMenu;
     procedure PopulateLanguageMenu;
     procedure PopulateEncodingMenu;
@@ -1081,6 +1087,8 @@ begin
   if not RestoreSession then
     actNewExecute(nil);
 
+  { Before the menus are filled and before anything ticks one. }
+  MakeTogglesCheckable;
   PopulateAllMenus;
 
   LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
@@ -2953,6 +2961,71 @@ end;
   RadioItem is deliberately not reset: changing it makes the LCL destroy and
   recreate the widget, which is the thing being avoided.  Each menu sets it
   the same way every time, so a reused slot already has the right kind. }
+{ Ticking a menu item that was not built to be tickable destroys it.
+
+  gtk2 has three kinds of menu item and the LCL picks one when the widget is
+  created: a separator, a check item -- which is what it builds for anything
+  that is checked, is a radio item, or carries an icon -- and a plain item for
+  everything else.  Assigning Checked to a plain one cannot work, so
+  TGtk2WSMenuItem.SetCheck calls RecreateHandle: the widget is destroyed and
+  built again as a check item.
+
+  That is harmless at rest and not harmless at all while a menu is open, which
+  is exactly when it happens: LED sets Checked from the action-update pass,
+  and that pass runs on every idle -- including every idle while the pointer
+  is moving over an open menu.  The shell goes on pointing at the widget that
+  has just been destroyed, so the row it was on stays lit while another row
+  lights up under the pointer -- several rows highlighted at once, which is
+  what this was reported as -- and touching the dead widget again is the
+  access violation reported with it.  Caught in gdb: three RecreateHandle
+  calls, every one of them from ActionList1Update assigning Checked.
+
+  So the items that are ever ticked are built tickable.  ShowAlwaysCheckable
+  makes the LCL create a gtk check item up front, which SetCheck can then
+  simply toggle; the cost is that the tick box is drawn even when empty, which
+  is what the pane entries in the View menu have always looked like.
+
+  Listed by action rather than discovered, because an action cannot be asked
+  whether anyone will ever tick it.  The list is kept honest by the check,
+  which flips every state it can reach, runs the update pass, and asserts that
+  no menu item handle changed. }
+procedure TLedMainForm.MakeTogglesCheckable;
+const
+  Toggles: array[0..11] of string = (
+    'actShowToolbar', 'actToggleOutput', 'actToggleDebugPane',
+    'actToggleBreakPane', 'actToggleSymbols', 'actToggleMiniMap',
+    'actWrapText', 'actSplitNotebook', 'actLineNumbers',
+    'actToggleLeftPane', 'actToggleBottomPane', 'actTogglePreview');
+
+  function IsToggle(AAction: TBasicAction): Boolean;
+  var
+    i: Integer;
+  begin
+    Result := False;
+    if AAction = nil then Exit;
+    for i := Low(Toggles) to High(Toggles) do
+      if SameText(AAction.Name, Toggles[i]) then Exit(True);
+  end;
+
+  procedure Walk(AItem: TMenuItem);
+  var
+    i: Integer;
+  begin
+    if AItem = nil then Exit;
+    if IsToggle(AItem.Action) then
+      AItem.ShowAlwaysCheckable := True;
+    for i := 0 to AItem.Count - 1 do
+      Walk(AItem.Items[i]);
+  end;
+
+var
+  i: Integer;
+begin
+  for i := 0 to ComponentCount - 1 do
+    if Components[i] is TMenu then
+      Walk(TMenu(Components[i]).Items);
+end;
+
 function TLedMainForm.MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
 begin
   Result := nil;

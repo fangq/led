@@ -11,7 +11,7 @@ interface
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
-  SynEditKeyCmds, LCLType,
+  SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
   SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
   SynEditMarkup, SynEditMiscClasses, LazVersion,
   Led.Core.Hex,
@@ -86,6 +86,7 @@ type
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
+    FWrapOn: Boolean;
     FCompletion: TSynCompletion;
     FSpell: TLedSpellMarkup;
     FLongLines: TLedLongLineView;
@@ -886,10 +887,18 @@ begin
   Result := cfCollapsedFold in FV.FoldType[Row];
 end;
 
+{ The top of the view chain, not the folded view half way down it.
+
+  Each view in the chain hides or adds rows for its own reason -- folding
+  takes them away, word wrap puts them back -- and only the one the display
+  reads from has the answer they all add up to.  Asked of the folded view, a
+  wrapped line counted as one row while TopLine counted it as many, which is
+  the same disagreement folding caused before it was asked of the folded view
+  rather than of the buffer. }
 function TLedEdit.ViewLineCount: Integer;
 begin
-  if FoldedTextBuffer is TSynEditFoldedView then
-    Result := TSynEditFoldedView(FoldedTextBuffer).ViewedCount
+  if TextView <> nil then
+    Result := TextView.ViewedCount
   else
     Result := Lines.Count;
 end;
@@ -897,8 +906,8 @@ end;
 function TLedEdit.ViewLineToTextIndex(AViewPos: Integer): Integer;
 begin
   Result := AViewPos - 1;
-  if FoldedTextBuffer is TSynEditFoldedView then
-    Result := TSynEditFoldedView(FoldedTextBuffer).ViewToTextIndex(AViewPos - 1);
+  if TextView <> nil then
+    Result := TextView.ViewToTextIndex(AViewPos - 1);
   if Result < 0 then Result := 0;
   if Result > Lines.Count - 1 then Result := Lines.Count - 1;
 end;
@@ -1393,6 +1402,10 @@ end;
 destructor TLedEdit.Destroy;
 begin
   FreeAndNil(FCompletion);
+  { The wrap view belongs to the manager while wrapping is on and to nobody
+    while it is off, so this is the one place it has to be freed by hand. }
+  if (FWrapPlugin <> nil) and (not FWrapOn) then
+    FreeAndNil(FWrapPlugin.FLineMapView);
   inherited Destroy;
 end;
 
@@ -1689,16 +1702,62 @@ end;
 
 function TLedEdit.GetWrapEnabled: Boolean;
 begin
-  Result := FWrapPlugin <> nil;
+  { The flag, not the plugin: the plugin outlives the wrapping -- see
+    SetWrapEnabled. }
+  Result := FWrapOn;
 end;
 
+{ Wrapping is turned off by unhooking the plugin's view, not by freeing it.
+
+  TLazSynEditLineWrapPlugin has no destructor in Lazarus 2.2, and its
+  constructor leaves three things behind that nothing ever takes back: a
+  TSynEditLineMappingView in the editor's view chain, a display object on that
+  view holding a back-reference to the plugin, and a status-changed handler
+  registered with the editor for scCharsInWindow.  Freeing the plugin undoes
+  none of them, and each one is a crash of its own:
+
+    * the next repaint asks the freed plugin for its wrap column, from inside
+      PaintLines -- an access violation in the middle of drawing the text;
+    * the next thing that changes the editor's width -- a window resize, or
+      opening a pane -- reaches the freed plugin's DoWidthChanged through the
+      status-handler list.
+
+  Turning wrap on and off again was enough for the first; opening a pane
+  afterwards was enough for the second.  Neither can be undone from outside:
+  the handler is a private method, so it cannot be named to unregister it, and
+  there is no API for dropping handlers by the object that owns them.
+
+  So the plugin is never freed.  It is created the first time this view wraps
+  and kept for the life of the editor; wrapping goes off by taking its view
+  out of the chain and on again by putting it back.  Both objects stay alive,
+  so both stale references stay valid: the handler poked a live view, the
+  display object points at a live plugin.
+
+  Unlinked rather than destroyed for one more reason: RemoveSynTextView with
+  aDestroy set frees the view before it unlinks it, and the ReconnectViews
+  that follows walks into the object it has just freed -- a segmentation fault
+  rather than an exception. }
 procedure TLedEdit.SetWrapEnabled(AValue: Boolean);
 begin
-  if AValue = GetWrapEnabled then Exit;
+  if AValue = FWrapOn then Exit;
+  FWrapOn := AValue;
+
   if AValue then
-    FWrapPlugin := TLazSynEditLineWrapPlugin.Create(Self)
+  begin
+    if FWrapPlugin = nil then
+      { The constructor adds the view and wraps what is already in it. }
+      FWrapPlugin := TLazSynEditLineWrapPlugin.Create(Self)
+    else
+    begin
+      GetTextViewsManager.AddTextView(FWrapPlugin.FLineMapView);
+      FWrapPlugin.WrapAll;
+    end;
+  end
   else
-    FreeAndNil(FWrapPlugin);
+  if FWrapPlugin <> nil then
+    GetTextViewsManager.RemoveSynTextView(FWrapPlugin.FLineMapView, False);
+
+  Invalidate;
 end;
 
 end.
