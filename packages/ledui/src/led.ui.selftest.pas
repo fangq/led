@@ -1175,6 +1175,48 @@ begin
   DeleteFile(Path2);
 end;
 
+{ How many pixels of AName's icon, as the application builds it, are exactly
+  AColour.  Built here rather than read out of ImageList1 so the check is of
+  the drawing and not of one particular list. }
+function IconColourCount(const AName: string; AColour: TColor): Integer;
+var
+  Images: TImageList;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y: Integer;
+  C, Want: TFPColor;
+begin
+  Result := 0;
+  if AColour = clNone then Exit;
+  Want := TColorToFPColor(ColorToRGB(AColour));
+  Images := TImageList.Create(nil);
+  Bmp := TBitmap.Create;
+  try
+    Images.Width := 16;
+    Images.Height := 16;
+    LedBuildIconList(Images, [AName], clBtnText);
+    if Images.Count = 0 then Exit;
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(16, 16);
+    Images.GetBitmap(0, Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red = Want.Red) and (C.Green = Want.Green) and
+             (C.Blue = Want.Blue) then Inc(Result);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+    Images.Free;
+  end;
+end;
+
 { True when an icon has a hole in it: a background pixel with ink above,
   below, left and right of it.
 
@@ -3215,6 +3257,7 @@ end;
 procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
+  TabForIcon: TLedTab;
   Root, Node: TTreeNode;
   RootRaised, BrowseDir, Names, Kinds: string;
   EditH, i, x: Integer;
@@ -3292,6 +3335,62 @@ begin
     F.Browser.Tree.ShowButtons);
   Check('and pictures to put on the rows',
     (F.Browser.Tree.Images <> nil) and (F.Browser.Tree.Images.Count > 0));
+
+  { The pictures are coloured, and the colour is the file kind's own.  Read
+    off the built bitmap rather than from the table that produced it: an
+    accent that never reaches the image list is a table nobody can see. }
+  Check('a file kind has a colour of its own',
+    LedIconAccent('filesource') <> clNone);
+  Check('and a toolbar icon does not, so a toolbar stays one ink',
+    LedIconAccent('save') = clNone);
+  CheckGt('the source icon is drawn in its blue', 0,
+    IconColourCount('filesource', LedIconAccent('filesource')));
+  CheckGt('and the pdf icon in its red', 0,
+    IconColourCount('filepdf', LedIconAccent('filepdf')));
+  CheckEqInt('while a toolbar icon carries none of that blue', 0,
+    IconColourCount('save', LedIconAccent('filesource')));
+
+  { One extension table, in Led.UI.Icons, so the tree and the tab headers
+    cannot disagree about what a file is. }
+  CheckEq('a C file is source', 'filesource', LedIconForFile('x.c'));
+  CheckEq('a markdown file is its own kind', 'filemarkdown',
+    LedIconForFile('README.md'));
+  CheckEq('an object file is binary', 'filebinary', LedIconForFile('x.o'));
+  CheckEq('and something unknown is a plain page', 'doc',
+    LedIconForFile('x.zzz'));
+
+  { And the tab header wears the same picture, which is the point of having
+    one rule: a file looks the same in the tree and on its tab. }
+  BrowseDir := TempName('tabicon');
+  ForceDirectories(BrowseDir);
+  L := TStringList.Create;
+  try
+    L.Add('int main(void) { return 0; }');
+    L.SaveToFile(BrowseDir + PathDelim + 'tab.c');
+  finally
+    L.Free;
+  end;
+  TabForIcon := F.AddTab(F.Documents.OpenFile(BrowseDir + PathDelim + 'tab.c'));
+  Pump;
+  if TabForIcon <> nil then
+  begin
+    CheckEqInt('a C file''s tab wears the source icon',
+      LedIconIndex('filesource'), TabForIcon.Sheet.ImageIndex);
+    Check('which is not the plain page it used to wear',
+      TabForIcon.Sheet.ImageIndex <> LedIconIndex('doc'));
+
+    { Unsaved changes still take the marked page: which file it is stays in
+      the caption, and whether it is saved is what the icon answers. }
+    TabForIcon.ActiveView.SelText := ' ';
+    Pump;
+    CheckEqInt('and a modified one shows that instead',
+      LedIconIndex('docmodified'), TabForIcon.Sheet.ImageIndex);
+
+    TabForIcon.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  if DirectoryExists(BrowseDir) then DeleteDirectory(BrowseDir, False);
 
   { What is actually in the tree when it is pointed at a real folder.  The
     structure above says the pane is built to show files; this says it does,

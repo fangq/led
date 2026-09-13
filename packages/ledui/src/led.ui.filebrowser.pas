@@ -23,6 +23,15 @@ uses
   Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils, Masks,
   Led.UI.Icons;
 
+const
+  { The tree's own small image list, in the order it is built.  A position in
+    here is what a node's ImageIndex is, so the order is load-bearing --
+    'folder' first because a directory takes it without consulting the
+    extension table, and the plain page last because it is the fallback. }
+  TreeIconNames: array[0..7] of string =
+    ('folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
+     'fileimage', 'filebinary', 'doc');
+
 type
   { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
     is protected, so reaching it at all needs a descendant.  Worth the four
@@ -238,43 +247,21 @@ end;
 
 { Which picture a row gets.
 
-  By extension, because that is what the user is choosing between when they
-  look down the pane -- not by reading the file, which would mean opening
-  every one of them to draw a directory.  The generic page is the fallback,
-  so an unknown extension still looks like a file rather than like nothing. }
+  The extension table lives in Led.UI.Icons, with the tab headers, so a file
+  cannot end up with one picture in the tree and another on its tab.  This
+  turns the name that rule returns into a position in the small list built
+  for the tree. }
 function TLedFileBrowser.IconForPath(const APath: string;
   AIsDir: Boolean): Integer;
-const
-  IcoFolder = 0;  IcoSource = 1;  IcoText   = 2;  IcoMarkdown = 3;
-  IcoPdf    = 4;  IcoImage  = 5;  IcoBinary = 6;  IcoPlain    = 7;
 var
-  Ext: string;
+  i: Integer;
+  Want: string;
 begin
-  if AIsDir then Exit(IcoFolder);
-
-  Ext := LowerCase(ExtractFileExt(APath));
-  if (Ext = '.c') or (Ext = '.h') or (Ext = '.cpp') or (Ext = '.hpp') or
-     (Ext = '.cc') or (Ext = '.cxx') or (Ext = '.m') or (Ext = '.mm') or
-     (Ext = '.pas') or (Ext = '.pp') or (Ext = '.inc') or (Ext = '.lpr') or
-     (Ext = '.py') or (Ext = '.js') or (Ext = '.ts') or (Ext = '.java') or
-     (Ext = '.go') or (Ext = '.rs') or (Ext = '.rb') or (Ext = '.sh') or
-     (Ext = '.pl') or (Ext = '.lua') or (Ext = '.sql') or (Ext = '.php') or
-     (Ext = '.html') or (Ext = '.xml') or (Ext = '.json') or (Ext = '.yml') or
-     (Ext = '.yaml') or (Ext = '.css') or (Ext = '.tex') then
-    Exit(IcoSource);
-  if (Ext = '.md') or (Ext = '.markdown') or (Ext = '.wiki') or
-     (Ext = '.usemod') or (Ext = '.wp') then Exit(IcoMarkdown);
-  if (Ext = '.txt') or (Ext = '.log') or (Ext = '.ini') or (Ext = '.cfg') or
-     (Ext = '.conf') or (Ext = '.csv') or (Ext = '') then Exit(IcoText);
-  if Ext = '.pdf' then Exit(IcoPdf);
-  if (Ext = '.png') or (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.gif') or
-     (Ext = '.bmp') or (Ext = '.svg') or (Ext = '.ico') or (Ext = '.webp') then
-    Exit(IcoImage);
-  if (Ext = '.o') or (Ext = '.a') or (Ext = '.so') or (Ext = '.dll') or
-     (Ext = '.exe') or (Ext = '.bin') or (Ext = '.zip') or (Ext = '.gz') or
-     (Ext = '.tar') or (Ext = '.ppu') or (Ext = '.obj') or (Ext = '.class') then
-    Exit(IcoBinary);
-  Result := IcoPlain;
+  if AIsDir then Exit(0);           { 'folder', first in TreeIconNames }
+  Want := LedIconForFile(APath);
+  for i := 0 to High(TreeIconNames) do
+    if TreeIconNames[i] = Want then Exit(i);
+  Result := High(TreeIconNames);    { the plain page, which is last }
 end;
 
 { True when AName is one the filter lets through.  Folders always pass: a
@@ -473,9 +460,7 @@ begin
   FIcons := TImageList.Create(Self);
   FIcons.Width := LedScale96(16);
   FIcons.Height := LedScale96(16);
-  LedBuildIconList(FIcons,
-    ['folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
-     'fileimage', 'filebinary', 'doc'], clDefault);
+  LedBuildIconList(FIcons, TreeIconNames, clDefault);
 
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;

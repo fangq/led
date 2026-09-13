@@ -32,6 +32,21 @@ type
 function LedBuildIconList(AImages: TImageList; const ANames: array of string;
   AColour: TColor): TImageList;
 
+{ The colour a file-type icon is drawn in, or clNone for the icons that have
+  no colour of their own and take whatever the caller asks for.
+
+  Only the file kinds are coloured.  A toolbar wants one ink -- a row of
+  differently-tinted buttons reads as decoration -- but a file tree is
+  scanned rather than read, and colour is what makes a C file findable among
+  forty others at a glance.  The same picture and colour appear on the tab
+  header, so a file looks the same wherever it is shown. }
+function LedIconAccent(const AName: string): TColor;
+
+{ The file-type icon name for AFileName, by extension -- 'filesource',
+  'filemarkdown' and so on, or 'doc' for anything unrecognised.  One rule, so
+  the browser tree and the tab headers cannot drift apart. }
+function LedIconForFile(const AFileName: string): string;
+
 { Index of ANAme in the list built by LedBuildIconList, or -1. }
 function LedIconIndex(const AName: string): Integer;
 
@@ -124,6 +139,50 @@ var
 begin
   SetLength(Result, Length(IconNames));
   for i := 0 to High(IconNames) do Result[i] := IconNames[i];
+end;
+
+function LedIconAccent(const AName: string): TColor;
+begin
+  { Written as RGB and converted, because a TColor is $00BBGGRR and the
+    numbers are unreadable the other way round.  Muted rather than saturated:
+    these sit in a list of text, not on a toolbar. }
+  if AName = 'filesource'   then Exit(RGBToColor( 70, 135, 205));  { blue }
+  if AName = 'filemarkdown' then Exit(RGBToColor( 80, 160, 185));  { teal }
+  if AName = 'filetext'     then Exit(RGBToColor(130, 145, 160));  { slate }
+  if AName = 'filepdf'      then Exit(RGBToColor(200,  75,  65));  { red }
+  if AName = 'fileimage'    then Exit(RGBToColor( 95, 165, 100));  { green }
+  if AName = 'filebinary'   then Exit(RGBToColor(175, 135,  75));  { amber }
+  if AName = 'folder'       then Exit(RGBToColor(215, 175,  95));  { manila }
+  Result := clNone;
+end;
+
+function LedIconForFile(const AFileName: string): string;
+var
+  Ext: string;
+begin
+  Ext := LowerCase(ExtractFileExt(AFileName));
+  if (Ext = '.c') or (Ext = '.h') or (Ext = '.cpp') or (Ext = '.hpp') or
+     (Ext = '.cc') or (Ext = '.cxx') or (Ext = '.m') or (Ext = '.mm') or
+     (Ext = '.pas') or (Ext = '.pp') or (Ext = '.inc') or (Ext = '.lpr') or
+     (Ext = '.py') or (Ext = '.js') or (Ext = '.ts') or (Ext = '.java') or
+     (Ext = '.go') or (Ext = '.rs') or (Ext = '.rb') or (Ext = '.sh') or
+     (Ext = '.pl') or (Ext = '.lua') or (Ext = '.sql') or (Ext = '.php') or
+     (Ext = '.html') or (Ext = '.xml') or (Ext = '.json') or (Ext = '.yml') or
+     (Ext = '.yaml') or (Ext = '.css') or (Ext = '.tex') then
+    Exit('filesource');
+  if (Ext = '.md') or (Ext = '.markdown') or (Ext = '.wiki') or
+     (Ext = '.usemod') or (Ext = '.wp') then Exit('filemarkdown');
+  if (Ext = '.txt') or (Ext = '.log') or (Ext = '.ini') or (Ext = '.cfg') or
+     (Ext = '.conf') or (Ext = '.csv') then Exit('filetext');
+  if Ext = '.pdf' then Exit('filepdf');
+  if (Ext = '.png') or (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.gif') or
+     (Ext = '.bmp') or (Ext = '.svg') or (Ext = '.ico') or (Ext = '.webp') then
+    Exit('fileimage');
+  if (Ext = '.o') or (Ext = '.a') or (Ext = '.so') or (Ext = '.dll') or
+     (Ext = '.exe') or (Ext = '.bin') or (Ext = '.zip') or (Ext = '.gz') or
+     (Ext = '.tar') or (Ext = '.ppu') or (Ext = '.obj') or (Ext = '.class') then
+    Exit('filebinary');
+  Result := 'doc';
 end;
 
 function LedIconIndex(const AName: string): Integer;
@@ -689,7 +748,12 @@ begin
         trade anyway. }
       Bmp.Canvas.AntialiasingMode := amOff;
 
-      LedDrawIcon(Bmp, ANames[i], AColour);
+      { A file kind is drawn in its own colour; everything else takes the
+        one the caller asked for, so a toolbar stays one ink. }
+      if LedIconAccent(ANames[i]) <> clNone then
+        LedDrawIcon(Bmp, ANames[i], LedIconAccent(ANames[i]))
+      else
+        LedDrawIcon(Bmp, ANames[i], AColour);
       AImages.AddMasked(Bmp, MaskColour);
     finally
       Bmp.Free;

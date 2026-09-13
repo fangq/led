@@ -3698,13 +3698,18 @@ var
 begin
   if (ATab = nil) or (ATab.Sheet = nil) then Exit;
   S := ATab.Document.DisplayName;
+  { The same picture the file browser puts on the file, so a document looks
+    the same in the tree and on its tab.  A modified document keeps the
+    marked page instead: which file it is stays in the caption, and whether
+    it is saved is the thing the icon is there to answer. }
   if ATab.Document.Modified then
   begin
     S := '*' + S;
     ATab.Sheet.ImageIndex := LedIconIndex('docmodified');
   end
   else
-    ATab.Sheet.ImageIndex := LedIconIndex('doc');
+    ATab.Sheet.ImageIndex :=
+      LedIconIndex(LedIconForFile(ATab.Document.FileName));
   ATab.Sheet.Caption := S;
 end;
 
