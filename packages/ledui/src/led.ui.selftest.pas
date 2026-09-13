@@ -3460,14 +3460,21 @@ begin
     accent that never reaches the image list is a table nobody can see. }
   Check('a file kind has a colour of its own',
     LedIconAccent('filesource') <> clNone);
-  Check('and a toolbar icon does not, so a toolbar stays one ink',
-    LedIconAccent('save') = clNone);
+  { The toolbar is coloured too now, in the Tango palette medit's stock GTK
+    icons came from.  This check used to assert the opposite -- that a
+    toolbar stays one ink -- which was my judgement before seeing the two
+    side by side. }
+  Check('and so does a toolbar action', LedIconAccent('save') <> clNone);
+  Check('with the kinds of action told apart by it',
+    LedIconAccent('save') <> LedIconAccent('delete'));
+  Check('while something with no natural colour keeps the caller''s',
+    LedIconAccent('wrap') = clNone);
   CheckGt('the source icon is drawn in its blue', 0,
     IconColourCount('filesource', LedIconAccent('filesource')));
   CheckGt('and the pdf icon in its red', 0,
     IconColourCount('filepdf', LedIconAccent('filepdf')));
-  CheckEqInt('while a toolbar icon carries none of that blue', 0,
-    IconColourCount('save', LedIconAccent('filesource')));
+  CheckGt('and Save is drawn in its own blue', 0,
+    IconColourCount('save', LedIconAccent('save')));
 
   { One extension table, in Led.UI.Icons, so the tree and the tab headers
     cannot disagree about what a file is. }

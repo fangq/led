@@ -281,6 +281,39 @@ end;
 
 function LedIconAccent(const AName: string): TColor;
 begin
+  { The toolbar, in the Tango palette medit's stock GTK icons came from.
+
+    This reverses an earlier judgement of mine, and the reason is worth
+    keeping: I had argued that a row of differently tinted buttons reads as
+    decoration and that one ink was calmer.  Set beside medit it is not --
+    its toolbar is easier to scan precisely because Save is blue and Cut is
+    steel and Stop is red, so the eye goes to a colour rather than reading a
+    row of identical grey shapes.
+
+    Colour by what the action does rather than by which menu it is on:
+    making things green, file traffic blue, editing steel, destructive red,
+    search amber. }
+  if (AName = 'new') or (AName = 'newfile') or (AName = 'newfolder') then
+    Exit(RGBToColor( 78, 154,  60));                       { green }
+  if (AName = 'open') or (AName = 'reload') then
+    Exit(RGBToColor(233, 165,  40));                       { manila }
+  if (AName = 'save') or (AName = 'saveas') or (AName = 'print') then
+    Exit(RGBToColor( 52, 101, 164));                       { blue }
+  if (AName = 'undo') or (AName = 'redo') then
+    Exit(RGBToColor(117,  80, 123));                       { plum }
+  if (AName = 'cut') or (AName = 'copy') or (AName = 'paste') then
+    Exit(RGBToColor(100, 116, 132));                       { steel }
+  if (AName = 'delete') or (AName = 'stop') or (AName = 'quit') then
+    Exit(RGBToColor(190,  60,  50));                       { red }
+  if (AName = 'find') or (AName = 'findnext') or (AName = 'findprev') or
+     (AName = 'replace') or (AName = 'gotoline') then
+    Exit(RGBToColor(196, 143,  30));                       { amber }
+  if (AName = 'run') or (AName = 'debug') then
+    Exit(RGBToColor( 78, 154,  60));                       { green }
+  if AName = 'breakpoint' then Exit(RGBToColor(190, 60, 50));
+  if AName = 'bookmark' then Exit(RGBToColor(196, 143, 30));
+  if AName = 'terminal' then Exit(RGBToColor(85, 87, 83));
+
   { Written as RGB and converted, because a TColor is $00BBGGRR and the
     numbers are unreadable the other way round.  Muted rather than saturated:
     these sit in a list of text, not on a toolbar. }
