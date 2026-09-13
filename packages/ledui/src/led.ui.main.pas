@@ -1068,6 +1068,19 @@ begin
     is discarded rather than fought with, leaving the defaults. }
   FDock.LoadLayout(LedConfigFile('layout.xml'));
 
+  { ...and then put the window on the screen it was started from.
+
+    The form file asks for poScreenCenter, and on X11 every monitor is part of
+    one screen -- so the LCL centres on the union of them.  With two monitors
+    side by side that is the seam, and a window centred on the seam ends up on
+    whichever one the window manager prefers, which is regularly not the one
+    the user launched it from.  Position is therefore LED's own from here on:
+    centred on the monitor the pointer is on, or, where a saved position is
+    restored below, that position carried onto the monitor this launch came
+    from. }
+  Position := poDesigned;
+  LedPlaceWindowAtLaunch(Self);
+
   { medit's use_tabs decided whether documents share a window through a tab
     strip.  LED always uses tabs -- one document per window is what New Window
     is for -- so the setting controls whether the strip is shown when there is
@@ -1084,8 +1097,16 @@ begin
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
 
-  if not RestoreSession then
+  if RestoreSession then
+    { A restored position is kept, but on this launch's monitor. }
+    LedPlaceWindowAtLaunch(Self)
+  else
+  begin
     actNewExecute(nil);
+    { Nothing remembered, so this is where poScreenCenter would have put it --
+      except on the right monitor. }
+    LedCentreOnLaunchMonitor(Self);
+  end;
 
   { Before the menus are filled and before anything ticks one. }
   MakeTogglesCheckable;
@@ -3664,6 +3685,9 @@ begin
     if (W.Width > 100) and (W.Height > 100) then
     begin
       Left := W.Left; Top := W.Top; Width := W.Width; Height := W.Height;
+      { On the monitor this launch came from, not the one the last one was
+        closed on.  Same reasoning as the layout above. }
+      LedPlaceWindowAtLaunch(Self);
     end;
     if W.Maximized then WindowState := wsMaximized;
 

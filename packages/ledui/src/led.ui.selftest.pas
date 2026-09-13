@@ -4261,6 +4261,105 @@ begin
   DeleteFile(Path);
 end;
 
+{ Which screen LED opens on.
+
+  The window's position is restored from layout.xml, which carries it along
+  with the panes -- so on a desktop with more than one monitor LED reopened
+  wherever it was last closed, however far that was from the screen it had
+  just been launched from.
+
+  Two monitors cannot be had on a test display: Xvfb has no RandR outputs, so
+  neither +xinerama nor xrandr --setmonitor produces a second one, and the LCL
+  sees one screen however it is asked.  The arithmetic is therefore checked
+  against rectangles, which is where all of it lives, and the wiring is
+  checked against the one monitor there is. }
+procedure TestWindowPlacement(F: TLedMainForm);
+var
+  Mons: array[0..1] of TRect;
+  R, M, Saved: TRect;
+begin
+  Say('which screen it opens on');
+
+  { Two 1000x800 monitors side by side. }
+  Mons[0] := Rect(0, 0, 1000, 800);
+  Mons[1] := Rect(1000, 0, 2000, 800);
+
+  { Saved on the right-hand one, launched from the left: it comes across,
+    keeping its size and where it sat within its monitor. }
+  R := LedPlaceOnMonitor(Rect(1100, 60, 1700, 560), Mons, Point(400, 400));
+  CheckEqInt('a window saved on the other monitor comes to this one', 100,
+    R.Left);
+  CheckEqInt('at the same height', 60, R.Top);
+  CheckEqInt('keeping its width', 600, R.Right - R.Left);
+  CheckEqInt('and its height', 500, R.Bottom - R.Top);
+
+  { Launched from the monitor it was already on: untouched, including a
+    window the user has deliberately pushed off the left edge. }
+  R := LedPlaceOnMonitor(Rect(-40, 60, 560, 560), Mons, Point(400, 400));
+  CheckEqInt('a window already on this monitor is left alone', -40, R.Left);
+  CheckEqInt('exactly as it was', 60, R.Top);
+
+  { Saved somewhere no monitor covers any more -- the screen it was on is
+    unplugged -- and it is centred on the one the launch came from rather
+    than left in the void. }
+  R := LedPlaceOnMonitor(Rect(3000, 3000, 3600, 3500), Mons, Point(1400, 400));
+  Check('a window saved on a monitor that is gone lands on this one',
+    (R.Left >= Mons[1].Left) and (R.Right <= Mons[1].Right) and
+    (R.Top >= Mons[1].Top) and (R.Bottom <= Mons[1].Bottom));
+
+  { Bigger than the monitor it is moving to: shrunk to fit rather than
+    hanging off the edge. }
+  Mons[1] := Rect(1000, 0, 1400, 300);
+  R := LedPlaceOnMonitor(Rect(20, 20, 920, 720), Mons, Point(1200, 100));
+  Check('a window too big for the new monitor is shrunk onto it',
+    (R.Left >= Mons[1].Left) and (R.Right <= Mons[1].Right) and
+    (R.Top >= Mons[1].Top) and (R.Bottom <= Mons[1].Bottom));
+  Mons[1] := Rect(1000, 0, 2000, 800);
+
+  { A pointer on no monitor -- between two of them on an L-shaped desktop, or
+    not yet moved -- is not a reason to move anything. }
+  R := LedPlaceOnMonitor(Rect(1100, 60, 1700, 560), Mons, Point(5000, 5000));
+  CheckEqInt('a pointer on no monitor leaves the window where it was', 1100,
+    R.Left);
+
+  { One monitor, and a position saved when the desktop had another one or was
+    bigger: the window comes back rather than opening where nobody can see
+    it.  This is the case that matters on a single-screen machine, and it is
+    the same arithmetic. }
+  R := LedPlaceOnMonitor(Rect(2400, 1800, 3000, 2300), Mons[0..0],
+    Point(500, 400));
+  Check('a position saved off the edge of the desktop comes back',
+    (R.Left >= Mons[0].Left) and (R.Right <= Mons[0].Right) and
+    (R.Top >= Mons[0].Top) and (R.Bottom <= Mons[0].Bottom));
+
+  { And the same routines against the screen this suite is actually running
+    on.  poScreenCenter is what centred the window on the union of every
+    monitor, so it has to be off: LED positions the window itself now. }
+  Check('the window is positioned by LED, not by the LCL',
+    F.Position = poDesigned);
+
+  CheckGt('the test display has a monitor', 0, Screen.MonitorCount);
+  Saved := F.BoundsRect;
+  try
+    LedCentreOnLaunchMonitor(F);
+    Pump;
+    M := Screen.Monitors[0].WorkareaRect;
+    if (M.Right <= M.Left) or (M.Bottom <= M.Top) then
+      M := Screen.Monitors[0].BoundsRect;
+    { One monitor here, so the pointer is on it whatever it is doing. }
+    if Screen.MonitorCount = 1 then
+    begin
+      CheckEqInt('and centring puts the window in the middle of it',
+        M.Left + ((M.Right - M.Left) - F.Width) div 2, F.Left);
+      CheckEqInt('in both directions',
+        M.Top + ((M.Bottom - M.Top) - F.Height) div 2, F.Top);
+    end;
+  finally
+    F.BoundsRect := Saved;
+    Pump;
+  end;
+end;
+
 { Word wrap, turned on and off and on again.
 
   Once was fine and twice was fatal.  TLazSynEditLineWrapPlugin has no
@@ -8300,6 +8399,7 @@ begin
   WriteLn;
   TestFolding(F);
   WriteLn;
+  TestWindowPlacement(F);
   TestWordWrapToggling(F);
   TestMenusAndDetection(F);
   WriteLn;

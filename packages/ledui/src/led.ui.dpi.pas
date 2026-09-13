@@ -118,6 +118,46 @@ function LedDefaultFontSize: Integer;
   rule that decides whether a stored preference is a choice or a default. }
 function LedIsGenericFamily(const AName: string): Boolean;
 
+type
+  TLedRectArray = array of TRect;
+
+{ The monitors, as the desktop has them now: their work areas, so a window
+  placed inside one does not start underneath a panel. }
+function LedMonitorRects: TLedRectArray;
+
+{ Where a window whose position was remembered should actually open.
+
+  ASaved is where it was when it was last closed, AMonitors the monitors as
+  they are now, and ALaunch a point on the monitor the launch came from -- the
+  pointer, which on X11 is the closest thing there is to "the screen you
+  started it from".  The answer keeps the saved size and the saved offset
+  within its monitor, but on the monitor the launch came from, shrunk and
+  pushed inside when it no longer fits.
+
+  Separated from the form it is for so it can be checked: two monitors cannot
+  be had on a test display, but a pair of rectangles can. }
+function LedPlaceOnMonitor(const ASaved: TRect; const AMonitors: array of TRect;
+  const ALaunch: TPoint): TRect;
+
+{ Moves AForm onto the monitor the pointer is on, keeping its size.  Does
+  nothing when it is already there, or when it is maximized -- the window
+  manager owns a maximized window's monitor.
+
+  Runs with one monitor as well as with several: a position saved on a desktop
+  that had another screen, or a bigger one, is off every monitor there is now,
+  and a window nobody can see is worse than a window on the wrong screen. }
+procedure LedPlaceWindowAtLaunch(AForm: TCustomForm);
+
+{ Centres AForm on the monitor the pointer is on, which is what a window with
+  no remembered position should do.
+
+  poScreenCenter cannot: on X11 every monitor is part of one screen, so the
+  LCL centres on the union of them.  With two monitors side by side that is
+  the seam between them, and a window centred there opens half on each, or --
+  once the window manager has pushed it somewhere legal -- on whichever one
+  the user did not launch it from. }
+procedure LedCentreOnLaunchMonitor(AForm: TCustomForm);
+
 function LedDefaultFontName: string;
 
 { Split an "Editor/font" value into a family and a point size.  The
@@ -704,6 +744,158 @@ begin
   { Only Windows has a title bar to darken this way. }
 end;
 {$ENDIF}
+
+function LedMonitorRects: TLedRectArray;
+var
+  i: Integer;
+begin
+  SetLength(Result, Screen.MonitorCount);
+  for i := 0 to Screen.MonitorCount - 1 do
+  begin
+    Result[i] := Screen.Monitors[i].WorkareaRect;
+    { A monitor that reports no work area -- some window managers do not set
+      the property at all -- still has bounds. }
+    if (Result[i].Right <= Result[i].Left) or
+       (Result[i].Bottom <= Result[i].Top) then
+      Result[i] := Screen.Monitors[i].BoundsRect;
+  end;
+end;
+
+function LedPlaceOnMonitor(const ASaved: TRect; const AMonitors: array of TRect;
+  const ALaunch: TPoint): TRect;
+var
+  i, Target, Source, W, H: Integer;
+  Centre: TPoint;
+
+  function Holds(const R: TRect; const P: TPoint): Boolean;
+  begin
+    Result := (P.X >= R.Left) and (P.X < R.Right) and
+              (P.Y >= R.Top) and (P.Y < R.Bottom);
+  end;
+
+begin
+  Result := ASaved;
+  if Length(AMonitors) = 0 then Exit;
+
+  Target := -1;
+  for i := 0 to High(AMonitors) do
+    if Holds(AMonitors[i], ALaunch) then
+    begin
+      Target := i;
+      Break;
+    end;
+  { A pointer on no monitor at all -- between two of them, or not yet moved --
+    leaves the window where it was rather than guessing. }
+  if Target < 0 then Exit;
+
+  Centre := Point((ASaved.Left + ASaved.Right) div 2,
+                  (ASaved.Top + ASaved.Bottom) div 2);
+  Source := -1;
+  for i := 0 to High(AMonitors) do
+    if Holds(AMonitors[i], Centre) then
+    begin
+      Source := i;
+      Break;
+    end;
+
+  { Already there: nothing to do, and in particular no clamping, so a window
+    the user has deliberately nudged half off the edge stays where they put
+    it. }
+  if Source = Target then Exit;
+
+  W := ASaved.Right - ASaved.Left;
+  H := ASaved.Bottom - ASaved.Top;
+
+  if Source >= 0 then
+  begin
+    { The same place on the new monitor as it had on the old one. }
+    Result.Left := AMonitors[Target].Left + (ASaved.Left - AMonitors[Source].Left);
+    Result.Top := AMonitors[Target].Top + (ASaved.Top - AMonitors[Source].Top);
+  end
+  else
+  begin
+    { Saved on a monitor that is not there any more: centre it instead. }
+    Result.Left := AMonitors[Target].Left +
+      ((AMonitors[Target].Right - AMonitors[Target].Left) - W) div 2;
+    Result.Top := AMonitors[Target].Top +
+      ((AMonitors[Target].Bottom - AMonitors[Target].Top) - H) div 2;
+  end;
+
+  { No bigger than the monitor it is going to. }
+  if W > AMonitors[Target].Right - AMonitors[Target].Left then
+    W := AMonitors[Target].Right - AMonitors[Target].Left;
+  if H > AMonitors[Target].Bottom - AMonitors[Target].Top then
+    H := AMonitors[Target].Bottom - AMonitors[Target].Top;
+
+  { And inside it. }
+  if Result.Left + W > AMonitors[Target].Right then
+    Result.Left := AMonitors[Target].Right - W;
+  if Result.Top + H > AMonitors[Target].Bottom then
+    Result.Top := AMonitors[Target].Bottom - H;
+  if Result.Left < AMonitors[Target].Left then
+    Result.Left := AMonitors[Target].Left;
+  if Result.Top < AMonitors[Target].Top then
+    Result.Top := AMonitors[Target].Top;
+
+  Result.Right := Result.Left + W;
+  Result.Bottom := Result.Top + H;
+end;
+
+procedure LedCentreOnLaunchMonitor(AForm: TCustomForm);
+var
+  Mons: TLedRectArray;
+  i, Target, W, H: Integer;
+  P: TPoint;
+begin
+  if AForm = nil then Exit;
+  if AForm.WindowState <> wsNormal then Exit;
+  Mons := LedMonitorRects;
+  if Length(Mons) = 0 then Exit;
+
+  P := Mouse.CursorPos;
+  Target := -1;
+  for i := 0 to High(Mons) do
+    if (P.X >= Mons[i].Left) and (P.X < Mons[i].Right) and
+       (P.Y >= Mons[i].Top) and (P.Y < Mons[i].Bottom) then
+    begin
+      Target := i;
+      Break;
+    end;
+  if Target < 0 then Target := 0;
+
+  W := AForm.Width;
+  H := AForm.Height;
+  if W > Mons[Target].Right - Mons[Target].Left then
+    W := Mons[Target].Right - Mons[Target].Left;
+  if H > Mons[Target].Bottom - Mons[Target].Top then
+    H := Mons[Target].Bottom - Mons[Target].Top;
+
+  AForm.SetBounds(
+    Mons[Target].Left + ((Mons[Target].Right - Mons[Target].Left) - W) div 2,
+    Mons[Target].Top + ((Mons[Target].Bottom - Mons[Target].Top) - H) div 2,
+    W, H);
+end;
+
+procedure LedPlaceWindowAtLaunch(AForm: TCustomForm);
+var
+  Placed: TRect;
+begin
+  if AForm = nil then Exit;
+  if Screen.MonitorCount < 1 then Exit;
+  { A maximized window belongs to whichever monitor the window manager put it
+    on, and moving it means unmaximizing first -- which is a worse thing to do
+    to someone than opening on the wrong screen. }
+  if AForm.WindowState <> wsNormal then Exit;
+
+  Placed := LedPlaceOnMonitor(AForm.BoundsRect, LedMonitorRects, Mouse.CursorPos);
+  if (Placed.Left = AForm.Left) and (Placed.Top = AForm.Top) and
+     (Placed.Right - Placed.Left = AForm.Width) and
+     (Placed.Bottom - Placed.Top = AForm.Height) then
+    Exit;
+
+  AForm.SetBounds(Placed.Left, Placed.Top,
+    Placed.Right - Placed.Left, Placed.Bottom - Placed.Top);
+end;
 
 finalization
   { Screen outlives this unit's data, so the handler has to come off before
