@@ -57,6 +57,13 @@ type
     raise MinSize: the default 30 still lets a pane be squeezed down to a
     strip too narrow to read or to aim at. }
   TLedDockSplitter = class(TAnchorDockSplitter)
+  protected
+    { The end of a drag, and the only moment the dock can be sure a pane's
+      size is one the user chose.  MoveSplitter is no good for this: the
+      sizing pass calls it too, so recording there would record the layout's
+      own arithmetic back as if it were a preference. }
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
   public
     constructor Create(TheOwner: TComponent); override;
   end;
@@ -106,6 +113,10 @@ type
     FDraggingWanted: Boolean;
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
+    { The size the user last dragged each edge to, in device pixels; 0 until
+      they have dragged one. }
+    FUserSize: array[TLedDockEdge] of Integer;
+    function WantedSize(AEdge: TLedDockEdge): Integer;
     procedure ApplyDockPolicy;
     procedure GuardCentreHeader;
     function GetHeaderStyle: THeaderStyleName;
@@ -153,6 +164,13 @@ type
       self-test, which has no other way to see that a pane has been squeezed
       down to a strip. }
     function PaneSize(const AId: string): Integer;
+
+    { Records what every open pane currently measures as the size its edge
+      should come back at.  Called when a splitter drag ends -- see
+      TLedDockSplitter.MouseUp -- and from nowhere the layout drives, which
+      is what keeps a size the user chose apart from one the window ran out
+      of room for. }
+    procedure NoteUserResize;
 
     { Tears APane off into a window of its own, and puts it back.  This is
       what medit's detachable panes did, and what AnchorDocking gives for
@@ -411,6 +429,23 @@ constructor TLedDockSplitter.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
   MinSize := LedScale96(64);
+end;
+
+procedure TLedDockSplitter.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+var
+  P: TWinControl;
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  { Which dock this splitter belongs to, found by walking out of it.  The
+    alternative -- a list of hosts the splitter could consult -- would have
+    to be kept correct as hosts come and go, and a second window would make
+    it ambiguous anyway. }
+  P := Parent;
+  while (P <> nil) and not (P is TLedDockHost) do
+    P := P.Parent;
+  if P <> nil then
+    TLedDockHost(P).NoteUserResize;
 end;
 
 { TLedDockHeader }
@@ -889,22 +924,21 @@ begin
         TmpP := Panes[j]; Panes[j] := Panes[j-1]; Panes[j-1] := TmpP;
       end;
 
-  { What each pane wants: the size registered for its edge.  Deliberately not
-    the size it had when it was last closed -- carrying that forward brings
-    the ratchet back by another route, because the size being carried is
-    itself the scaled-down one and every cycle starts smaller than the last.
-    Reopening a pane gives the default; dragging the splitter is how a
-    different size is chosen, and the saved layout keeps that across a
-    restart.
+  { What each pane wants: the size the user last dragged this edge to, or the
+    registered default until they have dragged one.  See WantedSize for why
+    only a drag counts -- reopening a pane used to hand back the default and
+    lose a size that had just been set by hand, and the obvious fix of
+    remembering the size at closing time is the one that ratchets.
 
-    Scaled: this is a real pixel size, weighed below against live geometry.
-    Unscaled it asked for 180 pixels of a 300-PPI display -- 58 at the design
-    scale, less than the pane's own header. }
+    Already scaled by WantedSize: this is a real pixel size, weighed below
+    against live geometry.  Unscaled the default asked for 180 pixels of a
+    300-PPI display -- 58 at the design scale, less than the pane's own
+    header. }
   SetLength(Wants, n);
   TotalWant := 0;
   for i := 0 to n - 1 do
   begin
-    Wants[i] := LedScale96(EdgeDefault[AEdge]);
+    Wants[i] := WantedSize(AEdge);
     Inc(TotalWant, Wants[i]);
   end;
 
@@ -1314,6 +1348,46 @@ begin
   GuardCentreHeader;
 end;
 
+{ What a pane on AEdge should be given when it is put back on screen: the
+  size the user dragged that edge to, or the registered default until they
+  have.
+
+  Only a drag is remembered, never a measurement taken after a layout pass.
+  That distinction is the whole point.  Feeding a measured size back in was
+  what made reopening a pane shrink it a little further every time: the size
+  being carried was itself the one the window had squeezed down to, so each
+  cycle started from the last cycle's shortfall.  A dragged size is a number
+  the user typed with the mouse; asking for it again cannot ratchet. }
+function TLedDockHost.WantedSize(AEdge: TLedDockEdge): Integer;
+begin
+  if FUserSize[AEdge] > 0 then
+    Result := FUserSize[AEdge]
+  else
+    Result := LedScale96(EdgeDefault[AEdge]);
+end;
+
+procedure TLedDockHost.NoteUserResize;
+var
+  i, Size: Integer;
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+begin
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    Site := DockMaster.GetAnchorSite(Pane);
+    if (Site = nil) or (Site.Parent = nil) or (not Site.Visible) then Continue;
+    if Pane.Edge in [ledLeft, ledRight] then
+      Size := Site.Width
+    else
+      Size := Site.Height;
+    { The same floor SetEdgeSize keeps.  A pane dragged shut is a pane the
+      user wants out of the way, not a size to bring back. }
+    if Size >= LedScale96(40) then
+      FUserSize[Pane.Edge] := Size;
+  end;
+end;
+
 function TLedDockHost.GetEdgeSize(AEdge: TLedDockEdge): Integer;
 var
   i: Integer;
@@ -1551,6 +1625,7 @@ procedure TLedDockHost.ResetLayout(const AFileName: string);
 var
   i: Integer;
   Pane: TLedPaneForm;
+  E: TLedDockEdge;
 begin
   { Close every pane.  The defaults this restores are the ones FormCreate
     sets up: nothing open but the editor, which is also what a first run
@@ -1564,6 +1639,11 @@ begin
       { One pane that will not close must not stop the rest going back. }
     end;
   end;
+
+  { Forget the dragged sizes too: a reset that kept them would put the panes
+    back at whatever the layout being thrown away had them at. }
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    FUserSize[E] := 0;
 
   { The editor may have been floated by an older layout, or left somewhere
     unhelpful.  It has no header to drag back by, so put it back here. }
@@ -1633,6 +1713,12 @@ begin
     stray one. }
   if PaneFloating('editor') then
     RedockPane('editor');
+
+  { The restored sizes are the ones the user dragged to last time, so they
+    are what a pane closed and reopened in this session should come back at.
+    Without this the remembered size only lasted as long as the run that set
+    it, and the first thing a restart did was hand back the default. }
+  NoteUserResize;
 
   RebuildRails;
 end;

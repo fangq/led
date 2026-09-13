@@ -42,7 +42,7 @@ uses
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
   {$ENDIF}
-  Graphics, IntfGraphics, FPimage, StdCtrls,
+  Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -1717,6 +1717,85 @@ begin
     F.Dock.HidePane(Ids[i]);
     Pump;
   end;
+end;
+
+{ A pane keeps the size it was dragged to when it is closed and opened again.
+
+  Two sizes are in play and only one of them may be remembered.  The size a
+  layout pass produced must not be: feeding that back in is what made every
+  reopen shrink the edge a little further, which TestPaneSizes above still
+  guards.  The size a splitter drag produced must be, and that is what this
+  covers -- the user set it by hand and closing the pane is not a reason to
+  throw it away.
+
+  The drag is done in two pieces because a real one cannot be had headless:
+  TCustomSplitter reads the pointer with GetCursorPos, so synthetic MouseMove
+  events all compute an offset of zero.  So the size is moved by MoveSplitter,
+  which is what a drag calls, and the drag is then ended by the MouseUp the
+  dock hangs its recording off.  Both halves are the real code. }
+type
+  { MouseUp is protected, and ending a drag is the whole point here. }
+  TSplitAccess = class(TCustomSplitter);
+
+procedure TestPaneSizeMemory(F: TLedMainForm);
+var
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  Split: TAnchorDockSplitter;
+  W0, W1, W2: Integer;
+begin
+  Say('pane size memory');
+
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  W0 := F.Dock.PaneSize('files');
+  CheckGt('the files pane opens at a usable width', 40, W0);
+
+  Pane := F.Dock.FindPane('files');
+  Site := nil;
+  if Pane <> nil then Site := DockMaster.GetAnchorSite(Pane);
+  Split := nil;
+  { A left pane is anchored to the splitter on its right. }
+  if (Site <> nil) and (Site.AnchorSide[akRight].Control is TAnchorDockSplitter) then
+    Split := TAnchorDockSplitter(Site.AnchorSide[akRight].Control);
+  Check('the files pane has a splitter to drag', Split <> nil);
+  if Split = nil then Exit;
+
+  Split.MoveSplitter(LedScale96(70));
+  Pump;
+  W1 := F.Dock.PaneSize('files');
+  CheckGt('dragging the splitter widens the pane', W0 + LedScale96(20), W1);
+
+  { The end of the drag.  No MouseDown preceded it, so StopSplitterMove has
+    nothing to undo and this is only the notification. }
+  TSplitAccess(Split).MouseUp(mbLeft, [], 0, 0);
+
+  F.Dock.HidePane('files');
+  Pump; Pump;
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  W2 := F.Dock.PaneSize('files');
+
+  { Within a few pixels: the reopened pane is put back by moving a splitter,
+    and a splitter lands on whole steps of whatever the layout can give. }
+  CheckGt('a reopened pane comes back at the width it was dragged to',
+    W1 - LedScale96(12), W2);
+  CheckGt('and not wider than it was dragged to', W2 - LedScale96(12), W1);
+
+  { Back to where it started, so what follows sees the default edge.  The
+    same two pieces: move, then end the drag. }
+  Split := nil;
+  Site := DockMaster.GetAnchorSite(F.Dock.FindPane('files'));
+  if (Site <> nil) and (Site.AnchorSide[akRight].Control is TAnchorDockSplitter) then
+    Split := TAnchorDockSplitter(Site.AnchorSide[akRight].Control);
+  if Split <> nil then
+  begin
+    Split.MoveSplitter(W0 - F.Dock.PaneSize('files'));
+    Pump;
+    TSplitAccess(Split).MouseUp(mbLeft, [], 0, 0);
+  end;
+  F.Dock.HidePane('files');
+  Pump;
 end;
 
 { The tab strip's close button, the window's minimum size, and the band that
@@ -7056,6 +7135,7 @@ begin
   TestShowPaneShowsThatPane(F);
   TestDockEdges(F);
   TestPaneSizes(F);
+  TestPaneSizeMemory(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
   WriteLn;
