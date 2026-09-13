@@ -1484,7 +1484,7 @@ var
   i, round_: Integer;
   Ids: array[0..2] of string = ('symbols', 'preview', 'debug');
   First: array[0..2] of Integer;
-  Smallest: Integer;
+  Smallest, W0, W1: Integer;
 
   function SmallestPane: Integer;
   var
@@ -1519,6 +1519,40 @@ begin
 
   for i := 0 to 2 do
     First[i] := F.Dock.PaneSize(Ids[i]);
+
+  { A window too small for what is being asked of it grows, rather than the
+    panes being shaved to fit.  Opening a pane on a narrow window used to give
+    it whatever was left -- a strip, at the scales where the editor's own
+    floor ate the budget. }
+  W0 := F.Width;
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Ids[i]);
+    Pump;
+  end;
+  F.Dock.HidePane('files');
+  Pump; Pump;
+  { Narrow enough that one pane and the editor's floor genuinely do not both
+    fit -- 560 did, which is why this first asserted a growth that correctly
+    never happened. }
+  F.Width := 400;
+  Pump; Pump;
+  W1 := F.Width;
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  CheckGt('a narrow window grows to fit a pane rather than shrinking it',
+    W1, F.Width);
+  CheckGt('and the pane it made room for is usable', 120,
+    F.Dock.PaneSize('files'));
+  CheckGt('and the editor keeps its floor', 200, F.Dock.Center.Width);
+  F.Dock.HidePane('files');
+  F.Width := W0;
+  Pump; Pump;
+  for i := 0 to 2 do
+  begin
+    F.Dock.ShowPane(Ids[i]);
+    Pump;
+  end;
 
   { The ratchet: the size a dock produced used to be the size fed into the
     next one, so every close and reopen shrank the edge again. }
