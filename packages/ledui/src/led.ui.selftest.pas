@@ -1662,6 +1662,78 @@ begin
   Pump;
 end;
 
+{ Untitled numbering.
+
+  Closing the last tab opens a fresh untitled document to replace it, and the
+  number used to come from a counter that only ever climbed -- so clicking the
+  tab strip's close button over and over walked the title up, Untitled 9, 10,
+  11, with one empty document on screen throughout.  File > Close had always
+  done it; the button only made it easy enough to sit there noticing.
+
+  The number is now the lowest one not in use, so it is bounded by how many
+  documents are actually open.
+
+  Nothing here asserts a particular number.  By the time this runs the suite
+  has opened and closed a good deal, and at least one document is alive
+  without a tab of its own, so "the next one is Untitled 3" would be a test of
+  what ran before it.  What is checked is the behaviour: the name does not
+  move when a document is replaced, and a number comes back into use once the
+  document holding it has gone. }
+procedure TestUntitledNumbering(F: TLedMainForm);
+var
+  i: Integer;
+  Btn: TSpeedButton;
+  Lone, Taken: string;
+begin
+  Say('untitled numbering');
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  Pump;
+  Lone := F.ActiveTab.Document.DisplayName;
+  Check('a lone document is an untitled one', F.ActiveTab.Document.IsUntitled);
+
+  { The regression: closing the last tab replaces it, and the replacement
+    used to take the next number every time. }
+  for i := 1 to 5 do
+  begin
+    F.actCloseTabExecute(nil);
+    Pump;
+  end;
+  CheckEq('closing and replacing it five times does not count up',
+    Lone, F.ActiveTab.Document.DisplayName);
+
+  Btn := F.TabCloseButton(0);
+  if Btn <> nil then
+  begin
+    F.actNewExecute(nil);
+    Pump;
+    for i := 1 to 5 do
+    begin
+      Btn.Click;
+      Pump;
+    end;
+    CheckEq('and neither does the close button', Lone,
+      F.ActiveTab.Document.DisplayName);
+  end;
+
+  { Numbering still tells two open documents apart, which is what it is for. }
+  F.actNewExecute(nil);
+  Pump;
+  Taken := F.ActiveTab.Document.DisplayName;
+  Check('a second document gets a name of its own', Taken <> Lone);
+
+  { And the number it had is free again once it closes. }
+  F.actCloseTabExecute(nil);
+  Pump;
+  F.actNewExecute(nil);
+  Pump;
+  CheckEq('a number goes back into the pool when its document closes',
+    Taken, F.ActiveTab.Document.DisplayName);
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  Pump;
+end;
+
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
@@ -5729,6 +5801,7 @@ begin
   TestSpelling(F);
   TestMeditTrim(F);
   TestBundledFont(F);
+  TestUntitledNumbering(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   WriteLn;
