@@ -149,7 +149,6 @@ type
   TLedDocuments = class(TComponent)
   private
     FItems: TObjectList;        // owns the documents
-    FNextUntitled: Integer;
     function GetCount: Integer;
     function GetItem(AIndex: Integer): TLedDocument;
   public
@@ -956,7 +955,6 @@ constructor TLedDocuments.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   FItems := TObjectList.Create(True);
-  FNextUntitled := 1;
 end;
 
 destructor TLedDocuments.Destroy;
@@ -975,11 +973,40 @@ begin
   Result := TLedDocument(FItems[AIndex]);
 end;
 
+{ The lowest number not currently in use, rather than one more than the last
+  one ever handed out.
+
+  A counter that only ever climbs is invisible until something makes closing
+  easy.  Closing the last tab opens a fresh untitled document to replace it,
+  so clicking the tab strip's close button repeatedly walked the title up --
+  Untitled 9, 10, 11 -- with one empty document on screen the whole time.
+  File > Close always did the same; the button just made it something you
+  would sit there doing.
+
+  Reuse keeps the numbers to as many as there are documents, so closing and
+  reopening comes back to Untitled 1 instead of counting the session's
+  accidents.  Result is not in FItems yet, so it cannot collide with itself. }
 function TLedDocuments.NewDocument: TLedDocument;
+var
+  i, N: Integer;
+  Taken: Boolean;
 begin
   Result := TLedDocument.Create(nil);
-  Result.UntitledNo := FNextUntitled;
-  Inc(FNextUntitled);
+
+  N := 0;
+  repeat
+    Inc(N);
+    Taken := False;
+    for i := 0 to FItems.Count - 1 do
+      if TLedDocument(FItems[i]).IsUntitled and
+         (TLedDocument(FItems[i]).UntitledNo = N) then
+      begin
+        Taken := True;
+        Break;
+      end;
+  until not Taken;
+
+  Result.UntitledNo := N;
   FItems.Add(Result);
 end;
 
