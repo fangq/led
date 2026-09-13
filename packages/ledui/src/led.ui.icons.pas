@@ -16,7 +16,7 @@ unit Led.UI.Icons;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls;
+  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls, Buttons;
 
 const
   LedWindowIconRes = 'LEDICONPNG';   { see packaging/windows/led.rc }
@@ -74,6 +74,23 @@ procedure LedApplyWindowIcon;
   main bar, the debugger's, the breakpoint pane's -- and they should not each
   answer the pointer differently. }
 procedure LedStyleToolBar(ABar: TToolBar);
+
+type
+  { A speed button that answers the pointer the way a toolbar button does.
+
+    The toolbars LED builds by hand are not TToolBars: the file browser's nav
+    row, its crumbs and the dock's edge rails are all TSpeedButtons, which
+    OnPaintButton does not reach.  They went on drawing nothing under the
+    pointer after the main bar started to, which made them look disabled next
+    to it.
+
+    PaintBackground is the hook, rather than Paint: everything a speed button
+    draws on top -- the glyph, the caption, their positions, the shifted
+    content while it is held -- stays the widget's own job, as it should. }
+  TLedSpeedButton = class(TSpeedButton)
+  protected
+    procedure PaintBackground(var PaintRect: TRect); override;
+  end;
 
 { Draws one icon into ABitmap, which must already be sized. }
 procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
@@ -142,22 +159,58 @@ type
 var
   GToolPainter: TLedToolPainter = nil;
 
-procedure TLedToolPainter.Paint(Sender: TToolButton; State: Integer);
+{ ANum parts of A to ADen-ANum parts of B. }
+function Blend(A, B: TColor; ANum, ADen: Integer): TColor;
+var
+  Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
+  Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
+  Result := TColor(
+    (((Ra * ANum + Rb * (ADen - ANum)) div ADen) and $FF)
+    or ((((Ga * ANum + Gb * (ADen - ANum)) div ADen) and $FF) shl 8)
+    or ((((Ba * ANum + Bb * (ADen - ANum)) div ADen) and $FF) shl 16));
+end;
 
-  function Blend(A, B: TColor; ANum, ADen: Integer): TColor;
-  var
-    Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+{ The same three washes the toolbar painter uses, so a hand-built row of
+  speed buttons and a real toolbar react to the pointer identically. }
+procedure TLedSpeedButton.PaintBackground(var PaintRect: TRect);
+var
+  Bg, Wash: TColor;
+begin
+  Bg := clNone;
+  if Parent <> nil then Bg := Parent.Brush.Color;
+  if Bg = clNone then Bg := Color;
+  if Bg = clNone then Bg := clBtnFace;
+
+  Wash := clNone;
+  if Enabled then
   begin
-    A := ColorToRGB(A);
-    B := ColorToRGB(B);
-    Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
-    Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
-    Result := TColor(
-      (((Ra * ANum + Rb * (ADen - ANum)) div ADen) and $FF)
-      or ((((Ga * ANum + Gb * (ADen - ANum)) div ADen) and $FF) shl 8)
-      or ((((Ba * ANum + Bb * (ADen - ANum)) div ADen) and $FF) shl 16));
+    if FState in [bsDown, bsExclusive] then
+      Wash := Blend(clHighlight, Bg, 2, 5)
+    else if Down then
+      Wash := Blend(clHighlight, Bg, 3, 10)
+    else if MouseInControl then
+      Wash := Blend(clHighlight, Bg, 1, 5);
   end;
 
+  if not Transparent then
+  begin
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := Bg;
+    Canvas.FillRect(PaintRect);
+  end;
+  if Wash <> clNone then
+  begin
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := Wash;
+    Canvas.FillRect(PaintRect);
+  end;
+end;
+
+procedure TLedToolPainter.Paint(Sender: TToolButton; State: Integer);
 var
   Bar: TToolBar;
   C: TCanvas;

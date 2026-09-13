@@ -203,6 +203,10 @@ type
     procedure RebuildRails;
     procedure RefreshRails;
 
+    { A button on one of the rails, for the check that the rails shade under
+      the pointer like every other toolbar in LED. }
+    function RailButton(AEdge: TLedDockEdge; AIndex: Integer): TSpeedButton;
+
     { Whether a pane can be torn off by dragging its header or its tab.  Those
       are the only two things AnchorDocking gates on this -- splitters, and so
       resizing a pane, are untouched. }
@@ -1181,7 +1185,7 @@ begin
     Pane := TLedPaneForm(FPanes[i]);
     if Pane.Edge <> AEdge then Continue;
 
-    Btn := TSpeedButton.Create(Rail);
+    Btn := TLedSpeedButton.Create(Rail);
     Btn.Parent := Rail;
     Btn.Width := Size + Pad * 2;
     Btn.Height := Size + Pad * 2;
@@ -1253,6 +1257,22 @@ end;
 { Reflect which panes are actually open.  Called after LED changes a pane
   itself; the main form also calls it on idle, because a pane closed with the
   header's own close button never comes through here. }
+function TLedDockHost.RailButton(AEdge: TLedDockEdge;
+  AIndex: Integer): TSpeedButton;
+var
+  i, n: Integer;
+begin
+  Result := nil;
+  if FRails[AEdge] = nil then Exit;
+  n := 0;
+  for i := 0 to FRails[AEdge].ControlCount - 1 do
+    if FRails[AEdge].Controls[i] is TSpeedButton then
+    begin
+      if n = AIndex then Exit(TSpeedButton(FRails[AEdge].Controls[i]));
+      Inc(n);
+    end;
+end;
+
 procedure TLedDockHost.RefreshRails;
 var
   E: TLedDockEdge;

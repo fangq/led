@@ -23,7 +23,7 @@ function LedRunSelfTest: Integer;
 implementation
 
 uses
-  Classes, SysUtils, DateUtils, Forms, ComCtrls,
+  Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex,
@@ -4483,6 +4483,113 @@ end;
 { The edge rails.  A pane closed from its own header used to be reachable
   only through the View menu, because AnchorDocking removes it rather than
   collapsing it to something clickable. }
+{ What share of a speed button, as a percentage, changes when the pointer
+  moves onto it.
+
+  A speed button is a TGraphicControl -- no handle -- so it is painted onto
+  whatever it is parented to, and the only way to see what it drew is to
+  paint the parent and look at the button's rectangle.  Hovering is done with
+  CM_MOUSEENTER rather than by moving a pointer: that is the message the
+  widgetset sends, and it is what sets the flag the button paints from. }
+function HoverPixels(Btn: TSpeedButton): Integer;
+var
+  Host: TWinControl;
+  R: TRect;
+  x, y: Integer;
+
+  function Shot: TLazIntfImage;
+  var
+    Bmp: TBitmap;
+  begin
+    Bmp := TBitmap.Create;
+    try
+      Bmp.PixelFormat := pf32bit;
+      Bmp.SetSize(Host.Width, Host.Height);
+      Host.PaintTo(Bmp.Canvas, 0, 0);
+      Result := Bmp.CreateIntfImage;
+    finally
+      Bmp.Free;
+    end;
+  end;
+
+var
+  Cold, Hot: TLazIntfImage;
+  Area, Changed: Integer;
+begin
+  Result := -1;
+  if (Btn = nil) or (Btn.Parent = nil) then Exit;
+  Host := Btn.Parent;
+  if (Host.Width <= 0) or (Host.Height <= 0) then Exit;
+  R := Btn.BoundsRect;
+
+  Btn.Perform(CM_MOUSELEAVE, 0, 0);
+  Pump;
+  Cold := Shot;
+  try
+    Btn.Perform(CM_MOUSEENTER, 0, 0);
+    Pump;
+    Hot := Shot;
+    try
+      { A share, not a count.  Counting pixels alone does not tell the two
+        apart: gtk2 does draw something for a hot speed button -- a frame
+        around the edge, 45% of the button -- and a check that only asked
+        whether anything changed passed with LED's painting taken away.
+        What a wash does and a frame does not is cover the whole button. }
+      Changed := 0;
+      Area := 0;
+      for y := Max(0, R.Top) to Min(Hot.Height, R.Bottom) - 1 do
+        for x := Max(0, R.Left) to Min(Hot.Width, R.Right) - 1 do
+        begin
+          Inc(Area);
+          if Cold.Colors[x, y] <> Hot.Colors[x, y] then Inc(Changed);
+        end;
+      if Area > 0 then Result := (Changed * 100) div Area;
+    finally
+      Hot.Free;
+    end;
+  finally
+    Cold.Free;
+    Btn.Perform(CM_MOUSELEAVE, 0, 0);
+    Pump;
+  end;
+end;
+
+{ Every row of buttons in LED answers the pointer, not just the ones that
+  happen to be TToolBars.
+
+  The main toolbar got a painter of its own because gtk2 asks for
+  ttbButtonHot and draws nothing for it.  The file browser's nav row, its
+  crumbs and the dock's edge rails are speed buttons, which OnPaintButton
+  does not reach, so they kept drawing nothing and looked dead next to the
+  bar above them.
+
+  Counted in pixels rather than asked of a property: a painter can be
+  assigned and still put down no ink, which is how the toolbar check that
+  only asserted OnPaintButton was satisfied by a bar that shaded nothing. }
+procedure TestSpeedButtonHover(F: TLedMainForm);
+var
+  N: Integer;
+begin
+  Say('hover on the hand-built toolbars');
+
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+
+  if (F.Browser <> nil) and (F.Browser.NavButtonCount > 0) then
+  begin
+    N := HoverPixels(F.Browser.NavButton(0));
+    CheckGt('the browser nav buttons shade under the pointer', 90, N);
+  end;
+
+  F.Dock.ShowRails := True;
+  Pump; Pump;
+  N := HoverPixels(F.Dock.RailButton(ledLeft, 0));
+  CheckGt('and so do the edge rail buttons', 90, N);
+
+  F.Dock.HidePane('files');
+  Pump;
+end;
+
 procedure TestPaneRail(F: TLedMainForm);
 var
   Names: TStringArray;
@@ -7271,6 +7378,7 @@ begin
   TestAbsolutePathOnCommandLine(F);
   WriteLn;
   TestPaneRail(F);
+  TestSpeedButtonHover(F);
   WriteLn;
   TestFileBrowser(F);
   WriteLn;

@@ -177,6 +177,10 @@ type
     { How many buttons sit on the navigation row.  The breadcrumb trail is
       made of speed buttons too, so counting them by class finds both. }
     function NavButtonCount: Integer;
+    { The nav buttons themselves, for the check that they shade under the
+      pointer.  There is no drawing to look at from outside otherwise: a
+      speed button has no handle of its own to paint. }
+    function NavButton(AIndex: Integer): TSpeedButton;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
 
@@ -418,6 +422,21 @@ begin
     if FNav.Controls[i] is TSpeedButton then Inc(Result);
 end;
 
+function TLedFileBrowser.NavButton(AIndex: Integer): TSpeedButton;
+var
+  i, n: Integer;
+begin
+  Result := nil;
+  if FNav = nil then Exit;
+  n := 0;
+  for i := 0 to FNav.ControlCount - 1 do
+    if FNav.Controls[i] is TSpeedButton then
+    begin
+      if n = AIndex then Exit(TSpeedButton(FNav.Controls[i]));
+      Inc(n);
+    end;
+end;
+
 function TLedFileBrowser.SplitterTarget: TControl;
 begin
   Result := nil;
@@ -430,7 +449,7 @@ var
 
   function MakeNavButton(const AIcon, AHint: string; ALeft: Integer): TSpeedButton;
   begin
-    Result := TSpeedButton.Create(Self);
+    Result := TLedSpeedButton.Create(Self);
     Result.Parent := FNav;
     { Plain numbers, not LedScale96.  The browser is built in FormCreate, so
       the startup sweep still has AutoAdjustLayout to run over it and scales
@@ -823,7 +842,7 @@ var
   function AddCrumb(const ACaption, AHint: string;
     AWidth: Integer): TSpeedButton;
   begin
-    Result := TSpeedButton.Create(FCrumbs);
+    Result := TLedSpeedButton.Create(FCrumbs);
     Result.Parent := FCrumbs;
     Result.Caption := ACaption;
     Result.Left := X;

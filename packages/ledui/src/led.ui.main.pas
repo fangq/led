@@ -3539,7 +3539,7 @@ begin
       Host.FullRepaint := False;
       FTabCloseHost[i] := Host;
 
-      Btn := TSpeedButton.Create(Self);
+      Btn := TLedSpeedButton.Create(Self);
       Btn.Parent := Host;
       Btn.Align := alClient;
       Btn.Flat := True;
