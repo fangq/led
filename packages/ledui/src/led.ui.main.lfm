@@ -541,7 +541,7 @@ object LedMainForm: TLedMainForm
       OnExecute = actReportBugExecute
     end
     object actAbout: TAction
-      Caption = '&About led'
+      Caption = '&About LED'
       ImageIndex = 37
       OnExecute = actAboutExecute
     end

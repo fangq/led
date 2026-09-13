@@ -82,6 +82,17 @@ begin
   end;
 end;
 
+{ How many of a menu's entries the user can actually see. }
+function VisibleItems(AParent: TMenuItem): Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  if AParent = nil then Exit;
+  for i := 0 to AParent.Count - 1 do
+    if AParent.Items[i].Visible then Inc(Result);
+end;
+
 procedure CheckEq(const AName: string; const AExpected, AActual: string);
 begin
   Inc(Checks);
@@ -673,7 +684,13 @@ begin
 
   for i := 0 to 9 do V.ClearBookMark(i);
   F.PopulateBookmarkMenu;
-  CheckEqInt('with none set the menu is empty', 0, F.miBookmarks.Count);
+  { Nothing shown -- which is not the same as nothing there.  A dynamic
+    submenu is refilled from its own parent's OnClick, so its old contents
+    are hidden rather than destroyed: freeing the widgets of a menu gtk is in
+    the middle of opening is what crashed LED when the pointer was swept
+    quickly along the menu bar. }
+  CheckEqInt('with none set the menu shows nothing', 0,
+    VisibleItems(F.miBookmarks));
   Check('and says so', not F.miBookmarks.Enabled);
 
   F.ActiveTab.Document.Master.Modified := False;
@@ -4196,6 +4213,8 @@ var
   Path, MakeDir: string;
   MenuFont, MenuFace: string;
   MenuSize: Integer;
+  FirstTheme, FirstLang: TMenuItem;
+  ThemeCount, LangCount: Integer;
   L: TStringList;
 
   function CountLeaves(AItem: TMenuItem): Integer;
@@ -4221,6 +4240,50 @@ begin
   Check('the language menu has entries', CountLeaves(F.miLanguage) > 100);
   Check('the encoding menu has entries', F.miEncoding.Count > 5);
   Check('the line-ending menu has three', F.miLineEnd.Count = 3);
+
+  { Refilling one must not destroy what is in it.
+
+    Every dynamic menu here is refilled from its own parent item's OnClick,
+    which is the moment gtk is opening that very submenu.  Emptying it first
+    destroyed the widgets of a menu the toolkit was in the middle of showing:
+    the shell went on drawing entries it no longer owned -- several of them
+    highlighted at once -- and sweeping the pointer along the menu bar fast
+    enough to refill one menu after another ended in an access violation
+    inside gtk, with nothing of LED's on the stack to say so.
+
+    Reported twice from use, and reproduced here by refilling the same menus
+    the way a hover does.  The property that makes it safe is that the items
+    survive: the same objects, in the same order, with their captions
+    rewritten. }
+  FirstTheme := nil;
+  if F.miTheme.Count > 0 then FirstTheme := F.miTheme.Items[0];
+  FirstLang := nil;
+  if F.miLanguage.Count > 0 then FirstLang := F.miLanguage.Items[0];
+  ThemeCount := F.miTheme.Count;
+  LangCount := F.miLanguage.Count;
+
+  for i := 1 to 5 do
+  begin
+    F.PopulateThemeMenu;
+    F.PopulateLanguageMenu;
+    F.PopulateEncodingMenu;
+    F.PopulateLineEndMenu;
+    F.PopulateToolMenu;
+    F.PopulateRecentMenu;
+    F.PopulateDocMenu;
+  end;
+
+  Check('refilling a menu keeps the item that was there',
+    (FirstTheme <> nil) and (F.miTheme.Count > 0) and
+    (F.miTheme.Items[0] = FirstTheme));
+  Check('and so does a menu of submenus',
+    (FirstLang <> nil) and (F.miLanguage.Count > 0) and
+    (F.miLanguage.Items[0] = FirstLang));
+  CheckEqInt('and it does not grow each time', ThemeCount, F.miTheme.Count);
+  CheckEqInt('nor does the one with submenus', LangCount,
+    F.miLanguage.Count);
+  Check('and the contents are still right',
+    (CountLeaves(F.miLanguage) > 100) and (F.miTheme.Count = LedThemes.Count));
 
   { Eight of the ninety-seven actions carried a Hint, so hovering almost any
     toolbar button produced nothing at all -- a TToolButton shows its

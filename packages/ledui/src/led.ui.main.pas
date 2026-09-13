@@ -569,11 +569,8 @@ type
       a submenu, so the handler that was supposed to fill it never ran and
       the menu was permanently empty. }
     procedure PopulateAllMenus;
-    procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
-    procedure PopulateLanguageMenu;
     procedure LanguageItemClick(Sender: TObject);
-    procedure PopulateThemeMenu;
     { The toolbar's theme chooser: a palette with a drop-down of the eight
       shipped schemes.  Built here rather than in the form file because the
       list is read from data/themes at run time, and a menu written into the
@@ -582,9 +579,7 @@ type
     procedure ThemeMenuPopup(Sender: TObject);
     procedure ThemeButtonClick(Sender: TObject);
     procedure ThemeItemClick(Sender: TObject);
-    procedure PopulateEncodingMenu;
     procedure EncodingItemClick(Sender: TObject);
-    procedure PopulateLineEndMenu;
     procedure LineEndItemClick(Sender: TObject);
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
@@ -622,6 +617,8 @@ type
     { Empties a dynamic submenu without destroying its items mid-event.  See
       the implementation for why TMenuItem.Clear cannot be used here. }
     procedure ClearMenu(AItem: TMenuItem);
+    function MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
+    procedure TrimMenu(AParent: TMenuItem; AUsed: Integer);
 
     { Crash recovery.  The journal is reconciled wholesale on a timer rather
       than hooked into every save and close path, because there are several of
@@ -704,6 +701,13 @@ type
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
     procedure PopulateContextTools;
+    { Public for the check that refilling a menu does not destroy what is in
+      it -- which is what a hover does, and what used to crash. }
+    procedure PopulateThemeMenu;
+    procedure PopulateLanguageMenu;
+    procedure PopulateEncodingMenu;
+    procedure PopulateLineEndMenu;
+    procedure PopulateRecentMenu;
     { Public alongside PopulateBookmarkMenu, for the same reason: a check has
       to be able to build the menu and then read what a user would see. }
     procedure PopulateDocMenu;
@@ -1139,13 +1143,13 @@ end;
 
 procedure TLedMainForm.PopulateToolMenu;
 var
-  i, Shown: Integer;
+  i, Shown, Slot: Integer;
   Item: TMenuItem;
   Tool: TLedTool;
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  ClearMenu(miToolList);
+  Slot := 0;
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
@@ -1165,14 +1169,15 @@ begin
       than shown greyed: the Tools menu is long enough already. }
     if not Tool.AppliesTo(LangId, FileName) then Continue;
 
-    Item := TMenuItem.Create(miToolList);
+    Item := MenuSlot(miToolList, Slot);
+    Inc(Slot);
     Item.Caption := Tool.Name;
     Item.Hint := Tool.Id;
     Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
     Item.OnClick := @ToolItemClick;
-    miToolList.Add(Item);
     Inc(Shown);
   end;
+  TrimMenu(miToolList, Slot);
 
   miToolList.Caption := 'Run';
   miToolList.Enabled := Shown > 0;
@@ -2019,17 +2024,16 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  ClearMenu(miOpenRecent);
   for i := 0 to FRecent.Count - 1 do
   begin
-    Item := TMenuItem.Create(miOpenRecent);
+    Item := MenuSlot(miOpenRecent, i);
     { The path is the caption; ampersands in a file name would otherwise
       become accelerators. }
     Item.Caption := StringReplace(FRecent[i], '&', '&&', [rfReplaceAll]);
     Item.Hint := FRecent[i];
     Item.OnClick := @RecentItemClick;
-    miOpenRecent.Add(Item);
   end;
+  TrimMenu(miOpenRecent, FRecent.Count);
   miOpenRecent.Enabled := FRecent.Count > 0;
 end;
 
@@ -2331,19 +2335,18 @@ var
   Item: TMenuItem;
   Label_: string;
 begin
-  ClearMenu(miBookmarks);
   Marks := LedCollectBookmarks(CurrentView);
   for i := 0 to High(Marks) do
   begin
-    Item := TMenuItem.Create(miBookmarks);
+    Item := MenuSlot(miBookmarks, i);
     Label_ := Marks[i].Text;
     if Length(Label_) > 48 then Label_ := Copy(Label_, 1, 45) + '...';
     if Label_ = '' then Label_ := '(blank line)';
     Item.Caption := Format('%d:  %s', [Marks[i].Line, Label_]);
     Item.Tag := Marks[i].Line;
     Item.OnClick := @BookmarkItemClick;
-    miBookmarks.Add(Item);
   end;
+  TrimMenu(miBookmarks, Length(Marks));
   miBookmarks.Enabled := Length(Marks) > 0;
   if Length(Marks) = 0 then
     miBookmarks.Caption := 'Bookmarks  (none set)'
@@ -2468,7 +2471,6 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miEncoding);
   if ActiveTab = nil then Exit;
   Current := ActiveTab.Document.Info.Encoding;
 
@@ -2477,14 +2479,14 @@ begin
     GetSupportedEncodings(Ids);
     for i := 0 to Ids.Count - 1 do
     begin
-      Item := TMenuItem.Create(miEncoding);
+      Item := MenuSlot(miEncoding, i);
       Item.Caption := Ids[i];
       Item.Hint := Ids[i];
       Item.RadioItem := True;
       Item.Checked := SameText(LedNormaliseEncoding(Ids[i]), Current);
       Item.OnClick := @EncodingItemClick;
-      miEncoding.Add(Item);
     end;
+    TrimMenu(miEncoding, Ids.Count);
   finally
     Ids.Free;
   end;
@@ -2514,18 +2516,17 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  ClearMenu(miLineEnd);
   if ActiveTab = nil then Exit;
   for i := 0 to High(Choices) do
   begin
-    Item := TMenuItem.Create(miLineEnd);
+    Item := MenuSlot(miLineEnd, i);
     Item.Caption := Labels[i];
     Item.Tag := Ord(Choices[i]);
     Item.RadioItem := True;
     Item.Checked := ActiveTab.Document.Info.LineEnd = Choices[i];
     Item.OnClick := @LineEndItemClick;
-    miLineEnd.Add(Item);
   end;
+  TrimMenu(miLineEnd, Length(Choices));
 end;
 
 procedure TLedMainForm.LineEndItemClick(Sender: TObject);
@@ -2546,28 +2547,28 @@ end;
 procedure TLedMainForm.PopulateLanguageMenu;
 var
   L: TStringList;
-  i: Integer;
+  i, Slot, GroupSlot: Integer;
   Item, Group: TMenuItem;
   Lang: TLedLangInfo;
   Section, Current: string;
 begin
-  ClearMenu(miLanguage);
   Current := '';
   if ActiveTab <> nil then
     Current := ActiveTab.Document.Config.GetStr(LedSetLang);
 
-  Item := TMenuItem.Create(miLanguage);
+  Item := MenuSlot(miLanguage, 0);
   Item.Caption := 'None';
   Item.Hint := '';
   Item.RadioItem := True;
   Item.Checked := Current = '';
   Item.OnClick := @LanguageItemClick;
-  miLanguage.Add(Item);
+  Slot := 1;
 
   L := TStringList.Create;
   try
     LedLanguages.ListForMenu(L);
     Group := nil;
+    GroupSlot := 0;
     Section := '';
     for i := 0 to L.Count - 1 do
     begin
@@ -2576,12 +2577,15 @@ begin
         the section the grammar declares -- Source, Script, Markup and so on. }
       if Lang.Section <> Section then
       begin
+        if Group <> nil then TrimMenu(Group, GroupSlot);
         Section := Lang.Section;
-        Group := TMenuItem.Create(miLanguage);
+        Group := MenuSlot(miLanguage, Slot);
+        Inc(Slot);
         Group.Caption := Section;
-        miLanguage.Add(Group);
+        GroupSlot := 0;
       end;
-      Item := TMenuItem.Create(Group);
+      Item := MenuSlot(Group, GroupSlot);
+      Inc(GroupSlot);
       Item.Caption := Lang.Name;
       if not LedHasHighlighter(Lang.Id) then
         { Honest about what is only recognised rather than coloured. }
@@ -2590,8 +2594,9 @@ begin
       Item.RadioItem := True;
       Item.Checked := SameText(Lang.Id, Current);
       Item.OnClick := @LanguageItemClick;
-      Group.Add(Item);
     end;
+    if Group <> nil then TrimMenu(Group, GroupSlot);
+    TrimMenu(miLanguage, Slot);
   finally
     L.Free;
   end;
@@ -2673,18 +2678,17 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miTheme);
   Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
   for i := 0 to LedThemes.Count - 1 do
   begin
-    Item := TMenuItem.Create(miTheme);
+    Item := MenuSlot(miTheme, i);
     Item.Caption := LedThemes[i].Name;
     Item.Hint := LedThemes[i].Id;
     Item.RadioItem := True;
     Item.Checked := SameText(LedThemes[i].Id, Current);
     Item.OnClick := @ThemeItemClick;
-    miTheme.Add(Item);
   end;
+  TrimMenu(miTheme, LedThemes.Count);
 end;
 
 procedure TLedMainForm.ThemeItemClick(Sender: TObject);
@@ -2929,6 +2933,61 @@ end;
   finished with it.  Detaching first matters too -- the item must be out of
   the menu before the new contents go in, or the old entries are still drawn.
 }
+{ One slot of a rebuilt submenu.
+
+  Every dynamic menu in LED is filled from its own parent item's OnClick,
+  because that is the only moment its contents can be current -- and it used
+  to be emptied first.  Emptying destroys the gtk widgets of a menu the
+  toolkit is in the middle of opening.  The shell goes on drawing items it no
+  longer owns, which is the several-entries-highlighted-at-once report, and
+  sweeping the pointer along the menu bar fast enough to rebuild one menu
+  after another ends in an access violation inside gtk with nothing of LED's
+  on the stack.
+
+  So nothing is destroyed.  The item already in that position is reused, its
+  caption and state rewritten; only a submenu that has grown gets a new one,
+  and one that has shrunk hides the remainder.  A repeated hover -- which is
+  what almost every one of these rebuilds is -- then touches no widget at
+  all.
+
+  RadioItem is deliberately not reset: changing it makes the LCL destroy and
+  recreate the widget, which is the thing being avoided.  Each menu sets it
+  the same way every time, so a reused slot already has the right kind. }
+function TLedMainForm.MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
+begin
+  Result := nil;
+  if AParent = nil then Exit;
+  if AIndex < AParent.Count then
+  begin
+    Result := AParent.Items[AIndex];
+    { Back to a blank slot, or a tick or a handler from the last use rides
+      along into the new contents. }
+    Result.Checked := False;
+    Result.Enabled := True;
+    Result.Visible := True;
+    Result.Hint := '';
+    Result.Tag := 0;
+    Result.ImageIndex := -1;
+    Result.OnClick := nil;
+    Exit;
+  end;
+  Result := TMenuItem.Create(AParent);
+  AParent.Add(Result);
+end;
+
+procedure TLedMainForm.TrimMenu(AParent: TMenuItem; AUsed: Integer);
+var
+  i: Integer;
+begin
+  if AParent = nil then Exit;
+  for i := AUsed to AParent.Count - 1 do
+  begin
+    AParent.Items[i].Visible := False;
+    AParent.Items[i].Checked := False;
+    AParent.Items[i].OnClick := nil;
+  end;
+end;
+
 procedure TLedMainForm.ClearMenu(AItem: TMenuItem);
 var
   i: Integer;
@@ -3088,20 +3147,19 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miHeaderStyle);
   Current := FDock.HeaderStyle;
   Names := FDock.HeaderStyleNames;
   for i := 0 to High(Names) do
   begin
-    Item := TMenuItem.Create(miHeaderStyle);
+    Item := MenuSlot(miHeaderStyle, i);
     Item.Caption := LedHeaderStyleCaption(Names[i]);
     { The real name travels in Hint, because the caption is now a label and
       no longer something the dock would recognise. }
     Item.Hint := Names[i];
     Item.Checked := SameText(Names[i], Current);
     Item.OnClick := @HeaderStylePicked;
-    miHeaderStyle.Add(Item);
   end;
+  TrimMenu(miHeaderStyle, Length(Names));
 end;
 
 { Split Notebook toggles: the same item puts the window back together, which
@@ -4844,18 +4902,17 @@ var
   Item: TMenuItem;
   Names: TStringList;
 begin
-  ClearMenu(miReopenEncoding);
   Names := TStringList.Create;
   try
     GetSupportedEncodings(Names);
     for i := 0 to Names.Count - 1 do
     begin
-      Item := TMenuItem.Create(miReopenEncoding);
+      Item := MenuSlot(miReopenEncoding, i);
       Item.Caption := Names[i];
       Item.Hint := Names[i];
       Item.OnClick := @ReopenEncodingItemClick;
-      miReopenEncoding.Add(Item);
     end;
+    TrimMenu(miReopenEncoding, Names.Count);
   finally
     Names.Free;
   end;
@@ -5030,12 +5087,13 @@ end;
 
 procedure TLedMainForm.PopulateDocMenu;
 var
+  Slot: Integer;
   i: Integer;
   Item: TMenuItem;
   Tab: TLedTab;
   Tabs: TFPList;
 begin
-  ClearMenu(miDocList);
+  Slot := 0;
   Tabs := TFPList.Create;
   try
     { CollectTabs, not FBook alone: with the notebook split there is a second
@@ -5046,7 +5104,8 @@ begin
     begin
       Tab := TLedTab(Tabs[i]);
       if Tab = nil then Continue;
-      Item := TMenuItem.Create(miDocList);
+      Item := MenuSlot(miDocList, Slot);
+      Inc(Slot);
       Item.Caption := Tab.Document.DisplayName;
       if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
       Item.Tag := i;
@@ -5055,8 +5114,8 @@ begin
         pane-header style menu had. }
       Item.Checked := Tab = ActiveTab;
       Item.OnClick := @DocItemClick;
-      miDocList.Add(Item);
     end;
+    TrimMenu(miDocList, Slot);
   finally
     Tabs.Free;
   end;
@@ -5241,12 +5300,13 @@ procedure TLedMainForm.PopulateSpellMenu;
 var
   V: TLedEdit;
   Line, Word: string;
-  Start, Len, i: Integer;
+  Start, Len, i, Slot: Integer;
   Sugg: TStringList;
   Item: TMenuItem;
   ClickPos: TPoint;
 begin
-  ClearMenu(miSpelling);
+  Slot := 0;
+  TrimMenu(miSpelling, 0);
   miSpelling.Enabled := False;
   miSpelling.Visible := LedPrefs.GetBool('Editor/spell_enabled', False);
   mcSpellSep.Visible := miSpelling.Visible;
@@ -5281,38 +5341,40 @@ begin
     LedSpell.Suggest(Word, Sugg);
     for i := 0 to Sugg.Count - 1 do
     begin
-      Item := TMenuItem.Create(miSpelling);
+      Item := MenuSlot(miSpelling, Slot);
+      Inc(Slot);
       Item.Caption := Sugg[i];
       Item.Hint := IntToStr(Start) + ':' + IntToStr(Len);
       Item.OnClick := @SpellSuggestClick;
-      miSpelling.Add(Item);
     end;
     if Sugg.Count = 0 then
     begin
-      Item := TMenuItem.Create(miSpelling);
+      Item := MenuSlot(miSpelling, Slot);
+      Inc(Slot);
       Item.Caption := '(no suggestions)';
       Item.Enabled := False;
-      miSpelling.Add(Item);
     end;
   finally
     Sugg.Free;
   end;
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := '-';
-  miSpelling.Add(Item);
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := 'Add to Dictionary';
   Item.Hint := Word;
   Item.OnClick := @SpellAddClick;
-  miSpelling.Add(Item);
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := 'Ignore for Now';
   Item.Hint := Word;
   Item.OnClick := @SpellIgnoreClick;
-  miSpelling.Add(Item);
+
+  TrimMenu(miSpelling, Slot);
 end;
 
 procedure TLedMainForm.SpellSuggestClick(Sender: TObject);
@@ -5366,13 +5428,13 @@ end;
 
 procedure TLedMainForm.PopulateContextTools;
 var
-  i, Shown: Integer;
+  i, Shown, Slot: Integer;
   Item: TMenuItem;
   Tool: TLedTool;
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  ClearMenu(miCtxTools);
+  Slot := 0;
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
@@ -5390,14 +5452,15 @@ begin
     { Only the tools that asked to be here, and only where they apply. }
     if Tool.Place <> ltpContext then Continue;
     if not Tool.AppliesTo(LangId, FileName) then Continue;
-    Item := TMenuItem.Create(miCtxTools);
+    Item := MenuSlot(miCtxTools, Slot);
+    Inc(Slot);
     Item.Caption := Tool.Name;
     Item.Hint := Tool.Id;
     Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
     Item.OnClick := @ToolItemClick;
-    miCtxTools.Add(Item);
     Inc(Shown);
   end;
+  TrimMenu(miCtxTools, Slot);
 
   miCtxTools.Caption := 'Tools';
   miCtxTools.Enabled := Shown > 0;
