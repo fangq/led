@@ -4783,6 +4783,97 @@ end;
   line under a click.  Only the first can be driven from here -- a click needs
   a mouse over a laid-out page -- but the mapping itself is the same one, and
   the headless tests cover the ids in the markup. }
+{ Clicking the page moves the caret, and leaves the page where it was.
+
+  The two directions of the sync fought each other.  A click reports the
+  source line it was made from, the caret goes there, the text view scrolls
+  to show the caret -- and that scroll is reported back as a request to put
+  the preview at whatever line is now the top one.  That is a different line
+  from the clicked one, and usually a different block, so the paragraph the
+  reader had just clicked jumped away from under the pointer.
+
+  The click is delivered through OnJumpToLine rather than by clicking the
+  widget: the pane reads the block under the pointer from the HTML control's
+  own hit-testing, which needs a real pointer over a laid-out page.
+  Everything downstream of that -- which is all of what broke -- is the same
+  code either way. }
+procedure TestPreviewClickKeepsPage(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+  i, Before, After, Target: Integer;
+  V: TLedEdit;
+begin
+  Say('preview click');
+  if F.Preview = nil then Exit;
+
+  P := TempName('clicked.md');
+  L := TStringList.Create;
+  try
+    { Long enough that the page scrolls and that the caret landing in the
+      middle puts a different block at the top of the text view. }
+    for i := 1 to 40 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      L.Add('Paragraph ' + IntToStr(i) + ' of the document.');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  F.actTogglePreviewExecute(nil);
+  Pump;
+  Check('the preview rendered the long document', F.Preview.RenderNow);
+
+  { The reader has scrolled down the page and is looking at a block in the
+    middle of it. }
+  Target := 4 * 20 + 1;          { the heading of section 21 }
+  F.Preview.ScrollToLine(Target);
+  Pump;
+  Before := F.Preview.ScrollPos;
+  CheckGt('the page is scrolled down before the click', 0, Before);
+
+  { A click on the paragraph under that heading. }
+  if Assigned(F.Preview.OnJumpToLine) then
+    F.Preview.OnJumpToLine(F.Preview, Target + 2);
+  Pump; Pump;
+
+  V := F.ActiveView;
+  if V <> nil then
+    CheckEqInt('the click put the caret on the line it was made from',
+      Target + 2, V.CaretY);
+
+  After := F.Preview.ScrollPos;
+  CheckEqInt('and left the page where the reader had it', Before, After);
+
+  { The same request arriving late.  The flag only covers the scroll SynEdit
+    reports from inside the move; a widgetset that scrolls again afterwards --
+    on the focus change, or on the next repaint -- delivers exactly this, and
+    it has to be just as harmless.  Asked for by hand because headless the
+    late one does not come. }
+  if V <> nil then
+  begin
+    F.Preview.ScrollToLine(V.TopLine);
+    Pump;
+    CheckEqInt('and a sync arriving after the jump moves nothing either',
+      Before, F.Preview.ScrollPos);
+  end;
+
+  F.Dock.EdgeVisible[ledRight] := False;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 procedure TestPreviewLineMapping(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -7164,6 +7255,7 @@ begin
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
+  TestPreviewClickKeepsPage(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);

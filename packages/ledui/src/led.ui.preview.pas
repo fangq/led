@@ -95,6 +95,21 @@ type
       a line inside a paragraph scrolls to the paragraph. }
     function ScrollToLine(ALine: Integer): Boolean;
 
+    { Says the page is already showing the block ALine belongs to, without
+      scrolling it there.  This is how a click on the page keeps the page
+      still: the caret lands on the clicked line, the text view scrolls to
+      put the caret somewhere comfortable, and the scroll comes back here as
+      a sync request for whatever line ended up at the top -- a different
+      line, and often a different block, from the one that was clicked.
+      Telling the pane where the text now is stops that request moving the
+      thing the reader just clicked on. }
+    procedure AssumeSynced(ALine: Integer);
+
+    { Where the page is scrolled to, in pixels.  For the self-test, which
+      otherwise has no way to tell a page that stayed still from one that
+      was scrolled back to where it started. }
+    function ScrollPos: Integer;
+
     { Clicking a place in the page reports the line it was made from, which is
       how the text view follows the preview. }
     property OnJumpToLine: TLedPreviewLineEvent
@@ -404,6 +419,19 @@ begin
   end;
 end;
 
+function TLedPreviewPane.ScrollPos: Integer;
+begin
+  Result := FHtml.VScrollPos;
+end;
+
+procedure TLedPreviewPane.AssumeSynced(ALine: Integer);
+var
+  N: Integer;
+begin
+  N := NearestLineId(ALine);
+  if N > 0 then FSyncedLine := N;
+end;
+
 procedure TLedPreviewPane.HtmlClicked(Sender: TObject);
 var
   L: Integer;
@@ -411,11 +439,11 @@ begin
   if not Assigned(FOnJumpToLine) then Exit;
   L := LineUnderCursor;
   if L <= 0 then Exit;
-  { The text view is about to move, and its move comes back here as a scroll
-    request.  Recording the block now means that round trip finds the preview
-    already where it should be and leaves it alone, instead of jumping the
-    thing the reader just clicked to the top of the pane. }
-  FSyncedLine := NearestLineId(L);
+  { The caller is responsible for keeping the page still across the jump --
+    see AssumeSynced.  Recording the clicked block here instead was not
+    enough: the request that comes back carries the view's top line, not the
+    line that was clicked, and those are the same block only when the click
+    happened to be at the top of the text view. }
   FOnJumpToLine(Self, L);
 end;
 

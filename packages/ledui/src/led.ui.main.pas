@@ -510,6 +510,9 @@ type
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
+    { Set while a click on the preview is moving the caret, so the scroll that
+      move causes does not come straight back and move the page. }
+    FPreviewJumping: Boolean;
     FCheckingDisk: Boolean;
     { One per tab group: the button at the right-hand end of the tab strip
       that closes the current tab. }
@@ -3892,6 +3895,7 @@ var
   View: TLedEdit;
 begin
   if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  if FPreviewJumping then Exit;
   View := ActiveView;
   if View = nil then Exit;
   FPreview.ScrollToLine(View.TopLine);
@@ -3905,7 +3909,24 @@ var
 begin
   View := ActiveView;
   if View = nil then Exit;
-  LedGotoLine(View, ALine);
+  { The page stays where it is.  Moving the caret scrolls the text view, and
+    that scroll is reported straight back as a request to sync the preview to
+    whatever line is now at the top -- which is not the line that was clicked
+    and usually not even its block, so the reader's click moved the page out
+    from under them.
+
+    Two halves, because the scroll arrives in two ways.  The flag covers the
+    status change SynEdit raises inside the move, and telling the pane where
+    the text ended up covers anything that arrives after, from a later
+    autoscroll or a repaint. }
+  FPreviewJumping := True;
+  try
+    LedGotoLine(View, ALine);
+  finally
+    FPreviewJumping := False;
+  end;
+  if FPreview <> nil then
+    FPreview.AssumeSynced(View.TopLine);
   LedTryFocus(View);
 end;
 
