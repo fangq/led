@@ -607,6 +607,7 @@ type
     function TabOnPage(APage: TCustomPage): TLedTab;
     procedure SetActiveBook(AIndex: Integer);
     procedure BookEnter(Sender: TObject);
+    procedure TabStripHint(Sender: TObject; X, Y: Integer);
     procedure BookTabMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure BookTabMouseMove(Sender: TObject; Shift: TShiftState;
@@ -936,6 +937,12 @@ begin
   FBook.OnChange := @BookChange;
   FBook.OnEnter := @BookEnter;
   FBook.OnResize := @BookResize;
+  { The same three the second group gets.  They carry both the tab drag and
+    the strip's hint, and the first group had neither -- dragging a tab to
+    reorder it worked only in a split view, which is the half nobody uses. }
+  FBook.OnMouseDown := @BookTabMouseDown;
+  FBook.OnMouseMove := @BookTabMouseMove;
+  FBook.OnMouseUp := @BookTabMouseUp;
   FBook.Images := ImageList1;
   FBook.PopupMenu := PopupTab;
 
@@ -3138,6 +3145,49 @@ end;
   which tab it landed on; the move only counts as a drag once the pointer has
   travelled far enough that it cannot be a click, otherwise every click on a
   tab would shuffle the strip. }
+{ The full path of the tab under the pointer, shown on the strip and nowhere
+  else.
+
+  It used to be the page's own hint.  A TTabSheet fills the notebook, and its
+  children inherit its hint through ParentShowHint, so resting the pointer
+  anywhere in the text raised a tooltip with the file's path over the line
+  being read.  The strip is the part that truncates a caption and the part a
+  path answers a question about, so the hint belongs to it.
+
+  Set on the notebook, whose own mouse events only reach it where no page
+  covers it -- which is the strip. }
+procedure TLedMainForm.TabStripHint(Sender: TObject; X, Y: Integer);
+var
+  Book: TPageControl;
+  Idx: Integer;
+  Tab: TLedTab;
+  Want: string;
+begin
+  if not (Sender is TPageControl) then Exit;
+  Book := TPageControl(Sender);
+
+  Want := '';
+  Idx := Book.IndexOfTabAt(X, Y);
+  if (Idx >= 0) and (Idx < Book.PageCount) then
+  begin
+    Tab := TabOnPage(Book.Pages[Idx]);
+    if Tab <> nil then
+    begin
+      if Tab.Document.FileName <> '' then
+        Want := Tab.Document.FileName
+      else
+        Want := Tab.Document.DisplayName;
+    end;
+  end;
+
+  if Want = Book.Hint then Exit;
+  Book.Hint := Want;
+  Book.ShowHint := Want <> '';
+  { Moving from one tab to the next is still one hover as far as the LCL is
+    concerned, so without this the first tab's path stays up over the second. }
+  Application.CancelHint;
+end;
+
 procedure TLedMainForm.BookTabMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 var
@@ -3160,6 +3210,8 @@ procedure TLedMainForm.BookTabMouseMove(Sender: TObject; Shift: TShiftState;
 var
   Target: Integer;
 begin
+  TabStripHint(Sender, X, Y);
+
   if (FDragTabBook = nil) or (FDragTabIndex < 0) then Exit;
   if not (ssLeft in Shift) then Exit;
 
@@ -3906,13 +3958,12 @@ begin
     ATab.Sheet.ImageIndex :=
       LedIconIndex(LedIconForFile(ATab.Document.FileName));
   ATab.Sheet.Caption := S;
-  { The strip truncates a caption long before a path runs out, and two files
-    of the same name in different folders are otherwise indistinguishable. }
-  if ATab.Document.FileName <> '' then
-    ATab.Sheet.Hint := ATab.Document.FileName
-  else
-    ATab.Sheet.Hint := ATab.Document.DisplayName;
-  ATab.Sheet.ShowHint := True;
+  { The path is shown on the strip, by TabStripHint, and not from here.  A
+    hint on the page is inherited by everything on it, so this one followed
+    the pointer into the text and raised the file's path over the line being
+    read. }
+  ATab.Sheet.Hint := '';
+  ATab.Sheet.ShowHint := False;
 end;
 
 procedure TLedMainForm.DocChanged(ADoc: TLedDocument);

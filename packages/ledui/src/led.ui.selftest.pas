@@ -3400,6 +3400,7 @@ procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
   TabForIcon: TLedTab;
+  HintRect: TRect;
   Root, Node: TTreeNode;
   RootRaised, BrowseDir, Names, Kinds, LinkDir, LinkPath: string;
   EditH, i, x, Tabs0, Tabs1: Integer;
@@ -3581,9 +3582,32 @@ begin
   begin
     CheckEqInt('a C file''s tab wears the source icon',
       LedIconIndex('filesource'), TabForIcon.Sheet.ImageIndex);
-    { And says where the file is, which the strip has no room for. }
-    CheckEq('and its hint carries the whole path',
-      BrowseDir + PathDelim + 'tab.c', TabForIcon.Sheet.Hint);
+    { And says where the file is, which the strip has no room for -- when the
+      pointer is on the strip, and only then.
+
+      The path used to be the page's hint.  A page fills the notebook and
+      its children inherit the hint, so resting the pointer anywhere in the
+      text raised a tooltip with the file's path over the line being read. }
+    Check('the page itself carries no hint',
+      (TabForIcon.Sheet.Hint = '') and (not TabForIcon.Sheet.ShowHint));
+    HintRect := F.Notebook.TabRect(TabForIcon.Sheet.PageIndex);
+    if Assigned(F.Notebook.OnMouseMove) then
+      F.Notebook.OnMouseMove(F.Notebook, [],
+        (HintRect.Left + HintRect.Right) div 2,
+        (HintRect.Top + HintRect.Bottom) div 2);
+    Pump;
+    CheckEq('and hovering its tab carries the whole path',
+      BrowseDir + PathDelim + 'tab.c', F.Notebook.Hint);
+    Check('and the hint is switched on for it', F.Notebook.ShowHint);
+
+    { Off the strip again -- below the tabs is the page, and the notebook's
+      own hint must not linger there. }
+    if Assigned(F.Notebook.OnMouseMove) then
+      F.Notebook.OnMouseMove(F.Notebook, [], 4,
+        HintRect.Bottom + (F.Notebook.Height - HintRect.Bottom) div 2);
+    Pump;
+    CheckEq('and nothing is left behind when the pointer leaves the strip',
+      '', F.Notebook.Hint);
     Check('which is not the plain page it used to wear',
       TabForIcon.Sheet.ImageIndex <> LedIconIndex('doc'));
 
