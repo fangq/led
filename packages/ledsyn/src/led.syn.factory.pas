@@ -70,6 +70,12 @@ function LedThemeGuideColour(ATheme: TLedTheme;
 function LedThemeFoldedLineColour(ATheme: TLedTheme;
   ADefaultFg, ADefaultBg: TColor): TColor;
 
+{ Perceived brightness, and a mix of two colours: the arithmetic every colour
+  rule in LED ends up needing.  Published because the minimap needs the same
+  mix to draw the page in miniature, and a second copy of it would drift. }
+function LedColourLuma(AColour: TColor): Integer;
+function LedMixColours(A, B: TColor; APercent: Integer): TColor;
+
 implementation
 
 uses

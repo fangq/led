@@ -123,6 +123,7 @@ type
     actToggleTerminal: TAction;
     actToggleSymbols: TAction;
     actTogglePreview: TAction;
+    actToggleMiniMap: TAction;
     actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
@@ -262,6 +263,7 @@ type
     mi_ToggleTerminal: TMenuItem;
     mi_ToggleSymbols: TMenuItem;
     mi_TogglePreview: TMenuItem;
+    mi_ToggleMiniMap: TMenuItem;
     mnuWindow: TMenuItem;
     mi_PrevTab: TMenuItem;
     mi_NextTab: TMenuItem;
@@ -462,6 +464,7 @@ type
     procedure actToggleSymbolsExecute(Sender: TObject);
     procedure actPrintExecute(Sender: TObject);
     procedure actTogglePreviewExecute(Sender: TObject);
+    procedure actToggleMiniMapExecute(Sender: TObject);
   private
     FFocusedOnce: Boolean;
     FRecovery: TLedRecovery;
@@ -636,6 +639,7 @@ type
     procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
     procedure SyncActiveDocument;
+    procedure SetMiniMaps(AOn: Boolean);
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure UpdateStatusBar;
@@ -1252,6 +1256,32 @@ begin
     FPreview.ShowMessage_('This is not a Markdown or wiki file.');
 end;
 
+{ The minimap, on every tab at once and remembered.
+
+  Per window rather than per document: it is a preference about how the
+  editor looks, like the line numbers or the right margin, and a map that
+  appeared on some files and not others would read as a fault. }
+procedure TLedMainForm.actToggleMiniMapExecute(Sender: TObject);
+begin
+  SetMiniMaps(not LedPrefs.GetBool(LedPrefMiniMap, False));
+end;
+
+procedure TLedMainForm.SetMiniMaps(AOn: Boolean);
+var
+  i: Integer;
+  Tabs: TFPList;
+begin
+  LedPrefs.SetBool(LedPrefMiniMap, AOn);
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      TLedTab(Tabs[i]).ShowMiniMap := AOn;
+  finally
+    Tabs.Free;
+  end;
+end;
+
 procedure TLedMainForm.actTogglePreviewExecute(Sender: TObject);
 begin
   { Registered in FormCreate, before the layout was restored. }
@@ -1729,7 +1759,13 @@ begin
   try
     CollectTabs(Tabs);
     for i := 0 to Tabs.Count - 1 do
+    begin
       TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+      { The map is a picture of the page, so it follows the page's colours.
+        Its own are mixed from the view's, which have just changed. }
+      if TLedTab(Tabs[i]).MiniMap <> nil then
+        TLedTab(Tabs[i]).MiniMap.ApplyTheme;
+    end;
   finally
     Tabs.Free;
   end;
@@ -2649,12 +2685,17 @@ var
 begin
   LedSetCurrentTheme(TMenuItem(Sender).Hint);
   PopulateThemeMenu;         { move the tick }
-  { Every open view has to be repainted with the new chrome colours. }
+  { Every open view has to be repainted with the new chrome colours, and so
+    does every minimap: its colours are mixed from its view's. }
   Tabs := TFPList.Create;
   try
     CollectTabs(Tabs);
     for i := 0 to Tabs.Count - 1 do
+    begin
       TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+      if TLedTab(Tabs[i]).MiniMap <> nil then
+        TLedTab(Tabs[i]).MiniMap.ApplyTheme;
+    end;
   finally
     Tabs.Free;
   end;
@@ -3929,6 +3970,9 @@ begin
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
   Result.ViewHoverExpression := @DebugHover;
+  { A window setting, so a tab opened later gets what the window is already
+    showing rather than the default. }
+  Result.ShowMiniMap := LedPrefs.GetBool(LedPrefMiniMap, False);
   ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;
@@ -4354,6 +4398,7 @@ begin
   actComplete.Enabled := HasDoc;
   actPrint.Enabled := HasDoc and LedPrinterAvailable;
   actTogglePreview.Enabled := True;
+  actToggleMiniMap.Checked := LedPrefs.GetBool(LedPrefMiniMap, False);
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actFindInFiles.Enabled := True;

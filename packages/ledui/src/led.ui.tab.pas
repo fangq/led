@@ -12,6 +12,7 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
   Led.UI.Document, Led.UI.Edit, Led.UI.Focus,
+  Led.UI.MiniMap,
   Led.UI.Splitter;
 
 const
@@ -27,6 +28,9 @@ type
     FViewPopupMenu: TPopupMenu;
     FViewBreakpointClick: TLedBreakpointClick;
     FViewHoverExpression: TLedHoverExpression;
+    FMiniMap: TLedMiniMap;
+    FShowMiniMap: Boolean;
+    procedure SetShowMiniMap(AValue: Boolean);
     procedure ViewEnter(Sender: TObject);
     function AddView(AParent: TWinControl): TLedEdit;
     procedure SetViewPopupMenu(AValue: TPopupMenu);
@@ -63,6 +67,16 @@ type
     property ViewHoverExpression: TLedHoverExpression
       read FViewHoverExpression write SetViewHoverExpression;
     property Sheet: TTabSheet read FSheet write FSheet;
+
+    { The minimap, and whether it is shown.
+
+      One for the tab rather than one per view.  A split tab has up to four
+      views of the same document, and four strips of the same picture down
+      one window is four times the width for no more information; the map
+      follows whichever view has the focus instead, which is the one the
+      question "where am I in this file" is about. }
+    property MiniMap: TLedMiniMap read FMiniMap;
+    property ShowMiniMap: Boolean read FShowMiniMap write SetShowMiniMap;
   end;
 
 implementation
@@ -102,13 +116,32 @@ begin
   Caption := '';
   Align := alClient;
 
+  { Created before the views and aligned to the right edge of the tab, so the
+    splitter tree that holds them fills what is left.  Hidden until asked
+    for -- see SetShowMiniMap. }
+  FMiniMap := TLedMiniMap.Create(Self);
+  FMiniMap.Parent := Self;
+  FMiniMap.Align := alRight;
+  FMiniMap.Visible := False;
+
   AddView(Self);
+end;
+
+procedure TLedTab.SetShowMiniMap(AValue: Boolean);
+begin
+  FShowMiniMap := AValue;
+  if FMiniMap = nil then Exit;
+  FMiniMap.Visible := AValue;
+  if AValue then
+    FMiniMap.Attach(FActiveView);
 end;
 
 destructor TLedTab.Destroy;
 var
   i: Integer;
 begin
+  { The map holds a reference to a view, and the views are about to go. }
+  if FMiniMap <> nil then FMiniMap.Attach(nil);
   { Detach the views from the document before they are destroyed with us, so
     the document's view list never holds dangling pointers. }
   if FDocument <> nil then
@@ -166,12 +199,20 @@ begin
   Result.OnHoverExpression := FViewHoverExpression;
   FViews.Add(Result);
   if FActiveView = nil then
+  begin
     FActiveView := Result;
+    if (FMiniMap <> nil) and FShowMiniMap then
+      FMiniMap.Attach(FActiveView);
+  end;
 end;
 
 procedure TLedTab.ViewEnter(Sender: TObject);
 begin
   FActiveView := TLedEdit(Sender);
+  { The map is of the view being looked at.  In a split tab that is whichever
+    one has just taken the focus. }
+  if (FMiniMap <> nil) and FShowMiniMap then
+    FMiniMap.Attach(FActiveView);
 end;
 
 function TLedTab.SplitIsVertical: Boolean;
@@ -255,6 +296,10 @@ begin
   FViews.Remove(Doomed);
   FDocument.RemoveView(Doomed);
   FActiveView := nil;
+  { Before it is freed, not after: the map would otherwise be mapping a view
+    that no longer exists for as long as it takes to pick the next one. }
+  if (FMiniMap <> nil) and (FMiniMap.Editor = Doomed) then
+    FMiniMap.Attach(nil);
   Doomed.Free;
 
   Keeper.Parent := Host;
@@ -263,6 +308,8 @@ begin
 
   if FViews.Count > 0 then
     FActiveView := TLedEdit(FViews[0]);
+  if (FMiniMap <> nil) and FShowMiniMap then
+    FMiniMap.Attach(FActiveView);
   LedTryFocus(FActiveView);
 end;
 
@@ -274,6 +321,8 @@ begin
   i := FViews.IndexOf(FActiveView);
   i := (i + 1) mod FViews.Count;
   FActiveView := TLedEdit(FViews[i]);
+  if (FMiniMap <> nil) and FShowMiniMap then
+    FMiniMap.Attach(FActiveView);
   LedTryFocus(FActiveView);
 end;
 

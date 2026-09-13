@@ -37,7 +37,7 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
-  Led.UI.HexMarkup, AnchorDocking, BaseUnix, LazFileUtils,
+  Led.UI.HexMarkup, Led.UI.MiniMap, AnchorDocking, BaseUnix, LazFileUtils,
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
@@ -6915,6 +6915,159 @@ end;
   Two markups that SynEdit provides and LED turns on: the first through
   OnSpecialLineMarkup, the second by giving the highlight-all-at-caret markup
   a colour, which is what wakes it. }
+type
+  { MouseDown and MouseUp are protected, and clicking is the thing to check. }
+  TMapPoke = class(TLedMiniMap);
+
+{ The minimap: the whole file too small to read, down the right of the view.
+
+  What is checked is that it draws the file rather than a blank strip, that
+  the strip follows the text down a file too long to fit in it, and that
+  clicking in it scrolls the text.  Ink is counted rather than described: a
+  minimap that paints its background and nothing else would satisfy every
+  property assertion about it, and looks exactly like a broken one. }
+procedure TestMiniMap(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Map: TLedMiniMap;
+  i, Ink, Blank, Top0, Top1, MapTop0, MapTop1: Integer;
+  ClickY, Wanted: Integer;
+  T0: QWord;
+
+  { Pixels in the strip that are neither its background nor the box wash --
+    that is, bars drawn for the text. }
+  function InkPixels: Integer;
+  var
+    Bmp: TBitmap;
+    Img: TLazIntfImage;
+    x, y: Integer;
+    Bg: TFPColor;
+  begin
+    Result := 0;
+    Bmp := TBitmap.Create;
+    try
+      Bmp.PixelFormat := pf32bit;
+      Bmp.SetSize(Map.Width, Map.Height);
+      Map.PaintTo(Bmp.Canvas, 0, 0);
+      Img := Bmp.CreateIntfImage;
+      try
+        if (Img.Width = 0) or (Img.Height = 0) then Exit;
+        Bg := TColorToFPColor(ColorToRGB(Map.Color));
+        for y := 0 to Img.Height - 1 do
+          for x := 0 to Img.Width - 1 do
+            if Img.Colors[x, y] <> Bg then Inc(Result);
+      finally
+        Img.Free;
+      end;
+    finally
+      Bmp.Free;
+    end;
+  end;
+
+begin
+  Say('minimap');
+
+  Dir := TempName('minimap');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'long.c';
+  L := TStringList.Create;
+  try
+    { Long enough that it cannot fit in the strip, so the scrolling half of
+      this is exercised rather than skipped. }
+    for i := 1 to 600 do
+      if i mod 7 = 0 then
+        L.Add('')
+      else
+        L.Add('    int variable_' + IntToStr(i) + ' = ' + IntToStr(i) + ';');
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  Map := Tab.MiniMap;
+  Check('a tab has a minimap', Map <> nil);
+  if Map = nil then Exit;
+
+  Check('and it is off until it is asked for', not Map.Visible);
+  Blank := InkPixels;
+
+  F.actToggleMiniMap.Execute;
+  Pump; Pump;
+  Check('the View menu turns it on', Map.Visible);
+  Check('and it maps the view it is beside', Map.Editor = V);
+  CheckGt('and it is a strip, not the whole pane', Map.Width, V.Width);
+  CheckGt('and wide enough to show the shape of a line', 40, Map.Width);
+
+  { How long a repaint of the strip takes.  It is repainted on every caret
+    move, so a slow one would be felt as sluggish typing. }
+  T0 := GetTickCount64;
+  for i := 1 to 50 do
+  begin
+    Map.Invalidate;
+    Map.Repaint;
+  end;
+  Say(Format('  (%d repaints of a %d-line strip in %d ms)',
+    [50, Map.LinesShown, Integer(GetTickCount64 - T0)]));
+
+  Ink := InkPixels;
+  CheckGt('it draws the file rather than a blank strip: ' + IntToStr(Ink),
+    Blank + 200, Ink);
+
+  { Down a file too long for the strip, the strip travels with the text --
+    otherwise the box would walk off the bottom of it and the map would be of
+    a part of the file nobody is looking at. }
+  CheckGt('the file is longer than the strip can hold', Map.LinesShown,
+    V.Lines.Count);
+  V.TopLine := 1;
+  Pump;
+  Top0 := V.TopLine;
+  MapTop0 := Map.TopLine;
+  V.TopLine := V.Lines.Count - V.LinesInWindow;
+  Pump;
+  Top1 := V.TopLine;
+  MapTop1 := Map.TopLine;
+  CheckGt('the text really moved', Top0, Top1);
+  CheckGt('and the strip followed it down the file', MapTop0, MapTop1);
+  CheckEqInt('from the very top when the text is at the top', 1, MapTop0);
+
+  { And the other direction: a click in the strip scrolls the text to it.
+    Through the control's own mouse handlers, which are protected -- the
+    point is that a click does this, not that a method exists. }
+  V.TopLine := 1;
+  Pump;
+  { The line aimed at, read before the click: the strip moves with the text,
+    so afterwards the same pixel row is a different line -- which is how the
+    first version of this check managed to fail while the code was right. }
+  ClickY := (Map.Height * 3) div 4;
+  Wanted := Map.LineAtY(ClickY);
+  TMapPoke(Map).MouseDown(mbLeft, [], Map.Width div 2, ClickY);
+  TMapPoke(Map).MouseUp(mbLeft, [], Map.Width div 2, ClickY);
+  Pump;
+  CheckGt('clicking low in the strip scrolls the text down', 1, V.TopLine);
+  { Centred on what was clicked, not pinned to the top of the view: a click
+    in a minimap means "show me this", and what is wanted is that line with
+    its surroundings. }
+  Check('and the line clicked is in the middle of the view: ' +
+    IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
+    Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
+
+  F.actToggleMiniMap.Execute;
+  Pump;
+  Check('and the View menu turns it off again', not Map.Visible);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
 procedure TestWordAndFoldMarkup(F: TLedMainForm);
 var
   Dir, Src: string;
@@ -7563,6 +7716,7 @@ begin
   TestFoldGuides(F);
   TestRowStyling(F);
   TestWordAndFoldMarkup(F);
+  TestMiniMap(F);
   TestHexPairing(F);
   TestLongLines(F);
   TestWikiMarkup(F);

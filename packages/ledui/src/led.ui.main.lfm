@@ -314,6 +314,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Markdown Pre&view'
       OnExecute = actTogglePreviewExecute
     end
+    object actToggleMiniMap: TAction
+      Caption = '&Minimap'
+      OnExecute = actToggleMiniMapExecute
+    end
     object actComplete: TAction
       Caption = 'Complete &Word'
       OnExecute = actCompleteExecute
@@ -955,6 +959,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview
+      end
+      object mi_ToggleMiniMap: TMenuItem
+        Action = actToggleMiniMap
       end
     end
     object mnuWindow: TMenuItem

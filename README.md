@@ -89,6 +89,9 @@ One native binary per platform. Nothing to configure before you can use it.
 - **Code folding** with margin glyphs, plus *Fold All* / *Unfold All*.
 - **Comment and uncomment** using the language's own markers.
 - **Block indent** and one-space `Ctrl+0` / `Ctrl+9` shifts.
+- **Minimap** (*View → Minimap*) — the whole file as coloured bars down the
+  right of the view, with the part on screen boxed. Click or drag in it to
+  scroll. Off by default; the setting is remembered.
 - **Bookmarks** across documents, with a bookmark manager.
 - **Matching-bracket** jump and select-to-bracket.
 - **Word completion** from the current document.

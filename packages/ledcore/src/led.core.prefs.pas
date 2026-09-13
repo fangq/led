@@ -75,6 +75,8 @@ const
   LedPrefRightMargin     = 'Editor/draw_right_margin';
   LedPrefRightMarginAt   = 'Editor/right_margin_offset';
   LedPrefWrapEnable      = 'Editor/wrapping_enable';
+  { Not one of medit's: medit had no minimap. }
+  LedPrefMiniMap         = 'Editor/minimap';
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
 
