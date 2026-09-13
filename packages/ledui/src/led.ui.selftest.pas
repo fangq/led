@@ -1427,7 +1427,7 @@ begin
     XCloseDisplay(D);
   end;
   { Reached at all only because the process did not exit. }
-  Check('and led is still running', F <> nil);
+  Check('and LED is still running', F <> nil);
 {$ELSE}
   Say('  (not an X11 build; nothing to provoke)');
   Check('the stub reports no opcode', LedXShmOpcode = -1);
@@ -3542,7 +3542,7 @@ begin
     F.Browser.Tree.ShowButtons);
   { Drawn by LED, not by the LCL: its three built-in signs are a themed box,
     a plus-minus and an outlined triangle, and a file tree wants a chevron. }
-  Check('which led draws itself', F.Browser.DrawsOwnChevron);
+  Check('which LED draws itself', F.Browser.DrawsOwnChevron);
   Check('and pictures to put on the rows',
     (F.Browser.Tree.Images <> nil) and (F.Browser.Tree.Images.Count > 0));
 
@@ -4540,7 +4540,7 @@ var
   FontPts, i: Integer;
   Found: Boolean;
 begin
-  Say('the document led starts with');
+  Say('the document LED starts with');
 
   CheckEqInt('exactly one tab is open at startup', 1, F.Notebook.PageCount);
   Tab := F.ActiveTab;
@@ -4973,7 +4973,7 @@ begin
   CheckEqInt('the painter is given only the visible bytes', 4096, ByteLen);
 
   { The property LED saves through.  This is the check that matters. }
-  CheckEqInt('the text led saves is the untruncated line',
+  CheckEqInt('the text LED saves is the untruncated line',
     Long, Length(V.Lines[1]));
 
   { And end to end, because a length can be right while the bytes are not. }
@@ -7204,7 +7204,7 @@ begin
     (V.HighlightWord.MarkupInfo.Background <> clNone));
   Check('and it is not merely the search markup that was coloured',
     V.HighlightWord.MarkupInfo.Background <> clNone);
-  Check('and led configured it to whole words',
+  Check('and LED configured it to whole words',
     (V.HighlightWord <> nil) and V.HighlightWord.FullWord);
 
   { What the suite can reach, and what it cannot.
@@ -7725,7 +7725,7 @@ begin
   if ExceptionSink = nil then ExceptionSink := TSelfTestExceptionSink.Create;
   Application.OnException := @ExceptionSink.Handle;
 
-  Say('led self-test');
+  Say('LED self-test');
   WriteLn;
 
   F := LedMainForm;

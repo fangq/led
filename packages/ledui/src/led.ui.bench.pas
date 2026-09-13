@@ -233,7 +233,7 @@ begin
   F.Show;
   Pump;
 
-  WriteLn('led long-line benchmark');
+  WriteLn('LED long-line benchmark');
   WriteLn('  (decides how much machinery the truncate-and-reveal feature needs)');
   WriteLn;
 

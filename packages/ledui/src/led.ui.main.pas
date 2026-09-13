@@ -910,7 +910,16 @@ begin
   { Unlocked by default: dragging panes around is worth having, and the
     instability it can provoke lives in AnchorDocking's gtk2 handling rather
     than here.  The lock is in Preferences for anyone who would rather not,
-    and View > Reset Pane Layout is the way back from a bad drop. }
+    and View > Reset Pane Layout is the way back from a bad drop.
+
+    The default alone was not enough.  For a while the lock defaulted *on*
+    (f829c3f), and the preferences dialog writes every key it shows, so any
+    prefs.ini written in that period carries lock_pane_layout=1 whether or
+    not anyone chose it -- and a default cannot be seen past a value that is
+    already in the file.  So the inherited one is cleared, once, and the fact
+    that it has been is recorded: anyone who locks the panes after this keeps
+    them locked. }
+  LedClearInheritedPaneLock(LedPrefs);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   FDock.OnPaneShown := @PaneShown;
@@ -2845,11 +2854,11 @@ begin
   end;
 
   if Length(Pending) = 1 then
-    Msg := 'led did not shut down cleanly, and one document had unsaved ' +
+    Msg := 'LED did not shut down cleanly, and one document had unsaved ' +
       'changes:' + LineEnding + Names + LineEnding + LineEnding +
       'Recover it?'
   else
-    Msg := Format('led did not shut down cleanly, and %d documents had ' +
+    Msg := Format('LED did not shut down cleanly, and %d documents had ' +
       'unsaved changes:', [Length(Pending)]) + LineEnding + Names +
       LineEnding + LineEnding + 'Recover them?';
 
@@ -5170,7 +5179,7 @@ procedure TLedMainForm.actHelpExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    'led ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
+    'LED ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
     'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
     LineEnding +
     'and every one of them can be changed there.' + LineEnding + LineEnding +
@@ -5182,7 +5191,7 @@ begin
   if Silent then Exit;
   ShowMessage(
     'Please report bugs with:' + LineEnding + LineEnding +
-    '  led version:  ' + LedVersion + LineEnding +
+    '  LED version:  ' + LedVersion + LineEnding +
     '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
       LineEnding +
     '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +
