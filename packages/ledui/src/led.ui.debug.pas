@@ -101,6 +101,11 @@ type
       const AWidths: array of Integer): TListView;
   public
     constructor Create(AOwner: TComponent); override;
+    { FLocalNodes is a TFPList of this pane's own making, not a child
+      component, so nothing else will free it -- and neither will the rows
+      inside it.  Every other object here is Create(Self) and goes with the
+      component. }
+    destructor Destroy; override;
 
     { The application's icons, passed in rather than reached for, so this
       unit does not depend on where they come from. }
@@ -521,6 +526,13 @@ begin
   Result.ImageIndex := AImage;
   Result.Tag := Ord(ACommand);
   Result.OnClick := @BarClick;
+end;
+
+destructor TLedDebugPane.Destroy;
+begin
+  ClearLocalNodes;
+  FLocalNodes.Free;
+  inherited Destroy;
 end;
 
 function TLedDebugPane.AddList(const ACols: array of string;

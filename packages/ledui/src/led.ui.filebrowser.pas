@@ -84,6 +84,9 @@ type
     procedure Reload;
   public
     constructor Create(AOwner: TComponent); override;
+    { FHistory is a list of this pane's own making rather than a child
+      component, so it is freed here; everything else is Create(Self). }
+    destructor Destroy; override;
     procedure SetRoot(const APath: string);
     { Populates on first use.  TShellTreeView will not populate before its
       control is realized, so the owner calls this when the pane is first
@@ -425,6 +428,12 @@ begin
   AddMenu('Copy Full Path', @MenuCopyPath);
   FTree.PopupMenu := FMenu;
   FList.PopupMenu := FMenu;
+end;
+
+destructor TLedFileBrowser.Destroy;
+begin
+  FHistory.Free;
+  inherited Destroy;
 end;
 
 procedure TLedFileBrowser.EnsureRoot(const ADefault: string);

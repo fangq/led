@@ -331,7 +331,7 @@ git clone https://github.com/fangq/led
 cd led
 make                  # optimized and stripped -> bin/led
 make run              # build and launch
-make debug            # with symbols and range checks
+make debug            # symbols, range checks and leak reporting
 make WIDGETSET=qt5    # Qt5 instead of gtk2 on Linux
 make help             # every target
 ```
@@ -348,6 +348,19 @@ make uninstall
 under `sudo`. led finds its data relative to its own binary —
 `<prefix>/share/led` after an install, `data/` beside `bin/` in a build tree —
 so you only need `$LED_DATA_DIR` if you move the two apart.
+
+A `make debug` build links FPC's `heaptrc`, so it prints a heap summary to
+the terminal when you quit:
+
+```
+Heap dump by heaptrc unit of .../bin/led
+342695 memory blocks allocated : 25010342/26145136
+342693 memory blocks freed     : 25010174/26144968
+2 unfreed memory blocks : 168
+```
+
+That is a diagnostic, not an error — the editor ran normally. A `make`
+(Release) build does not include it and prints nothing.
 
 Build a package for your platform:
 
