@@ -334,7 +334,11 @@ begin
     TSynEditMarkupHighlightAllCaret(MarkupByClass[TSynEditMarkupHighlightAllCaret]);
   if FHighlightWord <> nil then
   begin
-    FHighlightWord.WaitTime := 250;
+    { Short enough to feel like a response to the click rather than a
+      afterthought.  SynEdit's own default is 1000, and 250 still read as a
+      lag; below about a hundred the search starts chasing the caret while
+      it is still moving. }
+    FHighlightWord.WaitTime := 120;
     FHighlightWord.FullWord := True;
     FHighlightWord.IgnoreKeywords := False;
     FHighlightWord.Trim := True;

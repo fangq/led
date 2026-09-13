@@ -1841,8 +1841,20 @@ begin
     Exit;
   end;
 
-  { Nothing to ask when the program is not sitting at a stop -- and saying
-    so beats leaving "= ..." on screen for ever. }
+  { With no session at all there is nothing to say and no reason to say it:
+    hovering any word in an ordinary editing session was answering
+
+      count = (not stopped)
+
+    which reads as an error about the word rather than as the debugger
+    declining.  The message is kept for the case it was written for -- a
+    session that exists but is running -- where "nothing to ask just now" is
+    genuinely the answer. }
+  if not FSession.Alive then
+  begin
+    AView.HideHoverValue(AExpr);
+    Exit;
+  end;
   if not CanStep then
   begin
     AView.ShowHoverValue(AExpr, '(not stopped)');

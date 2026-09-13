@@ -500,6 +500,8 @@ type
     FTerminal: TLedTerminalPane;
     FDebugPane: TLedDebugPane;
     FBreakPane: TLedBreakPane;
+    FThemeMenu: TPopupMenu;
+    FThemeButton: TToolButton;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
       whether a debug session should follow it. }
@@ -563,6 +565,13 @@ type
     procedure PopulateLanguageMenu;
     procedure LanguageItemClick(Sender: TObject);
     procedure PopulateThemeMenu;
+    { The toolbar's theme chooser: a palette with a drop-down of the eight
+      shipped schemes.  Built here rather than in the form file because the
+      list is read from data/themes at run time, and a menu written into the
+      form would have to be kept in step with a directory. }
+    procedure BuildThemeButton;
+    procedure ThemeMenuPopup(Sender: TObject);
+    procedure ThemeButtonClick(Sender: TObject);
     procedure ThemeItemClick(Sender: TObject);
     procedure PopulateEncodingMenu;
     procedure EncodingItemClick(Sender: TObject);
@@ -664,6 +673,8 @@ type
     function ToolRunning: Boolean;
     property DebugPane: TLedDebugPane read FDebugPane;
     property BreakPane: TLedBreakPane read FBreakPane;
+    { The toolbar's theme chooser.  Public so a check can drop its menu. }
+    property ThemeButton: TToolButton read FThemeButton;
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
     property DocListMenu: TMenuItem read miDocList;
@@ -1017,6 +1028,7 @@ begin
     would reach.  Measured before the change: moving the pointer onto a
     button altered thirty pixels of the window, all of them the cursor. }
   LedStyleToolBar(ToolBar1);
+  BuildThemeButton;
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
 
@@ -2467,6 +2479,62 @@ end;
 procedure TLedMainForm.miThemeClick(Sender: TObject);
 begin
   PopulateThemeMenu;
+end;
+
+procedure TLedMainForm.BuildThemeButton;
+var
+  Sep: TToolButton;
+begin
+  FThemeMenu := TPopupMenu.Create(Self);
+  FThemeMenu.OnPopup := @ThemeMenuPopup;
+
+  Sep := TToolButton.Create(Self);
+  Sep.Parent := ToolBar1;
+  Sep.Style := tbsSeparator;
+  Sep.Left := ToolBar1.Width;          { past the last button, so it lands at the end }
+
+  FThemeButton := TToolButton.Create(Self);
+  FThemeButton.Parent := ToolBar1;
+  FThemeButton.Left := ToolBar1.Width;
+  FThemeButton.Style := tbsDropDown;
+  FThemeButton.ImageIndex := LedIconIndex('theme');
+  FThemeButton.Hint := 'Colour theme';
+  FThemeButton.ShowHint := True;
+  FThemeButton.DropdownMenu := FThemeMenu;
+  { Pressing the face of the button opens the same menu the arrow does.  A
+    chooser whose main half does nothing is a button that looks broken. }
+  FThemeButton.OnClick := @ThemeButtonClick;
+end;
+
+{ Rebuilt each time it drops, so the tick follows the theme and a scheme
+  added to the data directory appears without a restart. }
+procedure TLedMainForm.ThemeMenuPopup(Sender: TObject);
+var
+  i: Integer;
+  Item: TMenuItem;
+  Current: string;
+begin
+  FThemeMenu.Items.Clear;
+  Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
+  for i := 0 to LedThemes.Count - 1 do
+  begin
+    Item := TMenuItem.Create(FThemeMenu);
+    Item.Caption := LedThemes[i].Name;
+    Item.Hint := LedThemes[i].Id;
+    Item.RadioItem := True;
+    Item.Checked := SameText(LedThemes[i].Id, Current);
+    Item.OnClick := @ThemeItemClick;
+    FThemeMenu.Items.Add(Item);
+  end;
+end;
+
+procedure TLedMainForm.ThemeButtonClick(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P := ToolBar1.ClientToScreen(Point(FThemeButton.Left,
+    FThemeButton.Top + FThemeButton.Height));
+  FThemeMenu.PopUp(P.X, P.Y);
 end;
 
 procedure TLedMainForm.PopulateThemeMenu;

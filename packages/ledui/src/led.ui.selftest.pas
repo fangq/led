@@ -5557,7 +5557,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   C: TFPColor;
-  x, y, Reds, Rings, Greys: Integer;
+  x, y, Reds, Rings, Greys, Ticked: Integer;
   Row: TTreeNode;
   Btn: TToolButton;
 begin
@@ -5606,6 +5606,26 @@ begin
     one toolbar and nothing on the others. }
   Check('the main toolbar paints its own buttons',
     Assigned(F.ToolBar1.OnPaintButton));
+
+  { A theme chooser on the toolbar, so switching does not mean going through
+    a menu.  Its list is built when it drops rather than written into the
+    form file, because the schemes are read from data/themes at run time. }
+  Check('there is a theme button', F.ThemeButton <> nil);
+  if F.ThemeButton <> nil then
+  begin
+    Check('which opens a menu', F.ThemeButton.DropdownMenu <> nil);
+    Check('and its face opens it too, not just the arrow',
+      Assigned(F.ThemeButton.OnClick));
+    F.ThemeButton.DropdownMenu.PopupComponent := F;
+    if Assigned(F.ThemeButton.DropdownMenu.OnPopup) then
+      F.ThemeButton.DropdownMenu.OnPopup(F.ThemeButton.DropdownMenu);
+    CheckEqInt('listing every shipped scheme', LedThemes.Count,
+      F.ThemeButton.DropdownMenu.Items.Count);
+    Ticked := 0;
+    for x := 0 to F.ThemeButton.DropdownMenu.Items.Count - 1 do
+      if F.ThemeButton.DropdownMenu.Items[x].Checked then Inc(Ticked);
+    CheckEqInt('with exactly one of them ticked', 1, Ticked);
+  end;
   Check('and so does the debugger pane''s',
     Assigned(F.DebugPane.Bar.OnPaintButton));
 
@@ -6460,6 +6480,7 @@ var
   L: TStringList;
   Tab: TLedTab;
   V: TLedEdit;
+  MarginGap: Integer;
 begin
   Say('word and fold markup');
 
@@ -6518,7 +6539,40 @@ begin
   Say(Format('  (armed for "%s"; the matches are found when it paints)',
     [V.HighlightWord.SearchString]));
 
+  { Hovering with no debugger running says nothing at all.  It used to answer
+    every word in an ordinary editing session with
+
+      count = (not stopped)
+
+    which reads as a complaint about the word rather than as the debugger
+    declining to answer. }
+  Check('no debug session is running here', not F.Debugger.Session.Alive);
+  V.RequestHover('');
+  V.RequestHover('count');
+  Pump;
+  CheckEq('so hovering a word leaves no tooltip', '', V.Hint);
+  Check('and the hint is switched off', not V.ShowHint);
+
   { --- a folded block is tinted --- }
+  { The right margin is a note about a limit, not a rule through the page.
+    Drawn in the style's own colour it was the brightest thing in the window
+    on oblivion, whose right-margin foreground is very nearly white. }
+  Check('the right margin has a colour', V.RightEdgeColor <> clNone);
+  { Visible, but a note rather than a rule: far enough from the page to be
+    seen and not so far as to compete with the code.  Both halves matter --
+    the first mix had none at all on a scheme whose margin colour is close to
+    its page, and the margin vanished. }
+  MarginGap := Abs(LedColourLuma(V.RightEdgeColor) - LedColourLuma(V.Color));
+  CheckGt('the margin can be seen against the page', 10, MarginGap);
+  Check('but is softer than the text on it: ' + IntToStr(MarginGap),
+    MarginGap < Abs(LedColourLuma(V.Font.Color) - LedColourLuma(V.Color)));
+
+  { The preview sets code in the editor's own face rather than IPro's
+    'Courier New', which no Linux desktop has. }
+  if F.Preview <> nil then
+    CheckEq('the preview sets code in the editor''s font',
+      V.Font.Name, F.Preview.FixedFace);
+
   Check('the theme gave a fold tint', V.FoldedLineColour <> clNone);
   Check('and it differs from the page', V.FoldedLineColour <> V.Color);
 

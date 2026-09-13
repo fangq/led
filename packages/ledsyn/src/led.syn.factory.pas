@@ -429,10 +429,36 @@ begin
   end;
 end;
 
+{ Perceived brightness, on the usual weights. }
+function LedColourLuma(AColour: TColor): Integer;
+begin
+  AColour := ColorToRGB(AColour);
+  Result := ((AColour and $FF) * 299 + ((AColour shr 8) and $FF) * 587
+            + ((AColour shr 16) and $FF) * 114) div 1000;
+end;
+
+{ APercent parts of A to the rest of B.  One place for a mix that three of
+  these colour rules were each doing with their own arithmetic. }
+function LedMixColours(A, B: TColor; APercent: Integer): TColor;
+var
+  Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
+  Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
+  Result := TColor(
+    (((Ra * APercent + Rb * (100 - APercent)) div 100) and $FF)
+    or ((((Ga * APercent + Gb * (100 - APercent)) div 100) and $FF) shl 8)
+    or ((((Ba * APercent + Bb * (100 - APercent)) div 100) and $FF) shl 16));
+end;
+
 procedure LedApplyThemeToEditor(ATheme: TLedTheme; AEdit: TSynEdit);
 var
   S: TLedStyle;
   GutterBack: TColor;
+  Edge: TColor;
+  Guard: Integer;
   Caret: TSynEditMarkupHighlightAllCaret;
 begin
   if (ATheme = nil) or (AEdit = nil) then Exit;
@@ -523,8 +549,48 @@ begin
       AEdit.BracketMatchColor.Background := LedColourToTColor(S.Background);
   end;
 
-  if ATheme.Find(LedStyleRightMargin, S) and (lsfForeground in S.Flags) then
-    AEdit.RightEdgeColor := LedColourToTColor(S.Foreground);
+  { The right margin, mixed down towards the page.
+
+    It marks a soft limit, and a soft limit drawn at full strength is louder
+    than the code it is a note about -- on oblivion the style's foreground is
+    aluminium1, very nearly white, so a solid line of it on a dark page was
+    the brightest thing in the window.  GtkSourceView draws this as a faint
+    overlay rather than a line in the style's own colour; a third of the way
+    from the page is the same idea arrived at with what SynEdit offers, which
+    is one colour and no alpha.
+
+    The foreground where the scheme has one, its background otherwise --
+    three of the eight give only a background for this style. }
+  Edge := clNone;
+  if ATheme.Find(LedStyleRightMargin, S) then
+  begin
+    if lsfForeground in S.Flags then
+      Edge := LedColourToTColor(S.Foreground)
+    else if lsfBackground in S.Flags then
+      Edge := LedColourToTColor(S.Background);
+  end;
+  if (Edge <> clNone) and (AEdit.Color <> clNone) then
+  begin
+    Edge := LedMixColours(Edge, AEdit.Color, 33);
+    { With a floor, because a scheme whose right-margin colour is already
+      close to its page mixes down to the page exactly and the margin
+      disappears -- which the check caught: the mix came out with no
+      difference from the page at all.  Stepped back away from the page until
+      it can be seen. }
+    Guard := 0;
+    while (Abs(LedColourLuma(Edge) - LedColourLuma(AEdit.Color)) < 14) and
+          (Guard < 20) do
+    begin
+      if LedColourLuma(AEdit.Color) < 128 then
+        Edge := LedMixColours(clWhite, Edge, 12)
+      else
+        Edge := LedMixColours(clBlack, Edge, 12);
+      Inc(Guard);
+    end;
+    AEdit.RightEdgeColor := Edge;
+  end
+  else if Edge <> clNone then
+    AEdit.RightEdgeColor := Edge;
 end;
 
 { The colour for the vertical guides down an open block.  medit draws these

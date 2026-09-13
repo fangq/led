@@ -19,7 +19,7 @@ uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
-  Led.Core.Markdown, Led.Core.Wiki;
+  Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.UI.Dpi;
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
@@ -52,6 +52,7 @@ type
     function LineUnderCursor: Integer;
     procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
+    procedure ApplyFixedFont;
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
       directory.  Any failure to load degrades to "no image" instead of an
@@ -67,6 +68,9 @@ type
     procedure PaneResize(Sender: TObject);
     procedure ResizeSettled(Sender: TObject);
   public
+    { The face code blocks are set in.  Public so a check can see that it is
+      the editor's and not IPro's default. }
+    function FixedFace: string;
     constructor Create(AOwner: TComponent); override;
     { Shows AText rendered as Markdown.  Debounced by default, because a
       refresh can arrive several times over in a row -- a tab change is three
@@ -139,6 +143,7 @@ begin
   FHtml.Align := alClient;
   FHtml.DataProvider := FProvider;
   FHtml.Visible := False;
+  ApplyFixedFont;
   { IPro lays a page out on the control's own canvas and then, by default,
     paints it into a bitmap it allocates for the purpose.  Nothing makes the
     two agree about resolution, and here they do not: the startup sweep puts
@@ -414,11 +419,39 @@ begin
   FOnJumpToLine(Self, L);
 end;
 
+{ The typeface <pre> and <code> are set in: the editor's own.
+
+  IPro defaults to 'Courier New', which is not installed on a Linux desktop,
+  so the code blocks in a preview were rendered in whatever the toolkit
+  substituted -- often a proportional face, which is the one thing a code
+  block must not be.  Taking the editor's font means a fenced block looks
+  like the file it was copied from, and with no preference set that is the
+  Fira Code led ships.
+
+  Re-read on every render rather than fixed at construction, so changing the
+  font in Preferences shows up without restarting. }
+function TLedPreviewPane.FixedFace: string;
+begin
+  Result := FHtml.FixedTypeface;
+end;
+
+procedure TLedPreviewPane.ApplyFixedFont;
+var
+  Face: string;
+  Size: Integer;
+begin
+  LedParseFontSpec(LedPrefs.GetStr('Editor/font', ''), Face, Size);
+  if Face <> '' then FHtml.FixedTypeface := Face;
+end;
+
 procedure TLedPreviewPane.Render(Sender: TObject);
 var
   Page: string;
 begin
   FTimer.Enabled := False;
+  { Re-read now rather than only at construction, so a font changed in
+    Preferences shows in the next preview without a restart. }
+  ApplyFixedFont;
 
   { Laying a page out costs more than everything else the pane does put
     together -- half a second for a README -- so it is worth some care about

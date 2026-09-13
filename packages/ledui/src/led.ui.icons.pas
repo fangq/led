@@ -97,7 +97,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..59] of string = (
+  IconNames: array[0..60] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -122,7 +122,9 @@ const
     { The browser's two making-things buttons.  The same folder and page as
       above with a plus badge on the corner, so the pair reads as "a new one
       of these" rather than as two more ways to look at what is there. }
-    'newfolder', 'newfile'
+    'newfolder', 'newfile',
+    { The toolbar's theme chooser. }
+    'theme'
   );
 
 
@@ -216,6 +218,19 @@ begin
       Exit;
     end;
     Bar.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
+    { A button that opens a menu says so.  TToolButton would have drawn this
+      arrow; assigning OnPaintButton takes the whole job, including the parts
+      one did not mean to take over. }
+    if Sender.Style in [tbsDropDown, tbsButtonDrop] then
+    begin
+      C.Brush.Style := bsSolid;
+      C.Brush.Color := clBtnText;
+      C.Pen.Color := clBtnText;
+      Mid := R.Right - 7;
+      Y := (R.Top + R.Bottom) div 2 + 3;
+      C.Polygon([Point(Mid - 3, Y - 2), Point(Mid + 3, Y - 2),
+                 Point(Mid, Y + 2)]);
+    end;
   end
   else if Bar.ShowCaptions and (Sender.Caption <> '') then
   begin
@@ -708,6 +723,17 @@ begin
         P.Ellipse(4, 5, 6.5, 7.5, True);
         P.Poly([1.5, 13, 6, 8.5, 9, 11, 11.5, 8.5, 14.5, 13]);
       end;
+    'theme':
+      begin
+        { A painter's palette: a rounded shape with a thumb hole and three
+          wells in it.  Colour is what a theme changes, and a palette is the
+          one picture that says so without words. }
+        P.Ellipse(1.5, 2.5, 14.5, 13.5);
+        P.Ellipse(9.5, 8.5, 12.5, 11.5);
+        P.Ellipse(3.6, 5.2, 5.4, 7.0, True);
+        P.Ellipse(6.6, 3.9, 8.4, 5.7, True);
+        P.Ellipse(3.4, 8.6, 5.2, 10.4, True);
+      end;
     'newfolder':
       begin
         { The folder, shortened on the right to leave the badge room. }
@@ -724,10 +750,23 @@ begin
       end;
     'filebinary':
       begin
-        { A page with a one and a nought on it. }
-        DrawPage(P);
-        P.Line(6, 7.5, 6, 11.5);
-        P.Ellipse(8, 7.5, 11, 11.5);
+        { A gear, not a page.  A binary is a thing that runs, and a page with
+          a one and a nought on it read as a document about binary rather
+          than as a program.  Eight teeth, because at sixteen pixels more
+          become a blur and fewer stop looking like a gear. }
+        P.Ellipse(3.2, 3.2, 12.8, 12.8);
+        P.Ellipse(6.4, 6.4, 9.6, 9.6, True);
+        P.Width(1.6);
+        { The teeth, at the four sides and the four diagonals. }
+        P.Line(8, 1.6, 8, 3.4);
+        P.Line(8, 12.6, 8, 14.4);
+        P.Line(1.6, 8, 3.4, 8);
+        P.Line(12.6, 8, 14.4, 8);
+        P.Line(3.6, 3.6, 4.8, 4.8);
+        P.Line(11.2, 11.2, 12.4, 12.4);
+        P.Line(12.4, 3.6, 11.2, 4.8);
+        P.Line(4.8, 11.2, 3.6, 12.4);
+        P.Width(1.2);
       end;
     'terminal':
       begin
