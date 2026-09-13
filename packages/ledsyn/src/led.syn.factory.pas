@@ -24,7 +24,7 @@ interface
 
 uses
   Classes, SysUtils, Graphics, SynEdit, SynEditHighlighter,
-  SynEditHighlighterFoldBase,
+  SynEditHighlighterFoldBase, SynEditMarkupHighAll,
   Led.Syn.Theme, Led.Syn.Languages;
 
 { A shared highlighter for ALangId, or nil when nothing suitable exists.
@@ -433,6 +433,7 @@ procedure LedApplyThemeToEditor(ATheme: TLedTheme; AEdit: TSynEdit);
 var
   S: TLedStyle;
   GutterBack: TColor;
+  Caret: TSynEditMarkupHighlightAllCaret;
 begin
   if (ATheme = nil) or (AEdit = nil) then Exit;
 
@@ -455,13 +456,26 @@ begin
 
   { Every other appearance of the word the caret is in, shaded in whatever
     the theme uses for a search match -- the same idea, and defined by all
-    eight of the shipped schemes. }
-  if ATheme.Find(LedStyleSearchMatch, S) then
+    eight of the shipped schemes.
+
+    On the caret markup, and this is the whole of the bug the first version
+    had: TSynEdit keeps two highlight-all markups, one fed by Find and one
+    that follows the caret, and the published HighlightAllColor is the
+    *search* one --
+
+      function TCustomSynEdit.GetHighlightAllColor: TSynSelectedColor;
+      begin result := fMarkupHighAll.MarkupInfo; end;
+
+    -- so colouring it woke nothing.  The caret markup stayed at clNone,
+    which is what keeps it asleep, and clicking a word did nothing at all. }
+  Caret := TSynEditMarkupHighlightAllCaret(
+    AEdit.MarkupByClass[TSynEditMarkupHighlightAllCaret]);
+  if (Caret <> nil) and ATheme.Find(LedStyleSearchMatch, S) then
   begin
     if lsfBackground in S.Flags then
-      AEdit.HighlightAllColor.Background := LedColourToTColor(S.Background);
+      Caret.MarkupInfo.Background := LedColourToTColor(S.Background);
     if lsfForeground in S.Flags then
-      AEdit.HighlightAllColor.Foreground := LedColourToTColor(S.Foreground);
+      Caret.MarkupInfo.Foreground := LedColourToTColor(S.Foreground);
   end;
 
   { Three of the eight shipped schemes -- classic, medit, tango -- say

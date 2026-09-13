@@ -80,6 +80,7 @@ type
     FHexMode: Boolean;
     FCurrentLineColour: TColor;
     FCurrentLineRow: Integer;
+    FRuledLine: Integer;
     FFoldedLineColour: TColor;
     FHighlightWord: TSynEditMarkupHighlightAllCaret;
     FHexMarkup: TLedHexMarkup;
@@ -1511,6 +1512,24 @@ begin
     between rows changes the painting of two rows and neither of them knows
     it. }
   if FHexMode and (scCaretY in AChanges) then Invalidate;
+
+  { The caret's row is ruled above and below, and the row it has just left
+    has to lose its rules.  SynEdit invalidates what it knows changed, which
+    is the caret's own line -- so the rules on the previous row stayed until
+    something else happened to repaint it.  That is the stale rule, the pair
+    of rules that disagreed with the caret, and the several rows ruled at
+    once: each is a row nobody told to repaint.
+
+    A selection takes the rules away entirely, so a selection appearing or
+    going is the same event. }
+  if AChanges * [scCaretY, scSelection] <> [] then
+  begin
+    if (FRuledLine > 0) and (FRuledLine <> CaretY) then
+      InvalidateLine(FRuledLine);
+    FRuledLine := CaretY;
+    InvalidateLine(FRuledLine);
+  end;
+
   if FLongLines = nil then Exit;
   if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
 

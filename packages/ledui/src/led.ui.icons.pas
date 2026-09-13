@@ -87,7 +87,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..57] of string = (
+  IconNames: array[0..59] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -108,7 +108,11 @@ const
       with a mark on it, except the folder, so a row reads as "a file, of this
       sort" rather than as an unrelated picture. }
     'folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
-    'fileimage', 'filebinary'
+    'fileimage', 'filebinary',
+    { The browser's two making-things buttons.  The same folder and page as
+      above with a plus badge on the corner, so the pair reads as "a new one
+      of these" rather than as two more ways to look at what is there. }
+    'newfolder', 'newfile'
   );
 
 procedure LedApplyWindowIcon;
@@ -278,6 +282,17 @@ begin
 end;
 
 { A sheet of paper with a folded corner, the base of the file icons. }
+{ A plus in the lower-right corner, which is how every toolkit says "a new
+  one of these".  Drawn heavier than the outline it sits on so it reads at
+  sixteen pixels, where a hairline cross disappears. }
+procedure DrawPlusBadge(var P: TPen16);
+begin
+  P.Width(2);
+  P.Line(12.5, 11.5, 12.5, 15.5);
+  P.Line(10.5, 13.5, 14.5, 13.5);
+  P.Width(1.2);
+end;
+
 procedure DrawPage(var P: TPen16);
 begin
   P.Poly([3.5, 1.5, 9.5, 1.5, 12.5, 4.5, 12.5, 14.5, 3.5, 14.5, 3.5, 1.5]);
@@ -573,6 +588,20 @@ begin
         P.Box(1.5, 3, 14.5, 13);
         P.Ellipse(4, 5, 6.5, 7.5, True);
         P.Poly([1.5, 13, 6, 8.5, 9, 11, 11.5, 8.5, 14.5, 13]);
+      end;
+    'newfolder':
+      begin
+        { The folder, shortened on the right to leave the badge room. }
+        P.Poly([1.5, 13, 1.5, 3.5, 6, 3.5, 7.5, 5.5, 12, 5.5, 12, 13, 1.5, 13]);
+        DrawPlusBadge(P);
+      end;
+    'newfile':
+      begin
+        { A page, likewise, with the same badge. }
+        P.Poly([2.5, 1.5, 8, 1.5, 10.5, 4, 10.5, 12.5, 2.5, 12.5, 2.5, 1.5]);
+        P.Line(8, 1.5, 8, 4);
+        P.Line(8, 4, 10.5, 4);
+        DrawPlusBadge(P);
       end;
     'filebinary':
       begin

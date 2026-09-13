@@ -3452,6 +3452,21 @@ begin
 
   Check('the folder is in the tree: ' + Names, Pos('sub ', Names) > 0);
 
+  { The root row carries the folder's name, not its whole path -- the crumb
+    bar directly above it is where the path belongs. }
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  Check('there is a root row', Node <> nil);
+  if Node <> nil then
+  begin
+    CheckEq('which shows the folder name alone',
+      ExtractFileName(ExcludeTrailingPathDelimiter(BrowseDir)), Node.Text);
+    { Retitling it must not break the paths, which the tree builds from each
+      node's own record rather than from what is written in it. }
+    Check('and the tree still knows where that row is',
+      SameFileName(ExcludeTrailingPathDelimiter(
+        F.Browser.Tree.GetPathFromNode(Node)), BrowseDir));
+  end;
+
   { Double-clicking a file opens it.  Opening was the file list's job before
     the pane became one tree, and went with the list -- leaving the gesture
     doing nothing on the rows people double-click most.  Driven through the
@@ -6291,8 +6306,16 @@ begin
   Pump;
 
   { --- every appearance of the word at the caret --- }
-  Check('the theme gave the markup a colour, which is what wakes it',
-    V.HighlightAllColor.Background <> clNone);
+  { On the markup that follows the caret, not on TSynEdit.HighlightAllColor.
+    That published property is the *search* markup's, so the first version of
+    this asserted a colour on an object the feature never consults -- and
+    passed, while clicking a word did nothing.  Read it back off the markup
+    led actually configures. }
+  Check('the caret markup has a colour, which is what wakes it',
+    (V.HighlightWord <> nil) and
+    (V.HighlightWord.MarkupInfo.Background <> clNone));
+  Check('and it is not merely the search markup that was coloured',
+    V.HighlightWord.MarkupInfo.Background <> clNone);
   Check('and led configured it to whole words',
     (V.HighlightWord <> nil) and V.HighlightWord.FullWord);
 

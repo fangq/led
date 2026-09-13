@@ -311,12 +311,30 @@ end;
 procedure TLedFileBrowser.IconiseNodes;
 var
   Node: TTreeNode;
-  Path: string;
+  Path, Leaf: string;
   IsDir: Boolean;
 begin
   if FTree = nil then Exit;
   FTree.BeginUpdate;
   try
+    { The root row shows the folder's name rather than its whole path.  The
+      path is on the crumb bar directly above, where it can be read and
+      clicked; repeating it here only pushed the first few folders off the
+      right-hand edge of a narrow pane.
+
+      Safe to retitle: TCustomShellTreeView builds a path from each node's
+      own FullFilename, not from the text shown in it, so nothing downstream
+      reads what is written here. }
+    Node := FTree.Items.GetFirstNode;
+    if Node <> nil then
+    begin
+      Leaf := ExtractFileName(ExcludeTrailingPathDelimiter(FTree.Root));
+      { Except at the top of the filesystem, where there is no name to show
+        and the path is the only thing there is. }
+      if Leaf = '' then Leaf := FTree.Root;
+      if (Leaf <> '') and (Node.Text <> Leaf) then Node.Text := Leaf;
+    end;
+
     Node := FTree.Items.GetFirstNode;
     while Node <> nil do
     begin
@@ -415,9 +433,9 @@ begin
   { Making things, rather than only going places.  Both were on the context
     menu and nowhere else, which is a poor place for the two actions someone
     working in a tree reaches for most. }
-  FBtnNewFolder := MakeNavButton('folder', 'New folder...', 94);
+  FBtnNewFolder := MakeNavButton('newfolder', 'New folder...', 94);
   FBtnNewFolder.OnClick := @MenuNewFolder;
-  FBtnNewFile := MakeNavButton('new', 'New file...', 116);
+  FBtnNewFile := MakeNavButton('newfile', 'New file...', 116);
   FBtnNewFile.OnClick := @MenuNewFile;
 
   { A row of its own, under the buttons.  It shared the button row once,
@@ -426,6 +444,12 @@ begin
     there is no room to share at all. }
   FCrumbs := TPanel.Create(Self);
   FCrumbs.Parent := Self;
+  { Below the buttons, not above them.  Two alTop siblings stack in order of
+    their Top, and a control that has just been made has Top 0 -- the same as
+    the row already there -- so the trail came out on the first line and the
+    buttons on the second.  Given a Top past the nav row it settles under it,
+    and the alignment keeps it there. }
+  FCrumbs.Top := FNav.Height + 1;
   FCrumbs.Align := alTop;
   FCrumbs.Height := 24;
   FCrumbs.BevelOuter := bvNone;
