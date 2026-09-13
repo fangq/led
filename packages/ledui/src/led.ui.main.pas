@@ -529,8 +529,9 @@ type
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
     FClipAsked: Boolean;
+    FClipPolls: Integer;
     FClipAskedAt: QWord;
-    function ClipboardHasText(AView: TLedEdit): Boolean;
+
     procedure ApplyMinimumSize;
     procedure ApplyCentreFloor;
     procedure TabCloseClick(Sender: TObject);
@@ -709,6 +710,12 @@ type
       that cannot.  Public so the check can build an item the way the form
       does and watch what ticking it costs. }
     procedure MakeTogglesCheckable;
+    { Whether the clipboard holds text, cached -- and never asked of the X
+      server while the toolkit holds a grab.  Public, with the count of times
+      it has actually asked, for the check that a menu being open stops it
+      asking. }
+    function ClipboardHasText(AView: TLedEdit): Boolean;
+    property ClipboardPolls: Integer read FClipPolls;
     procedure PopulateThemeMenu;
     procedure PopulateLanguageMenu;
     procedure PopulateEncodingMenu;
@@ -4470,6 +4477,44 @@ function TLedMainForm.ClipboardHasText(AView: TLedEdit): Boolean;
 var
   Now_: QWord;
 begin
+  { Never while the toolkit holds a grab, which in practice means a menu is
+    open.
+
+    The round trip above is not just slow here, it is fatal.  The LCL waits
+    for the selection reply by running the event loop -- RequestSelectionData
+    calls Application.ProcessMessages -- and this is asked from the
+    action-update pass, which runs on every idle, including every idle while
+    a menu is open.  So gtk's menu handling is re-entered from inside the menu
+    it is already in the middle of.  Sweeping the pointer up and down an open
+    submenu ends here:
+
+        gtk_menu_shell ...                          <- SIGSEGV
+        gtk_main_do_event
+        AppProcessMessages             gtk2widgetset.inc:2494
+        TApplication.ProcessMessages      application.inc:421
+        RequestSelectionData                gtk2proc.inc:7523
+        TClipboard.HasFormat                  clipbrd.inc:614
+        TCustomSynEdit.GetCanPaste              synedit.pp:5620
+        TLedMainForm.ClipboardHasText
+        TLedMainForm.ActionList1Update
+
+    It is the stuck highlights as well: blocking there loses the crossing
+    events the menu needs to un-light the row the pointer has left, so rows
+    stay lit behind it.
+
+    Driven by XTest over an open Open Recent, with another client owning the
+    selection: nine runs out of nine died without this line, none of eleven
+    with it.  When nobody owns the selection X answers at once, no loop is
+    run and nothing crashes -- six runs of that, all clean -- which is why an
+    empty Xvfb could not find this, and why two earlier attempts on the same
+    report fixed real but different things.
+
+    The cached answer is what the menu was opened with, which is the answer a
+    menu should be showing anyway: a clipboard that changes while a menu is
+    open changes nothing the user can see. }
+  if FClipAsked and LedToolkitGrabActive then
+    Exit(FClipHasText);
+
   Now_ := GetTickCount64;
   { FClipAsked rather than a zero FClipAskedAt: the tick count is only
     milliseconds since boot on some platforms and genuinely can be small. }
@@ -4477,6 +4522,7 @@ begin
     Exit(FClipHasText);
 
   FClipHasText := AView.CanPaste;
+  Inc(FClipPolls);
   FClipAsked := True;
   FClipAskedAt := Now_;
   Result := FClipHasText;

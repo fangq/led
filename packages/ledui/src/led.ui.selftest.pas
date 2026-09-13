@@ -2461,6 +2461,74 @@ begin
   DeleteFile(Path);
 end;
 
+{ The clipboard is left alone while a menu is open.
+
+  Asking whether it holds text is a synchronous X round trip on gtk2, and the
+  LCL waits for the answer by running the event loop -- so asking it from the
+  action-update pass, which runs on every idle including every idle while a
+  menu is open, re-enters gtk's menu handling from inside the menu.  Rows stay
+  lit behind the pointer, and sweeping the pointer up and down an open submenu
+  is an access violation inside gtk with none of LED's frames near it.
+  TLedMainForm.ClipboardHasText carries the stack it dies on.
+
+  Reproduced with the pointer driven by XTest over the Open Recent submenu and
+  another client owning the selection: nine runs out of nine died before the
+  guard, none of eleven after.  The selection owner is what two earlier hunts
+  were missing -- a clipboard nobody owns answers with no round trip at all,
+  so on a bare Xvfb this cannot happen.
+
+  The check asserts the number of times LED has actually asked, because a
+  round trip is what crashes: a flag holding the right value would say nothing
+  about whether the question went out.  Removing the guard fails it. }
+procedure TestClipboardUnderGrab(F: TLedMainForm);
+const
+  { Longer than the poll's own cache, which would otherwise be the reason
+    nothing was asked, and the check would pass with the guard removed. }
+  PastTheCache = 300;
+var
+  V: TLedEdit;
+  Before, i: Integer;
+begin
+  Say('the clipboard while a menu is open');
+  if (F.ActiveTab = nil) or (F.ActiveTab.ActiveView = nil) then
+  begin
+    Say('  (no document; skipped)');
+    Exit;
+  end;
+  V := F.ActiveTab.ActiveView;
+
+  Pump;
+  F.ClipboardHasText(V);
+  Sleep(PastTheCache);
+
+  Before := F.ClipboardPolls;
+  F.ClipboardHasText(V);
+  CheckEqInt('with nothing grabbing, the clipboard is asked',
+    Before + 1, F.ClipboardPolls);
+
+  if not LedToolkitGrabTake(F) then
+  begin
+    Say('  (this toolkit has no grab a check can raise; skipped)');
+    Exit;
+  end;
+  try
+    Check('a grab is visible while it is held', LedToolkitGrabActive);
+    Sleep(PastTheCache);
+    Before := F.ClipboardPolls;
+    for i := 1 to 20 do
+      F.ClipboardHasText(V);
+    CheckEqInt('and while it is held the clipboard is not asked once',
+      Before, F.ClipboardPolls);
+  finally
+    LedToolkitGrabRelease(F);
+  end;
+
+  Check('the grab is gone once it is given back', not LedToolkitGrabActive);
+  Before := F.ClipboardPolls;
+  F.ClipboardHasText(V);
+  CheckEqInt('and asking resumes', Before + 1, F.ClipboardPolls);
+end;
+
 procedure TestLanguageAndTheme(F: TLedMainForm);
 var
   Path: string;
@@ -8349,6 +8417,8 @@ begin
   TestDocumentBehaviour(F);
   WriteLn;
   TestRecentFiles(F);
+  WriteLn;
+  TestClipboardUnderGrab(F);
   WriteLn;
   TestLanguageAndTheme(F);
   WriteLn;

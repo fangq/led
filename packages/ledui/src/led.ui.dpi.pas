@@ -118,6 +118,28 @@ function LedDefaultFontSize: Integer;
   rule that decides whether a stored preference is a choice or a default. }
 function LedIsGenericFamily(const AName: string): Boolean;
 
+{ True while the toolkit holds a grab -- which, in practice, means a menu is
+  open or a drag is in flight.
+
+  Here because this is the unit that already talks to gtk2 directly, and the
+  question is the same kind of question: something about the toolkit that the
+  LCL does not surface.  Off gtk2 it answers False, which is the honest answer
+  for a toolkit whose menus do not take a grab this code can see. }
+function LedToolkitGrabActive: Boolean;
+
+{ Take and give back a toolkit grab, for the check that a menu being open
+  stops LED asking the clipboard.
+
+  A check cannot open a menu and then look at anything: TPopupMenu.PopUp does
+  not return on gtk2 until the menu closes again, and there is nothing in the
+  LCL that raises a grab on its own.  So the check raises the toolkit's real
+  grab -- the same call gtk makes for a menu -- on a real widget, and
+  LedToolkitGrabActive answers about that one exactly as it does about a
+  menu's.  True if a grab was actually taken, so a caller on a toolkit where
+  this means nothing can say so rather than assert against thin air. }
+function LedToolkitGrabTake(AControl: TWinControl): Boolean;
+procedure LedToolkitGrabRelease(AControl: TWinControl);
+
 type
   TLedRectArray = array of TRect;
 
@@ -744,6 +766,33 @@ begin
   { Only Windows has a title bar to darken this way. }
 end;
 {$ENDIF}
+
+function LedToolkitGrabActive: Boolean;
+begin
+  {$IFDEF LED_GTK2_CHROME}
+  Result := gtk_grab_get_current <> nil;
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
+end;
+
+function LedToolkitGrabTake(AControl: TWinControl): Boolean;
+begin
+  Result := False;
+  {$IFDEF LED_GTK2_CHROME}
+  if (AControl = nil) or not AControl.HandleAllocated then Exit;
+  gtk_grab_add({%H-}PGtkWidget(AControl.Handle));
+  Result := LedToolkitGrabActive;
+  {$ENDIF}
+end;
+
+procedure LedToolkitGrabRelease(AControl: TWinControl);
+begin
+  {$IFDEF LED_GTK2_CHROME}
+  if (AControl = nil) or not AControl.HandleAllocated then Exit;
+  gtk_grab_remove({%H-}PGtkWidget(AControl.Handle));
+  {$ENDIF}
+end;
 
 function LedMonitorRects: TLedRectArray;
 var
