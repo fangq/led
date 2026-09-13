@@ -3568,6 +3568,19 @@ begin
   CheckGt('and Save is drawn in its own blue', 0,
     IconColourCount('save', LedIconAccent('save')));
 
+  { The fallback page too.  Drawn in the caller's ink it came out black, and
+    the file tree is painted in the editor's colours -- so on a dark scheme
+    an unrecognised file was a page-shaped hole.  A mid grey reads on both:
+    checked against black and white rather than against a taste. }
+  Check('the fallback page has a colour of its own',
+    LedIconAccent('doc') <> clNone);
+  CheckGt('which can be seen on a dark page', 30,
+    Round(10 * LedContrastRatio(LedIconAccent('doc'), clBlack)));
+  CheckGt('and on a light one', 30,
+    Round(10 * LedContrastRatio(LedIconAccent('doc'), clWhite)));
+  CheckGt('and it is drawn in it', 0,
+    IconColourCount('doc', LedIconAccent('doc')));
+
   { One extension table, in Led.UI.Icons, so the tree and the tab headers
     cannot disagree about what a file is. }
   CheckEq('a C file is source', 'filesource', LedIconForFile('x.c'));

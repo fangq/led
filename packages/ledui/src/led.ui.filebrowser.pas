@@ -384,6 +384,16 @@ begin
   if (FTree = nil) or (AFore = clNone) or (ABack = clNone) then Exit;
   FTree.Color := ABack;
   FTree.Font.Color := AFore;
+
+  { The icons are drawn, not loaded, so they can be drawn again in the
+    colours the tree has just been given.  Only the ones with no colour of
+    their own change -- a source file stays blue -- but those are the ones
+    that were disappearing into a dark page. }
+  if FIcons <> nil then
+  begin
+    LedBuildIconList(FIcons, TreeIconNames, AFore);
+    FTree.Invalidate;
+  end;
   { The crumb trail and the filter row stay in the desktop's colours: they
     are chrome, not content, and LED does not theme its other chrome either. }
 end;
@@ -565,7 +575,11 @@ begin
   FIcons := TImageList.Create(Self);
   FIcons.Width := LedScale96(16);
   FIcons.Height := LedScale96(16);
-  LedBuildIconList(FIcons, TreeIconNames, clDefault);
+  { clBtnText, not clDefault: clDefault resolves to black, and the tree is
+    painted in the *editor's* colours, so on a dark scheme every icon without
+    a colour of its own was black on near-black.  Rebuilt with the tree's own
+    foreground whenever those colours change -- see ApplyColours. }
+  LedBuildIconList(FIcons, TreeIconNames, clBtnText);
 
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;

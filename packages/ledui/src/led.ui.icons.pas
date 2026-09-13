@@ -377,6 +377,11 @@ begin
   if AName = 'fileimage'    then Exit(RGBToColor( 95, 165, 100));  { green }
   if AName = 'filebinary'   then Exit(RGBToColor(175, 135,  75));  { amber }
   if AName = 'folder'       then Exit(RGBToColor(215, 175,  95));  { manila }
+  { The fallback page, for a file whose kind LED does not recognise.  It has
+    a colour of its own for the same reason the others do, and a mid grey
+    rather than the ink: drawn in the ink it was black, which on a dark file
+    tree is a page-shaped hole. }
+  if AName = 'doc'          then Exit(RGBToColor(128, 134, 143));  { grey }
   Result := clNone;
 end;
 
