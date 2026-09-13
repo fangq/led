@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  Session and recent-file persistence.
+{ LED - a lightweight editor.  Session and recent-file persistence.
 
-  medit stored these as XML; led uses JSON, because the shape is nested and
+  medit stored these as XML; LED uses JSON, because the shape is nested and
   array-heavy -- windows hold tabs hold per-tab state -- and JSON expresses
   that without the Count/ItemN idiom an INI or XMLConf file would force.
 

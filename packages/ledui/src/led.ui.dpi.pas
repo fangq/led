@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Adaptive high-DPI scaling.
+{ LED - a lightweight editor.  Adaptive high-DPI scaling.
 
   Ported from the sibling Lazarus project GotBox, whose comments explain the
   problem better than a summary can: on gtk2, Application.Scaled caps at the
@@ -6,7 +6,7 @@
   it even reverts a manual bump on Show -- so on Linux we leave LCL
   auto-scaling off and scale the forms ourselves, to
   Xft.dpi * WindowScalingFactor.  That is what gtk3 applications render at, so
-  led's geometry and fonts grow together and match everything else on screen.
+  LED's geometry and fonts grow together and match everything else on screen.
 
   Windows and macOS report a true per-monitor DPI and LCL's own scaling is
   correct there, so this is a no-op: the target equals the form's current PPI
@@ -54,10 +54,10 @@ procedure LedInstallChromeStyle;
   session.  Call once at startup.
 
   LedApplyAdaptiveScale only reaches the forms that exist when it runs, and
-  LedScaleForm has to be called by hand for the rest -- which works for led's
+  LedScaleForm has to be called by hand for the rest -- which works for LED's
   own dialogs and not at all for the ones the LCL builds internally.  A
   message box, and the dialog TApplication puts up for an unhandled
-  exception, are created deep inside the LCL and shown without led ever
+  exception, are created deep inside the LCL and shown without LED ever
   holding a reference: they came up at their design size, a third of the
   window that raised them, with text to match.
 
@@ -82,7 +82,7 @@ function LedRefreshScale: Boolean;
 function LedScale96(APixels: Integer): Integer;
 
 { The point size to actually assign to a font so that a preference of
-  APoints ends up the size led's windows are scaled to.  The sibling of
+  APoints ends up the size LED's windows are scaled to.  The sibling of
   LedScale96, for point sizes rather than pixel constants.
 
   Not a matter of Font.Height or Font.PixelsPerInch: on gtk2 neither moves
@@ -98,7 +98,7 @@ function LedScale96(APixels: Integer): Integer;
 function LedScalePointSize(APoints: Integer): Integer;
 
 { How much bigger the text gtk draws for itself has to be to sit at the same
-  size as everything led scales.  1 when there is nothing to correct. }
+  size as everything LED scales.  1 when there is nothing to correct. }
 function LedChromeFontFactor: Double;
 
 { The desktop's own UI font at that factor, as a pango description string --
@@ -107,7 +107,7 @@ function LedChromeFontFactor: Double;
 function LedScaledChromeFont: string;
 
 { The point size the editor should use when the user has expressed no
-  preference: the system UI font's size, so led does not open smaller than
+  preference: the system UI font's size, so LED does not open smaller than
   every other application on the desktop.  A monospace face at the UI font's
   size is what medit effectively did by inheriting the GTK theme font. }
 function LedDefaultFontSize: Integer;
@@ -240,7 +240,7 @@ begin
 end;
 
 { Every string gtk2 draws -- its own menu captions, and the text of any font
-  led hands it -- is rendered from a point size at the pango resolution, which
+  LED hands it -- is rendered from a point size at the pango resolution, which
   is Xft.dpi.  Nothing about that resolution follows the desktop's integer
   window-scaling factor, and nothing about it follows the PPI the forms were
   scaled to either: gtk2 ignores the first and never hears about the second.
@@ -251,8 +251,8 @@ end;
   preference draws 21 pixels tall in a window scaled for 42.
 
   This is the one ratio that closes both gaps, and it is why the two fixes
-  below share it: LedScalePointSize multiplies the sizes led assigns, and the
-  resource style multiplies the size gtk uses for the widgets led does not
+  below share it: LedScalePointSize multiplies the sizes LED assigns, and the
+  resource style multiplies the size gtk uses for the widgets LED does not
   own.  Never below 1 -- the theme font is the user's own choice of size, and
   shrinking it would answer a complaint nobody made. }
 function LedChromeFontFactor: Double;
@@ -367,7 +367,7 @@ end;
 { Hand gtk the scaled font as a resource style, for every widget it draws.
 
   Scoped to menus, the status bar and dialogs to begin with, on the theory
-  that everything else went through a TFont led controls.  It does not.  A
+  that everything else went through a TFont LED controls.  It does not.  A
   gtk widget's own style font stays the theme's until the LCL decides to
   override it per widget, and a great deal is sized from that style rather
   than from the font:
@@ -379,7 +379,7 @@ end;
     - a tree view's column headers, which are buttons of gtk's own and never
       see the font the LCL puts on the tree.
 
-  So the style is global now.  It cannot reach anything led sizes itself: a
+  So the style is global now.  It cannot reach anything LED sizes itself: a
   control whose TFont carries a height pushes that font to its widget with
   gtk_widget_modify_font, and a modification beats a style.  What is left is
   exactly the set that was wrong -- widgets still drawing with the theme's
@@ -572,7 +572,7 @@ end;
 
 function LedDefaultFontName: string;
 begin
-  { The font led ships with, when it actually arrived.  Asking Screen.Fonts
+  { The font LED ships with, when it actually arrived.  Asking Screen.Fonts
     as well as the loader is not belt and braces: the loader reports that the
     platform accepted the file, and this reports that the toolkit can now
     resolve the family -- which is the thing every caller goes on to do, and
@@ -639,7 +639,7 @@ begin
     Preferences dialog stores the resolved default verbatim when it is
     accepted, so anyone who opened it before the bundled font existed has
     "Monospace 10" on disk -- and would never see the shipped font again,
-    however many times led was upgraded.  Asking for "Monospace" is asking
+    however many times LED was upgraded.  Asking for "Monospace" is asking
     for whatever this system calls monospace, which is exactly what the
     default is for.  A real family is never touched: choosing DejaVu Sans
     Mono, Consolas or Menlo is choosing a face. }

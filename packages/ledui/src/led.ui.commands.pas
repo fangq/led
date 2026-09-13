@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Editing commands.
+{ LED - a lightweight editor.  Editing commands.
 
   The operations that are more than a SynEdit call: comment/uncomment driven
   by the grammar's own markers, the one-space indent shift medit bound to
@@ -57,7 +57,7 @@ procedure LedPasteColumn(AView: TLedEdit);
 
   The system clipboard carries plain text and nothing else -- there is no
   flag on it saying "these three lines are a column, not three lines".  So
-  led remembers what it last put there as a rectangle, and a paste whose
+  LED remembers what it last put there as a rectangle, and a paste whose
   clipboard still holds exactly that text goes back in as a rectangle.  Copy
   something else in between, from anywhere, and the memory stops matching
   and the paste is an ordinary one.

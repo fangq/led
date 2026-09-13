@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  One notebook tab: a document and its views.
+{ LED - a lightweight editor.  One notebook tab: a document and its views.
 
   The tab holds a tree of TPairSplitter, so splitting is recursive: splitting
   the focused view wraps that view in a new splitter and puts a fresh view of

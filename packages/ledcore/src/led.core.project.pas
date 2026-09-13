@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  Projects: a root, launch configurations, build tasks.
+{ LED - a lightweight editor.  Projects: a root, launch configurations, build tasks.
 
-  led has had two things called "project" and neither is this one.  The
+  LED has had two things called "project" and neither is this one.  The
   Project pane is a curated list of files with no root and no build; the user
   tools are commands with no project.  This is the third thing both of those
   deliberately are not: a folder that knows how to build and run what is in
@@ -9,7 +9,7 @@
   The format is VS Code's, because it is the one already sitting in most C
   and C++ checkouts:
 
-    <root>/.led/launch.json      led's own, looked at first
+    <root>/.led/launch.json      LED's own, looked at first
     <root>/.vscode/launch.json   the project's existing one
     <root>/<either>/tasks.json   optional, for preLaunchTask
 
@@ -52,7 +52,7 @@ type
     FEnvironment: TStringList;   // name=value, in file order
   public
     Name: string;
-    Program_: string;            // "program", or led's "target"
+    Program_: string;            // "program", or LED's "target"
     Cwd: string;
     PreLaunchTask: string;
     BuildCommand: string;        // "build", or resolved from tasks.json
@@ -402,7 +402,7 @@ begin
 
       C := TLedLaunchConfig.Create;
       C.Name := JStr(Obj, 'name', '(unnamed)');
-      { "target" is led's own spelling; "program" is VS Code's. }
+      { "target" is LED's own spelling; "program" is VS Code's. }
       C.Program_ := JStr(Obj, 'program', JStr(Obj, 'target', ''));
       C.Cwd := JStr(Obj, 'cwd', '');
       C.PreLaunchTask := JStr(Obj, 'preLaunchTask', '');

@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  Crash recovery for unsaved work.
+{ LED - a lightweight editor.  Crash recovery for unsaved work.
 
-  Until this existed, killing led lost everything unsaved: session.json holds
+  Until this existed, killing LED lost everything unsaved: session.json holds
   paths and caret positions but no text, skips untitled documents outright,
   is off by default, and is written from the close handler -- which a kill
   never reaches.  An untitled buffer was gone completely and a modified file
@@ -69,7 +69,7 @@ type
     function ReadEntry(const AId: string; out AEntry: TLedRecoveryEntry): Boolean;
   public
     { ADirectory defaults to <config>/recovery.  The directory is created
-      lazily, on the first Store, so merely starting led does not litter. }
+      lazily, on the first Store, so merely starting LED does not litter. }
     constructor Create(const ADirectory: string = '');
 
     { Write, or overwrite, the journal entry for one document.  AId must be

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Highlighter selection and theming.
+{ LED - a lightweight editor.  Highlighter selection and theming.
 
   Two jobs, kept together because they share one table:
 
@@ -40,7 +40,7 @@ uses
   folds and always speaks the same scope vocabulary as the themes. }
 function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 
-{ True when led can highlight this language today. }
+{ True when LED can highlight this language today. }
 function LedHasHighlighter(const ALangId: string): Boolean;
 
 { Where the converted grammar for a language would be, whether or not it

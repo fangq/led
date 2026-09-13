@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The symbol browser pane.
+{ LED - a lightweight editor.  The symbol browser pane.
 
   A tree of what ctags found in the active document, grouped by kind.
   Double-clicking a symbol goes to its line.

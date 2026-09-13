@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Telling a hex dump's three columns apart.
+{ LED - a lightweight editor.  Telling a hex dump's three columns apart.
 
   A row is three things in a trench coat -- an offset, sixteen bytes, and the
   printable ones again -- and rendered in one colour they read as one wall of
@@ -13,7 +13,7 @@
   asked about every token as it is drawn, and can see the editor it belongs
   to, so both fall out of the same object.
 
-  The colours are derived from the theme rather than fixed, because led ships
+  The colours are derived from the theme rather than fixed, because LED ships
   eight schemes and half of them are light.  What is constant is the
   relationship: offsets recede, bytes are the ordinary text colour, the text
   column sits between the two, and the row the caret is on has its offset

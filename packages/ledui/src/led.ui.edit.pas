@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The editor view control.
+{ LED - a lightweight editor.  The editor view control.
 
   One TLedEdit is one *view*.  A document may own several of them, all sharing
   a single text buffer, which is how split view works. }
@@ -93,7 +93,7 @@ type
     { The debugger's two marks.  Painted here rather than made into
       TSynEditMarks because SynEdit only draws marks when
       BookMarkOptions.BookmarkImages is set, and setting it would also
-      replace the numbered glyphs led's ten bookmarks draw themselves with. }
+      replace the numbered glyphs LED's ten bookmarks draw themselves with. }
     FBreaks: TLedGutterBreaks;
     FDebugLine: Integer;
     FOnBreakpointClick: TLedBreakpointClick;
@@ -151,7 +151,7 @@ type
       read FCurrentLineColour write FCurrentLineColour;
     { The screen row the rules were last drawn on, or -1 when they were not
       drawn at all.  Published because the ink itself cannot be checked from
-      a test: PaintTo into a bitmap reproduces led's gutter drawing and not
+      a test: PaintTo into a bitmap reproduces LED's gutter drawing and not
       its text-area drawing, so what the painter decided is the most a
       scripted run can see.  The rules themselves are checked by eye. }
     property CurrentLineRow: Integer read FCurrentLineRow;

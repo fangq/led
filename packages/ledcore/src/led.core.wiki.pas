@@ -1,7 +1,7 @@
-{ led - a lightweight editor.  Wiki markup to HTML.
+{ LED - a lightweight editor.  Wiki markup to HTML.
 
   medit renders a UseMod / Habitat dialect of wiki markup in its preview
-  pane, from an in-tree converter in moopagepreview.cpp.  led dropped it up
+  pane, from an in-tree converter in moopagepreview.cpp.  LED dropped it up
   front as "a niche format", which was a judgement about other people's
   files rather than about this one's users; it is back because it is used.
 

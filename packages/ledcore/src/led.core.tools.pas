@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  User-defined tools.
+{ LED - a lightweight editor.  User-defined tools.
 
-  medit kept these in menu.xml and context.xml; led keeps one file per tool,
+  medit kept these in menu.xml and context.xml; LED keeps one file per tool,
   because a tool is mostly a shell script and a script wants to be a file you
   can read, not a CDATA block inside XML.
 
@@ -147,7 +147,7 @@ var
   N: string;
 begin
   N := LowerCase(Trim(S));
-  { medit called the in-process script type "lua"; led's is PascalScript, but
+  { medit called the in-process script type "lua"; LED's is PascalScript, but
     a tool file written for medit should still land somewhere sensible. }
   if (N = 'lua') or (N = 'pascal') then N := 'script';
   for K := Low(TLedToolKind) to High(TLedToolKind) do

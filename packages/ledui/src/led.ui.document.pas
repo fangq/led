@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The document model.
+{ LED - a lightweight editor.  The document model.
 
   A TLedDocument is the unit of "an open file".  It is not a widget and not a
   buffer: it owns a hidden master TSynEdit whose TSynEditStringList holds the
@@ -384,7 +384,7 @@ end;
   This is medit's documented behaviour rather than its implemented one:
   moospellcheck.cpp turns checking off for any file with a language at all,
   including Markdown and LaTeX, and its own comment says the
-  comments-and-strings filter was never written.  led has that filter, so it
+  comments-and-strings filter was never written.  LED has that filter, so it
   can do what the preference page promises. }
 const
   LedProseLanguages: array[0..5] of string =
@@ -701,7 +701,7 @@ begin
   Row := AOffset div LedHexBytesPerLine;
   if (Row < 0) or (Row >= FMaster.Lines.Count) then Exit;
   { Straight into the buffer rather than through an edit command: the views
-    are read-only, and an undo of led's own is what SetHexByte keeps. }
+    are read-only, and an undo of LED's own is what SetHexByte keeps. }
   FMaster.Lines[Row] := LedHexDumpLine(FBytes, Row * LedHexBytesPerLine);
 end;
 

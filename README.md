@@ -1,7 +1,7 @@
-# led — a lightweight programmer's text editor
+# LED — a lightweight programmer's text editor
 
 <p align="center">
-  <img src="packaging/icons/led.svg" width="120" alt="led">
+  <img src="packaging/icons/led.svg" width="120" alt="LED">
 </p>
 
 [![CI](https://github.com/fangq/led/actions/workflows/ci.yml/badge.svg)](https://github.com/fangq/led/actions/workflows/ci.yml)
@@ -22,7 +22,7 @@ One native binary per platform. Nothing to configure before you can use it.
 > **Who it's for:** anyone who wants a small, quick editor that still has the
 > things a working programmer reaches for — split views, column selection, find
 > in files, a terminal, breakpoints. If you have used **medit**, **gedit**,
-> **Kate** or **Notepad++**, led will feel familiar.
+> **Kate** or **Notepad++**, LED will feel familiar.
 
 ---
 
@@ -111,13 +111,13 @@ One native binary per platform. Nothing to configure before you can use it.
 - **8 colour themes** — `classic`, `cobalt`, `kate`, `medit`, `oblivion`,
   `solarized-dark`, `solarized-light`, `tango` — switchable from
   **View ▸ Colour Theme**.
-- **Fira Code is bundled** and is the default, so led looks identical on
-  Linux, Windows and macOS. Nothing is installed on your system — led
+- **Fira Code is bundled** and is the default, so LED looks identical on
+  Linux, Windows and macOS. Nothing is installed on your system — LED
   registers the font for its own process only. Pick any other monospace
   family in **Preferences ▸ View ▸ Editor font**.
-- Upgrading from an older led? If your `prefs.ini` holds a generic name like
+- Upgrading from an older LED? If your `prefs.ini` holds a generic name like
   `Monospace` — which is what the Preferences dialog used to store when you
-  accepted it — led now reads that as "whatever this system calls monospace"
+  accepted it — LED now reads that as "whatever this system calls monospace"
   and gives you the bundled font instead. A real family you chose, such as
   `DejaVu Sans Mono` or `Consolas`, is always kept.
 
@@ -136,7 +136,7 @@ One native binary per platform. Nothing to configure before you can use it.
 
 ### Panes and window layout
 
-led has a **File Browser** (with a clickable breadcrumb path bar), **Project
+LED has a **File Browser** (with a clickable breadcrumb path bar), **Project
 Files**, **Symbols**, **Output**, **Terminal**, **Preview**, **Debugger** and
 **Breakpoints** panes.
 
@@ -182,7 +182,7 @@ Open an ELF, a PNG or a `.zip` in most editors and you get line noise — and if
 you press Save, the file is quietly corrupted, because the editor rewrote its
 line endings.
 
-led shows a file that is not text as a **hex dump** instead, in the layout
+LED shows a file that is not text as a **hex dump** instead, in the layout
 `hexedit` and `xxd` use:
 
 ```
@@ -194,12 +194,12 @@ The three columns are coloured so the text half stands out, and the dump is
 a byte, `Ctrl+Z` to undo, `Ctrl+S` to write the bytes back — and only the bytes
 you changed are different. Editing is overwrite-only, so offsets never shift.
 
-If led guesses wrong, **File ▸ Open as Text** overrules it for that one
+If LED guesses wrong, **File ▸ Open as Text** overrules it for that one
 opening.
 
 ### Debugging C and C++
 
-led drives `gdb` as a subprocess, so all you need is `gdb` on your `PATH`.
+LED drives `gdb` as a subprocess, so all you need is `gdb` on your `PATH`.
 
 | Shortcut | Action |
 |---|---|
@@ -234,7 +234,7 @@ led drives `gdb` as a subprocess, so all you need is `gdb` on your `PATH`.
   pane, where `file:line` is clickable. There is a box for raw gdb commands.
 
 **Projects.** A folder containing `.led/launch.json` (or `.vscode/launch.json`)
-is a project; led walks up from the file you are editing to find it. The format
+is a project; LED walks up from the file you are editing to find it. The format
 is VS Code's:
 
 ```jsonc
@@ -256,14 +256,14 @@ substituted. `preLaunchTask` names a label in `tasks.json`, or a configuration
 can carry a `build` command directly. Starting a session rebuilds first if the
 binary is older than your sources, and does not launch if that build fails.
 
-Without a project, led debugs the open file's name minus its extension —
+Without a project, LED debugs the open file's name minus its extension —
 `foo.c` → `foo`, which is what `gcc -g foo.c -o foo` gives you.
 
 ### Tools
 
 Run external commands on the current file or selection and get the result back
 in the editor, in the Output pane, or as a replacement for what you selected.
-led ships 15 ready to use, including **Sort Lines**, **Sort | Uniq**, **Diff to
+LED ships 15 ready to use, including **Sort Lines**, **Sort | Uniq**, **Diff to
 Disk**, **Insert Date**, **Switch Header/Source**, **Make**, **LaTeX**,
 **pdflatex** and **BibTeX**.
 
@@ -280,7 +280,7 @@ the right file. Add your own under **Edit ▸ Preferences ▸ Tools**.
 - **Crash recovery.** Every few seconds each modified document is written to a
   journal, and dropped as soon as you save or close it. A clean exit empties
   the journal — so anything left at startup means the last run was killed, and
-  led offers the work back. **Untitled buffers are covered too**, which a
+  LED offers the work back. **Untitled buffers are covered too**, which a
   session file cannot do.
 - **Drag and drop** files onto the window to open them; drop a folder and the
   file browser points at it.
@@ -301,9 +301,9 @@ the latest **Package** workflow run under the Actions tab):
 | **Linux** | `.tar.gz` | Portable; unpack anywhere and run `bin/led` |
 | **Windows** | Setup `.exe` | Inno Setup installer, per-user or system-wide |
 | **Windows** | `.zip` | Portable; unpack and run `led.exe` |
-| **macOS** | `.dmg` | Drag **led** to *Applications* |
+| **macOS** | `.dmg` | Drag **LED** to *Applications* |
 
-Every package carries led's `data/` directory — grammars, themes, tools, the
+Every package carries LED's `data/` directory — grammars, themes, tools, the
 dictionary and the bundled font. A copy with only the executable would open
 every file as plain, unhighlighted text.
 
@@ -350,7 +350,7 @@ make uninstall
 ```
 
 `make install` copies what is already built and never recompiles, so it is safe
-under `sudo`. led finds its data relative to its own binary —
+under `sudo`. LED finds its data relative to its own binary —
 `<prefix>/share/led` after an install, `data/` beside `bin/` in a build tree —
 so you only need `$LED_DATA_DIR` if you move the two apart.
 
@@ -478,7 +478,7 @@ Override it with `$LED_CONFIG_DIR`.
 | `recent.json` | The Open Recent list |
 | `layout.xml` | Where the panes are docked |
 | `tools/*.ini` | One file per tool you define |
-| `recovery/` | Unsaved work, journalled while led runs |
+| `recovery/` | Unsaved work, journalled while LED runs |
 | `user-dictionary.txt` | Words you told the spell checker to accept |
 
 A few preferences worth knowing, set in `prefs.ini` or the Preferences dialog:
@@ -506,14 +506,14 @@ letters sit differently. Choose a font that covers what you read —
 `Noto Sans Mono CJK SC`, `Noto Sans Mono CJK JP`, `WenQuanYi Micro Hei Mono` or
 `Sarasa Mono` — in **Preferences ▸ View ▸ Editor font**.
 
-**led exits over `ssh -X` with a `BadAccess` error.** It no longer does — led
+**LED exits over `ssh -X` with a `BadAccess` error.** It no longer does — LED
 recognises this one and carries on. For the curious: ssh forwards the X
 server's extension list unchanged, so shared-memory drawing is advertised even
-though the server is on your machine and led is on the other one. Drawing falls
+though the server is on your machine and LED is on the other one. Drawing falls
 back to the ordinary path, which is slightly slower over the wire and otherwise
 identical.
 
-**Everything is tiny on a high-DPI screen.** led follows your desktop's scaling
+**Everything is tiny on a high-DPI screen.** LED follows your desktop's scaling
 including the window-scaling factor, which the underlying toolkit ignores on
 its own. If something still looks wrong, please report it with your `Xft.dpi`
 and scaling factor.
@@ -544,7 +544,7 @@ make LAZARUSDIR=/usr/lib/lazarus/2.2.0
 
 ## For developers
 
-led is written in Free Pascal with Lazarus/LCL — one source tree builds
+LED is written in Free Pascal with Lazarus/LCL — one source tree builds
 natively on Linux, Windows and macOS.
 
 ```
@@ -573,7 +573,7 @@ loads every grammar, runs the GUI self-test under `xvfb`, verifies the bundled
 fonts against their upstream checksums, and checks the committed icons still
 match their generator.
 
-**Parity with medit.** led is a feature-comparable successor to
+**Parity with medit.** LED is a feature-comparable successor to
 [medit](https://github.com/fangq/medit). [`PARITY.md`](PARITY.md) tracks every
 medit action, preference key, shipped tool and behavioural feature, recording
 what is done, what an LCL facility replaces, and what is deliberately not
@@ -583,11 +583,11 @@ carried over.
 
 ## License
 
-led is free software: you can redistribute it and/or modify it under the terms
+LED is free software: you can redistribute it and/or modify it under the terms
 of the **GNU General Public License, version 3 or later**, as
 published by the Free Software Foundation.
 
-led is distributed in the hope that it will be useful, but **WITHOUT ANY
+LED is distributed in the hope that it will be useful, but **WITHOUT ANY
 WARRANTY**; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
 A PARTICULAR PURPOSE. See <https://www.gnu.org/licenses/gpl-3.0.html> for the
 full text.
@@ -603,5 +603,5 @@ list carries its own notice in [`data/dict/`](data/dict/).
 - **Qianqian Fang** — author, with assistance from the AI coding assistant
   [Claude](https://claude.ai) (Anthropic).
 - **Yevgen Muntyan** — original author of [medit](http://mooedit.sourceforge.net/)
-  (2004–2010), whose design and feature set led follows.
+  (2004–2010), whose design and feature set LED follows.
 - Source code and bug reports: <https://github.com/fangq/led>

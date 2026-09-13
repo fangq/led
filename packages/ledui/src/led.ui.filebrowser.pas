@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The file browser pane.
+{ LED - a lightweight editor.  The file browser pane.
 
   medit hand-wrote 22,000 lines here, including its own icon grid, because GTK
   had nothing suitable.  LCL ships TShellTreeView, which enumerates a
@@ -153,7 +153,7 @@ type
       instead, so a dark scheme in the editor sat beside a file list in
       whatever the widget theme happened to be. }
     procedure ApplyColours(AFore, ABack: TColor);
-    { True when led is drawing the expander rather than the LCL.  A function
+    { True when LED is drawing the expander rather than the LCL.  A function
       because the hook is protected on TCustomTreeView, and Pascal's
       protected reaches only within the unit that declares the descendant. }
     function DrawsOwnChevron: Boolean;
@@ -207,11 +207,11 @@ begin
   { The trail has a row of its own now and is aligned to it, so its bounds
     are the layout's business and not this procedure's.
 
-    Setting them here is what crashed led on startup: an alTop control given
+    Setting them here is what crashed LED on startup: an alTop control given
     SetBounds is realigned, realignment raises OnResize, and OnResize set the
     bounds again -- unbounded recursion, which arrives as an access violation
     rather than as anything that names itself.  It only bit where the pane
-    was open when led started, which is why a scripted run never saw it. }
+    was open when LED started, which is why a scripted run never saw it. }
 
   { The pane roots itself the first time it has real geometry, instead of
     waiting to be told.  Only the two pane toggles told it, so a session that
@@ -300,7 +300,7 @@ end;
 
   Done here rather than by the LCL because TShellTreeView makes its nodes as
   it enumerates and has no hook for either -- it knows the path of a node and
-  nothing about what led wants to do with it. }
+  nothing about what LED wants to do with it. }
 procedure TLedFileBrowser.IconiseChildren(ANode: TTreeNode);
 var
   Node, Next: TTreeNode;
@@ -381,7 +381,7 @@ begin
   FTree.Color := ABack;
   FTree.Font.Color := AFore;
   { The crumb trail and the filter row stay in the desktop's colours: they
-    are chrome, not content, and led does not theme its other chrome either. }
+    are chrome, not content, and LED does not theme its other chrome either. }
 end;
 
 function LedFormatSize(ABytes: Int64): string;
@@ -540,7 +540,7 @@ begin
   FShowHidden.Caption := 'Hidden';
   FShowHidden.OnChange := @HiddenChange;
 
-  { The tree's own pictures, drawn by led rather than taken from the desktop
+  { The tree's own pictures, drawn by LED rather than taken from the desktop
     theme -- which is how every other icon in the application is made, and
     the only way they look the same on all three platforms. }
   FIcons := TImageList.Create(Self);
@@ -573,7 +573,7 @@ begin
     being a list with columns. }
   FTree.ShowHint := True;
   FTree.OnMouseMove := @TreeMouseMove;
-  { led draws the expander.  The LCL offers a themed box, a plus-minus and an
+  { LED draws the expander.  The LCL offers a themed box, a plus-minus and an
     outlined triangle, and none of them is the chevron a file tree has used
     since VS Code made it the convention.  OnCustomDrawArrow hands over that
     rectangle and nothing else -- the indent, the hit testing and the click
@@ -595,7 +595,7 @@ begin
     it enumerates, so the pictures are put on afterwards -- see IconiseNodes. }
   FTree.Images := FIcons;
   FTree.OnExpanded := @TreeExpanded;
-  { Sorted by led rather than by the LCL, and not as a matter of taste.
+  { Sorted by LED rather than by the LCL, and not as a matter of taste.
     Assigning FileSortType runs TCustomShellTreeView.SetFileSortType, which
     rebuilds the tree -- but not the way SetRoot does.  SetRoot gives the root
     node the file info that makes it a directory:
@@ -921,7 +921,7 @@ end;
 { Children are populated when a folder is first opened, so this is where they
   need ordering.  See the constructor for why it is not the LCL doing it. }
 { A folder that has just been opened has had its children made by the LCL,
-  which knows nothing about led's pictures or its filter -- so both are
+  which knows nothing about LED's pictures or its filter -- so both are
   applied here, where the nodes first exist. }
 procedure TLedFileBrowser.TreeExpanded(Sender: TObject; ANode: TTreeNode);
 begin
@@ -1004,7 +1004,7 @@ end;
 { A right-angle chevron: two arms meeting at ninety degrees, pointing right
   when the folder is shut and down when it is open.
 
-  Square rather than the flatter proportions led's fold gutter uses.  That
+  Square rather than the flatter proportions LED's fold gutter uses.  That
   one sits in a narrow column beside code and is drawn wide so it reads at a
   glance; this one sits in a row of text where a wide chevron would look like
   a mistake, and ninety degrees is what the eye expects beside a folder. }
@@ -1204,7 +1204,7 @@ var
 begin
   Path := SelectedPath;
   if Path = '' then Exit;
-  { No trash: led deletes outright, so the question says so and names what
+  { No trash: LED deletes outright, so the question says so and names what
     is about to go. }
   if MessageDlg('led',
     Format('Delete "%s" permanently?', [ExtractFileName(Path)]),

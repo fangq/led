@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  The fonts led brings with it.
+{ LED - a lightweight editor.  The fonts LED brings with it.
 
-  led ships Fira Code so that its default is the same font everywhere rather
+  LED ships Fira Code so that its default is the same font everywhere rather
   than whatever each desktop happens to call "Monospace".  Nothing is
   installed: each platform has a call that adds a font file to the running
   process and no further, which is the whole of this unit.
@@ -34,7 +34,7 @@ unit Led.Core.AppFont;
 
 interface
 
-{ The family led ships and prefers.  A constant rather than a string spelled
+{ The family LED ships and prefers.  A constant rather than a string spelled
   out at each use: it is also what the font files call themselves, and the
   two have to agree or the preference silently falls back. }
 const
@@ -116,7 +116,7 @@ begin
   {$IF DEFINED(UNIX) AND NOT DEFINED(DARWIN)}
   Result := FcConfigAppFontAddFile(nil, PChar(AFileName));
   {$ELSEIF DEFINED(WINDOWS)}
-  { FR_PRIVATE: visible to this process and gone when it exits, so led never
+  { FR_PRIVATE: visible to this process and gone when it exits, so LED never
     touches the machine's installed fonts.  No WM_FONTCHANGE broadcast for the
     same reason -- there is nobody else to tell. }
   Result := AddFontResourceExW(PWideChar(UnicodeString(AFileName)),

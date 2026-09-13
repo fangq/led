@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Focusing a control without risking an exception.
+{ LED - a lightweight editor.  Focusing a control without risking an exception.
 
   The obvious LCL idiom is a trap:
 

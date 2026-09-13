@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  A gdb subprocess, driven over its machine interface.
+{ LED - a lightweight editor.  A gdb subprocess, driven over its machine interface.
 
   One session is one `gdb --interpreter=mi3` child.  It owns the pipe, tags
   every command with a token so replies can be matched to what asked for them,
@@ -47,7 +47,7 @@ type
 
   { What a reply is an answer to.  A token is matched to one of these rather
     than to a closure, because Pascal makes an array of records much easier to
-    reason about than an array of anonymous methods -- and every request led
+    reason about than an array of anonymous methods -- and every request LED
     makes is one of a fixed handful. }
   TLedGdbRequest = (lgrNone, lgrVersion, lgrBreakInsert, lgrBreakDelete,
                     lgrWatchInsert, lgrLocals, lgrFrames, lgrEval, lgrExec,
@@ -98,7 +98,7 @@ type
   { One child of a variable object: a struct field, an array element, or the
     pointee of a pointer.  VarObj is gdb's handle for it, which is what a
     further -var-list-children is asked about, so drilling in is recursive
-    without led having to know anything about C types.
+    without LED having to know anything about C types.
 
     An aggregate child arrives with no value at all under --simple-values --
     only leaves carry one -- so an empty Value means "expand me", not

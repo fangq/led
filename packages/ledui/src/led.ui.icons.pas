@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Toolbar and menu icons, drawn rather than shipped.
+{ LED - a lightweight editor.  Toolbar and menu icons, drawn rather than shipped.
 
   medit used the desktop's stock GTK icon theme, which does not exist on
   Windows or macOS, and bundling a PNG set means artwork to license, scale
@@ -65,12 +65,12 @@ function LedIconNames: TStringArray;
   it should start with no icon rather than not start. }
 procedure LedApplyWindowIcon;
 
-{ Gives ABar led's own button painting: a wash under the pointer, a stronger
+{ Gives ABar LED's own button painting: a wash under the pointer, a stronger
   one while a button is held or checked, and hairline separators.
 
   Needed because gtk2 asks for ttbButtonHot and draws nothing for it, so a
   toolbar of flat glyphs gives no sign which button a click would reach.  One
-  call rather than a handler per toolbar, because led has four of them -- the
+  call rather than a handler per toolbar, because LED has four of them -- the
   main bar, the debugger's, the breakpoint pane's -- and they should not each
   answer the pointer differently. }
 procedure LedStyleToolBar(ABar: TToolBar);
@@ -135,7 +135,7 @@ type
     procedure Paint(Sender: TToolButton; State: Integer);
   end;
 
-  { TToolButton.Canvas is protected, and a button led paints itself has to be
+  { TToolButton.Canvas is protected, and a button LED paints itself has to be
     drawn on something. }
   TLedToolButtonAccess = class(TToolButton);
 

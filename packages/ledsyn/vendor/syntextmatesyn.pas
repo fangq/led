@@ -15,7 +15,7 @@ uses
   // SynEdit
   SynEditHighlighter, SynEditHighlighterFoldBase, SynEditTypes, SynEditTextBase;
 
-{ *** led local patch ***  TSynCustomHighlighter gained two members after
+{ *** LED local patch ***  TSynCustomHighlighter gained two members after
   Lazarus 2.2 that this unit relies on: the per-instance
   GetInstanceLanguageName hook, and the protected CurrentLineText property.
   Detect which shape we are compiling against so this one file serves both.
@@ -73,7 +73,7 @@ type
     FCurrentTokenKind: integer;
     FCurrentAttrib: TSynHighlighterAttributes;
     {$IFNDEF LED_SYN_LAZ3_BASE}
-    { *** led local patch ***  Lazarus 2.2 keeps the current line in a
+    { *** LED local patch ***  Lazarus 2.2 keeps the current line in a
       *private* FLineText with no property over it, so capture it in SetLine
       and re-expose it below under the name later versions use.  SetLine is
       virtual and is upstream's only writer of FLineText, so this holds the
@@ -200,7 +200,7 @@ end;
 {$IFNDEF LED_SYN_LAZ3_BASE}
 class function TSynTextMateSyn.GetLanguageName: string;
 begin
-  { *** led local patch ***  The inherited class function raises, and a class
+  { *** LED local patch ***  The inherited class function raises, and a class
     function cannot see the instance's grammar, so answer with a stable name
     rather than an exception.  Callers that need the real per-grammar name go
     through LedHighlighterLanguageName in Led.Syn.Factory. }
@@ -297,7 +297,7 @@ var
 begin
   inherited SetLine(NewValue, LineNumber);
   {$IFNDEF LED_SYN_LAZ3_BASE}
-  FLedLineText := NewValue;  { *** led local patch *** see vendor/README.md }
+  FLedLineText := NewValue;  { *** LED local patch *** see vendor/README.md }
   {$ENDIF}
 
   if FCurrentRange = -2 then

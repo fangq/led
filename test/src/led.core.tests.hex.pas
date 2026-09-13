@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the hex dump. }
+{ LED - a lightweight editor.  Headless tests for the hex dump. }
 unit Led.Core.Tests.Hex;
 
 {$mode objfpc}{$H+}

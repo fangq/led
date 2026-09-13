@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the file search. }
+{ LED - a lightweight editor.  Headless tests for the file search. }
 unit Led.Core.Tests.Grep;
 
 {$mode objfpc}{$H+}

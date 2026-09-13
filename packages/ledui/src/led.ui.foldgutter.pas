@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Fold markers drawn as chevrons, the way medit drew
+{ LED - a lightweight editor.  Fold markers drawn as chevrons, the way medit drew
   them.
 
   SynEdit's own fold column draws a boxed [-] and [+], which is the Windows
@@ -20,7 +20,7 @@
 
   What this column does NOT draw, deliberately:
 
-    * the vertical rule tying a block to its end.  led draws guides down the
+    * the vertical rule tying a block to its end.  LED draws guides down the
       body of every open block in the text itself, which says the same thing
       in the place the eye already is; two rules for one fact left a broken
       line in the gutter that went out of step with the text after every

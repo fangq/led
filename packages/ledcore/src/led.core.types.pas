@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Core type definitions.
+{ LED - a lightweight editor.  Core type definitions.
 
   This unit is deliberately free of any LCL dependency so that it, and every
   other unit in the ledcore package, can be compiled and unit-tested with

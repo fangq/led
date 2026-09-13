@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The debugger: a pane, and the thing that drives it.
+{ LED - a lightweight editor.  The debugger: a pane, and the thing that drives it.
 
   Two classes with one job each.
 
@@ -13,7 +13,7 @@
   which is what keeps this unit out of the form and the form out of gdb.
 
   The console is the Output pane rather than one of its own.  medit built a
-  second console because it had nothing else; led already has a pane that
+  second console because it had nothing else; LED already has a pane that
   colours lines, buffers partial ones and turns file:line into a jump, and a
   debugger that reuses it costs no new widget and behaves like the rest of
   the editor. }
@@ -426,7 +426,7 @@ begin
   FBar.Flat := True;
   FBar.AutoSize := True;
   { The same button painting the main toolbar uses, so a pointer over any of
-    led's toolbars gets the same answer. }
+    LED's toolbars gets the same answer. }
   LedStyleToolBar(FBar);
 
   { Built right to left: a TToolBar lays its children out in reverse order of
@@ -963,7 +963,7 @@ begin
   FBar.Flat := True;
   FBar.AutoSize := True;
   { The same button painting the main toolbar uses, so a pointer over any of
-    led's toolbars gets the same answer. }
+    LED's toolbars gets the same answer. }
   LedStyleToolBar(FBar);
 
   { Back to front, so they read left to right: a TToolBar lays its children
@@ -1066,7 +1066,7 @@ begin
     begin
       It := FList.Items.Add;
       { Dashed rather than blank while gdb has not answered yet, because a
-        breakpoint with no number is one that is only in led so far -- which
+        breakpoint with no number is one that is only in LED so far -- which
         is the ordinary state of one set before the session starts. }
       if ABreaks[i].Number > 0 then
         It.Caption := IntToStr(ABreaks[i].Number)
@@ -1344,7 +1344,7 @@ begin
   Result := -1;
 end;
 
-{ A watchpoint led has asked for but gdb has not numbered yet.  Matched on
+{ A watchpoint LED has asked for but gdb has not numbered yet.  Matched on
   the expression, which is all the reply carries. }
 function TLedDebugger.IndexOfPendingWatch(const AExpression: string): Integer;
 var

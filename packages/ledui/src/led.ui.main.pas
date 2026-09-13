@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Main window.
+{ LED - a lightweight editor.  Main window.
 
   Menus, the toolbar and the action list live in led.ui.main.lfm and are meant
   to be edited in the Lazarus form designer.  This unit holds only behaviour:
@@ -1017,12 +1017,12 @@ begin
   FDock.LoadLayout(LedConfigFile('layout.xml'));
 
   { medit's use_tabs decided whether documents share a window through a tab
-    strip.  led always uses tabs -- one document per window is what New Window
+    strip.  LED always uses tabs -- one document per window is what New Window
     is for -- so the setting controls whether the strip is shown when there is
     only one document in it. }
   ApplyTabVisibility;
 
-  { led paints the toolbar buttons itself.  gtk2 asks for ttbButtonHot when
+  { LED paints the toolbar buttons itself.  gtk2 asks for ttbButtonHot when
     the pointer is over one -- the LCL is doing its part -- and draws nothing
     for it, so a toolbar of twenty flat glyphs gave no sign which one a click
     would reach.  Measured before the change: moving the pointer onto a
@@ -1487,7 +1487,7 @@ end;
 { Runs the project's build command through the ordinary tool runner.
 
   A synthetic TLedTool rather than a second process-running path: the runner
-  already writes the body to a script, sets led's environment, polls the pipe
+  already writes the body to a script, sets LED's environment, polls the pipe
   and pushes every line through an output filter, which is what turns a
   compiler's `file:line: error` into something clickable.  A build that did
   its own spawning would have to reimplement all of that and would still not
@@ -2616,7 +2616,7 @@ begin
       E.DisplayName := Doc.DisplayName;
       E.Encoding    := Doc.Info.Encoding;
       { LangInfo is nil for a document with no language, which every other
-        caller in led checks for and this one did not.  An untitled document
+        caller in LED checks for and this one did not.  An untitled document
         has no language -- the self-test asserts exactly that -- so editing
         Untitled and waiting for this timer dereferenced nil and took the
         window down.  Reported as a crash a few seconds after pasting into
@@ -2812,7 +2812,7 @@ end;
   obvious -- a hairline grip reads as structure to one person and as clutter
   to the next -- so the choice is offered instead of decided.  The list comes
   from AnchorDocking's own registry, so a style added upstream appears here
-  without led being told, and led's own LedPlain sits among them. }
+  without LED being told, and LED's own LedPlain sits among them. }
 { Starting the shell is the pane's own business, not one menu item's.  It used
   to happen only inside actToggleTerminalExecute, so a terminal opened from an
   edge button or restored with the layout came up as an empty black rectangle
@@ -3468,7 +3468,7 @@ end;
   itself -- OwnerDraw and OnDrawTab are commented out of TPageControl and no
   widgetset implements them -- and nboShowCloseButtons is declared but
   unimplemented on gtk2, so a per-tab cross would exist on some platforms and
-  not others.  A button placed over the strip is drawn by led on all of them.
+  not others.  A button placed over the strip is drawn by LED on all of them.
 
   It is a sibling of the page control, not a child: a TPageControl's children
   are its pages, and anything else parented to one is not reliably drawn over
@@ -3562,7 +3562,7 @@ begin
     Host.BringToFront;
 
     { Tabs along the top is the only arrangement this button knows where to
-      sit in; led never sets anything else, but a skin that did should get no
+      sit in; LED never sets anything else, but a skin that did should get no
       button rather than one in the wrong place. }
     if Book.TabPosition <> tpTop then
     begin
@@ -3631,7 +3631,7 @@ end;
   and nothing to get wrong about which side of the startup sweep it is on --
   everything read here is already in device pixels, so nothing is scaled
   twice.  Recomputed on every activation, which is also how it picks up a
-  desktop whose scale changed while led was running. }
+  desktop whose scale changed while LED was running. }
 procedure TLedMainForm.ApplyMinimumSize;
 var
   i, W: Integer;

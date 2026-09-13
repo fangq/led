@@ -1,4 +1,4 @@
-{ led - a lightweight editor. }
+{ LED - a lightweight editor. }
 program led;
 
 {$mode objfpc}{$H+}
@@ -112,7 +112,7 @@ begin
     LedInstallChromeStyle;
     { Before the first form, so that every form there will ever be is scaled
       as it is shown -- including the message boxes and the unhandled-exception
-      dialog the LCL builds where led cannot reach them. }
+      dialog the LCL builds where LED cannot reach them. }
     LedInstallFormScaler;
     Application.CreateForm(TLedMainForm, LedMainForm);
     { The window icon, from the PNG copy of the artwork embedded by

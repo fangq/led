@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  User preferences.
+{ LED - a lightweight editor.  User preferences.
 
-  medit stored these as XML under a hand-rolled DOM; led uses an INI file,
+  medit stored these as XML under a hand-rolled DOM; LED uses an INI file,
   because the settings model is flat dotted keys and that is exactly what INI
   sections express:
 

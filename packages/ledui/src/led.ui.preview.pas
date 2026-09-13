@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The Markdown and wiki preview pane.
+{ LED - a lightweight editor.  The Markdown and wiki preview pane.
 
   medit rendered HTML with a 3,100-line DOM-to-text-buffer renderer of its
   own, because GTK had no HTML control it could use.  Lazarus ships
@@ -426,7 +426,7 @@ end;
   substituted -- often a proportional face, which is the one thing a code
   block must not be.  Taking the editor's font means a fenced block looks
   like the file it was copied from, and with no preference set that is the
-  Fira Code led ships.
+  Fira Code LED ships.
 
   Re-read on every render rather than fixed at construction, so changing the
   font in Preferences shows up without restarting. }

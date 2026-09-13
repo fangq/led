@@ -1,14 +1,14 @@
-{ led - a lightweight editor.  The dock host.
+{ LED - a lightweight editor.  The dock host.
 
   medit hand-built a 7,200-line docking system (MooBigPaned/MooPaned/MooPane)
   to get panes that could be dragged between edges, collapsed to a title bar
-  and torn off into their own window.  led gets the same behaviour from
+  and torn off into their own window.  LED gets the same behaviour from
   AnchorDocking, the package the Lazarus IDE docks itself with: drag a pane by
   its header and drop it on any edge of any other pane, double-click the
   header to float it, close it with the button on the header, and the layout
   survives a restart.
 
-  What this unit adds on top is the vocabulary the rest of led speaks.
+  What this unit adds on top is the vocabulary the rest of LED speaks.
   AnchorDocking has no notion of "the left edge" -- a pane is wherever the
   user last put it -- but the menu still has to offer "Left Pane", and a pane
   still has to appear somewhere sensible the first time it is shown.  So each
@@ -202,7 +202,7 @@ type
     property OnPaneShown: TLedPaneNotify read FOnPaneShown write FOnPaneShown;
 
     { The pane header's appearance.  AnchorDocking ships Frame3D, Line, Lines,
-      Points, ThemedCaption and ThemedButton; led adds LedPlain.  Taste
+      Points, ThemedCaption and ThemedButton; LED adds LedPlain.  Taste
       differs and the right answer is not obvious, so it is offered rather
       than decided. }
     function HeaderStyleNames: TStringArray;
@@ -463,7 +463,7 @@ begin
   { A pane's name in small capitals, the way an editor with side panels sets
     one: the header labels what is below it rather than competing with the
     document.  Two points down, bold, and in the desktop's own selection blue
-    so it reads as chrome and follows a theme led knows nothing about.
+    so it reads as chrome and follows a theme LED knows nothing about.
 
     ParentFont first, and that is the whole trick: a control with ParentFont
     left on has its font replaced with the parent's the moment AnchorDocking
@@ -1216,7 +1216,7 @@ begin
     BuildRail(E);
 end;
 
-{ Reflect which panes are actually open.  Called after led changes a pane
+{ Reflect which panes are actually open.  Called after LED changes a pane
   itself; the main form also calls it on idle, because a pane closed with the
   header's own close button never comes through here. }
 procedure TLedDockHost.RefreshRails;
@@ -1432,7 +1432,7 @@ begin
   EdgeVisible[AEdge] := not EdgeVisible[AEdge];
 end;
 
-{ Everything led deliberately decides about the dock, in one place that can
+{ Everything LED deliberately decides about the dock, in one place that can
   be re-asserted.
 
   It has to be re-assertable because layout.xml carries these very settings:
@@ -1524,9 +1524,9 @@ begin
   Invalidate;
 end;
 
-{ Every style the dock knows about, led's own included.  Read from
+{ Every style the dock knows about, LED's own included.  Read from
   AnchorDocking's own registry rather than listed here, so a style added
-  upstream turns up in the menu without led being told about it. }
+  upstream turns up in the menu without LED being told about it. }
 function TLedDockHost.HeaderStyleNames: TStringArray;
 var
   i: Integer;
@@ -1614,13 +1614,13 @@ begin
     Result := False;
   end;
 
-  { The saved layout has just overwritten every setting above, so put led's
+  { The saved layout has just overwritten every setting above, so put LED's
     own back.  This is the whole reason ApplyDockPolicy exists. }
   ApplyDockPolicy;
 
   { A pane restored by the layout was never shown through ShowPane, so
     OnPaneShown never fired for it and nothing started what sits behind it --
-    a terminal open when led was last closed came back as an empty rectangle
+    a terminal open when LED was last closed came back as an empty rectangle
     with no prompt.  Restoring a pane is showing it. }
   if Assigned(FOnPaneShown) then
     for i := 0 to FPanes.Count - 1 do

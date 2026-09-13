@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Layered per-document settings.
+{ LED - a lightweight editor.  Layered per-document settings.
 
   Ported from medit's mooeditconfig.cpp, minus the GObject property machinery.
   The idea worth keeping is the precedence chain: the same setting can be
@@ -104,7 +104,7 @@ type
 function LedParseBool(const AValue: string; out AResult: Boolean): Boolean;
 
 var
-  { The registry, and the ids of the settings led itself knows about. }
+  { The registry, and the ids of the settings LED itself knows about. }
   LedSettings: TLedSettingRegistry = nil;
 
   LedSetLang: Integer;
@@ -395,7 +395,7 @@ procedure RegisterBuiltinSettings;
 begin
   LedSettings := TLedSettingRegistry.Create;
   { Aliases carry the spellings other editors' modelines use, so a kate or
-    emacs line lands on the same slot as led's own. }
+    emacs line lands on the same slot as LED's own. }
   LedSetLang            := LedSettings.InstallStr ('lang', 'mode,syntax,hl', '');
   LedSetTabWidth        := LedSettings.InstallInt ('tab-width', 'tab_width,tabwidth,ts,tab-widths', 8);
   LedSetIndentWidth     := LedSettings.InstallInt ('indent-width', 'indent_width,indentwidth,c-basic-offset,sw,shiftwidth', 4);

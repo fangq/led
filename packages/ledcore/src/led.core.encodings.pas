@@ -1,8 +1,8 @@
-{ led - a lightweight editor.  Character-encoding names and detection helpers.
+{ LED - a lightweight editor.  Character-encoding names and detection helpers.
 
   medit named encodings the way iconv does ("UTF-8", "ISO_8859-15"); Lazarus
   names them the way LConvEncoding does ("utf8", "iso885915").  Everything
-  inside led uses the LConvEncoding spelling, and this unit is the single
+  inside LED uses the LConvEncoding spelling, and this unit is the single
   place that translates, so a preference file or a modeline written in either
   dialect still resolves. }
 unit Led.Core.Encodings;
@@ -93,7 +93,7 @@ var
 { GetSupportedEncodings hands back display spellings ("UTF-8", "ISO-8859-1",
   "UCS-2LE"), not the internal ones the Encoding* constants use.  Running each
   through NormalizeEncoding -- lowercase, strip '-' -- lands exactly on the
-  constant, so this is the authoritative set of names led considers canonical. }
+  constant, so this is the authoritative set of names LED considers canonical. }
 function Canonical: TStringList;
 var
   Raw: TStringList;

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The terminal pane.
+{ LED - a lightweight editor.  The terminal pane.
 
   Holds one or more terminals in a tree of splitters, Terminator-style: any
   terminal can be split horizontally or vertically, and closing one collapses
@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, Menus, Clipbrd, PairSplitter, Forms,
   ImgList,
-  { LCL-only, and carries no led dependency of its own, so using it here does
+  { LCL-only, and carries no LED dependency of its own, so using it here does
     not compromise ledterm being buildable on its own. }
   Led.UI.Splitter,
   Led.Term.View, Led.Term.Pty;

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Printing.
+{ LED - a lightweight editor.  Printing.
 
   A paginated dump of the document with line numbers and a header, drawn on
   the printer canvas.  Deliberately plain: syntax colours on paper cost more
@@ -27,7 +27,7 @@ function LedPrintDocument(AView: TLedEdit; const ATitle: string): Boolean;
 function LedPrinterAvailable: Boolean;
 
 { The platform page-setup dialog.  Margins and orientation belong to the
-  printer, so there is nothing of led's own to persist here. }
+  printer, so there is nothing of LED's own to persist here. }
 procedure LedPageSetup(AOwner: TComponent);
 
 { Writes the document as a PDF without going through a printer, which is

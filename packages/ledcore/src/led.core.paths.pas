@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Where things live on disk.
+{ LED - a lightweight editor.  Where things live on disk.
 
   Config is per-user and writable; data is installed alongside the binary and
   read-only.  Both are resolved once and can be overridden by environment
@@ -37,7 +37,7 @@ procedure LedForceConfigDir(const ADirectory: string);
 
 { Writes AContent to APath without leaving a truncated file behind if the
   machine dies mid-write, keeping one generation of backup.  Used for every
-  file led rewrites on a timer or at exit. }
+  file LED rewrites on a timer or at exit. }
 procedure LedWriteFileAtomic(const APath, AContent: string);
 
 implementation

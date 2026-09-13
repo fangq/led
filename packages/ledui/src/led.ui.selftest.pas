@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Scripted GUI self-test.
+{ LED - a lightweight editor.  Scripted GUI self-test.
 
   Run with `led --self-test`.  Drives the real main window through a sequence
   of actions, checking the state the user would see, and exits non-zero on the
@@ -353,7 +353,7 @@ begin
     medit's preference page promises "everything in prose, comments and
     strings in code" and its implementation does neither -- it switches
     checking off for any file with a language, Markdown and LaTeX included.
-    led does what the label says, so this pins down both halves.
+    LED does what the label says, so this pins down both halves.
 
     Note the word: an earlier check above ignores "recieve" for the session,
     so reusing it here would test nothing. }
@@ -1059,7 +1059,7 @@ begin
   end;
 
   { medit shipped ten named ANSI palettes.  Checked by name rather than by
-    count, so led is free to add its own without the check going off -- the
+    count, so LED is free to add its own without the check going off -- the
     parity note claimed five were missing when six were, which is what
     counting instead of naming gets you. }
   Say('terminal colour schemes');
@@ -1402,7 +1402,7 @@ begin
   if D = nil then Exit;
   try
     { Looked up here as well as in Led.UI.XError, so the request is sent
-      whether or not led installed anything -- a check that provokes nothing
+      whether or not LED installed anything -- a check that provokes nothing
       when the fix is missing proves nothing about the fix. }
     Major := 0;
     if not XQueryExtension(D, 'MIT-SHM', @Major, @FirstEvent, @FirstError) then
@@ -1568,7 +1568,7 @@ end;
 
 { Pane geometry.  AnchorDocking sizes a newly docked pane from the one it
   lands beside -- Max(1, Min(NewSite.Width, Sibling.Width div 2)) -- so before
-  led re-asserted the size itself, three panes down one edge came out 229, 114,
+  LED re-asserted the size itself, three panes down one edge came out 229, 114,
   57, and closing and reopening them walked the edge down to the Max(1,...)
   floor and left it there.  A pane one pixel wide is not a pane. }
 procedure TestPaneSizes(F: TLedMainForm);
@@ -1798,7 +1798,7 @@ begin
   CheckEqInt('and closing a tab is what it does', Before - 1, F.TabCount);
 end;
 
-{ The font led brings with it.
+{ The font LED brings with it.
 
   Bundled rather than assumed installed, so the default is the same face on
   every machine instead of whatever the desktop calls "Monospace".  The two
@@ -3088,8 +3088,8 @@ begin
     CheckEq('a choice setting round-trips', 'oblivion',
       LedPrefs.GetStr('Editor/color_scheme', 'medit'));
 
-    { medit had eight preference pages and led had three, which is the gap
-      this counts.  Plugins are not one of them: led has no dynamic plugin
+    { medit had eight preference pages and LED had three, which is the gap
+      this counts.  Plugins are not one of them: LED has no dynamic plugin
       loading to configure. }
     CheckEqInt('every preference page is present', 6, Dlg.PageCount);
     Check('and the list pages built their contents', Dlg.ListPagesReady);
@@ -3449,7 +3449,7 @@ begin
   Check('with the whole row selectable', F.Browser.Tree.RowSelect);
   Check('and a chevron beside anything that opens',
     F.Browser.Tree.ShowButtons);
-  { Drawn by led, not by the LCL: its three built-in signs are a themed box,
+  { Drawn by LED, not by the LCL: its three built-in signs are a themed box,
     a plus-minus and an outlined triangle, and a file tree wants a chevron. }
   Check('which led draws itself', F.Browser.DrawsOwnChevron);
   Check('and pictures to put on the rows',
@@ -4007,7 +4007,7 @@ begin
     with a gtk resource style; these are the parts of it that can be checked
     on a display of any shape. }
   { The LCL builds its message and unhandled-exception dialogs itself and
-    shows them without led ever holding a reference, so they used to arrive at
+    shows them without LED ever holding a reference, so they used to arrive at
     their design size with 10-point text -- a third of the window that raised
     them.  CreateMessageDialog is that construction without the modal loop, so
     the scaling can be checked rather than screenshotted.
@@ -4033,7 +4033,7 @@ begin
       0, MsgBefore);
     { And scaling has to leave it that way.  gtk2 resolves a font carrying
       neither size nor height from the default style, and the default style is
-      the scaled one led installs -- so the dialog is already drawn at the
+      the scaled one LED installs -- so the dialog is already drawn at the
       right size and there is nothing to put right.  Materialising a height
       here would read it back off that same scaled widget and multiply it by
       the PPI ratio a second time: 42 pixels became 84. }
@@ -4110,9 +4110,9 @@ begin
   RemoveDir(MakeDir);
 end;
 
-{ The state led opens in, before anything has touched it.  medit puts the
+{ The state LED opens in, before anything has touched it.  medit puts the
   caret at line 1 column 1 of an empty "Untitled 1" and shows that line's
-  number in the gutter; this asserts led does the same, because "it opened
+  number in the gutter; this asserts LED does the same, because "it opened
   looking wrong" is otherwise a report nobody can act on. }
 { Opening something that is not text.  The dump itself is covered headlessly
   in the core suite; what matters here is that the editor notices, refuses to
@@ -4333,7 +4333,7 @@ begin
   { The fold column has to be sized explicitly or SynEdit leaves its pen at
     one pixel whatever the DPI, which is what made the fold markers and the
     rule joining a block to its end look absent.  See Led.UI.Edit. }
-  { The fold column is led's own painter, drawing medit's chevrons rather than
+  { The fold column is LED's own painter, drawing medit's chevrons rather than
     SynEdit's boxed [-]/[+].  Checked by class name, as the highlighter is. }
   CheckEq('the fold column is led''s chevron painter',
     'TLedGutterCodeFolding', Tab.ActiveView.Gutter.CodeFoldPart.ClassName);
@@ -4348,7 +4348,7 @@ begin
   Check('the fold column is sized, not left on AutoSize',
     not Tab.ActiveView.Gutter.CodeFoldPart.AutoSize);
 
-  { Vertical guides down an open block, drawn by led itself in Paint. }
+  { Vertical guides down an open block, drawn by LED itself in Paint. }
   Check('the block guides have a colour',
     Tab.ActiveView.GuideColour <> clNone);
   Check('and is wide enough to draw a marker',
@@ -4522,10 +4522,10 @@ begin
     real and the choice has to stick.
 
     Deliberately not an exact count.  The built-in styles belong to
-    AnchorDocking, not to led, and there are six of them on Lazarus 2.2 but
+    AnchorDocking, not to LED, and there are six of them on Lazarus 2.2 but
     seven on 4.2, which added GradientMenuBar -- so asserting a total pins
     the suite to whichever Lazarus happened to be installed when it was
-    written, and it duly failed on the second machine it ran on.  What led
+    written, and it duly failed on the second machine it ran on.  What LED
     guarantees is that its own style is registered alongside the built-ins
     and that a choice takes effect. }
   Names := F.Dock.HeaderStyleNames;
@@ -4630,7 +4630,7 @@ begin
   V.LongLines.Display.SetHighlighterTokensLine(1, RealLine, StartByte, ByteLen);
   CheckEqInt('the painter is given only the visible bytes', 4096, ByteLen);
 
-  { The property led saves through.  This is the check that matters. }
+  { The property LED saves through.  This is the check that matters. }
   CheckEqInt('the text led saves is the untruncated line',
     Long, Length(V.Lines[1]));
 
@@ -4777,7 +4777,7 @@ begin
   Pump;
   if Tab = nil then Exit;
 
-  { Upstream mediawiki.lang carries no globs, so without led's patch this
+  { Upstream mediawiki.lang carries no globs, so without LED's patch this
     opens as plain text and nothing below would be true. }
   Check('a .wiki file gets a language', Tab.Document.LangInfo <> nil);
   if Tab.Document.LangInfo <> nil then
@@ -5066,7 +5066,7 @@ begin
       CheckEqInt('the terminal shows a text cursor, not an arrow',
         Ord(crIBeam), Ord(F.Terminal.Active.Cursor));
 
-    { And its context menu had no icons at all, alone among led's menus. }
+    { And its context menu had no icons at all, alone among LED's menus. }
     Check('the terminal menu has an image list',
       F.Terminal.Menu.Images <> nil);
     WithIcons := 0;
@@ -5326,7 +5326,7 @@ end;
 
   Nothing else is drawn in that column, so the widest run of non-background
   ink on any row is the chevron at its waist.  The background is taken as the
-  commonest colour in the column rather than assumed, because led ships eight
+  commonest colour in the column rather than assumed, because LED ships eight
   themes and half of them are light. }
 { The commonest colour on scanline AY of the text area. }
 function DominantColour(V: TLedEdit; AY: Integer): TColor;
@@ -5601,7 +5601,7 @@ begin
   end;
   Check('the F9 button was found at all', Btn <> nil);
 
-  { Every toolbar led builds answers the pointer the same way.  The main one
+  { Every toolbar LED builds answers the pointer the same way.  The main one
     got its painter first and the panes' did not, so a hover lit a button on
     one toolbar and nothing on the others. }
   Check('the main toolbar paints its own buttons',
@@ -5926,7 +5926,7 @@ begin
 
     { The struct row is the one shown as "name: type" -- an aggregate has no
       value of its own under --simple-values, which is what tells it from a
-      scalar without led parsing C types. }
+      scalar without LED parsing C types. }
     Row := nil;
     for x := 0 to F.DebugPane.Locals.Items.Count - 1 do
       if Copy(F.DebugPane.Locals.Items[x].Text, 1, 3) = 'p: ' then
@@ -6398,7 +6398,7 @@ begin
     V.CurrentLineColour <> V.Color);
 
   { Which row the painter marked, rather than the ink it put down.  PaintTo
-    into a bitmap reproduces led's gutter drawing and not its text-area
+    into a bitmap reproduces LED's gutter drawing and not its text-area
     drawing -- a full-width fill in the text area comes back with two pixels
     of it -- so the rules themselves were checked on a real X server and what
     is asserted here is the decision behind them. }
@@ -6471,7 +6471,7 @@ end;
 
 { A folded block is tinted, and clicking a word lights up the others.
 
-  Two markups that SynEdit provides and led turns on: the first through
+  Two markups that SynEdit provides and LED turns on: the first through
   OnSpecialLineMarkup, the second by giving the highlight-all-at-caret markup
   a colour, which is what wakes it. }
 procedure TestWordAndFoldMarkup(F: TLedMainForm);
@@ -6513,7 +6513,7 @@ begin
     That published property is the *search* markup's, so the first version of
     this asserted a colour on an object the feature never consults -- and
     passed, while clicking a word did nothing.  Read it back off the markup
-    led actually configures. }
+    LED actually configures. }
   Check('the caret markup has a colour, which is what wakes it',
     (V.HighlightWord <> nil) and
     (V.HighlightWord.MarkupInfo.Background <> clNone));
@@ -6524,7 +6524,7 @@ begin
 
   { What the suite can reach, and what it cannot.
 
-    led's part is turning the markup on: giving it a colour, which is what
+    LED's part is turning the markup on: giving it a colour, which is what
     wakes it, and telling it to match whole words.  Both are asserted above.
 
     The search itself is SynEdit's, driven by a TTimer over the visible
@@ -6616,7 +6616,7 @@ begin
   ForceDirectories(Dir);
   Bin := IncludeTrailingPathDelimiter(Dir) + 'data.bin';
   for i := 0 to High(B) do B[i] := i;
-  B[3] := 0;                      { a NUL, so led reads it as binary }
+  B[3] := 0;                      { a NUL, so LED reads it as binary }
   St := TFileStream.Create(Bin, fmCreate);
   try
     St.WriteBuffer(B, SizeOf(B));
@@ -6782,7 +6782,7 @@ end;
 
   The drop itself comes from the window manager and cannot be simulated here,
   so this drives the handler the widgetset would call.  That still covers the
-  part led owns -- that a dropped path opens, through the same route as the
+  part LED owns -- that a dropped path opens, through the same route as the
   Open dialog -- and asserts the window is registered to receive drops at all,
   which is the half that silently does nothing when it is missing. }
 procedure TestDropFiles(F: TLedMainForm);
@@ -6874,7 +6874,7 @@ end;
   ApplyCommandLine joined the working directory to every path it was given,
   including ones already starting at the root, so "led /some/where/file.pas"
   looked for /cwd//some/where/file.pas and reported that the file did not
-  exist.  Found by taking a screenshot of led under Xvfb, which is a poor
+  exist.  Found by taking a screenshot of LED under Xvfb, which is a poor
   substitute for a check and is why there is one now.
 
   The cwd passed here is deliberately not the file's directory: that is the
@@ -7022,7 +7022,7 @@ begin
   Pump;
 
   { First, before anything else has had a chance to open a tab or move a
-    caret: this section is about the state led actually starts in. }
+    caret: this section is about the state LED actually starts in. }
   TestStartupDocument(F);
   TestBinaryFiles(F);
   WriteLn;

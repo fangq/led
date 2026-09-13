@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for filename-based config rules. }
+{ LED - a lightweight editor.  Headless tests for filename-based config rules. }
 unit Led.Core.Tests.Filters;
 
 {$mode objfpc}{$H+}
@@ -50,7 +50,7 @@ var
   F: TLedEditFilter;
 begin
   { medit read a bare filter as a regex, which quietly mis-parsed "*.c".
-    led reads it as globs, which is what people write. }
+    LED reads it as globs, which is what people write. }
   F := TLedEditFilter.Create('*.c');
   try
     AssertTrue(F.Kind = lfkGlobs);
