@@ -72,9 +72,42 @@ out negative, truncated payloads.  Those files are corrupt downloads, not a
 dialect.  Being lenient would have bought nothing and taught the reader to
 accept malformed data silently.
 
-Of 40 genuine sample files, **39 parse unmodified**; the one failure is a
-2,971-byte `.bnii` whose `_ArrayZipData_` declares a 64,520-byte payload, i.e.
-a truncated download.
+That measurement was taken over 40 files.  A later sweep over 170 found the
+picture unchanged for this patch, and identified the real cause of most of the
+failures it had been aimed at -- see "Known gap: big-endian files" below.
+`mousehead_gzip.bnii`, described here at the time as a truncated download, is
+in fact a big-endian file: it reads perfectly with `islittle=False`.
+
+## Known gap: big-endian files
+
+The corpus on this machine is 170 files.  145 read end to end; **19 of the 25
+that do not are big-endian**, and the reference Python decoder reads every one
+of them with `bjdata.loadb(raw, islittle=False)`.
+
+They are not corrupt.  `mousehead.bnii` declares its volume as
+`[$U#l 00 01 c7 78`, and `0x0001c778` read big-endian is 116,600 -- exactly
+50 x 53 x 44, the dimensions its own `.jnii` sibling gives, and exactly the
+number of payload bytes the file has left.  Read little-endian the same four
+bytes are 2,026,373,376 and the reader runs off the end.  These are jnifti
+0.6 samples from June 2020, written before BJData moved away from UBJSON's
+big-endian numerics.
+
+`bjdata.pas` has no equivalent of `islittle`.  Every multi-byte read funnels
+through one helper, `BJFromLE`, but that helper switches on `{$IFDEF
+ENDIAN_BIG}` -- it is about the *host*, not the file, and compiles to nothing
+on x86.  Supporting big-endian documents means a runtime flag threaded from
+the reader and the cursor through all 30 call sites, in the tree reader, the
+cursor, the iterator and the writer alike.
+
+That has deliberately not been done as a local patch.  It is a feature of the
+format that upstream already has a name for, the upstream repository belongs
+to the same author as led, and a 30-site change carried here would have to be
+reapplied by hand at every re-sync -- which is exactly the kind of patch this
+file exists to discourage.  It belongs in `bjdpas`.
+
+Until then, such a file opens in led as a hex dump with the caret on the byte
+that could not be read and the reader's own message beside it, which is the
+same treatment any other undecodable file gets.
 
 ## Re-syncing
 

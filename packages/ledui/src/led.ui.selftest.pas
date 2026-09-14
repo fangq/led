@@ -3849,6 +3849,127 @@ begin
   DeleteFile(Path);
 end;
 
+{ Writes ABytes to APath exactly, with no terminator and no line-ending
+  translation -- the bytes are the thing under test. }
+procedure WriteBytes(const APath: string; const ABytes: string);
+begin
+  with TFileStream.Create(APath, fmCreate) do
+    try
+      if ABytes <> '' then Write(ABytes[1], Length(ABytes));
+    finally
+      Free;
+    end;
+end;
+
+procedure TestBJDataFiles(F: TLedMainForm);
+var
+  Good, Bad: string;
+  Raw, Text: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Files: TStringList;
+  Where: PtrUInt;
+begin
+  Say('Binary JData files');
+
+  { { "a": l 7, "hi": S U 2 "hi" } -- small, but every part of the view is in
+    it: a container, a key, an integer with its marker, a counted string.
+
+    The 7 is written as an int32 on purpose, so three of the first ten bytes
+    are NUL.  That is what makes the ordering check below mean something. }
+  Raw := #$7B + #$55#$01'a' + #$6C#$07#$00#$00#$00 +
+         #$55#$02'hi' + #$53#$55#$02'hi' + #$7D;
+  Good := TempName('probe.bjd');
+  WriteBytes(Good, Raw);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Good);
+  Pump;
+
+  Text := Doc.Master.Lines.Text;
+  Check('a .bjd file opens as a structure', Doc.IsBJData);
+  { Still a binary: the file is bytes and the buffer is a rendering of them,
+    which is what makes it read-only and makes Save write the bytes. }
+  Check('and is still a binary', Doc.IsBinary);
+  Check('but not a hex dump', not Tab.ActiveView.HexMode);
+  Check('the view is read-only', Tab.ActiveView.ReadOnly);
+  Check('the marker and length are shown, got: ' + Text, Pos('S #2', Text) > 0);
+  Check('and the value', Pos('"hi"', Text) > 0);
+  Check('the integer keeps its own marker', Pos('  a  l  7', Text) > 0);
+  CheckEq('no encoding is claimed', '', Doc.Info.Encoding);
+
+  { The ordering, stated as two facts rather than one.  These bytes really do
+    look binary -- LedLooksBinary says so -- and the file opened as a
+    structure anyway, which it only can if BJData is asked about first.  Swap
+    the two tests in LoadFromFile and this fails. }
+  Check('the bytes do look binary', LedLooksBinary(Raw));
+  Check('and a BJData file opens as a structure regardless', Doc.IsBJData);
+
+  { The way out is the same as for a dump. }
+  Doc.OpenAsText;
+  Pump;
+  Check('Open as Text leaves the structure view', not Doc.IsBJData);
+  Check('and is not binary either', not Doc.IsBinary);
+
+  { ---- a file that says .bjd and is not ---- }
+
+  { { "pad": S U 40 <40 bytes>, "a": S U 64 "short" } -- the second string
+    declares 64 bytes and supplies 5, so the reader runs off the end.
+
+    The padding is there so the damage is not on the first row of the dump.
+    Without it the caret check passed whether or not the caret had been
+    moved, because row 1 is where a freshly opened view already is. }
+  Raw := #$7B + #$55#$03'pad' + #$53#$55#$28 + StringOfChar('.', 40) +
+         #$55#$01'a' + #$53#$55#$40'short' + #$7D;
+  Bad := TempName('broken.bjd');
+  WriteBytes(Bad, Raw);
+
+  Files := TStringList.Create;
+  try
+    Files.Add(Bad);
+    { Through OpenFiles, not LoadFromFile: the caret and the message are the
+      window's job, and testing the document alone would not reach them. }
+    F.OpenFiles(Files);
+    Pump;
+  finally
+    Files.Free;
+  end;
+
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  CheckEq('the broken file is the one on screen', Bad, Doc.FileName);
+  Check('it does not open as a structure', not Doc.IsBJData);
+  Check('it opens as a dump instead', Doc.IsBinary);
+  Check('and the buffer is a hex dump',
+    Pos('00000000  7b 55 03 70', Doc.Master.Lines.Text) = 1);
+
+  Where := Doc.BJDataErrorOffset;
+  Check('the failure is placed somewhere in the file', Where > 0);
+  Check('and inside it', Where <= PtrUInt(Length(Raw)));
+  { Past the first row of the dump, which is what makes the caret checks
+    below able to tell a moved caret from an untouched one. }
+  Check('and past the first row of the dump',
+    Where >= PtrUInt(LedHexBytesPerLine));
+  { The caret is on that byte, so the dump opens looking at the damage
+    rather than at byte zero. }
+  CheckEqInt('the caret row is the row of that byte',
+    Integer(Where) div LedHexBytesPerLine + 1, Tab.ActiveView.CaretY);
+  CheckEqInt('and the column is that byte',
+    LedHexByteColumn(Integer(Where) mod LedHexBytesPerLine),
+    Tab.ActiveView.CaretX);
+
+  { Read and cleared: the window reports once, and a redraw or a focus change
+    must not bring the dialog back. }
+  Check('the message is taken when it is reported',
+    Doc.TakeBJDataError(Where) = '');
+
+  DeleteFile(Good);
+  DeleteFile(Bad);
+end;
+
 procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -6029,6 +6150,7 @@ begin
     caret: this section is about the state led actually starts in. }
   TestStartupDocument(F);
   TestBinaryFiles(F);
+  TestBJDataFiles(F);
   WriteLn;
 
   TestLineEndDetection;

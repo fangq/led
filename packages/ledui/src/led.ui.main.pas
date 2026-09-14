@@ -672,6 +672,7 @@ type
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
     function SaveDocument(ADoc: TLedDocument): Boolean;
+    procedure ReportBJDataFallback(ADoc: TLedDocument);
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
@@ -4159,6 +4160,8 @@ begin
     if not RevealDocument(Doc) then
       AddTab(Doc);
     FRecent.Add(Doc.FileName);
+    { After the tab exists, because the caret it moves belongs to the view. }
+    ReportBJDataFallback(Doc);
   end;
   PopulateRecentMenu;
   PopulateLanguageMenu;
@@ -4168,6 +4171,44 @@ begin
     reopened from the recent list -- so the change notification cannot be
     relied on to have fired. }
   RefreshPreview(True);
+end;
+
+{ A file named .bnii, .bmsh, .bjd and so on that would not decode is open as
+  a hex dump instead of as a structure.  Say why, and put the caret on the
+  byte the reader stopped at.
+
+  The message on its own is not much help: "a negative container count is not
+  allowed" is only actionable if you can see the count, and hunting for it
+  through a dump of a 50 MB file is not reading, it is searching.  So the two
+  go together -- the dump opens with the caret already on the bytes the
+  message is about. }
+procedure TLedMainForm.ReportBJDataFallback(ADoc: TLedDocument);
+var
+  Msg: string;
+  Offset: PtrUInt;
+  Byte_: Int64;
+  Tab: TLedTab;
+  W: TLedMainForm;
+begin
+  if ADoc = nil then Exit;
+  Msg := ADoc.TakeBJDataError(Offset);
+  if Msg = '' then Exit;
+
+  Byte_ := Offset;
+  W := LedFindWindowFor(ADoc, Tab);
+  if (W <> nil) and (Tab <> nil) and (Tab.ActiveView <> nil) and
+     ADoc.IsBinary then
+  begin
+    Tab.ActiveView.CaretXY := Point(
+      LedHexByteColumn(Byte_ mod LedHexBytesPerLine),
+      Byte_ div LedHexBytesPerLine + 1);
+    Tab.ActiveView.EnsureCursorPosVisible;
+  end;
+
+  ReportError(Format(
+    '%s is not valid Binary JData, so it is shown as a hex dump.'#10#10 +
+    '%s'#10#10'The caret is on byte %d.',
+    [ExtractFileName(ADoc.FileName), Msg, Byte_]));
 end;
 
 { Brings ADoc to the front of whichever window holds it, and says whether it

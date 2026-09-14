@@ -20,7 +20,8 @@ interface
 uses
   Classes, SysUtils, Contnrs, Graphics, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
-  Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.Encodings,
+  Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
+  Led.Core.Encodings,
   Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
@@ -51,7 +52,18 @@ type
     FConfig: TLedDocConfig;
     FDiskAge: LongInt;          // mtime as of the last load or save
     FDiskSize: Int64;
-    FIsBinary: Boolean;         // shown as a hex dump rather than as text
+    FIsBinary: Boolean;         // shown as a rendering of bytes, not as text
+    { A binary shown as a BJData structure rather than as a hex dump.  Both
+      are renderings of FBytes and both are read-only and save their bytes,
+      so this narrows FIsBinary rather than replacing it. }
+    FIsBJData: Boolean;
+    FBJRows: TLedBJRows;        // the record map behind the structure view
+    { Set when a file with a BJData extension would not decode.  It is then
+      opened as a hex dump instead, and these say what went wrong and which
+      byte to put the caret on.  The window reports them and clears them --
+      the document does not put dialogs on the screen. }
+    FBJError: string;
+    FBJErrorOffset: PtrUInt;
     FForceText: Boolean;        // the user asked for the text editor anyway
     { The bytes themselves, when the document is a dump.  This is the file;
       the buffer the views show is a rendering of it, rebuilt a row at a time
@@ -75,6 +87,10 @@ type
     procedure DetectLanguage;
     procedure ApplyLanguage;
     function PreparedText: string;
+    { A hex dump, as opposed to the other kind of binary.  The byte-editing
+      path and the hex markup are addressed in rows of LedHexBytesPerLine and
+      mean nothing over a structure view. }
+    function IsHexDump: Boolean;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -136,6 +152,15 @@ type
       read-only and Save refuses: writing the dump back would destroy the
       file it came from. }
     property IsBinary: Boolean read FIsBinary;
+    { True when the buffer is the BJData structure view.  IsBinary is true as
+      well: the file is still bytes and the buffer is still a rendering. }
+    property IsBJData: Boolean read FIsBJData;
+    property BJDataRows: TLedBJRows read FBJRows;
+    { Why a BJData file was opened as a hex dump instead, and where to look.
+      Empty when nothing went wrong.  TakeBJDataError reads and clears, so a
+      reload reports again and a redraw does not. }
+    property BJDataErrorOffset: PtrUInt read FBJErrorOffset;
+    function TakeBJDataError(out AOffset: PtrUInt): string;
     property Master: TSynEdit read FMaster;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
@@ -325,8 +350,11 @@ begin
     The view stays read-only as far as SynEdit is concerned and routes keys
     to HexKey instead, which edits a byte and re-renders its row. }
   AView.ReadOnly := FIsBinary;
-  AView.HexMode := FIsBinary;
-  if FIsBinary then
+  { Hex mode is the byte grid: fixed columns, a caret that snaps to a nibble,
+    keys routed to HexKey.  A structure view shares none of that geometry, so
+    it is read-only like a dump but is not one. }
+  AView.HexMode := IsHexDump;
+  if IsHexDump then
     AView.OnHexKey := @HexKey
   else
     AView.OnHexKey := nil;
@@ -359,7 +387,7 @@ begin
   { After the theme has been applied, because the column colours are mixed
     from the editor's own -- asking earlier would mix them from the last
     theme's. }
-  if FIsBinary and (AView.HexMarkup <> nil) then
+  if IsHexDump and (AView.HexMarkup <> nil) then
     AView.HexMarkup.SetColours(AView.Font.Color, AView.Color,
       AView.Gutter.LineNumberPart.MarkupInfo.Foreground,
       AView.LineHighlightColor.Background);
@@ -571,13 +599,31 @@ begin
   end;
 end;
 
+function TLedDocument.IsHexDump: Boolean;
+begin
+  Result := FIsBinary and (not FIsBJData);
+end;
+
+function TLedDocument.TakeBJDataError(out AOffset: PtrUInt): string;
+begin
+  { Read and clear.  The window asks after opening a file, and a message that
+    stayed set would come back on the next redraw or the next focus change --
+    a reload is what should report it again. }
+  Result := FBJError;
+  AOffset := FBJErrorOffset;
+  FBJError := '';
+end;
+
 procedure TLedDocument.LoadFromFile(const AFileName: string;
   const AForcedEncoding: string);
 var
   Text, Cached, Raw: string;
   Encodings: TStringList;
   Err: TLedFileError;
-  Binary: Boolean;
+  Binary, BJData, Detecting: Boolean;
+  BJRows: TLedBJRows;
+  BJErr: string;
+  BJOffset: PtrUInt;
   NewInfo: TLedTextInfo;
 begin
   { The bytes first, because whether this is text at all is decided from
@@ -585,8 +631,30 @@ begin
     path decodes what is already in hand rather than opening the file
     again. }
   Raw := LedReadRawFile(AFileName);
-  Binary := (not FForceText) and (AForcedEncoding = '') and
-    LedLooksBinary(Raw);
+
+  { Detection is off when the user has asked for something specific: Open as
+    Text, or a named encoding.  Both mean "show me the text editor". }
+  Detecting := (not FForceText) and (AForcedEncoding = '');
+
+  { BJData is asked about before LedLooksBinary, not after.  A BJData file is
+    full of NULs and would be claimed by the hex path every time.
+
+    The extension proposes and the parse disposes: a .bnii that is not really
+    BJData, or is a truncated download, falls through to the dump rather than
+    refusing to open.  When that happens BJErr and BJOffset say why and
+    where, and the window shows them. }
+  BJData := False;
+  BJRows := nil;
+  BJErr := '';
+  BJOffset := 0;
+  if Detecting and (Raw <> '') and LedBJIsBJDataName(AFileName) then
+    BJData := LedBJTryWalk(Raw, BJRows, BJErr, BJOffset);
+
+  { A file that was meant to be BJData and is not goes to the dump even if it
+    has no NUL in the first few kilobytes -- what is wrong with it is a thing
+    to look at byte by byte, and the text editor cannot show that. }
+  Binary := (not BJData) and Detecting and
+    ((BJErr <> '') or LedLooksBinary(Raw));
 
   { Worked out into locals, and only written to the document once it has all
     succeeded.
@@ -605,12 +673,17 @@ begin
     error and leave the document open, which is exactly when the next Ctrl+S
     happens. }
   NewInfo := LedDefaultTextInfo;
-  if Binary then
+  if BJData or Binary then
   begin
     { No decoding, no encoding, no line-ending convention: the buffer holds a
       rendering of the file rather than the file, and saying otherwise would
       invite the save path to write it back. }
-    Text := LedHexDump(Raw);
+    if BJData then
+      { The rows are already walked, so this renders them rather than
+        reading the file a second time. }
+      Text := LedBJRowsText(BJRows)
+    else
+      Text := LedHexDump(Raw);
     { Claim neither.  The buffer is a rendering of the bytes, so it has no
       encoding and no line-ending convention of its own, and recording the
       defaults would put a guess into the session file and onto the status
@@ -640,8 +713,12 @@ begin
   end;
 
   { Past every raise: the document may be changed now. }
-  FIsBinary := Binary;
-  if Binary then FBytes := Raw else FBytes := '';
+  FIsBinary := Binary or BJData;
+  FIsBJData := BJData;
+  FBJRows := BJRows;
+  FBJError := BJErr;
+  FBJErrorOffset := BJOffset;
+  if FIsBinary then FBytes := Raw else FBytes := '';
   FHexUndoCount := 0;
   FHexDirty := False;
   FInfo := NewInfo;
@@ -709,7 +786,10 @@ end;
 
 procedure TLedDocument.SetHexByte(AOffset: Integer; AValue: Byte);
 begin
-  if not FIsBinary then Exit;
+  { A dump only.  The offsets a structure view shows are record starts, not
+    a fixed grid, so poking a byte here and re-rendering "its row" would put
+    hexadecimal into the middle of the structure. }
+  if not IsHexDump then Exit;
   if (AOffset < 0) or (AOffset >= Length(FBytes)) then Exit;
   if Byte(FBytes[AOffset + 1]) = AValue then Exit;
 
@@ -727,7 +807,7 @@ end;
 
 function TLedDocument.CanUndoHex: Boolean;
 begin
-  Result := FIsBinary and (FHexUndoCount > 0);
+  Result := IsHexDump and (FHexUndoCount > 0);
 end;
 
 function TLedDocument.UndoHexByte: Integer;
@@ -765,7 +845,7 @@ var
   NextCol: Integer;
 begin
   AHandled := False;
-  if (not FIsBinary) or (Length(AChar) <> 1) then Exit;
+  if (not IsHexDump) or (Length(AChar) <> 1) then Exit;
   Old := HexByte(AOffset);
   if Old < 0 then Exit;
   Ch := AChar[1];

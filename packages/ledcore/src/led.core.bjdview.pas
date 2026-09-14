@@ -87,6 +87,10 @@ function LedBJRowText(const ARow: TLedBJRow): string;
   LedHexDump keeps, so the buffer does not gain a phantom last line. }
 function LedBJRender(const ARaw: string; out ARows: TLedBJRows): string;
 
+{ The same text from rows already walked, so a caller that has been given
+  them by LedBJTryWalk does not walk the file a second time to see it. }
+function LedBJRowsText(const ARows: TLedBJRows): string;
+
 { The same walk, but it never raises -- this is what decides how a file opens.
 
   True means the bytes are BJData the whole way down and ARows is the view.
@@ -612,7 +616,7 @@ begin
     Result := Result + '  ' + ARow.Text;
 end;
 
-function RowsToText(const ARows: TLedBJRows): string;
+function LedBJRowsText(const ARows: TLedBJRows): string;
 var
   L: TStringList;
   i: Integer;
@@ -637,7 +641,7 @@ end;
 function LedBJRender(const ARaw: string; out ARows: TLedBJRows): string;
 begin
   LedBJWalk(ARaw, ARows);
-  Result := RowsToText(ARows);
+  Result := LedBJRowsText(ARows);
 end;
 
 end.
