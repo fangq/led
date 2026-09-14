@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The Markdown and wiki preview pane.
+{ LED - a lightweight editor.  The Markdown and wiki preview pane.
 
   medit rendered HTML with a 3,100-line DOM-to-text-buffer renderer of its
   own, because GTK had no HTML control it could use.  Lazarus ships
@@ -19,7 +19,7 @@ uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
-  Led.Core.Markdown, Led.Core.Wiki;
+  Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.UI.Dpi;
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
@@ -52,6 +52,7 @@ type
     function LineUnderCursor: Integer;
     procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
+    procedure ApplyFixedFont;
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
       directory.  Any failure to load degrades to "no image" instead of an
@@ -67,6 +68,9 @@ type
     procedure PaneResize(Sender: TObject);
     procedure ResizeSettled(Sender: TObject);
   public
+    { The face code blocks are set in.  Public so a check can see that it is
+      the editor's and not IPro's default. }
+    function FixedFace: string;
     constructor Create(AOwner: TComponent); override;
     { Shows AText rendered as Markdown.  Debounced by default, because a
       refresh can arrive several times over in a row -- a tab change is three
@@ -90,6 +94,21 @@ type
       and says whether there was one to scroll to.  The mapping is per block:
       a line inside a paragraph scrolls to the paragraph. }
     function ScrollToLine(ALine: Integer): Boolean;
+
+    { Says the page is already showing the block ALine belongs to, without
+      scrolling it there.  This is how a click on the page keeps the page
+      still: the caret lands on the clicked line, the text view scrolls to
+      put the caret somewhere comfortable, and the scroll comes back here as
+      a sync request for whatever line ended up at the top -- a different
+      line, and often a different block, from the one that was clicked.
+      Telling the pane where the text now is stops that request moving the
+      thing the reader just clicked on. }
+    procedure AssumeSynced(ALine: Integer);
+
+    { Where the page is scrolled to, in pixels.  For the self-test, which
+      otherwise has no way to tell a page that stayed still from one that
+      was scrolled back to where it started. }
+    function ScrollPos: Integer;
 
     { Clicking a place in the page reports the line it was made from, which is
       how the text view follows the preview. }
@@ -139,6 +158,7 @@ begin
   FHtml.Align := alClient;
   FHtml.DataProvider := FProvider;
   FHtml.Visible := False;
+  ApplyFixedFont;
   { IPro lays a page out on the control's own canvas and then, by default,
     paints it into a bitmap it allocates for the purpose.  Nothing makes the
     two agree about resolution, and here they do not: the startup sweep puts
@@ -399,6 +419,19 @@ begin
   end;
 end;
 
+function TLedPreviewPane.ScrollPos: Integer;
+begin
+  Result := FHtml.VScrollPos;
+end;
+
+procedure TLedPreviewPane.AssumeSynced(ALine: Integer);
+var
+  N: Integer;
+begin
+  N := NearestLineId(ALine);
+  if N > 0 then FSyncedLine := N;
+end;
+
 procedure TLedPreviewPane.HtmlClicked(Sender: TObject);
 var
   L: Integer;
@@ -406,12 +439,37 @@ begin
   if not Assigned(FOnJumpToLine) then Exit;
   L := LineUnderCursor;
   if L <= 0 then Exit;
-  { The text view is about to move, and its move comes back here as a scroll
-    request.  Recording the block now means that round trip finds the preview
-    already where it should be and leaves it alone, instead of jumping the
-    thing the reader just clicked to the top of the pane. }
-  FSyncedLine := NearestLineId(L);
+  { The caller is responsible for keeping the page still across the jump --
+    see AssumeSynced.  Recording the clicked block here instead was not
+    enough: the request that comes back carries the view's top line, not the
+    line that was clicked, and those are the same block only when the click
+    happened to be at the top of the text view. }
   FOnJumpToLine(Self, L);
+end;
+
+{ The typeface <pre> and <code> are set in: the editor's own.
+
+  IPro defaults to 'Courier New', which is not installed on a Linux desktop,
+  so the code blocks in a preview were rendered in whatever the toolkit
+  substituted -- often a proportional face, which is the one thing a code
+  block must not be.  Taking the editor's font means a fenced block looks
+  like the file it was copied from, and with no preference set that is the
+  Fira Code LED ships.
+
+  Re-read on every render rather than fixed at construction, so changing the
+  font in Preferences shows up without restarting. }
+function TLedPreviewPane.FixedFace: string;
+begin
+  Result := FHtml.FixedTypeface;
+end;
+
+procedure TLedPreviewPane.ApplyFixedFont;
+var
+  Face: string;
+  Size: Integer;
+begin
+  LedParseFontSpec(LedPrefs.GetStr('Editor/font', ''), Face, Size);
+  if Face <> '' then FHtml.FixedTypeface := Face;
 end;
 
 procedure TLedPreviewPane.Render(Sender: TObject);
@@ -419,6 +477,9 @@ var
   Page: string;
 begin
   FTimer.Enabled := False;
+  { Re-read now rather than only at construction, so a font changed in
+    Preferences shows in the next preview without a restart. }
+  ApplyFixedFont;
 
   { Laying a page out costs more than everything else the pane does put
     together -- half a second for a README -- so it is worth some care about

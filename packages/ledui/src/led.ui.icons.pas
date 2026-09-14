@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Toolbar and menu icons, drawn rather than shipped.
+{ LED - a lightweight editor.  Toolbar and menu icons, drawn rather than shipped.
 
   medit used the desktop's stock GTK icon theme, which does not exist on
   Windows or macOS, and bundling a PNG set means artwork to license, scale
@@ -16,7 +16,7 @@ unit Led.UI.Icons;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList;
+  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls, Buttons;
 
 const
   LedWindowIconRes = 'LEDICONPNG';   { see packaging/windows/led.rc }
@@ -31,6 +31,21 @@ type
   index of a name is its index in the list.  Returns the list for chaining. }
 function LedBuildIconList(AImages: TImageList; const ANames: array of string;
   AColour: TColor): TImageList;
+
+{ The colour a file-type icon is drawn in, or clNone for the icons that have
+  no colour of their own and take whatever the caller asks for.
+
+  Only the file kinds are coloured.  A toolbar wants one ink -- a row of
+  differently-tinted buttons reads as decoration -- but a file tree is
+  scanned rather than read, and colour is what makes a C file findable among
+  forty others at a glance.  The same picture and colour appear on the tab
+  header, so a file looks the same wherever it is shown. }
+function LedIconAccent(const AName: string): TColor;
+
+{ The file-type icon name for AFileName, by extension -- 'filesource',
+  'filemarkdown' and so on, or 'doc' for anything unrecognised.  One rule, so
+  the browser tree and the tab headers cannot drift apart. }
+function LedIconForFile(const AFileName: string): string;
 
 { Index of ANAme in the list built by LedBuildIconList, or -1. }
 function LedIconIndex(const AName: string): Integer;
@@ -49,6 +64,33 @@ function LedIconNames: TStringArray;
   intact.  Does nothing if the resource is missing, because a build without
   it should start with no icon rather than not start. }
 procedure LedApplyWindowIcon;
+
+{ Gives ABar LED's own button painting: a wash under the pointer, a stronger
+  one while a button is held or checked, and hairline separators.
+
+  Needed because gtk2 asks for ttbButtonHot and draws nothing for it, so a
+  toolbar of flat glyphs gives no sign which button a click would reach.  One
+  call rather than a handler per toolbar, because LED has four of them -- the
+  main bar, the debugger's, the breakpoint pane's -- and they should not each
+  answer the pointer differently. }
+procedure LedStyleToolBar(ABar: TToolBar);
+
+type
+  { A speed button that answers the pointer the way a toolbar button does.
+
+    The toolbars LED builds by hand are not TToolBars: the file browser's nav
+    row, its crumbs and the dock's edge rails are all TSpeedButtons, which
+    OnPaintButton does not reach.  They went on drawing nothing under the
+    pointer after the main bar started to, which made them look disabled next
+    to it.
+
+    PaintBackground is the hook, rather than Paint: everything a speed button
+    draws on top -- the glyph, the caption, their positions, the shifted
+    content while it is held -- stays the widget's own job, as it should. }
+  TLedSpeedButton = class(TSpeedButton)
+  protected
+    procedure PaintBackground(var PaintRect: TRect); override;
+  end;
 
 { Draws one icon into ABitmap, which must already be sized. }
 procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
@@ -72,7 +114,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..50] of string = (
+  IconNames: array[0..60] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -88,8 +130,177 @@ const
       file is an absolute position, so inserting here would silently move
       every icon after it. }
     'debug', 'stepover', 'stepinto', 'stepout', 'pause',
-    'breakpoint', 'debugline'
+    'breakpoint', 'debugline',
+    { The file browser's tree, one per kind of file it can recognise.  A page
+      with a mark on it, except the folder, so a row reads as "a file, of this
+      sort" rather than as an unrelated picture. }
+    'folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
+    'fileimage', 'filebinary',
+    { The browser's two making-things buttons.  The same folder and page as
+      above with a plus badge on the corner, so the pair reads as "a new one
+      of these" rather than as two more ways to look at what is there. }
+    'newfolder', 'newfile',
+    { The toolbar's theme chooser. }
+    'theme'
   );
+
+
+type
+  { OnPaintButton is a method pointer, so the shared painter needs an object
+    to hang off.  One instance for the process, created on first use. }
+  TLedToolPainter = class
+    procedure Paint(Sender: TToolButton; State: Integer);
+  end;
+
+  { TToolButton.Canvas is protected, and a button LED paints itself has to be
+    drawn on something. }
+  TLedToolButtonAccess = class(TToolButton);
+
+var
+  GToolPainter: TLedToolPainter = nil;
+
+{ ANum parts of A to ADen-ANum parts of B. }
+function Blend(A, B: TColor; ANum, ADen: Integer): TColor;
+var
+  Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
+  Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
+  Result := TColor(
+    (((Ra * ANum + Rb * (ADen - ANum)) div ADen) and $FF)
+    or ((((Ga * ANum + Gb * (ADen - ANum)) div ADen) and $FF) shl 8)
+    or ((((Ba * ANum + Bb * (ADen - ANum)) div ADen) and $FF) shl 16));
+end;
+
+{ The same three washes the toolbar painter uses, so a hand-built row of
+  speed buttons and a real toolbar react to the pointer identically. }
+procedure TLedSpeedButton.PaintBackground(var PaintRect: TRect);
+var
+  Bg, Wash: TColor;
+begin
+  Bg := clNone;
+  if Parent <> nil then Bg := Parent.Brush.Color;
+  if Bg = clNone then Bg := Color;
+  if Bg = clNone then Bg := clBtnFace;
+
+  Wash := clNone;
+  if Enabled then
+  begin
+    if FState in [bsDown, bsExclusive] then
+      Wash := Blend(clHighlight, Bg, 2, 5)
+    else if Down then
+      Wash := Blend(clHighlight, Bg, 3, 10)
+    else if MouseInControl then
+      Wash := Blend(clHighlight, Bg, 1, 5);
+  end;
+
+  if not Transparent then
+  begin
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := Bg;
+    Canvas.FillRect(PaintRect);
+  end;
+  if Wash <> clNone then
+  begin
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := Wash;
+    Canvas.FillRect(PaintRect);
+  end;
+end;
+
+procedure TLedToolPainter.Paint(Sender: TToolButton; State: Integer);
+var
+  Bar: TToolBar;
+  C: TCanvas;
+  R: TRect;
+  Bg, Wash: TColor;
+  X, Y, Mid: Integer;
+begin
+  Bar := Sender.Parent as TToolBar;
+  C := TLedToolButtonAccess(Sender).Canvas;
+  R := Sender.ClientRect;
+  Bg := Bar.Color;
+  if Bg = clNone then Bg := clBtnFace;
+
+  C.Brush.Style := bsSolid;
+  C.Brush.Color := Bg;
+  C.FillRect(R);
+
+  if Sender.Style in [tbsSeparator, tbsDivider] then
+  begin
+    Mid := (R.Left + R.Right) div 2;
+    C.Pen.Color := Blend(clBtnShadow, Bg, 1, 2);
+    C.Pen.Width := 1;
+    C.Line(Mid, R.Top + 4, Mid, R.Bottom - 4);
+    Exit;
+  end;
+
+  { 1 normal, 2 hot, 3 pressed, 4 disabled, 5 checked, 6 checked and hot. }
+  Wash := clNone;
+  case State of
+    2:    Wash := Blend(clHighlight, Bg, 1, 5);
+    3:    Wash := Blend(clHighlight, Bg, 2, 5);
+    5, 6: Wash := Blend(clHighlight, Bg, 3, 10);
+  end;
+  if Wash <> clNone then
+  begin
+    C.Brush.Color := Wash;
+    C.FillRect(R);
+  end;
+
+  if (Bar.Images <> nil) and (Sender.ImageIndex >= 0) and
+     (Sender.ImageIndex < Bar.Images.Count) then
+  begin
+    X := R.Left + (R.Right - R.Left - Bar.Images.Width) div 2;
+    Y := R.Top + (R.Bottom - R.Top - Bar.Images.Height) div 2;
+    { A caption, where the toolbar shows one, goes beside the glyph rather
+      than under it -- which is what TToolButton does with both, and what
+      cropped the breakpoint pane's labels. }
+    if Bar.ShowCaptions and (Sender.Caption <> '') then
+    begin
+      X := R.Left + 4;
+      Y := R.Top + (R.Bottom - R.Top - Bar.Images.Height) div 2;
+      Bar.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
+      C.Brush.Style := bsClear;
+      C.Font.Color := clBtnText;
+      if not Sender.Enabled then C.Font.Color := clGrayText;
+      C.TextOut(X + Bar.Images.Width + 4,
+        R.Top + (R.Bottom - R.Top - C.TextHeight('Ag')) div 2, Sender.Caption);
+      Exit;
+    end;
+    Bar.Images.Draw(C, X, Y, Sender.ImageIndex, Sender.Enabled);
+    { A button that opens a menu says so.  TToolButton would have drawn this
+      arrow; assigning OnPaintButton takes the whole job, including the parts
+      one did not mean to take over. }
+    if Sender.Style in [tbsDropDown, tbsButtonDrop] then
+    begin
+      C.Brush.Style := bsSolid;
+      C.Brush.Color := clBtnText;
+      C.Pen.Color := clBtnText;
+      Mid := R.Right - 7;
+      Y := (R.Top + R.Bottom) div 2 + 3;
+      C.Polygon([Point(Mid - 3, Y - 2), Point(Mid + 3, Y - 2),
+                 Point(Mid, Y + 2)]);
+    end;
+  end
+  else if Bar.ShowCaptions and (Sender.Caption <> '') then
+  begin
+    C.Brush.Style := bsClear;
+    C.Font.Color := clBtnText;
+    if not Sender.Enabled then C.Font.Color := clGrayText;
+    C.TextOut(R.Left + 4,
+      R.Top + (R.Bottom - R.Top - C.TextHeight('Ag')) div 2, Sender.Caption);
+  end;
+end;
+
+procedure LedStyleToolBar(ABar: TToolBar);
+begin
+  if ABar = nil then Exit;
+  if GToolPainter = nil then GToolPainter := TLedToolPainter.Create;
+  ABar.OnPaintButton := @GToolPainter.Paint;
+end;
 
 procedure LedApplyWindowIcon;
 var
@@ -119,6 +330,88 @@ var
 begin
   SetLength(Result, Length(IconNames));
   for i := 0 to High(IconNames) do Result[i] := IconNames[i];
+end;
+
+function LedIconAccent(const AName: string): TColor;
+begin
+  { The toolbar, in the Tango palette medit's stock GTK icons came from.
+
+    This reverses an earlier judgement of mine, and the reason is worth
+    keeping: I had argued that a row of differently tinted buttons reads as
+    decoration and that one ink was calmer.  Set beside medit it is not --
+    its toolbar is easier to scan precisely because Save is blue and Cut is
+    steel and Stop is red, so the eye goes to a colour rather than reading a
+    row of identical grey shapes.
+
+    Colour by what the action does rather than by which menu it is on:
+    making things green, file traffic blue, editing steel, destructive red,
+    search amber. }
+  if (AName = 'new') or (AName = 'newfile') or (AName = 'newfolder') then
+    Exit(RGBToColor( 78, 154,  60));                       { green }
+  if (AName = 'open') or (AName = 'reload') then
+    Exit(RGBToColor(233, 165,  40));                       { manila }
+  if (AName = 'save') or (AName = 'saveas') or (AName = 'print') then
+    Exit(RGBToColor( 52, 101, 164));                       { blue }
+  if (AName = 'undo') or (AName = 'redo') then
+    Exit(RGBToColor(117,  80, 123));                       { plum }
+  if (AName = 'cut') or (AName = 'copy') or (AName = 'paste') then
+    Exit(RGBToColor(100, 116, 132));                       { steel }
+  if (AName = 'delete') or (AName = 'stop') or (AName = 'quit') then
+    Exit(RGBToColor(190,  60,  50));                       { red }
+  if (AName = 'find') or (AName = 'findnext') or (AName = 'findprev') or
+     (AName = 'replace') or (AName = 'gotoline') then
+    Exit(RGBToColor(196, 143,  30));                       { amber }
+  if (AName = 'run') or (AName = 'debug') then
+    Exit(RGBToColor( 78, 154,  60));                       { green }
+  if AName = 'breakpoint' then Exit(RGBToColor(190, 60, 50));
+  if AName = 'bookmark' then Exit(RGBToColor(196, 143, 30));
+  if AName = 'terminal' then Exit(RGBToColor(85, 87, 83));
+
+  { Written as RGB and converted, because a TColor is $00BBGGRR and the
+    numbers are unreadable the other way round.  Muted rather than saturated:
+    these sit in a list of text, not on a toolbar. }
+  if AName = 'filesource'   then Exit(RGBToColor( 70, 135, 205));  { blue }
+  if AName = 'filemarkdown' then Exit(RGBToColor( 80, 160, 185));  { teal }
+  if AName = 'filetext'     then Exit(RGBToColor(130, 145, 160));  { slate }
+  if AName = 'filepdf'      then Exit(RGBToColor(200,  75,  65));  { red }
+  if AName = 'fileimage'    then Exit(RGBToColor( 95, 165, 100));  { green }
+  if AName = 'filebinary'   then Exit(RGBToColor(175, 135,  75));  { amber }
+  if AName = 'folder'       then Exit(RGBToColor(215, 175,  95));  { manila }
+  { The fallback page, for a file whose kind LED does not recognise.  It has
+    a colour of its own for the same reason the others do, and a mid grey
+    rather than the ink: drawn in the ink it was black, which on a dark file
+    tree is a page-shaped hole. }
+  if AName = 'doc'          then Exit(RGBToColor(128, 134, 143));  { grey }
+  Result := clNone;
+end;
+
+function LedIconForFile(const AFileName: string): string;
+var
+  Ext: string;
+begin
+  Ext := LowerCase(ExtractFileExt(AFileName));
+  if (Ext = '.c') or (Ext = '.h') or (Ext = '.cpp') or (Ext = '.hpp') or
+     (Ext = '.cc') or (Ext = '.cxx') or (Ext = '.m') or (Ext = '.mm') or
+     (Ext = '.pas') or (Ext = '.pp') or (Ext = '.inc') or (Ext = '.lpr') or
+     (Ext = '.py') or (Ext = '.js') or (Ext = '.ts') or (Ext = '.java') or
+     (Ext = '.go') or (Ext = '.rs') or (Ext = '.rb') or (Ext = '.sh') or
+     (Ext = '.pl') or (Ext = '.lua') or (Ext = '.sql') or (Ext = '.php') or
+     (Ext = '.html') or (Ext = '.xml') or (Ext = '.json') or (Ext = '.yml') or
+     (Ext = '.yaml') or (Ext = '.css') or (Ext = '.tex') then
+    Exit('filesource');
+  if (Ext = '.md') or (Ext = '.markdown') or (Ext = '.wiki') or
+     (Ext = '.usemod') or (Ext = '.wp') then Exit('filemarkdown');
+  if (Ext = '.txt') or (Ext = '.log') or (Ext = '.ini') or (Ext = '.cfg') or
+     (Ext = '.conf') or (Ext = '.csv') then Exit('filetext');
+  if Ext = '.pdf' then Exit('filepdf');
+  if (Ext = '.png') or (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.gif') or
+     (Ext = '.bmp') or (Ext = '.svg') or (Ext = '.ico') or (Ext = '.webp') then
+    Exit('fileimage');
+  if (Ext = '.o') or (Ext = '.a') or (Ext = '.so') or (Ext = '.dll') or
+     (Ext = '.exe') or (Ext = '.bin') or (Ext = '.zip') or (Ext = '.gz') or
+     (Ext = '.tar') or (Ext = '.ppu') or (Ext = '.obj') or (Ext = '.class') then
+    Exit('filebinary');
+  Result := 'doc';
 end;
 
 function LedIconIndex(const AName: string): Integer;
@@ -214,6 +507,17 @@ begin
 end;
 
 { A sheet of paper with a folded corner, the base of the file icons. }
+{ A plus in the lower-right corner, which is how every toolkit says "a new
+  one of these".  Drawn heavier than the outline it sits on so it reads at
+  sixteen pixels, where a hairline cross disappears. }
+procedure DrawPlusBadge(var P: TPen16);
+begin
+  P.Width(2);
+  P.Line(12.5, 11.5, 12.5, 15.5);
+  P.Line(10.5, 13.5, 14.5, 13.5);
+  P.Width(1.2);
+end;
+
 procedure DrawPage(var P: TPen16);
 begin
   P.Poly([3.5, 1.5, 9.5, 1.5, 12.5, 4.5, 12.5, 14.5, 3.5, 14.5, 3.5, 1.5]);
@@ -466,6 +770,95 @@ begin
         P.Poly([3, 4.5, 9, 8, 3, 11.5], True);
         P.Line(10.5, 8, 13.5, 8);
       end;
+    'folder':
+      begin
+        { A tab and a body, which is the one shape everybody reads as a
+          folder.  Narrower than the 'browser' icon beside it on the rail,
+          because this one sits in a row of text. }
+        P.Poly([1.5, 13, 1.5, 3.5, 6, 3.5, 7.5, 5.5, 14.5, 5.5, 14.5, 13,
+                1.5, 13]);
+      end;
+    'filesource':
+      begin
+        { A page with angle brackets on it: the mark every editor uses for
+          "this one is code". }
+        DrawPage(P);
+        P.Poly([7, 7.5, 5.5, 9.5, 7, 11.5]);
+        P.Poly([9.5, 7.5, 11, 9.5, 9.5, 11.5]);
+      end;
+    'filetext':
+      begin
+        { A page with lines of writing. }
+        DrawPage(P);
+        P.Line(5.5, 7.5, 10.5, 7.5);
+        P.Line(5.5, 9.5, 10.5, 9.5);
+        P.Line(5.5, 11.5, 8.5, 11.5);
+      end;
+    'filemarkdown':
+      begin
+        { A page with the two strokes of an M and the arrow beneath, which is
+          what the Markdown mark is. }
+        DrawPage(P);
+        P.Poly([5.5, 11.5, 5.5, 7.5, 7.5, 9.5, 9.5, 7.5, 9.5, 11.5]);
+      end;
+    'filepdf':
+      begin
+        { A page with a band across it, as a printed sheet is shown. }
+        DrawPage(P);
+        P.Box(5, 8, 11, 11.5, True);
+      end;
+    'fileimage':
+      begin
+        { A frame with a horizon and a sun: a picture rather than a page. }
+        P.Box(1.5, 3, 14.5, 13);
+        P.Ellipse(4, 5, 6.5, 7.5, True);
+        P.Poly([1.5, 13, 6, 8.5, 9, 11, 11.5, 8.5, 14.5, 13]);
+      end;
+    'theme':
+      begin
+        { A painter's palette: a rounded shape with a thumb hole and three
+          wells in it.  Colour is what a theme changes, and a palette is the
+          one picture that says so without words. }
+        P.Ellipse(1.5, 2.5, 14.5, 13.5);
+        P.Ellipse(9.5, 8.5, 12.5, 11.5);
+        P.Ellipse(3.6, 5.2, 5.4, 7.0, True);
+        P.Ellipse(6.6, 3.9, 8.4, 5.7, True);
+        P.Ellipse(3.4, 8.6, 5.2, 10.4, True);
+      end;
+    'newfolder':
+      begin
+        { The folder, shortened on the right to leave the badge room. }
+        P.Poly([1.5, 13, 1.5, 3.5, 6, 3.5, 7.5, 5.5, 12, 5.5, 12, 13, 1.5, 13]);
+        DrawPlusBadge(P);
+      end;
+    'newfile':
+      begin
+        { A page, likewise, with the same badge. }
+        P.Poly([2.5, 1.5, 8, 1.5, 10.5, 4, 10.5, 12.5, 2.5, 12.5, 2.5, 1.5]);
+        P.Line(8, 1.5, 8, 4);
+        P.Line(8, 4, 10.5, 4);
+        DrawPlusBadge(P);
+      end;
+    'filebinary':
+      begin
+        { A gear, not a page.  A binary is a thing that runs, and a page with
+          a one and a nought on it read as a document about binary rather
+          than as a program.  Eight teeth, because at sixteen pixels more
+          become a blur and fewer stop looking like a gear. }
+        P.Ellipse(3.2, 3.2, 12.8, 12.8);
+        P.Ellipse(6.4, 6.4, 9.6, 9.6, True);
+        P.Width(1.6);
+        { The teeth, at the four sides and the four diagonals. }
+        P.Line(8, 1.6, 8, 3.4);
+        P.Line(8, 12.6, 8, 14.4);
+        P.Line(1.6, 8, 3.4, 8);
+        P.Line(12.6, 8, 14.4, 8);
+        P.Line(3.6, 3.6, 4.8, 4.8);
+        P.Line(11.2, 11.2, 12.4, 12.4);
+        P.Line(12.4, 3.6, 11.2, 4.8);
+        P.Line(4.8, 11.2, 3.6, 12.4);
+        P.Width(1.2);
+      end;
     'terminal':
       begin
         P.Box(1, 2.5, 15, 13.5);
@@ -519,11 +912,19 @@ begin
       end;
     'help':
       begin
+        { The question mark is drawn, not typed.  TextOut goes through the
+          font renderer, which antialiases whatever the canvas is told about
+          shapes -- so the glyph's edges came out as blends of the ink and
+          the mask colour, and a masked bitmap is transparent only where a
+          pixel matches the mask exactly.  The leftovers are the purple
+          fringe that shows in a menu. }
         P.Ellipse(1.5, 1.5, 14.5, 14.5);
-        P.C.Font.Height := P.X(11);
-        P.C.Font.Color := AColour;
-        P.C.Brush.Style := bsClear;
-        P.C.TextOut(P.X(5.5), P.X(2.5), '?');
+        P.Width(1.6);
+        { The hook: up over the top and back down to the stem. }
+        P.Poly([5.6, 6.1, 6.6, 4.4, 9.4, 4.4, 10.4, 6.1, 9.6, 7.6, 8, 8.6,
+                8, 10]);
+        P.Ellipse(7.2, 11.2, 8.9, 12.9, True);
+        P.Width(1.2);
       end;
     'back', 'forward', 'up':
       begin
@@ -565,11 +966,12 @@ begin
       end;
     'about':
       begin
+        { Drawn rather than typed, for the reason 'help' gives. }
         P.Ellipse(1.5, 1.5, 14.5, 14.5);
-        P.C.Font.Height := P.X(11);
-        P.C.Font.Color := AColour;
-        P.C.Brush.Style := bsClear;
-        P.C.TextOut(P.X(6.5), P.X(2.5), 'i');
+        P.Ellipse(7.2, 3.6, 8.9, 5.3, True);
+        P.Width(1.8);
+        P.Line(8, 7, 8, 11.8);
+        P.Width(1.2);
       end;
   end;
 end;
@@ -633,7 +1035,12 @@ begin
         trade anyway. }
       Bmp.Canvas.AntialiasingMode := amOff;
 
-      LedDrawIcon(Bmp, ANames[i], AColour);
+      { A file kind is drawn in its own colour; everything else takes the
+        one the caller asked for, so a toolbar stays one ink. }
+      if LedIconAccent(ANames[i]) <> clNone then
+        LedDrawIcon(Bmp, ANames[i], LedIconAccent(ANames[i]))
+      else
+        LedDrawIcon(Bmp, ANames[i], AColour);
       AImages.AddMasked(Bmp, MaskColour);
     finally
       Bmp.Free;

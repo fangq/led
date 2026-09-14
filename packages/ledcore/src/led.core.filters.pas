@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Filename-based configuration rules.
+{ LED - a lightweight editor.  Filename-based configuration rules.
 
   Ported from medit's mooeditfiltersettings.cpp.  A rule pairs a filter with a
   config string, and every rule whose filter matches the document is applied
@@ -14,7 +14,7 @@
       Makefile*                bare text means globs
 
   medit read a bare filter as a regex for config rules and as globs for action
-  rules.  led always reads it as globs, because that is what people write and
+  rules.  LED always reads it as globs, because that is what people write and
   the regex reading silently mis-parsed "*.c" for anyone who tried it.
 
   No LCL dependency. }

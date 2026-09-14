@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for command-line parsing.
+{ LED - a lightweight editor.  Headless tests for command-line parsing.
 
   Argument handling is exactly the sort of code that mis-handles one case
   forever without anyone noticing, so the grammar is pinned here. }

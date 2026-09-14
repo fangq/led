@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The red squiggle under a misspelled word.
+{ LED - a lightweight editor.  The red squiggle under a misspelled word.
 
   A TSynEditMarkup rather than custom painting, because SynEdit already knows
   how to draw a wavy underline -- slsWaved on the bottom frame edge -- and

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Output filters.
+{ LED - a lightweight editor.  Output filters.
 
   Turns a line of compiler or tool output into a place in a file, so that
   clicking it goes there.  Ported from medit's moooutputfilterregex.cpp,

@@ -1,8 +1,8 @@
-{ led - a lightweight editor.  Phase 0 long-line benchmark.
+{ LED - a lightweight editor.  Phase 0 long-line benchmark.
 
   medit truncates any line past 4096 characters and shows a clickable marker
   to reveal more, because GtkTextView's line-layout cache collapses on very
-  long lines.  led ships the same feature, but how much machinery it needs
+  long lines.  LED ships the same feature, but how much machinery it needs
   depends on whether SynEdit has the same problem -- it paints only the
   visible horizontal window, so it may not.
 
@@ -233,7 +233,7 @@ begin
   F.Show;
   Pump;
 
-  WriteLn('led long-line benchmark');
+  WriteLn('LED long-line benchmark');
   WriteLn('  (decides how much machinery the truncate-and-reveal feature needs)');
   WriteLn;
 

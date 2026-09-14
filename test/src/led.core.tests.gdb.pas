@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  A real gdb, driven end to end.
+{ LED - a lightweight editor.  A real gdb, driven end to end.
 
   These tests compile a C program with gcc and debug it with the gdb on this
   machine.  Nothing is mocked, because the things that break in a debugger
@@ -7,7 +7,7 @@
   would only ever return what its author already believed.
 
   Everything is skipped, not failed, when gcc or gdb is missing: a machine
-  without a C toolchain is allowed to run led's test suite. }
+  without a C toolchain is allowed to run LED's test suite. }
 unit Led.Core.Tests.Gdb;
 
 {$mode objfpc}{$H+}

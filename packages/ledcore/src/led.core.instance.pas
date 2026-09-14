@@ -1,8 +1,8 @@
-{ led - a lightweight editor.  Single instance and file hand-off.
+{ LED - a lightweight editor.  Single instance and file hand-off.
 
   A second `led somefile.c` should open a tab in the window already on screen
   rather than starting a second editor.  medit did this with a per-display
-  Unix socket; led uses FPC's TAdvancedSingleInstance, chosen over the simpler
+  Unix socket; LED uses FPC's TAdvancedSingleInstance, chosen over the simpler
   simpleipc because it has a reply channel and, more importantly, a real
   answer for the stale-lock case after a crash.
 

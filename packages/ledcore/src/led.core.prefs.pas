@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  User preferences.
+{ LED - a lightweight editor.  User preferences.
 
-  medit stored these as XML under a hand-rolled DOM; led uses an INI file,
+  medit stored these as XML under a hand-rolled DOM; LED uses an INI file,
   because the settings model is flat dotted keys and that is exactly what INI
   sections express:
 
@@ -57,6 +57,15 @@ type
 { The process-wide preferences, loaded on first use. }
 function LedPrefs: TLedPrefs;
 
+{ Clears a pane lock nobody asked for, once.
+
+  For a while the lock defaulted on, and the preferences dialog writes every
+  key it shows -- so a prefs.ini written in that period carries
+  lock_pane_layout=1 whether or not anyone chose it, and a changed default
+  cannot be seen past a value already in the file.  This clears that one, and
+  records that it has: a lock set after this is a lock somebody meant. }
+procedure LedClearInheritedPaneLock(APrefs: TLedPrefs);
+
 const
   { Key names carried over from medit so the vocabulary is unchanged. }
   LedPrefFont            = 'Editor/font';
@@ -75,6 +84,8 @@ const
   LedPrefRightMargin     = 'Editor/draw_right_margin';
   LedPrefRightMarginAt   = 'Editor/right_margin_offset';
   LedPrefWrapEnable      = 'Editor/wrapping_enable';
+  { Not one of medit's: medit had no minimap. }
+  LedPrefMiniMap         = 'Editor/minimap';
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
 
@@ -83,11 +94,23 @@ const
     their back, this keeps a private journal and never touches it. }
   LedPrefShowPaneButtons  = 'Editor/show_pane_buttons';
   LedPrefLockPanes        = 'Editor/lock_pane_layout';
+  { Not a setting: a note that the stale lock below has been cleared once.
+    See the migration in the main form. }
+  LedPrefPaneLockCleared  = 'Editor/lock_pane_layout_cleared';
   LedPrefHeaderStyle      = 'Editor/pane_header_style';
   LedPrefRecoveryEnabled  = 'Editor/recovery_enabled';
   LedPrefRecoveryInterval = 'Editor/recovery_interval';
 
 implementation
+
+procedure LedClearInheritedPaneLock(APrefs: TLedPrefs);
+begin
+  if APrefs = nil then Exit;
+  if APrefs.GetBool(LedPrefPaneLockCleared, False) then Exit;
+  APrefs.SetBool(LedPrefPaneLockCleared, True);
+  APrefs.SetBool(LedPrefLockPanes, False);
+  APrefs.Save;
+end;
 
 var
   FInstance: TLedPrefs = nil;

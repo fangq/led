@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Reading a tags file.
+{ LED - a lightweight editor.  Reading a tags file.
 
   medit bundled a copy of universal-ctags' readtags.c.  The format is simple
   enough that parsing it directly is smaller than carrying the C:
@@ -92,23 +92,66 @@ begin
 end;
 
 function TLedTags.KindName(const AKind: string): string;
+var
+  K: string;
 begin
-  { The one-letter kinds that turn up most; anything else is shown as-is
-    rather than guessed at. }
-  if AKind = 'f' then Result := 'Functions'
-  else if AKind = 'c' then Result := 'Classes'
-  else if AKind = 's' then Result := 'Structs'
-  else if AKind = 'v' then Result := 'Variables'
-  else if AKind = 'm' then Result := 'Members'
-  else if AKind = 'd' then Result := 'Macros'
-  else if AKind = 't' then Result := 'Types'
-  else if AKind = 'e' then Result := 'Enumerators'
-  else if AKind = 'g' then Result := 'Enums'
-  else if AKind = 'p' then Result := 'Prototypes'
-  else if AKind = 'n' then Result := 'Namespaces'
-  else if AKind = 'i' then Result := 'Interfaces'
-  else if AKind = '' then Result := 'Other'
-  else Result := AKind;
+  { Two spellings, because both turn up.  A plain tags file carries the
+    one-letter kind; --fields=+K, which is what LED asks for, carries the
+    whole word -- 'function', 'chapter' -- and a reader that knew only the
+    letters put every symbol in a group called Other. }
+  K := LowerCase(AKind);
+  if (K = 'f') or (K = 'function') or (K = 'func') then Result := 'Functions'
+  else if (K = 'c') or (K = 'class') then Result := 'Classes'
+  else if (K = 's') or (K = 'struct') then Result := 'Structs'
+  else if (K = 'v') or (K = 'variable') or (K = 'var') then Result := 'Variables'
+  else if (K = 'm') or (K = 'member') or (K = 'method') then Result := 'Members'
+  else if (K = 'd') or (K = 'macro') or (K = 'define') then Result := 'Macros'
+  else if (K = 't') or (K = 'typedef') or (K = 'type') then Result := 'Types'
+  else if (K = 'e') or (K = 'enumerator') then Result := 'Enumerators'
+  else if (K = 'g') or (K = 'enum') then Result := 'Enums'
+  else if (K = 'p') or (K = 'prototype') then Result := 'Prototypes'
+  else if (K = 'n') or (K = 'namespace') then Result := 'Namespaces'
+  else if (K = 'i') or (K = 'interface') then Result := 'Interfaces'
+  else if K = 'field' then Result := 'Fields'
+  else if K = 'property' then Result := 'Properties'
+  else if K = 'constant' then Result := 'Constants'
+  else if K = 'module' then Result := 'Modules'
+  else if K = 'package' then Result := 'Packages'
+  else if K = 'union' then Result := 'Unions'
+  else if K = 'label' then Result := 'Labels'
+  else if K = 'anchor' then Result := 'Anchors'
+  { A Markdown file is an outline, and these are what its headings come back
+    as.  The pane is at its most useful on exactly this kind of file. }
+  else if K = 'chapter' then Result := 'Headings'
+  else if K = 'section' then Result := 'Sections'
+  else if K = 'subsection' then Result := 'Subsections'
+  else if K = 'subsubsection' then Result := 'Sub-subsections'
+  else if K = '' then Result := 'Other'
+  else
+  begin
+    { Unknown, so shown as it came, with a capital and an s: ctags kinds are
+      lower-case singular nouns and these are group headings. }
+    Result := UpCase(AKind[1]) + Copy(AKind, 2, MaxInt);
+    if (Length(Result) > 0) and (Result[Length(Result)] <> 's') then
+      Result := Result + 's';
+  end;
+end;
+
+{ Fields that are not a scope, though they are spelled key:value like one.
+  Everything else with a colon is: ctags names a symbol's container by the
+  container's own kind, so the key is 'class' in C++, 'chapter' in Markdown,
+  and anything at all in a language nobody here has thought about. }
+function IsScopeField(const AKey: string): Boolean;
+const
+  NotScope: array[0..12] of string = (
+    'line', 'kind', 'typeref', 'file', 'signature', 'access', 'inherits',
+    'implementation', 'language', 'roles', 'extras', 'end', 'nth');
+var
+  i: Integer;
+begin
+  for i := Low(NotScope) to High(NotScope) do
+    if AKey = NotScope[i] then Exit(False);
+  Result := True;
 end;
 
 function TLedTags.ParseText(const AText: string): Integer;
@@ -152,13 +195,18 @@ begin
           Tag.Line := StrToIntDef(Copy(Field, 6, MaxInt), Tag.Line)
         else if Copy(Field, 1, 5) = 'kind:' then
           Tag.Kind := Copy(Field, 6, MaxInt)
-        else if (Length(Field) = 1) and (Tag.Kind = '') then
+        { No colon: the kind, whether that is the letter 'f' or the word
+          'function'.  Only the length-one case was accepted before, so with
+          --fields=+K -- which is what LED asks ctags for -- the kind was
+          never read at all and every symbol landed in Other. }
+        else if (Field <> '') and (Pos(':', Field) = 0) and (Tag.Kind = '') then
           Tag.Kind := Field
         else if Pos(':', Field) > 0 then
         begin
-          Rest := Copy(Field, 1, Pos(':', Field) - 1);
-          if (Rest = 'class') or (Rest = 'struct') or (Rest = 'namespace') or
-             (Rest = 'union') or (Rest = 'enum') then
+          Rest := LowerCase(Copy(Field, 1, Pos(':', Field) - 1));
+          if Rest = 'scope' then
+            Tag.Scope := Copy(Field, Pos(':', Field) + 1, MaxInt)
+          else if IsScopeField(Rest) then
             Tag.Scope := Copy(Field, Pos(':', Field) + 1, MaxInt);
         end;
       end;

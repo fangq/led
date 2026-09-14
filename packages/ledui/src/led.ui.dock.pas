@@ -1,14 +1,14 @@
-{ led - a lightweight editor.  The dock host.
+{ LED - a lightweight editor.  The dock host.
 
   medit hand-built a 7,200-line docking system (MooBigPaned/MooPaned/MooPane)
   to get panes that could be dragged between edges, collapsed to a title bar
-  and torn off into their own window.  led gets the same behaviour from
+  and torn off into their own window.  LED gets the same behaviour from
   AnchorDocking, the package the Lazarus IDE docks itself with: drag a pane by
   its header and drop it on any edge of any other pane, double-click the
   header to float it, close it with the button on the header, and the layout
   survives a restart.
 
-  What this unit adds on top is the vocabulary the rest of led speaks.
+  What this unit adds on top is the vocabulary the rest of LED speaks.
   AnchorDocking has no notion of "the left edge" -- a pane is wherever the
   user last put it -- but the menu still has to offer "Left Pane", and a pane
   still has to appear somewhere sensible the first time it is shown.  So each
@@ -57,6 +57,13 @@ type
     raise MinSize: the default 30 still lets a pane be squeezed down to a
     strip too narrow to read or to aim at. }
   TLedDockSplitter = class(TAnchorDockSplitter)
+  protected
+    { The end of a drag, and the only moment the dock can be sure a pane's
+      size is one the user chose.  MoveSplitter is no good for this: the
+      sizing pass calls it too, so recording there would record the layout's
+      own arithmetic back as if it were a preference. }
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
   public
     constructor Create(TheOwner: TComponent); override;
   end;
@@ -68,6 +75,12 @@ type
   TLedDockHeader = class(TAnchorDockHeader)
   private
     procedure StylePicked(Sender: TObject);
+  protected
+    { The caption, upper-cased on its way in.  RealSetText is the one place
+      every route to a caption passes through -- AnchorDocking sets it when a
+      pane is docked, when a site is renamed and when a layout is restored --
+      so doing it here means not hunting those sites down. }
+    procedure RealSetText(const Value: TCaption); override;
   public
     constructor Create(TheOwner: TComponent); override;
     { The dock's own right-click menu is where the docking options already
@@ -100,6 +113,10 @@ type
     FDraggingWanted: Boolean;
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
+    { The size the user last dragged each edge to, in device pixels; 0 until
+      they have dragged one. }
+    FUserSize: array[TLedDockEdge] of Integer;
+    function WantedSize(AEdge: TLedDockEdge): Integer;
     procedure ApplyDockPolicy;
     procedure GuardCentreHeader;
     function GetHeaderStyle: THeaderStyleName;
@@ -148,6 +165,13 @@ type
       down to a strip. }
     function PaneSize(const AId: string): Integer;
 
+    { Records what every open pane currently measures as the size its edge
+      should come back at.  Called when a splitter drag ends -- see
+      TLedDockSplitter.MouseUp -- and from nowhere the layout drives, which
+      is what keeps a size the user chose apart from one the window ran out
+      of room for. }
+    procedure NoteUserResize;
+
     { Tears APane off into a window of its own, and puts it back.  This is
       what medit's detachable panes did, and what AnchorDocking gives for
       free by dragging the header. }
@@ -179,6 +203,10 @@ type
     procedure RebuildRails;
     procedure RefreshRails;
 
+    { A button on one of the rails, for the check that the rails shade under
+      the pointer like every other toolbar in LED. }
+    function RailButton(AEdge: TLedDockEdge; AIndex: Integer): TSpeedButton;
+
     { Whether a pane can be torn off by dragging its header or its tab.  Those
       are the only two things AnchorDocking gates on this -- splitters, and so
       resizing a pane, are untouched. }
@@ -196,7 +224,7 @@ type
     property OnPaneShown: TLedPaneNotify read FOnPaneShown write FOnPaneShown;
 
     { The pane header's appearance.  AnchorDocking ships Frame3D, Line, Lines,
-      Points, ThemedCaption and ThemedButton; led adds LedPlain.  Taste
+      Points, ThemedCaption and ThemedButton; LED adds LedPlain.  Taste
       differs and the right answer is not obvious, so it is offered rather
       than decided. }
     function HeaderStyleNames: TStringArray;
@@ -226,12 +254,105 @@ const
   AddOrSetData(uppercase(StyleName)) -- so the registry hands back FRAME3D and
   THEMEDCAPTION, which is no way to label a menu.  These say what each style
   actually draws. }
+{ The colour a pane header's name is drawn in: the desktop's selection blue,
+  lightened towards the header band so it sits on it rather than shouting
+  from it.  Taken from the desktop rather than fixed, for the reason the
+  terminal's active-pane band is -- it is the blue the session already uses. }
+{ Perceived brightness, and a colour lifted away from its surroundings.
+  Public so a check can ask whether a caption can be read off its band. }
+function LedColourLuma(AColour: TColor): Integer;
+function LedLiftColour(AColour: TColor; APercent: Integer): TColor;
+
+function LedHeaderCaptionColour: TColor;
+
 function LedHeaderStyleCaption(const AName: string): string;
 
 implementation
 
 uses
   Led.UI.Icons, Led.Core.Prefs, Led.UI.Dpi;
+
+{ Toward white on a dark form, toward black on a light one, so "slightly
+  brighter than its surroundings" holds for either.  Shared, because the
+  caption colour has to know where the band it sits on ended up. }
+function LedLiftColour(AColour: TColor; APercent: Integer): TColor;
+var
+  R, G, B, Luma: Integer;
+begin
+  AColour := ColorToRGB(AColour);
+  R := AColour and $FF;
+  G := (AColour shr 8) and $FF;
+  B := (AColour shr 16) and $FF;
+  Luma := (R * 299 + G * 587 + B * 114) div 1000;
+  if Luma < 128 then
+  begin
+    R := R + ((255 - R) * APercent) div 100;
+    G := G + ((255 - G) * APercent) div 100;
+    B := B + ((255 - B) * APercent) div 100;
+  end
+  else
+  begin
+    R := R - (R * APercent) div 100;
+    G := G - (G * APercent) div 100;
+    B := B - (B * APercent) div 100;
+  end;
+  Result := TColor(R or (G shl 8) or (B shl 16));
+end;
+
+function LedColourLuma(AColour: TColor): Integer;
+begin
+  AColour := ColorToRGB(AColour);
+  Result := ((AColour and $FF) * 299 + ((AColour shr 8) and $FF) * 587
+            + ((AColour shr 16) and $FF) * 114) div 1000;
+end;
+
+function LedHeaderCaptionColour: TColor;
+
+  function Luma(AColour: TColor): Integer;
+  begin
+    Result := LedColourLuma(AColour);
+  end;
+
+  { One step of AColour towards ATarget. }
+  function Step(AColour, ATarget: TColor): TColor;
+  var
+    R, G, B, Tr, Tg, Tb: Integer;
+  begin
+    AColour := ColorToRGB(AColour);
+    ATarget := ColorToRGB(ATarget);
+    R := AColour and $FF;          Tr := ATarget and $FF;
+    G := (AColour shr 8) and $FF;  Tg := (ATarget shr 8) and $FF;
+    B := (AColour shr 16) and $FF; Tb := (ATarget shr 16) and $FF;
+    R := R + (Tr - R) div 5;
+    G := G + (Tg - G) div 5;
+    B := B + (Tb - B) div 5;
+    Result := TColor(R or (G shl 8) or (B shl 16));
+  end;
+
+var
+  Band, Toward: TColor;
+  Guard: Integer;
+begin
+  { The band the caption is drawn on, computed the way DrawLedPlainHeader
+    computes it, so the two cannot disagree. }
+  Band := LedLiftColour(clForm, 12);
+
+  Result := clHighlight;
+
+  { And lifted off that band until it can be read.  The desktop's selection
+    blue is chosen to carry white text on itself, not to be text on a dark
+    grey -- on a dark desktop the first version of this came out a muted
+    blue on dark grey, which is the report that prompted the loop.  Stepped
+    towards white on a dark band and towards black on a light one, so the
+    same rule serves both. }
+  if Luma(Band) < 128 then Toward := clWhite else Toward := clBlack;
+  Guard := 0;
+  while (Abs(Luma(Result) - Luma(Band)) < 90) and (Guard < 20) do
+  begin
+    Result := Step(Result, Toward);
+    Inc(Guard);
+  end;
+end;
 
 function LedHeaderStyleCaption(const AName: string): string;
 begin
@@ -314,6 +435,23 @@ begin
   MinSize := LedScale96(64);
 end;
 
+procedure TLedDockSplitter.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+var
+  P: TWinControl;
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  { Which dock this splitter belongs to, found by walking out of it.  The
+    alternative -- a list of hosts the splitter could consult -- would have
+    to be kept correct as hosts come and go, and a second window would make
+    it ambiguous anyway. }
+  P := Parent;
+  while (P <> nil) and not (P is TLedDockHost) do
+    P := P.Parent;
+  if P <> nil then
+    TLedDockHost(P).NoteUserResize;
+end;
+
 { TLedDockHeader }
 
 procedure TLedDockHeader.StylePicked(Sender: TObject);
@@ -361,9 +499,28 @@ end;
 constructor TLedDockHeader.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
-  { Deliberately nothing.  Shrinking the caption here was tried and read as
-    too small; the class is kept because HeaderClass is the only hook that
-    reaches every header, and the next thing that needs one will want it. }
+  { A pane's name in small capitals, the way an editor with side panels sets
+    one: the header labels what is below it rather than competing with the
+    document.  Two points down, bold, and in the desktop's own selection blue
+    so it reads as chrome and follows a theme LED knows nothing about.
+
+    ParentFont first, and that is the whole trick: a control with ParentFont
+    left on has its font replaced with the parent's the moment AnchorDocking
+    parents it, which is after this runs -- so an earlier attempt at shrinking
+    the caption set a size that was thrown away before anything was drawn, and
+    read as "too small was tried and reverted" when nothing had changed at
+    all. }
+  ParentFont := False;
+  if Font.Size <= 0 then Font.Size := 9;
+  Font.Size := Font.Size - 2;
+  if Font.Size < 6 then Font.Size := 6;
+  Font.Style := Font.Style + [fsBold];
+  Font.Color := LedHeaderCaptionColour;
+end;
+
+procedure TLedDockHeader.RealSetText(const Value: TCaption);
+begin
+  inherited RealSetText(UpperCase(Value));
 end;
 
 { A header that is a name on a slightly lighter band, and nothing else.
@@ -381,37 +538,10 @@ procedure DrawLedPlainHeader(Canvas: TCanvas; Style: TADHeaderStyleDesc;
   r: TRect; Horizontal: boolean; Focused: boolean);
 var
   Base: TColor;
-
-  { Toward white on a dark form, toward black on a light one, so "slightly
-    brighter than its surroundings" holds for either. }
-  function Lift(AColour: TColor; APercent: Integer): TColor;
-  var
-    R, G, B, Luma: Integer;
-  begin
-    AColour := ColorToRGB(AColour);
-    R := AColour and $FF;
-    G := (AColour shr 8) and $FF;
-    B := (AColour shr 16) and $FF;
-    Luma := (R * 299 + G * 587 + B * 114) div 1000;
-    if Luma < 128 then
-    begin
-      R := R + ((255 - R) * APercent) div 100;
-      G := G + ((255 - G) * APercent) div 100;
-      B := B + ((255 - B) * APercent) div 100;
-    end
-    else
-    begin
-      R := R - (R * APercent) div 100;
-      G := G - (G * APercent) div 100;
-      B := B - (B * APercent) div 100;
-    end;
-    Result := TColor(R or (G shl 8) or (B shl 16));
-  end;
-
 begin
-  Base := Lift(clForm, 12);
+  Base := LedLiftColour(clForm, 12);
   if Focused then
-    Base := Lift(Base, 8);
+    Base := LedLiftColour(Base, 8);
   Canvas.Brush.Color := Base;
   Canvas.Brush.Style := bsSolid;
   Canvas.FillRect(r);
@@ -798,22 +928,21 @@ begin
         TmpP := Panes[j]; Panes[j] := Panes[j-1]; Panes[j-1] := TmpP;
       end;
 
-  { What each pane wants: the size registered for its edge.  Deliberately not
-    the size it had when it was last closed -- carrying that forward brings
-    the ratchet back by another route, because the size being carried is
-    itself the scaled-down one and every cycle starts smaller than the last.
-    Reopening a pane gives the default; dragging the splitter is how a
-    different size is chosen, and the saved layout keeps that across a
-    restart.
+  { What each pane wants: the size the user last dragged this edge to, or the
+    registered default until they have dragged one.  See WantedSize for why
+    only a drag counts -- reopening a pane used to hand back the default and
+    lose a size that had just been set by hand, and the obvious fix of
+    remembering the size at closing time is the one that ratchets.
 
-    Scaled: this is a real pixel size, weighed below against live geometry.
-    Unscaled it asked for 180 pixels of a 300-PPI display -- 58 at the design
-    scale, less than the pane's own header. }
+    Already scaled by WantedSize: this is a real pixel size, weighed below
+    against live geometry.  Unscaled the default asked for 180 pixels of a
+    300-PPI display -- 58 at the design scale, less than the pane's own
+    header. }
   SetLength(Wants, n);
   TotalWant := 0;
   for i := 0 to n - 1 do
   begin
-    Wants[i] := LedScale96(EdgeDefault[AEdge]);
+    Wants[i] := WantedSize(AEdge);
     Inc(TotalWant, Wants[i]);
   end;
 
@@ -1056,7 +1185,7 @@ begin
     Pane := TLedPaneForm(FPanes[i]);
     if Pane.Edge <> AEdge then Continue;
 
-    Btn := TSpeedButton.Create(Rail);
+    Btn := TLedSpeedButton.Create(Rail);
     Btn.Parent := Rail;
     Btn.Width := Size + Pad * 2;
     Btn.Height := Size + Pad * 2;
@@ -1125,9 +1254,25 @@ begin
     BuildRail(E);
 end;
 
-{ Reflect which panes are actually open.  Called after led changes a pane
+{ Reflect which panes are actually open.  Called after LED changes a pane
   itself; the main form also calls it on idle, because a pane closed with the
   header's own close button never comes through here. }
+function TLedDockHost.RailButton(AEdge: TLedDockEdge;
+  AIndex: Integer): TSpeedButton;
+var
+  i, n: Integer;
+begin
+  Result := nil;
+  if FRails[AEdge] = nil then Exit;
+  n := 0;
+  for i := 0 to FRails[AEdge].ControlCount - 1 do
+    if FRails[AEdge].Controls[i] is TSpeedButton then
+    begin
+      if n = AIndex then Exit(TSpeedButton(FRails[AEdge].Controls[i]));
+      Inc(n);
+    end;
+end;
+
 procedure TLedDockHost.RefreshRails;
 var
   E: TLedDockEdge;
@@ -1221,6 +1366,46 @@ begin
     came round -- long enough to click.  Every route that can rebuild a site
     now puts the guard back before returning. }
   GuardCentreHeader;
+end;
+
+{ What a pane on AEdge should be given when it is put back on screen: the
+  size the user dragged that edge to, or the registered default until they
+  have.
+
+  Only a drag is remembered, never a measurement taken after a layout pass.
+  That distinction is the whole point.  Feeding a measured size back in was
+  what made reopening a pane shrink it a little further every time: the size
+  being carried was itself the one the window had squeezed down to, so each
+  cycle started from the last cycle's shortfall.  A dragged size is a number
+  the user typed with the mouse; asking for it again cannot ratchet. }
+function TLedDockHost.WantedSize(AEdge: TLedDockEdge): Integer;
+begin
+  if FUserSize[AEdge] > 0 then
+    Result := FUserSize[AEdge]
+  else
+    Result := LedScale96(EdgeDefault[AEdge]);
+end;
+
+procedure TLedDockHost.NoteUserResize;
+var
+  i, Size: Integer;
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+begin
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    Site := DockMaster.GetAnchorSite(Pane);
+    if (Site = nil) or (Site.Parent = nil) or (not Site.Visible) then Continue;
+    if Pane.Edge in [ledLeft, ledRight] then
+      Size := Site.Width
+    else
+      Size := Site.Height;
+    { The same floor SetEdgeSize keeps.  A pane dragged shut is a pane the
+      user wants out of the way, not a size to bring back. }
+    if Size >= LedScale96(40) then
+      FUserSize[Pane.Edge] := Size;
+  end;
 end;
 
 function TLedDockHost.GetEdgeSize(AEdge: TLedDockEdge): Integer;
@@ -1341,7 +1526,7 @@ begin
   EdgeVisible[AEdge] := not EdgeVisible[AEdge];
 end;
 
-{ Everything led deliberately decides about the dock, in one place that can
+{ Everything LED deliberately decides about the dock, in one place that can
   be re-asserted.
 
   It has to be re-assertable because layout.xml carries these very settings:
@@ -1433,9 +1618,9 @@ begin
   Invalidate;
 end;
 
-{ Every style the dock knows about, led's own included.  Read from
+{ Every style the dock knows about, LED's own included.  Read from
   AnchorDocking's own registry rather than listed here, so a style added
-  upstream turns up in the menu without led being told about it. }
+  upstream turns up in the menu without LED being told about it. }
 function TLedDockHost.HeaderStyleNames: TStringArray;
 var
   i: Integer;
@@ -1460,6 +1645,7 @@ procedure TLedDockHost.ResetLayout(const AFileName: string);
 var
   i: Integer;
   Pane: TLedPaneForm;
+  E: TLedDockEdge;
 begin
   { Close every pane.  The defaults this restores are the ones FormCreate
     sets up: nothing open but the editor, which is also what a first run
@@ -1473,6 +1659,11 @@ begin
       { One pane that will not close must not stop the rest going back. }
     end;
   end;
+
+  { Forget the dragged sizes too: a reset that kept them would put the panes
+    back at whatever the layout being thrown away had them at. }
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    FUserSize[E] := 0;
 
   { The editor may have been floated by an older layout, or left somewhere
     unhelpful.  It has no header to drag back by, so put it back here. }
@@ -1523,13 +1714,13 @@ begin
     Result := False;
   end;
 
-  { The saved layout has just overwritten every setting above, so put led's
+  { The saved layout has just overwritten every setting above, so put LED's
     own back.  This is the whole reason ApplyDockPolicy exists. }
   ApplyDockPolicy;
 
   { A pane restored by the layout was never shown through ShowPane, so
     OnPaneShown never fired for it and nothing started what sits behind it --
-    a terminal open when led was last closed came back as an empty rectangle
+    a terminal open when LED was last closed came back as an empty rectangle
     with no prompt.  Restoring a pane is showing it. }
   if Assigned(FOnPaneShown) then
     for i := 0 to FPanes.Count - 1 do
@@ -1542,6 +1733,12 @@ begin
     stray one. }
   if PaneFloating('editor') then
     RedockPane('editor');
+
+  { The restored sizes are the ones the user dragged to last time, so they
+    are what a pane closed and reopened in this session should come back at.
+    Without this the remembered size only lasted as long as the run that set
+    it, and the first thing a restart did was hand back the default. }
+  NoteUserResize;
 
   RebuildRails;
 end;

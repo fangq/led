@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the Markdown converter. }
+{ LED - a lightweight editor.  Headless tests for the Markdown converter. }
 unit Led.Core.Tests.Markdown;
 
 {$mode objfpc}{$H+}

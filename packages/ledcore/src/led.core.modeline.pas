@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Modeline parsing.
+{ LED - a lightweight editor.  Modeline parsing.
 
   medit reads three dialects, from the first, second and last line of the
   document (mooedit.cpp:1188 update_config_from_mode_lines):
@@ -6,7 +6,7 @@
     kate:  "kate: space-indent on; indent-width 4;"     name value, ';'
     emacs: "-*- mode: python; tab-width: 4 -*-"          name: value, ';'
            "-*- python -*-"                              bare language name
-    led:   "-%- lang: c; indent-width = 2 -%-"           name: value or name=value
+    LED:   "-%- lang: c; indent-width = 2 -%-"           name: value or name=value
 
   Ported here as pure string handling so it can be tested without a document.
   No LCL dependency. }
@@ -58,7 +58,7 @@ begin
     Value := Trim(Copy(Entry, SpacePos + 1, MaxInt));
     if (Name = '') or (Value = '') then Continue;
 
-    { kate states the inverse of what led stores. }
+    { kate states the inverse of what LED stores. }
     if SameText(Name, 'space-indent') then
     begin
       if LedParseBool(Value, B) then

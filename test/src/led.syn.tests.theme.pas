@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the colour-theme reader.
+{ LED - a lightweight editor.  Headless tests for the colour-theme reader.
 
   Run against the eight schemes vendored from medit, so they also check that
   the theme data is intact. }

@@ -314,6 +314,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Markdown Pre&view'
       OnExecute = actTogglePreviewExecute
     end
+    object actToggleMiniMap: TAction
+      Caption = '&Minimap'
+      OnExecute = actToggleMiniMapExecute
+    end
     object actComplete: TAction
       Caption = 'Complete &Word'
       OnExecute = actCompleteExecute
@@ -537,7 +541,7 @@ object LedMainForm: TLedMainForm
       OnExecute = actReportBugExecute
     end
     object actAbout: TAction
-      Caption = '&About led'
+      Caption = '&About LED'
       ImageIndex = 37
       OnExecute = actAboutExecute
     end
@@ -956,6 +960,9 @@ object LedMainForm: TLedMainForm
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview
       end
+      object mi_ToggleMiniMap: TMenuItem
+        Action = actToggleMiniMap
+      end
     end
     object mnuWindow: TMenuItem
       Caption = '&Window'
@@ -990,8 +997,8 @@ object LedMainForm: TLedMainForm
     end
   end
   object ImageList1: TImageList
-    Height = 16
-    Width = 16
+    Height = 22
+    Width = 22
     Left = 48
     Top = 304
   end
@@ -1001,8 +1008,8 @@ object LedMainForm: TLedMainForm
     Top = 0
     Width = 1000
     AutoSize = True
-    ButtonHeight = 24
-    ButtonWidth = 24
+    ButtonHeight = 32
+    ButtonWidth = 36
     Caption = 'ToolBar1'
     EdgeBorders = [ebBottom]
     Images = ImageList1

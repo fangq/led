@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the language registry.
+{ LED - a lightweight editor.  Headless tests for the language registry.
 
   These read the real 128 grammars out of data/langs, so they double as a
   check that the vendored data is intact and parses. }

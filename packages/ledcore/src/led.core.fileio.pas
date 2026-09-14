@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  File loading and saving.
+{ LED - a lightweight editor.  File loading and saving.
 
   Ported from medit's mooedit-fileops.cpp, which is the piece of medit with
   the least equivalent anywhere in Lazarus: LConvEncoding is only a codec
@@ -168,7 +168,7 @@ begin
     lfeEncodingFailed:
       Result := Format('The character encoding of %s could not be determined.', [N]);
     lfeEncodingUnsupported:
-      Result := Format('%s uses a character encoding led cannot read.', [N]);
+      Result := Format('%s uses a character encoding LED cannot read.', [N]);
     lfeIOError:       Result := Format('%s could not be read or written.', [N]);
     lfeNotText:
       Result := Format('%s is open as a hex dump, which cannot be saved back '

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Highlighter selection and theming.
+{ LED - a lightweight editor.  Highlighter selection and theming.
 
   Two jobs, kept together because they share one table:
 
@@ -24,7 +24,7 @@ interface
 
 uses
   Classes, SysUtils, Graphics, SynEdit, SynEditHighlighter,
-  SynEditHighlighterFoldBase,
+  SynEditHighlighterFoldBase, SynEditMarkupHighAll,
   Led.Syn.Theme, Led.Syn.Languages;
 
 { A shared highlighter for ALangId, or nil when nothing suitable exists.
@@ -40,7 +40,7 @@ uses
   folds and always speaks the same scope vocabulary as the themes. }
 function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 
-{ True when led can highlight this language today. }
+{ True when LED can highlight this language today. }
 function LedHasHighlighter(const ALangId: string): Boolean;
 
 { Where the converted grammar for a language would be, whether or not it
@@ -64,6 +64,44 @@ function LedColourToTColor(AColour: TLedColour): TColor;
   implementation for why this is a function and not an apply-to-control. }
 function LedThemeGuideColour(ATheme: TLedTheme;
   ADefaultFg, ADefaultBg: TColor): TColor;
+
+{ The tint behind a line whose block is folded shut, mixed from the theme's
+  own text and page colours. }
+function LedThemeFoldedLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+
+{ The colour of the rules above and below the caret's row.
+
+  Not the theme's current-line colour as it stands.  That colour was chosen
+  to fill a whole row, where a two per cent tint is plenty; LED draws two
+  one-pixel rules with it, and at that width the same tint is invisible --
+  which is what "the current line marker is very faint" was.  So it is taken
+  from the theme and then pushed away from the page until it can be seen.  A
+  theme that says nothing about the current line gets one mixed from its
+  text colour rather than nothing at all. }
+function LedThemeCurrentLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+
+{ Perceived brightness, and a mix of two colours: the arithmetic every colour
+  rule in LED ends up needing.  Published because the minimap needs the same
+  mix to draw the page in miniature, and a second copy of it would drift. }
+function LedColourLuma(AColour: TColor): Integer;
+function LedMixColours(A, B: TColor; APercent: Integer): TColor;
+
+{ The contrast ratio between two colours, as WCAG defines it: from 1 (the
+  same colour) to 21 (black on white).
+
+  Luma is not enough for this.  It answers "how bright" on a scale that takes
+  no account of how the eye responds to each channel at low values, so a
+  saturated green and a saturated blue of the same luma read very
+  differently against a white page -- which is how a theme can look fine by
+  the numbers and still be unreadable. }
+function LedContrastRatio(AFore, ABack: TColor): Double;
+
+{ AFore, moved toward black or away from it until it clears AMinRatio against
+  ABack.  Returns AFore unchanged when it already does, which is what keeps
+  this from repainting themes that are fine. }
+function LedEnsureReadable(AFore, ABack: TColor; AMinRatio: Double): TColor;
 
 implementation
 
@@ -396,6 +434,78 @@ begin
     Result := AHighlighter.LanguageName;
 end;
 
+{ What a highlighter's attributes looked like before any theme touched them.
+
+  Applying a theme only overwrites the scopes that theme mentions, so the
+  scopes it says nothing about keep whatever the *last* theme put there.
+  Switching from kate to classic left strings red: kate colours def:string,
+  classic does not, and nothing put it back.  SynEdit remembers each
+  attribute's defaults internally and exposes no way to read them, so LED
+  keeps its own copy -- taken the first time a highlighter is themed, which
+  is before anything has changed it -- and restores from that first.
+
+  Keyed by the highlighter's address.  The cache owns them for the life of
+  the process, so the key stays valid as long as the entry is wanted. }
+var
+  FVirgin: TStringList = nil;      // highlighter address -> its own list
+
+function VirginFor(AHighlighter: TSynCustomHighlighter): TStringList;
+var
+  Key: string;
+  i, j: Integer;
+  Attr: TSynHighlighterAttributes;
+begin
+  if FVirgin = nil then
+  begin
+    FVirgin := TStringList.Create;
+    FVirgin.Sorted := True;
+    FVirgin.OwnsObjects := True;
+  end;
+  Key := IntToHex(PtrUInt(AHighlighter), 16);
+  i := FVirgin.IndexOf(Key);
+  if i >= 0 then Exit(TStringList(FVirgin.Objects[i]));
+
+  Result := TStringList.Create;
+  for j := 0 to AHighlighter.AttrCount - 1 do
+  begin
+    Attr := AHighlighter.Attribute[j];
+    if Attr = nil then Continue;
+    Result.Values[Attr.StoredName] := Format('%d|%d|%d',
+      [Attr.Foreground, Attr.Background, PWord(@Attr.Style)^]);
+  end;
+  FVirgin.AddObject(Key, Result);
+end;
+
+procedure RestoreVirgin(AHighlighter: TSynCustomHighlighter);
+var
+  Saved: TStringList;
+  i: Integer;
+  Attr: TSynHighlighterAttributes;
+  Parts: TStringArray;
+  V: string;
+  StyleBits: Word;
+  Sty: TFontStyles;
+begin
+  Saved := VirginFor(AHighlighter);
+  for i := 0 to AHighlighter.AttrCount - 1 do
+  begin
+    Attr := AHighlighter.Attribute[i];
+    if Attr = nil then Continue;
+    V := Saved.Values[Attr.StoredName];
+    if V = '' then Continue;
+    Parts := V.Split(['|']);
+    if Length(Parts) < 3 then Continue;
+    Attr.Foreground := TColor(StrToIntDef(Parts[0], Integer(clNone)));
+    Attr.Background := TColor(StrToIntDef(Parts[1], Integer(clNone)));
+    { Through a variable of the set's own type: a TFontStyles is a set and
+      cannot be cast from an integer, but its bits can be written into one. }
+    StyleBits := Word(StrToIntDef(Parts[2], 0));
+    Sty := [];
+    Move(StyleBits, Sty, SizeOf(Sty));
+    Attr.Style := Sty;
+  end;
+end;
+
 procedure LedApplyThemeToHighlighter(ATheme: TLedTheme;
   AHighlighter: TSynCustomHighlighter);
 var
@@ -403,8 +513,17 @@ var
   Attr: TSynHighlighterAttributes;
   Style: TLedStyle;
   LangScope, Scope: string;
+  Page, Behind: TColor;
 begin
   if (ATheme = nil) or (AHighlighter = nil) then Exit;
+
+  { Back to the grammar's own colours, so what this theme does not mention is
+    not left over from the theme before it. }
+  RestoreVirgin(AHighlighter);
+
+  Page := clNone;
+  if ATheme.Find(LedStyleText, Style) and (lsfBackground in Style.Flags) then
+    Page := LedColourToTColor(Style.Background);
 
   for i := 0 to AHighlighter.AttrCount - 1 do
   begin
@@ -421,6 +540,138 @@ begin
       ApplyStyle(Style, Attr)
     else if ATheme.Find(Scope, Style) then
       ApplyStyle(Style, Attr);
+
+    { And readable on the page it will be drawn on.
+
+      A grammar's own colours were chosen for whatever background its author
+      had in mind, and a scheme colours only the scopes it thinks about, so
+      what is left over is a colour nobody picked for this page.  Measured
+      cases on white: tango's strings at 1.5, its keywords at 2.1,
+      solarized-light's strings at 1.4 -- a mustard yellow on white, which is
+      the "the string colour has almost no contrast" report.
+
+      Four to one, which is a little under the WCAG threshold for body text.
+      Enough to fix what cannot be read, gentle enough to leave the schemes
+      that were designed with low contrast -- solarized above all -- looking
+      like themselves. }
+    Behind := Attr.Background;
+    if Behind = clNone then Behind := Page;
+    Attr.Foreground := LedEnsureReadable(Attr.Foreground, Behind, 4.0);
+  end;
+end;
+
+{ Perceived brightness, on the usual weights. }
+function LedColourLuma(AColour: TColor): Integer;
+begin
+  AColour := ColorToRGB(AColour);
+  Result := ((AColour and $FF) * 299 + ((AColour shr 8) and $FF) * 587
+            + ((AColour shr 16) and $FF) * 114) div 1000;
+end;
+
+{ APercent parts of A to the rest of B.  One place for a mix that three of
+  these colour rules were each doing with their own arithmetic. }
+function LedMixColours(A, B: TColor; APercent: Integer): TColor;
+var
+  Ra, Ga, Ba, Rb, Gb, Bb: Integer;
+begin
+  A := ColorToRGB(A);
+  B := ColorToRGB(B);
+  Ra := A and $FF;  Ga := (A shr 8) and $FF;  Ba := (A shr 16) and $FF;
+  Rb := B and $FF;  Gb := (B shr 8) and $FF;  Bb := (B shr 16) and $FF;
+  Result := TColor(
+    (((Ra * APercent + Rb * (100 - APercent)) div 100) and $FF)
+    or ((((Ga * APercent + Gb * (100 - APercent)) div 100) and $FF) shl 8)
+    or ((((Ba * APercent + Bb * (100 - APercent)) div 100) and $FF) shl 16));
+end;
+
+function ChannelLuminance(AValue: Integer): Double;
+var
+  C: Double;
+begin
+  C := AValue / 255;
+  if C <= 0.03928 then
+    Result := C / 12.92
+  else
+    Result := Exp(2.4 * Ln((C + 0.055) / 1.055));
+end;
+
+function RelativeLuminance(AColour: TColor): Double;
+begin
+  AColour := ColorToRGB(AColour);
+  Result := 0.2126 * ChannelLuminance(AColour and $FF)
+          + 0.7152 * ChannelLuminance((AColour shr 8) and $FF)
+          + 0.0722 * ChannelLuminance((AColour shr 16) and $FF);
+end;
+
+function LedContrastRatio(AFore, ABack: TColor): Double;
+var
+  LF, LB, T: Double;
+begin
+  Result := 1;
+  if (AFore = clNone) or (ABack = clNone) then Exit;
+  LF := RelativeLuminance(AFore) + 0.05;
+  LB := RelativeLuminance(ABack) + 0.05;
+  if LF < LB then
+  begin
+    T := LF; LF := LB; LB := T;
+  end;
+  Result := LF / LB;
+end;
+
+function LedEnsureReadable(AFore, ABack: TColor; AMinRatio: Double): TColor;
+var
+  Step: Integer;
+  Target: TColor;
+begin
+  Result := AFore;
+  if (AFore = clNone) or (ABack = clNone) then Exit;
+  if LedContrastRatio(AFore, ABack) >= AMinRatio then Exit;
+
+  { Away from the page: darker on a light one, lighter on a dark one.  Taken
+    from the background rather than from the foreground, so a colour that
+    starts out close to the page is pushed to the readable side rather than
+    further into it. }
+  if RelativeLuminance(ABack) > 0.18 then
+    Target := clBlack
+  else
+    Target := clWhite;
+
+  { Toward that target in twentieths, stopping at the first step that clears
+    the ratio.  Mixing rather than replacing keeps the hue: a green that has
+    to be darkened stays green. }
+  for Step := 1 to 20 do
+  begin
+    Result := LedMixColours(Target, AFore, Step * 5);
+    if LedContrastRatio(Result, ABack) >= AMinRatio then Exit;
+  end;
+  Result := Target;
+end;
+
+function LedThemeCurrentLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+var
+  S: TLedStyle;
+  Guard: Integer;
+begin
+  Result := clNone;
+  if ADefaultBg = clNone then Exit;
+
+  if (ATheme <> nil) and ATheme.Find(LedStyleCurrentLine, S) and
+     (lsfBackground in S.Flags) then
+    Result := LedColourToTColor(S.Background)
+  else
+    Result := LedMixColours(ADefaultFg, ADefaultBg, 12);
+
+  { Far enough from the page to be seen as a line.  The shipped themes' own
+    current-line tints are two to nine points of luma off the page, which is
+    plenty behind a whole row and nothing at all in a one-pixel rule; thirty
+    reads as a hairline without competing with the text. }
+  Guard := 0;
+  while (Abs(LedColourLuma(Result) - LedColourLuma(ADefaultBg)) < 30) and
+        (Guard < 40) do
+  begin
+    Inc(Guard);
+    Result := LedMixColours(ADefaultFg, Result, 8);
   end;
 end;
 
@@ -428,6 +679,9 @@ procedure LedApplyThemeToEditor(ATheme: TLedTheme; AEdit: TSynEdit);
 var
   S: TLedStyle;
   GutterBack: TColor;
+  Edge: TColor;
+  Guard: Integer;
+  Caret: TSynEditMarkupHighlightAllCaret;
 begin
   if (ATheme = nil) or (AEdit = nil) then Exit;
 
@@ -447,6 +701,47 @@ begin
 
   if ATheme.Find(LedStyleCurrentLine, S) and (lsfBackground in S.Flags) then
     AEdit.LineHighlightColor.Background := LedColourToTColor(S.Background);
+
+  { Every other appearance of the word the caret is in, shaded in whatever
+    the theme uses for a search match -- the same idea, and defined by all
+    eight of the shipped schemes.
+
+    On the caret markup, and this is the whole of the bug the first version
+    had: TSynEdit keeps two highlight-all markups, one fed by Find and one
+    that follows the caret, and the published HighlightAllColor is the
+    *search* one --
+
+      function TCustomSynEdit.GetHighlightAllColor: TSynSelectedColor;
+      begin result := fMarkupHighAll.MarkupInfo; end;
+
+    -- so colouring it woke nothing.  The caret markup stayed at clNone,
+    which is what keeps it asleep, and clicking a word did nothing at all. }
+  Caret := TSynEditMarkupHighlightAllCaret(
+    AEdit.MarkupByClass[TSynEditMarkupHighlightAllCaret]);
+  if (Caret <> nil) and ATheme.Find(LedStyleSearchMatch, S) then
+  begin
+    if lsfBackground in S.Flags then
+      Caret.MarkupInfo.Background := LedColourToTColor(S.Background);
+    if lsfForeground in S.Flags then
+      Caret.MarkupInfo.Foreground := LedColourToTColor(S.Foreground);
+
+    { And a foreground that can be read on it, whether or not the scheme
+      thought to give one.
+
+      Left unset, the highlighted word keeps whatever colour it already had
+      -- which on a double-click is the selection's, white in kate and in
+      SynEdit's own default.  White on the search-match yellow, over a white
+      page, was the reported "nearly unreadable".  The highlight paints its
+      background over the selection's, so it has to answer for the text on
+      it as well. }
+    if Caret.MarkupInfo.Background <> clNone then
+    begin
+      if Caret.MarkupInfo.Foreground = clNone then
+        Caret.MarkupInfo.Foreground := AEdit.Font.Color;
+      Caret.MarkupInfo.Foreground := LedEnsureReadable(
+        Caret.MarkupInfo.Foreground, Caret.MarkupInfo.Background, 4.5);
+    end;
+  end;
 
   { Three of the eight shipped schemes -- classic, medit, tango -- say
     nothing about line-numbers.  GtkSourceView then draws them in the
@@ -493,8 +788,48 @@ begin
       AEdit.BracketMatchColor.Background := LedColourToTColor(S.Background);
   end;
 
-  if ATheme.Find(LedStyleRightMargin, S) and (lsfForeground in S.Flags) then
-    AEdit.RightEdgeColor := LedColourToTColor(S.Foreground);
+  { The right margin, mixed down towards the page.
+
+    It marks a soft limit, and a soft limit drawn at full strength is louder
+    than the code it is a note about -- on oblivion the style's foreground is
+    aluminium1, very nearly white, so a solid line of it on a dark page was
+    the brightest thing in the window.  GtkSourceView draws this as a faint
+    overlay rather than a line in the style's own colour; a third of the way
+    from the page is the same idea arrived at with what SynEdit offers, which
+    is one colour and no alpha.
+
+    The foreground where the scheme has one, its background otherwise --
+    three of the eight give only a background for this style. }
+  Edge := clNone;
+  if ATheme.Find(LedStyleRightMargin, S) then
+  begin
+    if lsfForeground in S.Flags then
+      Edge := LedColourToTColor(S.Foreground)
+    else if lsfBackground in S.Flags then
+      Edge := LedColourToTColor(S.Background);
+  end;
+  if (Edge <> clNone) and (AEdit.Color <> clNone) then
+  begin
+    Edge := LedMixColours(Edge, AEdit.Color, 33);
+    { With a floor, because a scheme whose right-margin colour is already
+      close to its page mixes down to the page exactly and the margin
+      disappears -- which the check caught: the mix came out with no
+      difference from the page at all.  Stepped back away from the page until
+      it can be seen. }
+    Guard := 0;
+    while (Abs(LedColourLuma(Edge) - LedColourLuma(AEdit.Color)) < 14) and
+          (Guard < 20) do
+    begin
+      if LedColourLuma(AEdit.Color) < 128 then
+        Edge := LedMixColours(clWhite, Edge, 12)
+      else
+        Edge := LedMixColours(clBlack, Edge, 12);
+      Inc(Guard);
+    end;
+    AEdit.RightEdgeColor := Edge;
+  end
+  else if Edge <> clNone then
+    AEdit.RightEdgeColor := Edge;
 end;
 
 { The colour for the vertical guides down an open block.  medit draws these
@@ -536,6 +871,49 @@ begin
     or ((((2 * ((Fg shr 16) and $FF)) + 3 * ((Bg shr 16) and $FF)) div 5) shl 16));
 end;
 
+{ The tint behind a line whose block is folded shut.
+
+  One part text to nine parts page: enough to say "there is more here than
+  is showing" without competing with the syntax colouring on the line, and
+  mixed from the theme's own two colours so it works on the four dark
+  schemes as well as the four light ones. }
+function LedThemeFoldedLineColour(ATheme: TLedTheme;
+  ADefaultFg, ADefaultBg: TColor): TColor;
+var
+  S: TLedStyle;
+  Fg, Bg, Tint: TColor;
+begin
+  Fg := clNone;
+  Bg := clNone;
+  if (ATheme <> nil) and ATheme.Find(LedStyleText, S) then
+  begin
+    if lsfForeground in S.Flags then Fg := LedColourToTColor(S.Foreground);
+    if lsfBackground in S.Flags then Bg := LedColourToTColor(S.Background);
+  end;
+  if Fg = clNone then Fg := ADefaultFg;
+  if Bg = clNone then Bg := ADefaultBg;
+  if (Fg = clNone) or (Bg = clNone) then Exit(clNone);
+
+  { Mixed towards the theme's selection rather than towards its text.  Text
+    over page is a grey whatever the scheme, and a grey band behind a folded
+    line reads as the line being disabled rather than as the line having more
+    behind it.  The selection colour is already the one this scheme uses to
+    say "something is here", so a weak wash of it says the same thing
+    quietly. }
+  Tint := clNone;
+  if (ATheme <> nil) and ATheme.Find(LedStyleSelection, S) and
+     (lsfBackground in S.Flags) then
+    Tint := LedColourToTColor(S.Background);
+  if Tint = clNone then Tint := Fg;    { no selection colour: the old mix }
+
+  Fg := ColorToRGB(Tint);
+  Bg := ColorToRGB(Bg);
+  Result := TColor(
+    (((3 * (Fg and $FF) + 7 * (Bg and $FF)) div 10) and $FF)
+    or ((((3 * ((Fg shr 8) and $FF) + 7 * ((Bg shr 8) and $FF)) div 10) and $FF) shl 8)
+    or ((((3 * ((Fg shr 16) and $FF) + 7 * ((Bg shr 16) and $FF)) div 10) and $FF) shl 16));
+end;
+
 procedure LedRetheme(ATheme: TLedTheme);
 var
   i: Integer;
@@ -547,5 +925,6 @@ end;
 
 finalization
   FCache.Free;
+  FVirgin.Free;
 
 end.

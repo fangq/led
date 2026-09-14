@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Main window.
+{ LED - a lightweight editor.  Main window.
 
   Menus, the toolbar and the action list live in led.ui.main.lfm and are meant
   to be edited in the Lazarus form designer.  This unit holds only behaviour:
@@ -123,6 +123,7 @@ type
     actToggleTerminal: TAction;
     actToggleSymbols: TAction;
     actTogglePreview: TAction;
+    actToggleMiniMap: TAction;
     actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
@@ -262,6 +263,7 @@ type
     mi_ToggleTerminal: TMenuItem;
     mi_ToggleSymbols: TMenuItem;
     mi_TogglePreview: TMenuItem;
+    mi_ToggleMiniMap: TMenuItem;
     mnuWindow: TMenuItem;
     mi_PrevTab: TMenuItem;
     mi_NextTab: TMenuItem;
@@ -462,6 +464,7 @@ type
     procedure actToggleSymbolsExecute(Sender: TObject);
     procedure actPrintExecute(Sender: TObject);
     procedure actTogglePreviewExecute(Sender: TObject);
+    procedure actToggleMiniMapExecute(Sender: TObject);
   private
     FFocusedOnce: Boolean;
     FRecovery: TLedRecovery;
@@ -500,6 +503,8 @@ type
     FTerminal: TLedTerminalPane;
     FDebugPane: TLedDebugPane;
     FBreakPane: TLedBreakPane;
+    FThemeMenu: TPopupMenu;
+    FThemeButton: TToolButton;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
       whether a debug session should follow it. }
@@ -508,6 +513,12 @@ type
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
+    { The document the panes were last built for.  Compared on idle, because
+      knowing which document is active is not the same as being told. }
+    FShownDoc: TObject;
+    { Set while a click on the preview is moving the caret, so the scroll that
+      move causes does not come straight back and move the page. }
+    FPreviewJumping: Boolean;
     FCheckingDisk: Boolean;
     { One per tab group: the button at the right-hand end of the tab strip
       that closes the current tab. }
@@ -518,8 +529,9 @@ type
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
     FClipAsked: Boolean;
+    FClipPolls: Integer;
     FClipAskedAt: QWord;
-    function ClipboardHasText(AView: TLedEdit): Boolean;
+
     procedure ApplyMinimumSize;
     procedure ApplyCentreFloor;
     procedure TabCloseClick(Sender: TObject);
@@ -528,7 +540,7 @@ type
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
     procedure SyncPreviewToLine;
-    procedure SymbolJump(ALine: Integer);
+    procedure SymbolJump(ALine: Integer; const AName: string);
     procedure BrowserOpenFile(const AFileName: string);
     procedure GrepStarted;
     procedure ToolItemClick(Sender: TObject);
@@ -537,6 +549,7 @@ type
     procedure DebugEditCondition(Sender: TObject; const AFileName: string;
       ALine: Integer);
     procedure DebugToggleBreakpoint(Sender: TObject);
+    procedure ApplyThemeToBrowser;
     procedure DebugPaneCommand(Sender: TObject; ACommand: TLedDebugCommand);
     procedure DebugConsole(Sender: TObject; const AText: string);
     procedure DebugStateChanged(Sender: TObject);
@@ -557,15 +570,17 @@ type
       a submenu, so the handler that was supposed to fill it never ran and
       the menu was permanently empty. }
     procedure PopulateAllMenus;
-    procedure PopulateRecentMenu;
     procedure RecentItemClick(Sender: TObject);
-    procedure PopulateLanguageMenu;
     procedure LanguageItemClick(Sender: TObject);
-    procedure PopulateThemeMenu;
+    { The toolbar's theme chooser: a palette with a drop-down of the eight
+      shipped schemes.  Built here rather than in the form file because the
+      list is read from data/themes at run time, and a menu written into the
+      form would have to be kept in step with a directory. }
+    procedure BuildThemeButton;
+    procedure ThemeMenuPopup(Sender: TObject);
+    procedure ThemeButtonClick(Sender: TObject);
     procedure ThemeItemClick(Sender: TObject);
-    procedure PopulateEncodingMenu;
     procedure EncodingItemClick(Sender: TObject);
-    procedure PopulateLineEndMenu;
     procedure LineEndItemClick(Sender: TObject);
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
@@ -591,6 +606,7 @@ type
     function TabOnPage(APage: TCustomPage): TLedTab;
     procedure SetActiveBook(AIndex: Integer);
     procedure BookEnter(Sender: TObject);
+    procedure TabStripHint(Sender: TObject; X, Y: Integer);
     procedure BookTabMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure BookTabMouseMove(Sender: TObject; Shift: TShiftState;
@@ -602,6 +618,9 @@ type
     { Empties a dynamic submenu without destroying its items mid-event.  See
       the implementation for why TMenuItem.Clear cannot be used here. }
     procedure ClearMenu(AItem: TMenuItem);
+
+    function MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
+    procedure TrimMenu(AParent: TMenuItem; AUsed: Integer);
 
     { Crash recovery.  The journal is reconciled wholesale on a timer rather
       than hooked into every save and close path, because there are several of
@@ -618,6 +637,8 @@ type
     procedure BookmarkItemClick(Sender: TObject);
     procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
+    procedure SyncActiveDocument;
+    procedure SetMiniMaps(AOn: Boolean);
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure UpdateStatusBar;
@@ -657,9 +678,14 @@ type
     property Debugger: TLedDebugger read FDebugger;
     { For the suite: run a build and wait for it. }
     function BuildProjectNow(AThenDebug: Boolean): Boolean;
+    { What the file browser calls when a row is opened.  Public so a check
+      can take the same route a double-click does. }
+    procedure BrowserOpenFileNow(const AFileName: string);
     function ToolRunning: Boolean;
     property DebugPane: TLedDebugPane read FDebugPane;
     property BreakPane: TLedBreakPane read FBreakPane;
+    { The toolbar's theme chooser.  Public so a check can drop its menu. }
+    property ThemeButton: TToolButton read FThemeButton;
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
     property DocListMenu: TMenuItem read miDocList;
@@ -667,6 +693,7 @@ type
       what the converter produced is not observable from anywhere else --
       the render path turns an exception into a message label. }
     property Preview: TLedPreviewPane read FPreview;
+    property SymbolPane: TLedSymbolPane read FSymbols;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
@@ -677,6 +704,24 @@ type
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
     procedure PopulateContextTools;
+    { Public for the check that refilling a menu does not destroy what is in
+      it -- which is what a hover does, and what used to crash. }
+    { Makes every menu item LED ever ticks able to carry a tick from the
+      moment it is built -- see the implementation for what happens to one
+      that cannot.  Public so the check can build an item the way the form
+      does and watch what ticking it costs. }
+    procedure MakeTogglesCheckable;
+    { Whether the clipboard holds text, cached -- and never asked of the X
+      server while the toolkit holds a grab.  Public, with the count of times
+      it has actually asked, for the check that a menu being open stops it
+      asking. }
+    function ClipboardHasText(AView: TLedEdit): Boolean;
+    property ClipboardPolls: Integer read FClipPolls;
+    procedure PopulateThemeMenu;
+    procedure PopulateLanguageMenu;
+    procedure PopulateEncodingMenu;
+    procedure PopulateLineEndMenu;
+    procedure PopulateRecentMenu;
     { Public alongside PopulateBookmarkMenu, for the same reason: a check has
       to be able to build the menu and then read what a user would see. }
     procedure PopulateDocMenu;
@@ -883,7 +928,16 @@ begin
   { Unlocked by default: dragging panes around is worth having, and the
     instability it can provoke lives in AnchorDocking's gtk2 handling rather
     than here.  The lock is in Preferences for anyone who would rather not,
-    and View > Reset Pane Layout is the way back from a bad drop. }
+    and View > Reset Pane Layout is the way back from a bad drop.
+
+    The default alone was not enough.  For a while the lock defaulted *on*
+    (f829c3f), and the preferences dialog writes every key it shows, so any
+    prefs.ini written in that period carries lock_pane_layout=1 whether or
+    not anyone chose it -- and a default cannot be seen past a value that is
+    already in the file.  So the inherited one is cleared, once, and the fact
+    that it has been is recorded: anyone who locks the panes after this keeps
+    them locked. }
+  LedClearInheritedPaneLock(LedPrefs);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
   FDock.OnPaneShown := @PaneShown;
@@ -897,9 +951,29 @@ begin
   FBook := TPageControl.Create(Self);
   FBook.Parent := FDock.Center;
   FBook.Align := alClient;
+  { OnChange for a page set in code too, not only for one the user clicked.
+
+    Without this the notification fires on a click and on nothing else, while
+    LED sets the active page from sixteen places -- opening a file, restoring
+    a session, dragging a tab, splitting, answering the file browser, closing
+    a tab.  Everything that follows the active document was therefore right
+    only when the switch came through the tab strip.  The symptom that found
+    it was the symbol tree: it kept the outline of the previous file, and its
+    line numbers stayed live, so clicking an entry jumped somewhere arbitrary
+    in a document those symbols were never in.
+
+    Two of the sixteen had a BookChange(nil) written after them by hand.  That
+    is the fix that has to be remembered every time; this one does not. }
+  FBook.Options := FBook.Options + [nboDoChangeOnSetIndex];
   FBook.OnChange := @BookChange;
   FBook.OnEnter := @BookEnter;
   FBook.OnResize := @BookResize;
+  { The same three the second group gets.  They carry both the tab drag and
+    the strip's hint, and the first group had neither -- dragging a tab to
+    reorder it worked only in a split view, which is the half nobody uses. }
+  FBook.OnMouseDown := @BookTabMouseDown;
+  FBook.OnMouseMove := @BookTabMouseMove;
+  FBook.OnMouseUp := @BookTabMouseUp;
   FBook.Images := ImageList1;
   FBook.PopupMenu := PopupTab;
 
@@ -911,6 +985,8 @@ begin
     nothing ever themed -- so it sat there as a white rectangle in the middle
     of a dark window.  It takes the same theme the documents do. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
+  ApplyThemeToBrowser;
+  ApplyThemeToBrowser;
 
   FBrowser := TLedFileBrowser.Create(Self);
   FBrowser.OnOpenFile := @BrowserOpenFile;
@@ -1000,18 +1076,48 @@ begin
     is discarded rather than fought with, leaving the defaults. }
   FDock.LoadLayout(LedConfigFile('layout.xml'));
 
+  { ...and then put the window on the screen it was started from.
+
+    The form file asks for poScreenCenter, and on X11 every monitor is part of
+    one screen -- so the LCL centres on the union of them.  With two monitors
+    side by side that is the seam, and a window centred on the seam ends up on
+    whichever one the window manager prefers, which is regularly not the one
+    the user launched it from.  Position is therefore LED's own from here on:
+    centred on the monitor the pointer is on, or, where a saved position is
+    restored below, that position carried onto the monitor this launch came
+    from. }
+  Position := poDesigned;
+  LedPlaceWindowAtLaunch(Self);
+
   { medit's use_tabs decided whether documents share a window through a tab
-    strip.  led always uses tabs -- one document per window is what New Window
+    strip.  LED always uses tabs -- one document per window is what New Window
     is for -- so the setting controls whether the strip is shown when there is
     only one document in it. }
   ApplyTabVisibility;
 
+  { LED paints the toolbar buttons itself.  gtk2 asks for ttbButtonHot when
+    the pointer is over one -- the LCL is doing its part -- and draws nothing
+    for it, so a toolbar of twenty flat glyphs gave no sign which one a click
+    would reach.  Measured before the change: moving the pointer onto a
+    button altered thirty pixels of the window, all of them the cursor. }
+  LedStyleToolBar(ToolBar1);
+  BuildThemeButton;
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
 
-  if not RestoreSession then
+  if RestoreSession then
+    { A restored position is kept, but on this launch's monitor. }
+    LedPlaceWindowAtLaunch(Self)
+  else
+  begin
     actNewExecute(nil);
+    { Nothing remembered, so this is where poScreenCenter would have put it --
+      except on the right monitor. }
+    LedCentreOnLaunchMonitor(Self);
+  end;
 
+  { Before the menus are filled and before anything ticks one. }
+  MakeTogglesCheckable;
   PopulateAllMenus;
 
   LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
@@ -1074,13 +1180,13 @@ end;
 
 procedure TLedMainForm.PopulateToolMenu;
 var
-  i, Shown: Integer;
+  i, Shown, Slot: Integer;
   Item: TMenuItem;
   Tool: TLedTool;
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  ClearMenu(miToolList);
+  Slot := 0;
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
@@ -1100,14 +1206,15 @@ begin
       than shown greyed: the Tools menu is long enough already. }
     if not Tool.AppliesTo(LangId, FileName) then Continue;
 
-    Item := TMenuItem.Create(miToolList);
+    Item := MenuSlot(miToolList, Slot);
+    Inc(Slot);
     Item.Caption := Tool.Name;
     Item.Hint := Tool.Id;
     Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
     Item.OnClick := @ToolItemClick;
-    miToolList.Add(Item);
     Inc(Shown);
   end;
+  TrimMenu(miToolList, Slot);
 
   miToolList.Caption := 'Run';
   miToolList.Enabled := Shown > 0;
@@ -1179,7 +1286,8 @@ var
   Doc: TLedDocument;
   First: string;
 begin
-  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  { The preview pane, not the edge it shares with the symbol tree. }
+  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
   if Doc.Master.Lines.Count > 0 then
@@ -1197,6 +1305,32 @@ begin
   end
   else
     FPreview.ShowMessage_('This is not a Markdown or wiki file.');
+end;
+
+{ The minimap, on every tab at once and remembered.
+
+  Per window rather than per document: it is a preference about how the
+  editor looks, like the line numbers or the right margin, and a map that
+  appeared on some files and not others would read as a fault. }
+procedure TLedMainForm.actToggleMiniMapExecute(Sender: TObject);
+begin
+  SetMiniMaps(not LedPrefs.GetBool(LedPrefMiniMap, False));
+end;
+
+procedure TLedMainForm.SetMiniMaps(AOn: Boolean);
+var
+  i: Integer;
+  Tabs: TFPList;
+begin
+  LedPrefs.SetBool(LedPrefMiniMap, AOn);
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      TLedTab(Tabs[i]).ShowMiniMap := AOn;
+  finally
+    Tabs.Free;
+  end;
 end;
 
 procedure TLedMainForm.actTogglePreviewExecute(Sender: TObject);
@@ -1248,8 +1382,11 @@ end;
 
 procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
 begin
-  FDock.ToggleEdge(ledRight);
-  if FDock.EdgeVisible[ledRight] and (ActiveTab <> nil) then
+  { The pane, not the edge.  Toggling the edge shut the preview along with
+    the symbols, and toggling it open showed the preview when the symbols
+    were what was asked for. }
+  FDock.TogglePane('symbols');
+  if FDock.PaneVisible('symbols') and (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
 end;
 
@@ -1280,6 +1417,11 @@ begin
 end;
 
 { --- the debugger ---------------------------------------------------------- }
+
+procedure TLedMainForm.BrowserOpenFileNow(const AFileName: string);
+begin
+  BrowserOpenFile(AFileName);
+end;
 
 function TLedMainForm.BuildProjectNow(AThenDebug: Boolean): Boolean;
 begin
@@ -1383,6 +1525,22 @@ begin
   FDock.TogglePane('debug');
 end;
 
+{ The file tree in the editor's colours, so the two halves of the window
+  agree.  Read off a real editor when there is one, because that is where the
+  theme has actually been resolved -- the theme file gives names, and what a
+  name came out as is on the control. }
+procedure TLedMainForm.ApplyThemeToBrowser;
+var
+  V: TLedEdit;
+begin
+  if FBrowser = nil then Exit;
+  V := ActiveView;
+  if V <> nil then
+    FBrowser.ApplyColours(V.Font.Color, V.Color)
+  else if FOutput <> nil then
+    FBrowser.ApplyColours(FOutput.Font.Color, FOutput.Color);
+end;
+
 procedure TLedMainForm.DebugToggleBreakpoint(Sender: TObject);
 begin
   actToggleBreakpoint.Execute;
@@ -1443,7 +1601,7 @@ end;
 { Runs the project's build command through the ordinary tool runner.
 
   A synthetic TLedTool rather than a second process-running path: the runner
-  already writes the body to a script, sets led's environment, polls the pipe
+  already writes the body to a script, sets LED's environment, polls the pipe
   and pushes every line through an output filter, which is what turns a
   compiler's `file:line: error` into something clickable.  A build that did
   its own spawning would have to reimplement all of that and would still not
@@ -1652,7 +1810,13 @@ begin
   try
     CollectTabs(Tabs);
     for i := 0 to Tabs.Count - 1 do
+    begin
       TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+      { The map is a picture of the page, so it follows the page's colours.
+        Its own are mixed from the view's, which have just changed. }
+      if TLedTab(Tabs[i]).MiniMap <> nil then
+        TLedTab(Tabs[i]).MiniMap.ApplyTheme;
+    end;
   finally
     Tabs.Free;
   end;
@@ -1902,17 +2066,16 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  ClearMenu(miOpenRecent);
   for i := 0 to FRecent.Count - 1 do
   begin
-    Item := TMenuItem.Create(miOpenRecent);
+    Item := MenuSlot(miOpenRecent, i);
     { The path is the caption; ampersands in a file name would otherwise
       become accelerators. }
     Item.Caption := StringReplace(FRecent[i], '&', '&&', [rfReplaceAll]);
     Item.Hint := FRecent[i];
     Item.OnClick := @RecentItemClick;
-    miOpenRecent.Add(Item);
   end;
+  TrimMenu(miOpenRecent, FRecent.Count);
   miOpenRecent.Enabled := FRecent.Count > 0;
 end;
 
@@ -2011,11 +2174,63 @@ begin
     LedUncommentLines(CurrentView, ActiveTab.Document.LangInfo);
 end;
 
-procedure TLedMainForm.SymbolJump(ALine: Integer);
+{ Goes to a symbol: the line ctags gave, unless the symbol is not on it any
+  more, in which case the nearest line that does carry it.
+
+  ctags reads the file on disk.  Anything typed since it last ran moves every
+  line below the edit, so an outline a few minutes old sends a click past the
+  thing it names -- and the further down the file the symbol is, the further
+  out it lands.  The name is the part that does not drift, so it is what the
+  line is confirmed against.
+
+  Bounded, and it keeps the reported line when the search comes up empty: a
+  symbol that has been renamed or deleted should leave the caret roughly where
+  the outline said, not somewhere unrelated because a later file happens to
+  contain the word. }
+procedure TLedMainForm.SymbolJump(ALine: Integer; const AName: string);
+const
+  Radius = 400;
+var
+  V: TLedEdit;
+  Bare: string;
+  i, Best, P: Integer;
+
+  function Carries(ALineNo: Integer): Boolean;
+  begin
+    Result := (ALineNo >= 1) and (ALineNo <= V.Lines.Count) and
+              (Pos(Bare, V.Lines[ALineNo - 1]) > 0);
+  end;
+
 begin
-  if ActiveView <> nil then
-    LedGotoLine(ActiveView, ALine);
-  LedTryFocus(ActiveView);
+  V := ActiveView;
+  if V = nil then Exit;
+
+  { The name as it appears in the text: the tree shows Scope::Name, and the
+    scope is not on the line. }
+  Bare := AName;
+  P := Pos('::', Bare);
+  while P > 0 do
+  begin
+    Bare := Copy(Bare, P + 2, MaxInt);
+    P := Pos('::', Bare);
+  end;
+
+  Best := ALine;
+  if (Bare <> '') and (not Carries(ALine)) then
+    for i := 1 to Radius do
+      if Carries(ALine - i) then
+      begin
+        Best := ALine - i;
+        Break;
+      end
+      else if Carries(ALine + i) then
+      begin
+        Best := ALine + i;
+        Break;
+      end;
+
+  LedGotoLine(V, Best);
+  LedTryFocus(V);
 end;
 
 procedure TLedMainForm.BrowserOpenFile(const AFileName: string);
@@ -2162,19 +2377,18 @@ var
   Item: TMenuItem;
   Label_: string;
 begin
-  ClearMenu(miBookmarks);
   Marks := LedCollectBookmarks(CurrentView);
   for i := 0 to High(Marks) do
   begin
-    Item := TMenuItem.Create(miBookmarks);
+    Item := MenuSlot(miBookmarks, i);
     Label_ := Marks[i].Text;
     if Length(Label_) > 48 then Label_ := Copy(Label_, 1, 45) + '...';
     if Label_ = '' then Label_ := '(blank line)';
     Item.Caption := Format('%d:  %s', [Marks[i].Line, Label_]);
     Item.Tag := Marks[i].Line;
     Item.OnClick := @BookmarkItemClick;
-    miBookmarks.Add(Item);
   end;
+  TrimMenu(miBookmarks, Length(Marks));
   miBookmarks.Enabled := Length(Marks) > 0;
   if Length(Marks) = 0 then
     miBookmarks.Caption := 'Bookmarks  (none set)'
@@ -2299,7 +2513,6 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miEncoding);
   if ActiveTab = nil then Exit;
   Current := ActiveTab.Document.Info.Encoding;
 
@@ -2308,14 +2521,14 @@ begin
     GetSupportedEncodings(Ids);
     for i := 0 to Ids.Count - 1 do
     begin
-      Item := TMenuItem.Create(miEncoding);
+      Item := MenuSlot(miEncoding, i);
       Item.Caption := Ids[i];
       Item.Hint := Ids[i];
       Item.RadioItem := True;
       Item.Checked := SameText(LedNormaliseEncoding(Ids[i]), Current);
       Item.OnClick := @EncodingItemClick;
-      miEncoding.Add(Item);
     end;
+    TrimMenu(miEncoding, Ids.Count);
   finally
     Ids.Free;
   end;
@@ -2345,18 +2558,17 @@ var
   i: Integer;
   Item: TMenuItem;
 begin
-  ClearMenu(miLineEnd);
   if ActiveTab = nil then Exit;
   for i := 0 to High(Choices) do
   begin
-    Item := TMenuItem.Create(miLineEnd);
+    Item := MenuSlot(miLineEnd, i);
     Item.Caption := Labels[i];
     Item.Tag := Ord(Choices[i]);
     Item.RadioItem := True;
     Item.Checked := ActiveTab.Document.Info.LineEnd = Choices[i];
     Item.OnClick := @LineEndItemClick;
-    miLineEnd.Add(Item);
   end;
+  TrimMenu(miLineEnd, Length(Choices));
 end;
 
 procedure TLedMainForm.LineEndItemClick(Sender: TObject);
@@ -2377,28 +2589,28 @@ end;
 procedure TLedMainForm.PopulateLanguageMenu;
 var
   L: TStringList;
-  i: Integer;
+  i, Slot, GroupSlot: Integer;
   Item, Group: TMenuItem;
   Lang: TLedLangInfo;
   Section, Current: string;
 begin
-  ClearMenu(miLanguage);
   Current := '';
   if ActiveTab <> nil then
     Current := ActiveTab.Document.Config.GetStr(LedSetLang);
 
-  Item := TMenuItem.Create(miLanguage);
+  Item := MenuSlot(miLanguage, 0);
   Item.Caption := 'None';
   Item.Hint := '';
   Item.RadioItem := True;
   Item.Checked := Current = '';
   Item.OnClick := @LanguageItemClick;
-  miLanguage.Add(Item);
+  Slot := 1;
 
   L := TStringList.Create;
   try
     LedLanguages.ListForMenu(L);
     Group := nil;
+    GroupSlot := 0;
     Section := '';
     for i := 0 to L.Count - 1 do
     begin
@@ -2407,12 +2619,15 @@ begin
         the section the grammar declares -- Source, Script, Markup and so on. }
       if Lang.Section <> Section then
       begin
+        if Group <> nil then TrimMenu(Group, GroupSlot);
         Section := Lang.Section;
-        Group := TMenuItem.Create(miLanguage);
+        Group := MenuSlot(miLanguage, Slot);
+        Inc(Slot);
         Group.Caption := Section;
-        miLanguage.Add(Group);
+        GroupSlot := 0;
       end;
-      Item := TMenuItem.Create(Group);
+      Item := MenuSlot(Group, GroupSlot);
+      Inc(GroupSlot);
       Item.Caption := Lang.Name;
       if not LedHasHighlighter(Lang.Id) then
         { Honest about what is only recognised rather than coloured. }
@@ -2421,8 +2636,9 @@ begin
       Item.RadioItem := True;
       Item.Checked := SameText(Lang.Id, Current);
       Item.OnClick := @LanguageItemClick;
-      Group.Add(Item);
     end;
+    if Group <> nil then TrimMenu(Group, GroupSlot);
+    TrimMenu(miLanguage, Slot);
   finally
     L.Free;
   end;
@@ -2442,24 +2658,79 @@ begin
   PopulateThemeMenu;
 end;
 
+procedure TLedMainForm.BuildThemeButton;
+var
+  Sep: TToolButton;
+begin
+  FThemeMenu := TPopupMenu.Create(Self);
+  FThemeMenu.OnPopup := @ThemeMenuPopup;
+
+  Sep := TToolButton.Create(Self);
+  Sep.Parent := ToolBar1;
+  Sep.Style := tbsSeparator;
+  Sep.Left := ToolBar1.Width;          { past the last button, so it lands at the end }
+
+  FThemeButton := TToolButton.Create(Self);
+  FThemeButton.Parent := ToolBar1;
+  FThemeButton.Left := ToolBar1.Width;
+  FThemeButton.Style := tbsDropDown;
+  FThemeButton.ImageIndex := LedIconIndex('theme');
+  FThemeButton.Hint := 'Colour theme';
+  FThemeButton.ShowHint := True;
+  FThemeButton.DropdownMenu := FThemeMenu;
+  { Pressing the face of the button opens the same menu the arrow does.  A
+    chooser whose main half does nothing is a button that looks broken. }
+  FThemeButton.OnClick := @ThemeButtonClick;
+end;
+
+{ Rebuilt each time it drops, so the tick follows the theme and a scheme
+  added to the data directory appears without a restart. }
+procedure TLedMainForm.ThemeMenuPopup(Sender: TObject);
+var
+  i: Integer;
+  Item: TMenuItem;
+  Current: string;
+begin
+  FThemeMenu.Items.Clear;
+  Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
+  for i := 0 to LedThemes.Count - 1 do
+  begin
+    Item := TMenuItem.Create(FThemeMenu);
+    Item.Caption := LedThemes[i].Name;
+    Item.Hint := LedThemes[i].Id;
+    Item.RadioItem := True;
+    Item.Checked := SameText(LedThemes[i].Id, Current);
+    Item.OnClick := @ThemeItemClick;
+    FThemeMenu.Items.Add(Item);
+  end;
+end;
+
+procedure TLedMainForm.ThemeButtonClick(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P := ToolBar1.ClientToScreen(Point(FThemeButton.Left,
+    FThemeButton.Top + FThemeButton.Height));
+  FThemeMenu.PopUp(P.X, P.Y);
+end;
+
 procedure TLedMainForm.PopulateThemeMenu;
 var
   i: Integer;
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miTheme);
   Current := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
   for i := 0 to LedThemes.Count - 1 do
   begin
-    Item := TMenuItem.Create(miTheme);
+    Item := MenuSlot(miTheme, i);
     Item.Caption := LedThemes[i].Name;
     Item.Hint := LedThemes[i].Id;
     Item.RadioItem := True;
     Item.Checked := SameText(LedThemes[i].Id, Current);
     Item.OnClick := @ThemeItemClick;
-    miTheme.Add(Item);
   end;
+  TrimMenu(miTheme, LedThemes.Count);
 end;
 
 procedure TLedMainForm.ThemeItemClick(Sender: TObject);
@@ -2469,12 +2740,17 @@ var
 begin
   LedSetCurrentTheme(TMenuItem(Sender).Hint);
   PopulateThemeMenu;         { move the tick }
-  { Every open view has to be repainted with the new chrome colours. }
+  { Every open view has to be repainted with the new chrome colours, and so
+    does every minimap: its colours are mixed from its view's. }
   Tabs := TFPList.Create;
   try
     CollectTabs(Tabs);
     for i := 0 to Tabs.Count - 1 do
+    begin
       TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+      if TLedTab(Tabs[i]).MiniMap <> nil then
+        TLedTab(Tabs[i]).MiniMap.ApplyTheme;
+    end;
   finally
     Tabs.Free;
   end;
@@ -2521,7 +2797,7 @@ begin
       E.DisplayName := Doc.DisplayName;
       E.Encoding    := Doc.Info.Encoding;
       { LangInfo is nil for a document with no language, which every other
-        caller in led checks for and this one did not.  An untitled document
+        caller in LED checks for and this one did not.  An untitled document
         has no language -- the self-test asserts exactly that -- so editing
         Untitled and waiting for this timer dereferenced nil and took the
         window down.  Reported as a crash a few seconds after pasting into
@@ -2624,11 +2900,11 @@ begin
   end;
 
   if Length(Pending) = 1 then
-    Msg := 'led did not shut down cleanly, and one document had unsaved ' +
+    Msg := 'LED did not shut down cleanly, and one document had unsaved ' +
       'changes:' + LineEnding + Names + LineEnding + LineEnding +
       'Recover it?'
   else
-    Msg := Format('led did not shut down cleanly, and %d documents had ' +
+    Msg := Format('LED did not shut down cleanly, and %d documents had ' +
       'unsaved changes:', [Length(Pending)]) + LineEnding + Names +
       LineEnding + LineEnding + 'Recover them?';
 
@@ -2699,6 +2975,126 @@ end;
   finished with it.  Detaching first matters too -- the item must be out of
   the menu before the new contents go in, or the old entries are still drawn.
 }
+{ One slot of a rebuilt submenu.
+
+  Every dynamic menu in LED is filled from its own parent item's OnClick,
+  because that is the only moment its contents can be current -- and it used
+  to be emptied first.  Emptying destroys the gtk widgets of a menu the
+  toolkit is in the middle of opening.  The shell goes on drawing items it no
+  longer owns, which is the several-entries-highlighted-at-once report, and
+  sweeping the pointer along the menu bar fast enough to rebuild one menu
+  after another ends in an access violation inside gtk with nothing of LED's
+  on the stack.
+
+  So nothing is destroyed.  The item already in that position is reused, its
+  caption and state rewritten; only a submenu that has grown gets a new one,
+  and one that has shrunk hides the remainder.  A repeated hover -- which is
+  what almost every one of these rebuilds is -- then touches no widget at
+  all.
+
+  RadioItem is deliberately not reset: changing it makes the LCL destroy and
+  recreate the widget, which is the thing being avoided.  Each menu sets it
+  the same way every time, so a reused slot already has the right kind. }
+{ Ticking a menu item that was not built to be tickable destroys it.
+
+  gtk2 has three kinds of menu item and the LCL picks one when the widget is
+  created: a separator, a check item -- which is what it builds for anything
+  that is checked, is a radio item, or carries an icon -- and a plain item for
+  everything else.  Assigning Checked to a plain one cannot work, so
+  TGtk2WSMenuItem.SetCheck calls RecreateHandle: the widget is destroyed and
+  built again as a check item.
+
+  That is harmless at rest and not harmless at all while a menu is open, which
+  is exactly when it happens: LED sets Checked from the action-update pass,
+  and that pass runs on every idle -- including every idle while the pointer
+  is moving over an open menu.  The shell goes on pointing at the widget that
+  has just been destroyed, so the row it was on stays lit while another row
+  lights up under the pointer -- several rows highlighted at once, which is
+  what this was reported as -- and touching the dead widget again is the
+  access violation reported with it.  Caught in gdb: three RecreateHandle
+  calls, every one of them from ActionList1Update assigning Checked.
+
+  So the items that are ever ticked are built tickable.  ShowAlwaysCheckable
+  makes the LCL create a gtk check item up front, which SetCheck can then
+  simply toggle; the cost is that the tick box is drawn even when empty, which
+  is what the pane entries in the View menu have always looked like.
+
+  Listed by action rather than discovered, because an action cannot be asked
+  whether anyone will ever tick it.  The list is kept honest by the check,
+  which flips every state it can reach, runs the update pass, and asserts that
+  no menu item handle changed. }
+procedure TLedMainForm.MakeTogglesCheckable;
+const
+  Toggles: array[0..11] of string = (
+    'actShowToolbar', 'actToggleOutput', 'actToggleDebugPane',
+    'actToggleBreakPane', 'actToggleSymbols', 'actToggleMiniMap',
+    'actWrapText', 'actSplitNotebook', 'actLineNumbers',
+    'actToggleLeftPane', 'actToggleBottomPane', 'actTogglePreview');
+
+  function IsToggle(AAction: TBasicAction): Boolean;
+  var
+    i: Integer;
+  begin
+    Result := False;
+    if AAction = nil then Exit;
+    for i := Low(Toggles) to High(Toggles) do
+      if SameText(AAction.Name, Toggles[i]) then Exit(True);
+  end;
+
+  procedure Walk(AItem: TMenuItem);
+  var
+    i: Integer;
+  begin
+    if AItem = nil then Exit;
+    if IsToggle(AItem.Action) then
+      AItem.ShowAlwaysCheckable := True;
+    for i := 0 to AItem.Count - 1 do
+      Walk(AItem.Items[i]);
+  end;
+
+var
+  i: Integer;
+begin
+  for i := 0 to ComponentCount - 1 do
+    if Components[i] is TMenu then
+      Walk(TMenu(Components[i]).Items);
+end;
+
+function TLedMainForm.MenuSlot(AParent: TMenuItem; AIndex: Integer): TMenuItem;
+begin
+  Result := nil;
+  if AParent = nil then Exit;
+  if AIndex < AParent.Count then
+  begin
+    Result := AParent.Items[AIndex];
+    { Back to a blank slot, or a tick or a handler from the last use rides
+      along into the new contents. }
+    Result.Checked := False;
+    Result.Enabled := True;
+    Result.Visible := True;
+    Result.Hint := '';
+    Result.Tag := 0;
+    Result.ImageIndex := -1;
+    Result.OnClick := nil;
+    Exit;
+  end;
+  Result := TMenuItem.Create(AParent);
+  AParent.Add(Result);
+end;
+
+procedure TLedMainForm.TrimMenu(AParent: TMenuItem; AUsed: Integer);
+var
+  i: Integer;
+begin
+  if AParent = nil then Exit;
+  for i := AUsed to AParent.Count - 1 do
+  begin
+    AParent.Items[i].Visible := False;
+    AParent.Items[i].Checked := False;
+    AParent.Items[i].OnClick := nil;
+  end;
+end;
+
 procedure TLedMainForm.ClearMenu(AItem: TMenuItem);
 var
   i: Integer;
@@ -2717,7 +3113,7 @@ end;
   obvious -- a hairline grip reads as structure to one person and as clutter
   to the next -- so the choice is offered instead of decided.  The list comes
   from AnchorDocking's own registry, so a style added upstream appears here
-  without led being told, and led's own LedPlain sits among them. }
+  without LED being told, and LED's own LedPlain sits among them. }
 { Starting the shell is the pane's own business, not one menu item's.  It used
   to happen only inside actToggleTerminalExecute, so a terminal opened from an
   edge button or restored with the layout came up as an empty black rectangle
@@ -2762,6 +3158,14 @@ begin
       noticed, showed nothing at all until it was toggled again.  A queued
       call runs once the layout has settled. }
     Application.QueueAsyncCall(@StartTerminalDeferred, 0)
+  else if SameText(AId, 'symbols') then
+    { Same reasoning as the preview below: the outline is of the document in
+      front of you, and a pane opened from an edge button would otherwise sit
+      empty until the next time the document changed. }
+    begin
+      if (FSymbols <> nil) and (ActiveTab <> nil) then
+        FSymbols.Reload(ActiveTab.Document.FileName);
+    end
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
@@ -2806,8 +3210,15 @@ begin
       nothing worth putting in a tooltip. }
     if Tip = '' then Continue;
 
-    if Act.ShortCut <> 0 then
-      Tip := Tip + '  (' + ShortCutToText(Act.ShortCut) + ')';
+    { The shortcut is deliberately not added here.  The LCL appends it
+      already -- TControlActionLink.DoShowHint does it whenever
+      Application.HintShortCuts is on, which it is by default -- so a hint
+      that carried its own came out with the keys twice:
+
+        New  (Ctrl+N) (Ctrl+N)
+
+      Leaving it to the LCL also means the hand-written hints in the form
+      file get one without having to repeat it in each. }
     Act.Hint := Tip;
   end;
 end;
@@ -2843,20 +3254,19 @@ var
   Item: TMenuItem;
   Current: string;
 begin
-  ClearMenu(miHeaderStyle);
   Current := FDock.HeaderStyle;
   Names := FDock.HeaderStyleNames;
   for i := 0 to High(Names) do
   begin
-    Item := TMenuItem.Create(miHeaderStyle);
+    Item := MenuSlot(miHeaderStyle, i);
     Item.Caption := LedHeaderStyleCaption(Names[i]);
     { The real name travels in Hint, because the caption is now a label and
       no longer something the dock would recognise. }
     Item.Hint := Names[i];
     Item.Checked := SameText(Names[i], Current);
     Item.OnClick := @HeaderStylePicked;
-    miHeaderStyle.Add(Item);
   end;
+  TrimMenu(miHeaderStyle, Length(Names));
 end;
 
 { Split Notebook toggles: the same item puts the window back together, which
@@ -2950,6 +3360,49 @@ end;
   which tab it landed on; the move only counts as a drag once the pointer has
   travelled far enough that it cannot be a click, otherwise every click on a
   tab would shuffle the strip. }
+{ The full path of the tab under the pointer, shown on the strip and nowhere
+  else.
+
+  It used to be the page's own hint.  A TTabSheet fills the notebook, and its
+  children inherit its hint through ParentShowHint, so resting the pointer
+  anywhere in the text raised a tooltip with the file's path over the line
+  being read.  The strip is the part that truncates a caption and the part a
+  path answers a question about, so the hint belongs to it.
+
+  Set on the notebook, whose own mouse events only reach it where no page
+  covers it -- which is the strip. }
+procedure TLedMainForm.TabStripHint(Sender: TObject; X, Y: Integer);
+var
+  Book: TPageControl;
+  Idx: Integer;
+  Tab: TLedTab;
+  Want: string;
+begin
+  if not (Sender is TPageControl) then Exit;
+  Book := TPageControl(Sender);
+
+  Want := '';
+  Idx := Book.IndexOfTabAt(X, Y);
+  if (Idx >= 0) and (Idx < Book.PageCount) then
+  begin
+    Tab := TabOnPage(Book.Pages[Idx]);
+    if Tab <> nil then
+    begin
+      if Tab.Document.FileName <> '' then
+        Want := Tab.Document.FileName
+      else
+        Want := Tab.Document.DisplayName;
+    end;
+  end;
+
+  if Want = Book.Hint then Exit;
+  Book.Hint := Want;
+  Book.ShowHint := Want <> '';
+  { Moving from one tab to the next is still one hover as far as the LCL is
+    concerned, so without this the first tab's path stays up over the second. }
+  Application.CancelHint;
+end;
+
 procedure TLedMainForm.BookTabMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 var
@@ -2972,6 +3425,8 @@ procedure TLedMainForm.BookTabMouseMove(Sender: TObject; Shift: TShiftState;
 var
   Target: Integer;
 begin
+  TabStripHint(Sender, X, Y);
+
   if (FDragTabBook = nil) or (FDragTabIndex < 0) then Exit;
   if not (ssLeft in Shift) then Exit;
 
@@ -3067,6 +3522,7 @@ begin
     FBook2.OnResize := @BookResize;
     FBook2.Parent := FBookSplit.Sides[1];
     FBook2.Align := alClient;
+    FBook2.Options := FBook2.Options + [nboDoChangeOnSetIndex];
     FBook2.OnChange := @BookChange;
     FBook2.OnEnter := @BookEnter;
     FBook2.OnMouseDown := @BookTabMouseDown;
@@ -3242,6 +3698,9 @@ begin
     if (W.Width > 100) and (W.Height > 100) then
     begin
       Left := W.Left; Top := W.Top; Width := W.Width; Height := W.Height;
+      { On the monitor this launch came from, not the one the last one was
+        closed on.  Same reasoning as the layout above. }
+      LedPlaceWindowAtLaunch(Self);
     end;
     if W.Maximized then WindowState := wsMaximized;
 
@@ -3366,7 +3825,7 @@ end;
   itself -- OwnerDraw and OnDrawTab are commented out of TPageControl and no
   widgetset implements them -- and nboShowCloseButtons is declared but
   unimplemented on gtk2, so a per-tab cross would exist on some platforms and
-  not others.  A button placed over the strip is drawn by led on all of them.
+  not others.  A button placed over the strip is drawn by LED on all of them.
 
   It is a sibling of the page control, not a child: a TPageControl's children
   are its pages, and anything else parented to one is not reliably drawn over
@@ -3434,7 +3893,7 @@ begin
       Host.FullRepaint := False;
       FTabCloseHost[i] := Host;
 
-      Btn := TSpeedButton.Create(Self);
+      Btn := TLedSpeedButton.Create(Self);
       Btn.Parent := Host;
       Btn.Align := alClient;
       Btn.Flat := True;
@@ -3460,7 +3919,7 @@ begin
     Host.BringToFront;
 
     { Tabs along the top is the only arrangement this button knows where to
-      sit in; led never sets anything else, but a skin that did should get no
+      sit in; LED never sets anything else, but a skin that did should get no
       button rather than one in the wrong place. }
     if Book.TabPosition <> tpTop then
     begin
@@ -3529,7 +3988,7 @@ end;
   and nothing to get wrong about which side of the startup sweep it is on --
   everything read here is already in device pixels, so nothing is scaled
   twice.  Recomputed on every activation, which is also how it picks up a
-  desktop whose scale changed while led was running. }
+  desktop whose scale changed while LED was running. }
 procedure TLedMainForm.ApplyMinimumSize;
 var
   i, W: Integer;
@@ -3688,6 +4147,9 @@ begin
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
   Result.ViewHoverExpression := @DebugHover;
+  { A window setting, so a tab opened later gets what the window is already
+    showing rather than the default. }
+  Result.ShowMiniMap := LedPrefs.GetBool(LedPrefMiniMap, False);
   ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;
@@ -3704,14 +4166,25 @@ var
 begin
   if (ATab = nil) or (ATab.Sheet = nil) then Exit;
   S := ATab.Document.DisplayName;
+  { The same picture the file browser puts on the file, so a document looks
+    the same in the tree and on its tab.  A modified document keeps the
+    marked page instead: which file it is stays in the caption, and whether
+    it is saved is the thing the icon is there to answer. }
   if ATab.Document.Modified then
   begin
     S := '*' + S;
     ATab.Sheet.ImageIndex := LedIconIndex('docmodified');
   end
   else
-    ATab.Sheet.ImageIndex := LedIconIndex('doc');
+    ATab.Sheet.ImageIndex :=
+      LedIconIndex(LedIconForFile(ATab.Document.FileName));
   ATab.Sheet.Caption := S;
+  { The path is shown on the strip, by TabStripHint, and not from here.  A
+    hint on the page is inherited by everything on it, so this one followed
+    the pointer into the text and raised the file's path over the line being
+    read. }
+  ATab.Sheet.Hint := '';
+  ATab.Sheet.ShowHint := False;
 end;
 
 procedure TLedMainForm.DocChanged(ADoc: TLedDocument);
@@ -3735,8 +4208,29 @@ begin
   UpdateStatusBar;
 end;
 
+{ The backstop.  nboDoChangeOnSetIndex, set on both notebooks, means the
+  change notification now fires for a page set in code as well as one that was
+  clicked -- but a route that changes the active document without going near
+  a page index would still slip past it, and the panes that follow the
+  document are wrong in a way that is easy to miss and hard to explain when
+  one does.  Comparing what is on screen against what the panes were built
+  for costs a pointer comparison on idle and cannot miss a route. }
+procedure TLedMainForm.SyncActiveDocument;
+var
+  Doc: TObject;
+begin
+  Doc := nil;
+  if ActiveTab <> nil then Doc := ActiveTab.Document;
+  if Doc = FShownDoc then Exit;
+  BookChange(nil);
+end;
+
 procedure TLedMainForm.BookChange(Sender: TObject);
 begin
+  if ActiveTab <> nil then
+    FShownDoc := ActiveTab.Document
+  else
+    FShownDoc := nil;
   UpdateStatusBar;
   { The document-dependent menus -- which language is ticked, which encoding,
     which tools apply -- follow the active document. }
@@ -3745,8 +4239,11 @@ begin
   PopulateLineEndMenu;
   PopulateToolMenu;
   { Only refreshed when the pane is actually on screen: running ctags for a
-    pane nobody is looking at is pure cost. }
-  if (FSymbols <> nil) and FDock.EdgeVisible[ledRight] and
+    pane nobody is looking at is pure cost.  Asked of the pane, not of the
+    edge it was registered on -- the right edge is shared with the preview,
+    so the edge answered yes for a symbol pane that was shut and no for one
+    that had been dragged to another edge. }
+  if (FSymbols <> nil) and FDock.PaneVisible('symbols') and
      (ActiveTab <> nil) then
     FSymbols.Reload(ActiveTab.Document.FileName);
   { Immediately: this is a different document now, and a pane still holding
@@ -3777,7 +4274,8 @@ procedure TLedMainForm.SyncPreviewToLine;
 var
   View: TLedEdit;
 begin
-  if (FPreview = nil) or not FDock.EdgeVisible[ledRight] then Exit;
+  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
+  if FPreviewJumping then Exit;
   View := ActiveView;
   if View = nil then Exit;
   FPreview.ScrollToLine(View.TopLine);
@@ -3791,7 +4289,24 @@ var
 begin
   View := ActiveView;
   if View = nil then Exit;
-  LedGotoLine(View, ALine);
+  { The page stays where it is.  Moving the caret scrolls the text view, and
+    that scroll is reported straight back as a request to sync the preview to
+    whatever line is now at the top -- which is not the line that was clicked
+    and usually not even its block, so the reader's click moved the page out
+    from under them.
+
+    Two halves, because the scroll arrives in two ways.  The flag covers the
+    status change SynEdit raises inside the move, and telling the pane where
+    the text ended up covers anything that arrives after, from a later
+    autoscroll or a repaint. }
+  FPreviewJumping := True;
+  try
+    LedGotoLine(View, ALine);
+  finally
+    FPreviewJumping := False;
+  end;
+  if FPreview <> nil then
+    FPreview.AssumeSynced(View.TopLine);
   LedTryFocus(View);
 end;
 
@@ -3968,6 +4483,44 @@ function TLedMainForm.ClipboardHasText(AView: TLedEdit): Boolean;
 var
   Now_: QWord;
 begin
+  { Never while the toolkit holds a grab, which in practice means a menu is
+    open.
+
+    The round trip above is not just slow here, it is fatal.  The LCL waits
+    for the selection reply by running the event loop -- RequestSelectionData
+    calls Application.ProcessMessages -- and this is asked from the
+    action-update pass, which runs on every idle, including every idle while
+    a menu is open.  So gtk's menu handling is re-entered from inside the menu
+    it is already in the middle of.  Sweeping the pointer up and down an open
+    submenu ends here:
+
+        gtk_menu_shell ...                          <- SIGSEGV
+        gtk_main_do_event
+        AppProcessMessages             gtk2widgetset.inc:2494
+        TApplication.ProcessMessages      application.inc:421
+        RequestSelectionData                gtk2proc.inc:7523
+        TClipboard.HasFormat                  clipbrd.inc:614
+        TCustomSynEdit.GetCanPaste              synedit.pp:5620
+        TLedMainForm.ClipboardHasText
+        TLedMainForm.ActionList1Update
+
+    It is the stuck highlights as well: blocking there loses the crossing
+    events the menu needs to un-light the row the pointer has left, so rows
+    stay lit behind it.
+
+    Driven by XTest over an open Open Recent, with another client owning the
+    selection: nine runs out of nine died without this line, none of eleven
+    with it.  When nobody owns the selection X answers at once, no loop is
+    run and nothing crashes -- six runs of that, all clean -- which is why an
+    empty Xvfb could not find this, and why two earlier attempts on the same
+    report fixed real but different things.
+
+    The cached answer is what the menu was opened with, which is the answer a
+    menu should be showing anyway: a clipboard that changes while a menu is
+    open changes nothing the user can see. }
+  if FClipAsked and LedToolkitGrabActive then
+    Exit(FClipHasText);
+
   Now_ := GetTickCount64;
   { FClipAsked rather than a zero FClipAskedAt: the tick count is only
     milliseconds since boot on some platforms and genuinely can be small. }
@@ -3975,6 +4528,7 @@ begin
     Exit(FClipHasText);
 
   FClipHasText := AView.CanPaste;
+  Inc(FClipPolls);
   FClipAsked := True;
   FClipAskedAt := Now_;
   Result := FClipHasText;
@@ -3986,6 +4540,10 @@ var
   Tab: TLedTab;
   HasDoc, CanPaste: Boolean;
 begin
+  { Cheap: a pointer comparison, and it does anything at all only on the pass
+    after the document actually changed. }
+  SyncActiveDocument;
+
   Tab := ActiveTab;
   HasDoc := Tab <> nil;
   CanPaste := HasDoc and ClipboardHasText(Tab.ActiveView);
@@ -4052,10 +4610,11 @@ begin
                             (Tab.Document.FileName <> '');
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
   actToggleBreakPane.Checked := FDock.PaneVisible('breaks');
-  actToggleSymbols.Checked := FDock.EdgeVisible[ledRight];
+  actToggleSymbols.Checked := FDock.PaneVisible('symbols');
   actComplete.Enabled := HasDoc;
   actPrint.Enabled := HasDoc and LedPrinterAvailable;
   actTogglePreview.Enabled := True;
+  actToggleMiniMap.Checked := LedPrefs.GetBool(LedPrefMiniMap, False);
   actShortcuts.Enabled := True;
   actFind.Enabled := HasDoc;
   actFindInFiles.Enabled := True;
@@ -4532,18 +5091,17 @@ var
   Item: TMenuItem;
   Names: TStringList;
 begin
-  ClearMenu(miReopenEncoding);
   Names := TStringList.Create;
   try
     GetSupportedEncodings(Names);
     for i := 0 to Names.Count - 1 do
     begin
-      Item := TMenuItem.Create(miReopenEncoding);
+      Item := MenuSlot(miReopenEncoding, i);
       Item.Caption := Names[i];
       Item.Hint := Names[i];
       Item.OnClick := @ReopenEncodingItemClick;
-      miReopenEncoding.Add(Item);
     end;
+    TrimMenu(miReopenEncoding, Names.Count);
   finally
     Names.Free;
   end;
@@ -4718,12 +5276,13 @@ end;
 
 procedure TLedMainForm.PopulateDocMenu;
 var
+  Slot: Integer;
   i: Integer;
   Item: TMenuItem;
   Tab: TLedTab;
   Tabs: TFPList;
 begin
-  ClearMenu(miDocList);
+  Slot := 0;
   Tabs := TFPList.Create;
   try
     { CollectTabs, not FBook alone: with the notebook split there is a second
@@ -4734,7 +5293,8 @@ begin
     begin
       Tab := TLedTab(Tabs[i]);
       if Tab = nil then Continue;
-      Item := TMenuItem.Create(miDocList);
+      Item := MenuSlot(miDocList, Slot);
+      Inc(Slot);
       Item.Caption := Tab.Document.DisplayName;
       if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
       Item.Tag := i;
@@ -4743,8 +5303,8 @@ begin
         pane-header style menu had. }
       Item.Checked := Tab = ActiveTab;
       Item.OnClick := @DocItemClick;
-      miDocList.Add(Item);
     end;
+    TrimMenu(miDocList, Slot);
   finally
     Tabs.Free;
   end;
@@ -4867,7 +5427,7 @@ procedure TLedMainForm.actHelpExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    'led ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
+    'LED ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
     'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
     LineEnding +
     'and every one of them can be changed there.' + LineEnding + LineEnding +
@@ -4879,7 +5439,7 @@ begin
   if Silent then Exit;
   ShowMessage(
     'Please report bugs with:' + LineEnding + LineEnding +
-    '  led version:  ' + LedVersion + LineEnding +
+    '  LED version:  ' + LedVersion + LineEnding +
     '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
       LineEnding +
     '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +
@@ -4929,12 +5489,13 @@ procedure TLedMainForm.PopulateSpellMenu;
 var
   V: TLedEdit;
   Line, Word: string;
-  Start, Len, i: Integer;
+  Start, Len, i, Slot: Integer;
   Sugg: TStringList;
   Item: TMenuItem;
   ClickPos: TPoint;
 begin
-  ClearMenu(miSpelling);
+  Slot := 0;
+  TrimMenu(miSpelling, 0);
   miSpelling.Enabled := False;
   miSpelling.Visible := LedPrefs.GetBool('Editor/spell_enabled', False);
   mcSpellSep.Visible := miSpelling.Visible;
@@ -4969,38 +5530,40 @@ begin
     LedSpell.Suggest(Word, Sugg);
     for i := 0 to Sugg.Count - 1 do
     begin
-      Item := TMenuItem.Create(miSpelling);
+      Item := MenuSlot(miSpelling, Slot);
+      Inc(Slot);
       Item.Caption := Sugg[i];
       Item.Hint := IntToStr(Start) + ':' + IntToStr(Len);
       Item.OnClick := @SpellSuggestClick;
-      miSpelling.Add(Item);
     end;
     if Sugg.Count = 0 then
     begin
-      Item := TMenuItem.Create(miSpelling);
+      Item := MenuSlot(miSpelling, Slot);
+      Inc(Slot);
       Item.Caption := '(no suggestions)';
       Item.Enabled := False;
-      miSpelling.Add(Item);
     end;
   finally
     Sugg.Free;
   end;
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := '-';
-  miSpelling.Add(Item);
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := 'Add to Dictionary';
   Item.Hint := Word;
   Item.OnClick := @SpellAddClick;
-  miSpelling.Add(Item);
 
-  Item := TMenuItem.Create(miSpelling);
+  Item := MenuSlot(miSpelling, Slot);
+  Inc(Slot);
   Item.Caption := 'Ignore for Now';
   Item.Hint := Word;
   Item.OnClick := @SpellIgnoreClick;
-  miSpelling.Add(Item);
+
+  TrimMenu(miSpelling, Slot);
 end;
 
 procedure TLedMainForm.SpellSuggestClick(Sender: TObject);
@@ -5054,13 +5617,13 @@ end;
 
 procedure TLedMainForm.PopulateContextTools;
 var
-  i, Shown: Integer;
+  i, Shown, Slot: Integer;
   Item: TMenuItem;
   Tool: TLedTool;
   Doc: TLedDocument;
   LangId, FileName: string;
 begin
-  ClearMenu(miCtxTools);
+  Slot := 0;
   Doc := nil;
   if ActiveTab <> nil then Doc := ActiveTab.Document;
   LangId := '';
@@ -5078,14 +5641,15 @@ begin
     { Only the tools that asked to be here, and only where they apply. }
     if Tool.Place <> ltpContext then Continue;
     if not Tool.AppliesTo(LangId, FileName) then Continue;
-    Item := TMenuItem.Create(miCtxTools);
+    Item := MenuSlot(miCtxTools, Slot);
+    Inc(Slot);
     Item.Caption := Tool.Name;
     Item.Hint := Tool.Id;
     Item.Enabled := LedToolCanRun(Tool, Doc) and not FRunner.Running;
     Item.OnClick := @ToolItemClick;
-    miCtxTools.Add(Item);
     Inc(Shown);
   end;
+  TrimMenu(miCtxTools, Slot);
 
   miCtxTools.Caption := 'Tools';
   miCtxTools.Enabled := Shown > 0;

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The symbol browser pane.
+{ LED - a lightweight editor.  The symbol browser pane.
 
   A tree of what ctags found in the active document, grouped by kind.
   Double-clicking a symbol goes to its line.
@@ -16,7 +16,11 @@ uses
   Led.Core.Ctags;
 
 type
-  TLedSymbolJump = procedure(ALine: Integer) of object;
+  { The line ctags reported, and the symbol's name.  The name is passed
+    because the line drifts: ctags reads the file on disk, so anything typed
+    since moves every symbol below the edit.  What the name is for is settled
+    by whoever handles the jump. }
+  TLedSymbolJump = procedure(ALine: Integer; const AName: string) of object;
 
   TLedSymbolPane = class(TPanel)
   private
@@ -34,6 +38,11 @@ type
     procedure Reload(const AFileName: string);
     property OnJump: TLedSymbolJump read FOnJump write FOnJump;
     property Tags: TLedTags read FTags;
+    { What the pane is showing, and which file it was built from.  For the
+      check that switching documents rebuilds it: the tree is what the reader
+      acts on, and it has been out of step with the active document before. }
+    property Tree: TTreeView read FTree;
+    property FileName: string read FFileName;
   end;
 
 implementation
@@ -128,7 +137,7 @@ begin
   if (FTree.Selected = nil) or (FTree.Selected.Data = nil) then Exit;
   Line := PtrInt(FTree.Selected.Data);
   if (Line > 0) and Assigned(FOnJump) then
-    FOnJump(Line);
+    FOnJump(Line, FTree.Selected.Text);
 end;
 
 end.

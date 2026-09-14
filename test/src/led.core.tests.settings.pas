@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for preferences, session and recent
+{ LED - a lightweight editor.  Headless tests for preferences, session and recent
   files.  All three write to disk, so they are exercised against a temporary
   config directory rather than the user's real one. }
 unit Led.Core.Tests.Settings;
@@ -31,6 +31,7 @@ type
     procedure AppliesToConfigAtUserPrecedence;
     procedure SpacesInsteadOfTabsIsInverted;
     procedure RemoveDropsTheKey;
+    procedure InheritedPaneLockIsClearedOnce;
   end;
 
   TTestSession = class(TTempDirTest)
@@ -182,6 +183,35 @@ begin
     AssertFalse(P.GetBool('Editor/c', True));
     AssertTrue('unparsable falls back to the default',
       P.GetBool('Editor/d', True));
+  finally
+    P.Free;
+  end;
+end;
+
+{ A pane lock that came from a default, not from a choice, is cleared once.
+
+  The lock defaulted on for a while, and the preferences dialog writes every
+  key it shows -- so prefs.ini written then says lock_pane_layout=1 whatever
+  the user thought, and changing the default back cannot be seen past a value
+  already in the file. }
+procedure TTestPrefs.InheritedPaneLockIsClearedOnce;
+var
+  P: TLedPrefs;
+begin
+  P := TLedPrefs.Create(Path('lock.ini'));
+  try
+    P.SetBool(LedPrefLockPanes, True);
+    LedClearInheritedPaneLock(P);
+    AssertFalse('the inherited lock is gone',
+      P.GetBool(LedPrefLockPanes, False));
+    AssertTrue('and it is recorded as gone',
+      P.GetBool(LedPrefPaneLockCleared, False));
+
+    { And a lock set afterwards is somebody's choice, so it stays. }
+    P.SetBool(LedPrefLockPanes, True);
+    LedClearInheritedPaneLock(P);
+    AssertTrue('a lock set after the clearing survives',
+      P.GetBool(LedPrefLockPanes, False));
   finally
     P.Free;
   end;

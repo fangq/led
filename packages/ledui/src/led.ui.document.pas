@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The document model.
+{ LED - a lightweight editor.  The document model.
 
   A TLedDocument is the unit of "an open file".  It is not a widget and not a
   buffer: it owns a hidden master TSynEdit whose TSynEditStringList holds the
@@ -18,7 +18,7 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, Graphics, SynEdit, SynEditTypes,
+  Classes, SysUtils, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
   Led.Core.Encodings,
@@ -383,6 +383,23 @@ begin
     control in ledui.  It supplies the colour, this applies it. }
   AView.GuideColour :=
     LedThemeGuideColour(LedCurrentTheme, AView.Font.Color, AView.Color);
+  AView.FoldedLineColour :=
+    LedThemeFoldedLineColour(LedCurrentTheme, AView.Font.Color, AView.Color);
+
+  { The caret's row is marked with a rule above and below rather than with a
+    band of colour behind it, so the theme's current-line colour moves off
+    SynEdit's own row fill and onto LED's painter.
+
+    Not the theme's colour as it stands: a tint chosen to fill a whole row is
+    invisible in a one-pixel rule, which is what made the marker so faint in
+    most schemes.  LedThemeCurrentLineColour takes it and pushes it far
+    enough off the page to be seen -- and supplies one for a scheme that says
+    nothing about the current line, which used to leave no rules at all.
+
+    The hex markup keeps reading it from here. }
+  AView.CurrentLineColour := LedThemeCurrentLineColour(LedCurrentTheme,
+    AView.Font.Color, AView.Color);
+  AView.LineHighlightColor.Background := clNone;
 
   { After the theme has been applied, because the column colours are mixed
     from the editor's own -- asking earlier would mix them from the last
@@ -390,7 +407,7 @@ begin
   if IsHexDump and (AView.HexMarkup <> nil) then
     AView.HexMarkup.SetColours(AView.Font.Color, AView.Color,
       AView.Gutter.LineNumberPart.MarkupInfo.Foreground,
-      AView.LineHighlightColor.Background);
+      AView.CurrentLineColour);
 
   Wrap := LowerCase(FConfig.GetStr(LedSetWrapMode));
   AView.WrapEnabled := (Wrap <> '') and (Wrap <> 'none');
@@ -403,7 +420,7 @@ end;
   This is medit's documented behaviour rather than its implemented one:
   moospellcheck.cpp turns checking off for any file with a language at all,
   including Markdown and LaTeX, and its own comment says the
-  comments-and-strings filter was never written.  led has that filter, so it
+  comments-and-strings filter was never written.  LED has that filter, so it
   can do what the preference page promises. }
 const
   LedProseLanguages: array[0..5] of string =
@@ -769,7 +786,7 @@ begin
   Row := AOffset div LedHexBytesPerLine;
   if (Row < 0) or (Row >= FMaster.Lines.Count) then Exit;
   { Straight into the buffer rather than through an edit command: the views
-    are read-only, and an undo of led's own is what SetHexByte keeps. }
+    are read-only, and an undo of LED's own is what SetHexByte keeps. }
   FMaster.Lines[Row] := LedHexDumpLine(FBytes, Row * LedHexBytesPerLine);
 end;
 
@@ -1125,15 +1142,52 @@ begin
   FItems.Add(Result);
 end;
 
+{ The document already open on AFileName, or nil.
+
+  Compared with the symbolic links followed, not merely expanded.  Two names
+  for one file is the ordinary case on this kind of tree -- a home directory
+  that links into a mounted volume, a project reached through both -- and a
+  match on the literal path opens the file a second time: two documents over
+  one file, each able to save over the other.  ResolveLink falls back to the
+  expanded name when a path cannot be resolved, so a file that does not exist
+  yet still compares sensibly. }
+{$IFDEF UNIX}
+function realpath(path: PChar; resolved: PChar): PChar; cdecl; external 'c';
+{$ENDIF}
+
 function TLedDocuments.FindByFileName(const AFileName: string): TLedDocument;
+
+  function ResolveLink(const APath: string): string;
+  {$IFDEF UNIX}
+  var
+    Buf: array[0..4095] of Char;
+    P: PChar;
+  {$ENDIF}
+  begin
+    Result := ExpandFileName(APath);
+    if Result = '' then Exit;
+    {$IFDEF UNIX}
+    { realpath(3) rather than LazFileUtils' TryReadAllLinks, which resolves a
+      link only in the final component: the case that matters here is a
+      *directory* in the middle of the path being the link -- a home
+      directory that points into a mounted volume -- and that one it returns
+      unchanged.  Measured: /tmp/x-viadir/link/a.c came back as itself.
+
+      realpath answers nil for a path that does not exist yet, which a
+      Save As target legitimately is, so the expanded name stands in. }
+    P := realpath(PChar(Result), @Buf[0]);
+    if P <> nil then Result := string(P);
+    {$ENDIF}
+  end;
+
 var
   i: Integer;
   Wanted: string;
 begin
-  Wanted := ExpandFileName(AFileName);
+  Wanted := ResolveLink(AFileName);
   for i := 0 to FItems.Count - 1 do
     if (not Items[i].IsUntitled) and
-       (ExpandFileName(Items[i].FileName) = Wanted) then
+       (ResolveLink(Items[i].FileName) = Wanted) then
       Exit(Items[i]);
   Result := nil;
 end;

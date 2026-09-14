@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The project file list.
+{ LED - a lightweight editor.  The project file list.
 
   medit's File List plugin: a tree of user-made groups holding files, kept
   across sessions, so the dozen files a piece of work actually touches are

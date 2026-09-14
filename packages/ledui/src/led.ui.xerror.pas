@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Surviving an X error that nothing can act on.
+{ LED - a lightweight editor.  Surviving an X error that nothing can act on.
 
   Over ssh X forwarding the X server is on the machine in front of you and
   the client is on the far one.  ssh forwards the extension list unchanged,
@@ -21,7 +21,7 @@
   gdk_error_trap_push installs its own handler for the duration, so anything
   reaching this one has escaped every trap that was meant to catch it.
   Everything that is not MIT-SHM goes on to the handler GTK installed, which
-  still aborts -- a protocol error in led's own drawing should stay loud.
+  still aborts -- a protocol error in LED's own drawing should stay loud.
 
   The opcode is looked up once, at install time, on a connection of this
   unit's own: extension opcodes are a property of the server rather than of
@@ -46,7 +46,7 @@ procedure LedInstallXErrorHandler;
 
 { How many errors have been ignored.  Zero on a healthy display; non-zero
   says shared memory was refused and the session is drawing the slow way,
-  which is worth knowing when someone reports that led feels sluggish over
+  which is worth knowing when someone reports that LED feels sluggish over
   ssh. }
 function LedXErrorsIgnored: Integer;
 

@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The preferences dialog.
+{ LED - a lightweight editor.  The preferences dialog.
 
   medit authored nine preference pages as Glade files compiled to C. Here the
   whole dialog is driven by one table: each row names a category, a

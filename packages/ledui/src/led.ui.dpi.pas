@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Adaptive high-DPI scaling.
+{ LED - a lightweight editor.  Adaptive high-DPI scaling.
 
   Ported from the sibling Lazarus project GotBox, whose comments explain the
   problem better than a summary can: on gtk2, Application.Scaled caps at the
@@ -6,7 +6,7 @@
   it even reverts a manual bump on Show -- so on Linux we leave LCL
   auto-scaling off and scale the forms ourselves, to
   Xft.dpi * WindowScalingFactor.  That is what gtk3 applications render at, so
-  led's geometry and fonts grow together and match everything else on screen.
+  LED's geometry and fonts grow together and match everything else on screen.
 
   Windows and macOS report a true per-monitor DPI and LCL's own scaling is
   correct there, so this is a no-op: the target equals the form's current PPI
@@ -54,10 +54,10 @@ procedure LedInstallChromeStyle;
   session.  Call once at startup.
 
   LedApplyAdaptiveScale only reaches the forms that exist when it runs, and
-  LedScaleForm has to be called by hand for the rest -- which works for led's
+  LedScaleForm has to be called by hand for the rest -- which works for LED's
   own dialogs and not at all for the ones the LCL builds internally.  A
   message box, and the dialog TApplication puts up for an unhandled
-  exception, are created deep inside the LCL and shown without led ever
+  exception, are created deep inside the LCL and shown without LED ever
   holding a reference: they came up at their design size, a third of the
   window that raised them, with text to match.
 
@@ -82,7 +82,7 @@ function LedRefreshScale: Boolean;
 function LedScale96(APixels: Integer): Integer;
 
 { The point size to actually assign to a font so that a preference of
-  APoints ends up the size led's windows are scaled to.  The sibling of
+  APoints ends up the size LED's windows are scaled to.  The sibling of
   LedScale96, for point sizes rather than pixel constants.
 
   Not a matter of Font.Height or Font.PixelsPerInch: on gtk2 neither moves
@@ -98,7 +98,7 @@ function LedScale96(APixels: Integer): Integer;
 function LedScalePointSize(APoints: Integer): Integer;
 
 { How much bigger the text gtk draws for itself has to be to sit at the same
-  size as everything led scales.  1 when there is nothing to correct. }
+  size as everything LED scales.  1 when there is nothing to correct. }
 function LedChromeFontFactor: Double;
 
 { The desktop's own UI font at that factor, as a pango description string --
@@ -107,12 +107,79 @@ function LedChromeFontFactor: Double;
 function LedScaledChromeFont: string;
 
 { The point size the editor should use when the user has expressed no
-  preference: the system UI font's size, so led does not open smaller than
+  preference: the system UI font's size, so LED does not open smaller than
   every other application on the desktop.  A monospace face at the UI font's
   size is what medit effectively did by inheriting the GTK theme font. }
 function LedDefaultFontSize: Integer;
 
 { The default monospace family for this platform. }
+{ True when AName names one of the toolkit's generic aliases -- "Monospace",
+  "Sans", "Serif" -- rather than an installed face.  Public because it is the
+  rule that decides whether a stored preference is a choice or a default. }
+function LedIsGenericFamily(const AName: string): Boolean;
+
+{ True while the toolkit holds a grab -- which, in practice, means a menu is
+  open or a drag is in flight.
+
+  Here because this is the unit that already talks to gtk2 directly, and the
+  question is the same kind of question: something about the toolkit that the
+  LCL does not surface.  Off gtk2 it answers False, which is the honest answer
+  for a toolkit whose menus do not take a grab this code can see. }
+function LedToolkitGrabActive: Boolean;
+
+{ Take and give back a toolkit grab, for the check that a menu being open
+  stops LED asking the clipboard.
+
+  A check cannot open a menu and then look at anything: TPopupMenu.PopUp does
+  not return on gtk2 until the menu closes again, and there is nothing in the
+  LCL that raises a grab on its own.  So the check raises the toolkit's real
+  grab -- the same call gtk makes for a menu -- on a real widget, and
+  LedToolkitGrabActive answers about that one exactly as it does about a
+  menu's.  True if a grab was actually taken, so a caller on a toolkit where
+  this means nothing can say so rather than assert against thin air. }
+function LedToolkitGrabTake(AControl: TWinControl): Boolean;
+procedure LedToolkitGrabRelease(AControl: TWinControl);
+
+type
+  TLedRectArray = array of TRect;
+
+{ The monitors, as the desktop has them now: their work areas, so a window
+  placed inside one does not start underneath a panel. }
+function LedMonitorRects: TLedRectArray;
+
+{ Where a window whose position was remembered should actually open.
+
+  ASaved is where it was when it was last closed, AMonitors the monitors as
+  they are now, and ALaunch a point on the monitor the launch came from -- the
+  pointer, which on X11 is the closest thing there is to "the screen you
+  started it from".  The answer keeps the saved size and the saved offset
+  within its monitor, but on the monitor the launch came from, shrunk and
+  pushed inside when it no longer fits.
+
+  Separated from the form it is for so it can be checked: two monitors cannot
+  be had on a test display, but a pair of rectangles can. }
+function LedPlaceOnMonitor(const ASaved: TRect; const AMonitors: array of TRect;
+  const ALaunch: TPoint): TRect;
+
+{ Moves AForm onto the monitor the pointer is on, keeping its size.  Does
+  nothing when it is already there, or when it is maximized -- the window
+  manager owns a maximized window's monitor.
+
+  Runs with one monitor as well as with several: a position saved on a desktop
+  that had another screen, or a bigger one, is off every monitor there is now,
+  and a window nobody can see is worse than a window on the wrong screen. }
+procedure LedPlaceWindowAtLaunch(AForm: TCustomForm);
+
+{ Centres AForm on the monitor the pointer is on, which is what a window with
+  no remembered position should do.
+
+  poScreenCenter cannot: on X11 every monitor is part of one screen, so the
+  LCL centres on the union of them.  With two monitors side by side that is
+  the seam between them, and a window centred there opens half on each, or --
+  once the window manager has pushed it somewhere legal -- on whichever one
+  the user did not launch it from. }
+procedure LedCentreOnLaunchMonitor(AForm: TCustomForm);
+
 function LedDefaultFontName: string;
 
 { Split an "Editor/font" value into a family and a point size.  The
@@ -235,7 +302,7 @@ begin
 end;
 
 { Every string gtk2 draws -- its own menu captions, and the text of any font
-  led hands it -- is rendered from a point size at the pango resolution, which
+  LED hands it -- is rendered from a point size at the pango resolution, which
   is Xft.dpi.  Nothing about that resolution follows the desktop's integer
   window-scaling factor, and nothing about it follows the PPI the forms were
   scaled to either: gtk2 ignores the first and never hears about the second.
@@ -246,8 +313,8 @@ end;
   preference draws 21 pixels tall in a window scaled for 42.
 
   This is the one ratio that closes both gaps, and it is why the two fixes
-  below share it: LedScalePointSize multiplies the sizes led assigns, and the
-  resource style multiplies the size gtk uses for the widgets led does not
+  below share it: LedScalePointSize multiplies the sizes LED assigns, and the
+  resource style multiplies the size gtk uses for the widgets LED does not
   own.  Never below 1 -- the theme font is the user's own choice of size, and
   shrinking it would answer a complaint nobody made. }
 function LedChromeFontFactor: Double;
@@ -362,7 +429,7 @@ end;
 { Hand gtk the scaled font as a resource style, for every widget it draws.
 
   Scoped to menus, the status bar and dialogs to begin with, on the theory
-  that everything else went through a TFont led controls.  It does not.  A
+  that everything else went through a TFont LED controls.  It does not.  A
   gtk widget's own style font stays the theme's until the LCL decides to
   override it per widget, and a great deal is sized from that style rather
   than from the font:
@@ -374,7 +441,7 @@ end;
     - a tree view's column headers, which are buttons of gtk's own and never
       see the font the LCL puts on the tree.
 
-  So the style is global now.  It cannot reach anything led sizes itself: a
+  So the style is global now.  It cannot reach anything LED sizes itself: a
   control whose TFont carries a height pushes that font to its widget with
   gtk_widget_modify_font, and a modification beats a style.  What is left is
   exactly the set that was wrong -- widgets still drawing with the theme's
@@ -545,9 +612,29 @@ begin
     LedApplyScaleAll(D);
 end;
 
+{ True when AName is one of the toolkit's generic aliases rather than a face.
+
+  Spelled out rather than detected, because there is no way to ask the LCL:
+  Screen.Fonts lists these beside the real families, which is the whole
+  difficulty.  Both spellings of each, since fontconfig accepts the CSS ones
+  and pango reports the capitalised ones. }
+function LedIsGenericFamily(const AName: string): Boolean;
+const
+  Generic: array[0..5] of string =
+    ('monospace', 'sans', 'serif', 'sans-serif', 'cursive', 'fantasy');
+var
+  i: Integer;
+  N: string;
+begin
+  N := LowerCase(Trim(AName));
+  for i := 0 to High(Generic) do
+    if N = Generic[i] then Exit(True);
+  Result := False;
+end;
+
 function LedDefaultFontName: string;
 begin
-  { The font led ships with, when it actually arrived.  Asking Screen.Fonts
+  { The font LED ships with, when it actually arrived.  Asking Screen.Fonts
     as well as the loader is not belt and braces: the loader reports that the
     platform accepted the file, and this reports that the toolkit can now
     resolve the family -- which is the thing every caller goes on to do, and
@@ -599,13 +686,26 @@ begin
       at the system default rather than reverting to a hard-coded one. }
     AName := Spec;
 
-  { A family that is not actually installed -- "Monospace" surviving from a
-    Linux prefs.ini, or a bad literal an older build wrote to disk -- looks
-    pixelated at every size rather than merely wrong at one, so it gets the
-    same fallback an empty preference does.  Checked here rather than only
-    where the preference is read, so a value already on disk self-heals
-    without the user having to touch Preferences. }
-  if Screen.Fonts.IndexOf(AName) < 0 then
+  { A family that is not actually installed -- a bad literal an older build
+    wrote to disk -- looks pixelated at every size rather than merely wrong at
+    one, so it gets the same fallback an empty preference does.  Checked here
+    rather than only where the preference is read, so a value already on disk
+    self-heals without the user having to touch Preferences.
+
+    A generic alias gets the same treatment, and needs its own test because
+    the toolkit lists one as though it were a family: pango reports
+    "Monospace" among its families on this machine while no installed font
+    declares that name, so the check above passes and the alias survives.
+
+    It has to go because it is a default wearing a preference's clothes.  The
+    Preferences dialog stores the resolved default verbatim when it is
+    accepted, so anyone who opened it before the bundled font existed has
+    "Monospace 10" on disk -- and would never see the shipped font again,
+    however many times LED was upgraded.  Asking for "Monospace" is asking
+    for whatever this system calls monospace, which is exactly what the
+    default is for.  A real family is never touched: choosing DejaVu Sans
+    Mono, Consolas or Menlo is choosing a face. }
+  if (Screen.Fonts.IndexOf(AName) < 0) or LedIsGenericFamily(AName) then
     AName := LedDefaultFontName;
 end;
 
@@ -666,6 +766,185 @@ begin
   { Only Windows has a title bar to darken this way. }
 end;
 {$ENDIF}
+
+function LedToolkitGrabActive: Boolean;
+begin
+  {$IFDEF LED_GTK2_CHROME}
+  Result := gtk_grab_get_current <> nil;
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
+end;
+
+function LedToolkitGrabTake(AControl: TWinControl): Boolean;
+begin
+  Result := False;
+  {$IFDEF LED_GTK2_CHROME}
+  if (AControl = nil) or not AControl.HandleAllocated then Exit;
+  gtk_grab_add({%H-}PGtkWidget(AControl.Handle));
+  Result := LedToolkitGrabActive;
+  {$ENDIF}
+end;
+
+procedure LedToolkitGrabRelease(AControl: TWinControl);
+begin
+  {$IFDEF LED_GTK2_CHROME}
+  if (AControl = nil) or not AControl.HandleAllocated then Exit;
+  gtk_grab_remove({%H-}PGtkWidget(AControl.Handle));
+  {$ENDIF}
+end;
+
+function LedMonitorRects: TLedRectArray;
+var
+  i: Integer;
+begin
+  SetLength(Result, Screen.MonitorCount);
+  for i := 0 to Screen.MonitorCount - 1 do
+  begin
+    Result[i] := Screen.Monitors[i].WorkareaRect;
+    { A monitor that reports no work area -- some window managers do not set
+      the property at all -- still has bounds. }
+    if (Result[i].Right <= Result[i].Left) or
+       (Result[i].Bottom <= Result[i].Top) then
+      Result[i] := Screen.Monitors[i].BoundsRect;
+  end;
+end;
+
+function LedPlaceOnMonitor(const ASaved: TRect; const AMonitors: array of TRect;
+  const ALaunch: TPoint): TRect;
+var
+  i, Target, Source, W, H: Integer;
+  Centre: TPoint;
+
+  function Holds(const R: TRect; const P: TPoint): Boolean;
+  begin
+    Result := (P.X >= R.Left) and (P.X < R.Right) and
+              (P.Y >= R.Top) and (P.Y < R.Bottom);
+  end;
+
+begin
+  Result := ASaved;
+  if Length(AMonitors) = 0 then Exit;
+
+  Target := -1;
+  for i := 0 to High(AMonitors) do
+    if Holds(AMonitors[i], ALaunch) then
+    begin
+      Target := i;
+      Break;
+    end;
+  { A pointer on no monitor at all -- between two of them, or not yet moved --
+    leaves the window where it was rather than guessing. }
+  if Target < 0 then Exit;
+
+  Centre := Point((ASaved.Left + ASaved.Right) div 2,
+                  (ASaved.Top + ASaved.Bottom) div 2);
+  Source := -1;
+  for i := 0 to High(AMonitors) do
+    if Holds(AMonitors[i], Centre) then
+    begin
+      Source := i;
+      Break;
+    end;
+
+  { Already there: nothing to do, and in particular no clamping, so a window
+    the user has deliberately nudged half off the edge stays where they put
+    it. }
+  if Source = Target then Exit;
+
+  W := ASaved.Right - ASaved.Left;
+  H := ASaved.Bottom - ASaved.Top;
+
+  if Source >= 0 then
+  begin
+    { The same place on the new monitor as it had on the old one. }
+    Result.Left := AMonitors[Target].Left + (ASaved.Left - AMonitors[Source].Left);
+    Result.Top := AMonitors[Target].Top + (ASaved.Top - AMonitors[Source].Top);
+  end
+  else
+  begin
+    { Saved on a monitor that is not there any more: centre it instead. }
+    Result.Left := AMonitors[Target].Left +
+      ((AMonitors[Target].Right - AMonitors[Target].Left) - W) div 2;
+    Result.Top := AMonitors[Target].Top +
+      ((AMonitors[Target].Bottom - AMonitors[Target].Top) - H) div 2;
+  end;
+
+  { No bigger than the monitor it is going to. }
+  if W > AMonitors[Target].Right - AMonitors[Target].Left then
+    W := AMonitors[Target].Right - AMonitors[Target].Left;
+  if H > AMonitors[Target].Bottom - AMonitors[Target].Top then
+    H := AMonitors[Target].Bottom - AMonitors[Target].Top;
+
+  { And inside it. }
+  if Result.Left + W > AMonitors[Target].Right then
+    Result.Left := AMonitors[Target].Right - W;
+  if Result.Top + H > AMonitors[Target].Bottom then
+    Result.Top := AMonitors[Target].Bottom - H;
+  if Result.Left < AMonitors[Target].Left then
+    Result.Left := AMonitors[Target].Left;
+  if Result.Top < AMonitors[Target].Top then
+    Result.Top := AMonitors[Target].Top;
+
+  Result.Right := Result.Left + W;
+  Result.Bottom := Result.Top + H;
+end;
+
+procedure LedCentreOnLaunchMonitor(AForm: TCustomForm);
+var
+  Mons: TLedRectArray;
+  i, Target, W, H: Integer;
+  P: TPoint;
+begin
+  if AForm = nil then Exit;
+  if AForm.WindowState <> wsNormal then Exit;
+  Mons := LedMonitorRects;
+  if Length(Mons) = 0 then Exit;
+
+  P := Mouse.CursorPos;
+  Target := -1;
+  for i := 0 to High(Mons) do
+    if (P.X >= Mons[i].Left) and (P.X < Mons[i].Right) and
+       (P.Y >= Mons[i].Top) and (P.Y < Mons[i].Bottom) then
+    begin
+      Target := i;
+      Break;
+    end;
+  if Target < 0 then Target := 0;
+
+  W := AForm.Width;
+  H := AForm.Height;
+  if W > Mons[Target].Right - Mons[Target].Left then
+    W := Mons[Target].Right - Mons[Target].Left;
+  if H > Mons[Target].Bottom - Mons[Target].Top then
+    H := Mons[Target].Bottom - Mons[Target].Top;
+
+  AForm.SetBounds(
+    Mons[Target].Left + ((Mons[Target].Right - Mons[Target].Left) - W) div 2,
+    Mons[Target].Top + ((Mons[Target].Bottom - Mons[Target].Top) - H) div 2,
+    W, H);
+end;
+
+procedure LedPlaceWindowAtLaunch(AForm: TCustomForm);
+var
+  Placed: TRect;
+begin
+  if AForm = nil then Exit;
+  if Screen.MonitorCount < 1 then Exit;
+  { A maximized window belongs to whichever monitor the window manager put it
+    on, and moving it means unmaximizing first -- which is a worse thing to do
+    to someone than opening on the wrong screen. }
+  if AForm.WindowState <> wsNormal then Exit;
+
+  Placed := LedPlaceOnMonitor(AForm.BoundsRect, LedMonitorRects, Mouse.CursorPos);
+  if (Placed.Left = AForm.Left) and (Placed.Top = AForm.Top) and
+     (Placed.Right - Placed.Left = AForm.Width) and
+     (Placed.Bottom - Placed.Top = AForm.Height) then
+    Exit;
+
+  AForm.SetBounds(Placed.Left, Placed.Top,
+    Placed.Right - Placed.Left, Placed.Bottom - Placed.Top);
+end;
 
 finalization
   { Screen outlives this unit's data, so the handler has to come off before

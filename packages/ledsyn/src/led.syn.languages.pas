@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The language registry.
+{ LED - a lightweight editor.  The language registry.
 
   medit ships 128 GtkSourceView grammars.  Their <metadata> blocks carry
   everything the editor needs long before any highlighting happens: the

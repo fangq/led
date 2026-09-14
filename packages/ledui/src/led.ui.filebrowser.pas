@@ -1,14 +1,17 @@
-{ led - a lightweight editor.  The file browser pane.
+{ LED - a lightweight editor.  The file browser pane.
 
   medit hand-wrote 22,000 lines here, including its own icon grid, because GTK
-  had nothing suitable.  LCL ships the pair that does the job: TShellTreeView
-  for the folders and TShellListView for the files in the selected one, linked
-  to each other so selecting a folder fills the list.  This unit is the
-  breadcrumb bar, the filter and the context menu around them.
+  had nothing suitable.  LCL ships TShellTreeView, which enumerates a
+  directory into tree nodes; this unit is the breadcrumb bar, the filter, the
+  icons and the context menu around it.
 
-  The two-pane arrangement is worth having over a single tree: a folder with
-  four hundred files does not push the rest of the tree off the screen, and
-  the list gives size and date columns for free. }
+  One tree, showing folders and files together, as VS Code and Sublime show
+  them.  It replaced a folder tree over a file list, and the trade is worth
+  naming: a folder with four hundred files in it now pushes the rest of the
+  tree down, and the size and date columns the list gave for free are gone.
+  What is bought is that the shape of a project is visible in one place --
+  which is what the pane is for -- without a click into each folder and
+  without half the pane's height spent on a list of one directory. }
 unit Led.UI.FileBrowser;
 
 {$mode objfpc}{$H+}
@@ -17,10 +20,27 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
-  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils,
+  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils, Masks,
   Led.UI.Icons;
 
+const
+  { The tree's own small image list, in the order it is built.  A position in
+    here is what a node's ImageIndex is, so the order is load-bearing --
+    'folder' first because a directory takes it without consulting the
+    extension table, and the plain page last because it is the fallback. }
+  TreeIconNames: array[0..7] of string =
+    ('folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
+     'fileimage', 'filebinary', 'doc');
+
+{ A byte count as a person reads one: 1.4 MB rather than 1468006.  Binary
+  multiples, since that is what a file system reports. }
+function LedFormatSize(ABytes: Int64): string;
+
 type
+  { TCustomTreeView keeps the hook that draws an expander protected, and
+    TShellTreeView does not publish it. }
+  TLedTreeAccess = class(TCustomTreeView);
+
   { TCustomSplitter.FindAlignControl -- which decides what a drag resizes --
     is protected, so reaching it at all needs a descendant.  Worth the four
     lines: the browser's splitter used to resize the filter row instead of
@@ -36,14 +56,13 @@ type
   TLedFileBrowser = class(TPanel)
   private
     FCrumbs: TPanel;
-    FBottom: TPanel;
     FTree: TShellTreeView;
-    FList: TShellListView;
-    FSplit: TLedSplitter;
+    FIcons: TImageList;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
     FNav: TPanel;
     FBtnBack, FBtnForward, FBtnUp, FBtnHome: TSpeedButton;
+    FBtnNewFolder, FBtnNewFile: TSpeedButton;
     { Where the pane has been, and where in that list it currently is.  Back
       and Forward move the index rather than trimming the list, so going
       back and then somewhere new is what truncates it -- the same rule a
@@ -55,11 +74,20 @@ type
     FCaseSensitiveSort: Boolean;
     FMenu: TPopupMenu;
     FRoot: string;
+    FMask: string;
+    FHintNode: TTreeNode;
     FCrumbWidth: Integer;
     FOnOpenFile: TLedOpenFileEvent;
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
+    procedure TreeMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure TreeDrawArrow(Sender: TCustomTreeView; const ARect: TRect;
+      ACollapsed: Boolean);
+    procedure IconiseNodes;
+    procedure IconiseChildren(ANode: TTreeNode);
+    function IconForPath(const APath: string; AIsDir: Boolean): Integer;
+    function PassesFilter(const AName: string): Boolean;
     procedure NavResize(Sender: TObject);
     procedure SortTree;
     procedure ListDblClick(Sender: TObject);
@@ -68,6 +96,7 @@ type
     procedure HiddenChange(Sender: TObject);
     procedure MenuOpen(Sender: TObject);
     procedure MenuNewFolder(Sender: TObject);
+    procedure MenuNewFile(Sender: TObject);
     procedure MenuRename(Sender: TObject);
     procedure MenuDelete(Sender: TObject);
     procedure MenuCopyPath(Sender: TObject);
@@ -84,6 +113,9 @@ type
     procedure Reload;
   public
     constructor Create(AOwner: TComponent); override;
+    { FHistory is a list of this pane's own making rather than a child
+      component, so it is freed here; everything else is Create(Self). }
+    destructor Destroy; override;
     procedure SetRoot(const APath: string);
     { Populates on first use.  TShellTreeView will not populate before its
       control is realized, so the owner calls this when the pane is first
@@ -112,7 +144,19 @@ type
     property CaseSensitiveSort: Boolean read FCaseSensitiveSort
       write SetCaseSensitiveSort;
 
-    property FileList: TShellListView read FList;
+    { The one tree.  Public so a check can read what is in it. }
+    property Tree: TShellTreeView read FTree;
+    { Which picture a path would get.  Public so the mapping can be checked
+      without going through the tree's own enumeration. }
+    function IconFor(const APath: string): Integer;
+    { Paints the tree in the editor's colours.  The pane used the desktop's
+      instead, so a dark scheme in the editor sat beside a file list in
+      whatever the widget theme happened to be. }
+    procedure ApplyColours(AFore, ABack: TColor);
+    { True when LED is drawing the expander rather than the LCL.  A function
+      because the hook is protected on TCustomTreeView, and Pascal's
+      protected reaches only within the unit that declares the descendant. }
+    function DrawsOwnChevron: Boolean;
     { And the tree, so a check can select its root -- which used to raise. }
     property FileTree: TShellTreeView read FTree;
 
@@ -130,6 +174,13 @@ type
       what "huge buttons with tiny icons" was. }
     function NavGlyphSize: Integer;
     function NavButtonSize: Integer;
+    { How many buttons sit on the navigation row.  The breadcrumb trail is
+      made of speed buttons too, so counting them by class finds both. }
+    function NavButtonCount: Integer;
+    { The nav buttons themselves, for the check that they shade under the
+      pointer.  There is no drawing to look at from outside otherwise: a
+      speed button has no handle of its own to paint. }
+    function NavButton(AIndex: Integer): TSpeedButton;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
   end;
 
@@ -153,18 +204,18 @@ end;
   pass has given FNav its new width, so it divided up the old one and nothing
   came along afterwards to correct it -- the trail simply never appeared. }
 procedure TLedFileBrowser.NavResize(Sender: TObject);
-var
-  Edge: Integer;
 begin
   if (FNav = nil) or (FCrumbs = nil) or
      (FBtnHome = nil) or (FBtnBack = nil) then Exit;
 
-  { Measured off the buttons rather than computed, so it stays right whatever
-    the sweep scaled them to: past the last one, plus the margin the first one
-    was given. }
-  Edge := FBtnHome.Left + FBtnHome.Width + FBtnBack.Left;
-  if FNav.ClientWidth - Edge < 1 then Exit;
-  FCrumbs.SetBounds(Edge, 0, FNav.ClientWidth - Edge, FNav.ClientHeight);
+  { The trail has a row of its own now and is aligned to it, so its bounds
+    are the layout's business and not this procedure's.
+
+    Setting them here is what crashed LED on startup: an alTop control given
+    SetBounds is realigned, realignment raises OnResize, and OnResize set the
+    bounds again -- unbounded recursion, which arrives as an access violation
+    rather than as anything that names itself.  It only bit where the pane
+    was open when LED started, which is why a scripted run never saw it. }
 
   { The pane roots itself the first time it has real geometry, instead of
     waiting to be told.  Only the two pane toggles told it, so a session that
@@ -218,9 +269,187 @@ begin
   Result := FCrumbs.ClientWidth;
 end;
 
+{ There is no splitter any more: the pane is one tree.  Kept as nil rather
+  than removed, so a caller that still asks gets an answer instead of a
+  compile error. }
+
+{ Which picture a row gets.
+
+  The extension table lives in Led.UI.Icons, with the tab headers, so a file
+  cannot end up with one picture in the tree and another on its tab.  This
+  turns the name that rule returns into a position in the small list built
+  for the tree. }
+function TLedFileBrowser.IconForPath(const APath: string;
+  AIsDir: Boolean): Integer;
+var
+  i: Integer;
+  Want: string;
+begin
+  if AIsDir then Exit(0);           { 'folder', first in TreeIconNames }
+  Want := LedIconForFile(APath);
+  for i := 0 to High(TreeIconNames) do
+    if TreeIconNames[i] = Want then Exit(i);
+  Result := High(TreeIconNames);    { the plain page, which is last }
+end;
+
+{ True when AName is one the filter lets through.  Folders always pass: a
+  filter is about which files to look at, not which folders exist. }
+function TLedFileBrowser.PassesFilter(const AName: string): Boolean;
+begin
+  Result := (FMask = '') or MatchesMaskList(AName, FMask, ';');
+end;
+
+{ Put a picture on every child of ANode, and drop the files the filter
+  excludes.
+
+  Done here rather than by the LCL because TShellTreeView makes its nodes as
+  it enumerates and has no hook for either -- it knows the path of a node and
+  nothing about what LED wants to do with it. }
+procedure TLedFileBrowser.IconiseChildren(ANode: TTreeNode);
+var
+  Node, Next: TTreeNode;
+  Path: string;
+  IsDir: Boolean;
+begin
+  if ANode = nil then Exit;
+  Node := ANode.GetFirstChild;
+  while Node <> nil do
+  begin
+    Next := Node.GetNextSibling;
+    Path := FTree.GetPathFromNode(Node);
+    IsDir := DirectoryExists(Path);
+    if (not IsDir) and (not PassesFilter(ExtractFileName(Path))) then
+      Node.Delete
+    else
+    begin
+      Node.ImageIndex := IconForPath(Path, IsDir);
+      Node.SelectedIndex := Node.ImageIndex;
+    end;
+    Node := Next;
+  end;
+end;
+
+{ The whole tree as it stands, root included.  Cheap: only the nodes that
+  have actually been created are walked, and a folder is not enumerated until
+  it is opened. }
+procedure TLedFileBrowser.IconiseNodes;
+var
+  Node: TTreeNode;
+  Path, Leaf: string;
+  IsDir: Boolean;
+begin
+  if FTree = nil then Exit;
+  FTree.BeginUpdate;
+  try
+    { The root row shows the folder's name rather than its whole path.  The
+      path is on the crumb bar directly above, where it can be read and
+      clicked; repeating it here only pushed the first few folders off the
+      right-hand edge of a narrow pane.
+
+      Safe to retitle: TCustomShellTreeView builds a path from each node's
+      own FullFilename, not from the text shown in it, so nothing downstream
+      reads what is written here. }
+    Node := FTree.Items.GetFirstNode;
+    if Node <> nil then
+    begin
+      Leaf := ExtractFileName(ExcludeTrailingPathDelimiter(FTree.Root));
+      { Except at the top of the filesystem, where there is no name to show
+        and the path is the only thing there is. }
+      if Leaf = '' then Leaf := FTree.Root;
+      if (Leaf <> '') and (Node.Text <> Leaf) then Node.Text := Leaf;
+    end;
+
+    Node := FTree.Items.GetFirstNode;
+    while Node <> nil do
+    begin
+      Path := FTree.GetPathFromNode(Node);
+      IsDir := (Path = '') or DirectoryExists(Path);
+      Node.ImageIndex := IconForPath(Path, IsDir);
+      Node.SelectedIndex := Node.ImageIndex;
+      Node := Node.GetNext;
+    end;
+  finally
+    FTree.EndUpdate;
+  end;
+end;
+
+function TLedFileBrowser.DrawsOwnChevron: Boolean;
+begin
+  Result := (FTree <> nil) and
+            Assigned(TLedTreeAccess(FTree).OnCustomDrawArrow);
+end;
+
+procedure TLedFileBrowser.ApplyColours(AFore, ABack: TColor);
+begin
+  if (FTree = nil) or (AFore = clNone) or (ABack = clNone) then Exit;
+  FTree.Color := ABack;
+  FTree.Font.Color := AFore;
+
+  { The icons are drawn, not loaded, so they can be drawn again in the
+    colours the tree has just been given.  Only the ones with no colour of
+    their own change -- a source file stays blue -- but those are the ones
+    that were disappearing into a dark page. }
+  if FIcons <> nil then
+  begin
+    LedBuildIconList(FIcons, TreeIconNames, AFore);
+    FTree.Invalidate;
+  end;
+  { The crumb trail and the filter row stay in the desktop's colours: they
+    are chrome, not content, and LED does not theme its other chrome either. }
+end;
+
+function LedFormatSize(ABytes: Int64): string;
+const
+  Units: array[0..4] of string = ('bytes', 'KB', 'MB', 'GB', 'TB');
+var
+  i: Integer;
+  V: Double;
+begin
+  if ABytes < 1024 then
+    Exit(Format('%d bytes', [ABytes]));
+  V := ABytes;
+  i := 0;
+  while (V >= 1024) and (i < High(Units)) do
+  begin
+    V := V / 1024;
+    Inc(i);
+  end;
+  Result := Format('%.1f %s', [V, Units[i]]);
+end;
+
+function TLedFileBrowser.IconFor(const APath: string): Integer;
+begin
+  Result := IconForPath(APath, DirectoryExists(APath));
+end;
+
+function TLedFileBrowser.NavButtonCount: Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  if FNav = nil then Exit;
+  for i := 0 to FNav.ControlCount - 1 do
+    if FNav.Controls[i] is TSpeedButton then Inc(Result);
+end;
+
+function TLedFileBrowser.NavButton(AIndex: Integer): TSpeedButton;
+var
+  i, n: Integer;
+begin
+  Result := nil;
+  if FNav = nil then Exit;
+  n := 0;
+  for i := 0 to FNav.ControlCount - 1 do
+    if FNav.Controls[i] is TSpeedButton then
+    begin
+      if n = AIndex then Exit(TSpeedButton(FNav.Controls[i]));
+      Inc(n);
+    end;
+end;
+
 function TLedFileBrowser.SplitterTarget: TControl;
 begin
-  Result := FSplit.Target;
+  Result := nil;
 end;
 
 constructor TLedFileBrowser.Create(AOwner: TComponent);
@@ -230,7 +459,7 @@ var
 
   function MakeNavButton(const AIcon, AHint: string; ALeft: Integer): TSpeedButton;
   begin
-    Result := TSpeedButton.Create(Self);
+    Result := TLedSpeedButton.Create(Self);
     Result.Parent := FNav;
     { Plain numbers, not LedScale96.  The browser is built in FormCreate, so
       the startup sweep still has AutoAdjustLayout to run over it and scales
@@ -284,39 +513,39 @@ begin
   FBtnForward := MakeNavButton('forward', 'Forward', 24);
   FBtnUp := MakeNavButton('up', 'Up one folder', 46);
   FBtnHome := MakeNavButton('home', 'Home folder', 68);
+  { Making things, rather than only going places.  Both were on the context
+    menu and nowhere else, which is a poor place for the two actions someone
+    working in a tree reaches for most. }
+  FBtnNewFolder := MakeNavButton('newfolder', 'New folder...', 94);
+  FBtnNewFolder.OnClick := @MenuNewFolder;
+  FBtnNewFile := MakeNavButton('newfile', 'New file...', 116);
+  FBtnNewFile.OnClick := @MenuNewFile;
 
-  { On the same row as the buttons, to the right of them.  Two rows left an
-    empty strip as tall as the buttons sitting between the trail and the
-    tree, and the trail wants horizontal room, not vertical.  Its bounds are
-    set in Resize, once the row has a width to divide up. }
+  { A row of its own, under the buttons.  It shared the button row once,
+    which kept the chrome to one line but left the trail a few dozen pixels
+    of what a path needs -- and with six buttons there now rather than four
+    there is no room to share at all. }
   FCrumbs := TPanel.Create(Self);
-  FCrumbs.Parent := FNav;
+  FCrumbs.Parent := Self;
+  { Below the buttons, not above them.  Two alTop siblings stack in order of
+    their Top, and a control that has just been made has Top 0 -- the same as
+    the row already there -- so the trail came out on the first line and the
+    buttons on the second.  Given a Top past the nav row it settles under it,
+    and the alignment keeps it there. }
+  FCrumbs.Top := FNav.Height + 1;
+  FCrumbs.Align := alTop;
+  FCrumbs.Height := 24;
   FCrumbs.BevelOuter := bvNone;
   FCrumbs.Caption := '';
-  FNav.OnResize := @NavResize;
+  FCrumbs.OnResize := @NavResize;
 
-  { The whole lower half is one container: the file list filling it and the
-    filter row pinned to its foot.  It was three siblings all asking for
-    alBottom, and which of them ended up next to the splitter came down to
-    creation order -- the filter row won, so TCustomSplitter.FindAlignControl
-    picked it as the nearest control below the splitter and dragging resized
-    the filter row while the table stayed put.  One container leaves the
-    splitter a single neighbour and nothing to choose between. }
-  FBottom := TPanel.Create(Self);
-  FBottom.Parent := Self;
-  FBottom.Align := alBottom;
-  { Deliberately not scaled, unlike every other size here.  This is not a
-    piece of chrome that has to match the display -- it is where the splitter
-    starts, before the user drags it somewhere else.  Scaled to 712 on a
-    300-PPI target it was taller than a short pane, which left the tree above
-    it no height and the splitter no neighbour to resize: SplitterTarget went
-    from the file list to nothing at all. }
-  FBottom.Height := 228;
-  FBottom.BevelOuter := bvNone;
-  FBottom.Caption := '';
-
+  { Just the filter row, at the foot.  It used to sit inside a container 228
+    pixels tall -- the height the file list wanted before the pane became one
+    tree.  With the list gone that container was a filter row with two
+    hundred pixels of nothing under it, which is what "a large empty space
+    below the filters" was. }
   Bar := TPanel.Create(Self);
-  Bar.Parent := FBottom;
+  Bar.Parent := Self;
   Bar.Align := alBottom;
   Bar.Height := 28;
   Bar.BevelOuter := bvNone;
@@ -340,24 +569,17 @@ begin
   FShowHidden.Caption := 'Hidden';
   FShowHidden.OnChange := @HiddenChange;
 
-  { The list takes whatever the container has left after the filter row, so
-    dragging the splitter grows the table, which is the thing anyone dragging
-    it is after. }
-  FList := TShellListView.Create(Self);
-  FList.Parent := FBottom;
-  FList.Align := alClient;
-  FList.ReadOnly := True;
-  FList.OnDblClick := @ListDblClick;
-
-  { Created after the container so it aligns above it, and with only one
-    alBottom sibling left there is no ambiguity about what it resizes. }
-  FSplit := TLedSplitter.Create(Self);
-  FSplit.Parent := Self;
-  FSplit.Align := alBottom;
-  FSplit.ResizeStyle := rsUpdate;
-  { Enough that neither the tree above nor the file list below can be pushed
-    away entirely.  TCustomSplitter applies this to both sides. }
-  FSplit.MinSize := 80;
+  { The tree's own pictures, drawn by LED rather than taken from the desktop
+    theme -- which is how every other icon in the application is made, and
+    the only way they look the same on all three platforms. }
+  FIcons := TImageList.Create(Self);
+  FIcons.Width := LedScale96(16);
+  FIcons.Height := LedScale96(16);
+  { clBtnText, not clDefault: clDefault resolves to black, and the tree is
+    painted in the *editor's* colours, so on a dark scheme every icon without
+    a colour of its own was black on near-black.  Rebuilt with the tree's own
+    foreground whenever those colours change -- see ApplyColours. }
+  LedBuildIconList(FIcons, TreeIconNames, clBtnText);
 
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;
@@ -374,10 +596,39 @@ begin
     that expand is the one nothing else will repeat. }
   FTree.OnExpanded := @TreeExpanded;
   if DirectoryExists(GetCurrentDir) then FTree.Root := GetCurrentDir;
-  FTree.ObjectTypes := [otFolders];
+  { Files as well as folders: one tree rather than a tree over a list. }
+  FTree.ObjectTypes := [otFolders, otNonFolders];
   FTree.ReadOnly := True;
   FTree.OnDblClick := @TreeDblClick;
-  { Sorted by led rather than by the LCL, and not as a matter of taste.
+  { The row under the pointer says where it is and how big it is.  A tree in
+    a narrow pane truncates names, and the size is the other thing anyone
+    asks of a file list -- it was the one thing lost when the pane stopped
+    being a list with columns. }
+  FTree.ShowHint := True;
+  FTree.OnMouseMove := @TreeMouseMove;
+  { LED draws the expander.  The LCL offers a themed box, a plus-minus and an
+    outlined triangle, and none of them is the chevron a file tree has used
+    since VS Code made it the convention.  OnCustomDrawArrow hands over that
+    rectangle and nothing else -- the indent, the hit testing and the click
+    that toggles a node all stay the LCL's. }
+  { Protected on TCustomTreeView and published only by TTreeView, which
+    TShellTreeView is not -- so it is reached the way this project reaches
+    any other protected member, through a descendant declared for the
+    purpose. }
+  TLedTreeAccess(FTree).OnCustomDrawArrow := @TreeDrawArrow;
+  { The selection is the whole row, as it is in every file tree worth using;
+    a name-width highlight in a pane this narrow is hard to see and harder to
+    aim at. }
+  FTree.RowSelect := True;
+  FTree.HideSelection := False;
+  FTree.ShowButtons := True;
+  FTree.ShowLines := False;
+  FTree.ShowRoot := True;
+  { An icon per row, by what the file is.  The nodes are made by the LCL as
+    it enumerates, so the pictures are put on afterwards -- see IconiseNodes. }
+  FTree.Images := FIcons;
+  FTree.OnExpanded := @TreeExpanded;
+  { Sorted by LED rather than by the LCL, and not as a matter of taste.
     Assigning FileSortType runs TCustomShellTreeView.SetFileSortType, which
     rebuilds the tree -- but not the way SetRoot does.  SetRoot gives the root
     node the file info that makes it a directory:
@@ -406,10 +657,6 @@ begin
     otFolders the tree holds only folders, so fstFoldersFirst was doing no
     more than ordering them by name, which is what AlphaSort does. }
 
-  { Selecting a folder in the tree fills the list.  This is the whole reason
-    the pair exists, and it is one assignment. }
-  FTree.ShellListView := FList;
-
   FMenu := TPopupMenu.Create(Self);
   AddMenu('Open', @MenuOpen);
   AddMenu('-', nil);
@@ -419,12 +666,19 @@ begin
   AddMenu('Refresh', @MenuRefresh);
   AddMenu('-', nil);
   AddMenu('New Folder...', @MenuNewFolder);
+  AddMenu('New File...', @MenuNewFile);
   AddMenu('Rename...', @MenuRename);
   AddMenu('Delete...', @MenuDelete);
   AddMenu('-', nil);
   AddMenu('Copy Full Path', @MenuCopyPath);
   FTree.PopupMenu := FMenu;
-  FList.PopupMenu := FMenu;
+  IconiseNodes;
+end;
+
+destructor TLedFileBrowser.Destroy;
+begin
+  FHistory.Free;
+  inherited Destroy;
 end;
 
 procedure TLedFileBrowser.EnsureRoot(const ADefault: string);
@@ -450,7 +704,9 @@ begin
   { A new root's children arrive in readdir order; see the constructor for why
     the LCL is not the one sorting them. }
   SortTree;
-  FList.Root := FRoot;
+  { Setting Root rebuilds the tree from nothing, so every picture put on the
+    old nodes went with them. }
+  IconiseNodes;
   BuildCrumbs;
   { Moving through the history is not itself a place to come back to. }
   if not FNavigating then PushHistory(FRoot);
@@ -553,7 +809,8 @@ begin
   { TShellListView sorts by name and always groups folders first; the two
     settings are held here and applied on reload so the ordering is at least
     honest about what it is doing. }
-  FList.ObjectTypes := FList.ObjectTypes;   // force a re-read
+  FTree.ObjectTypes := FTree.ObjectTypes;   // force a re-read
+  IconiseNodes;
   Reload;
 end;
 
@@ -599,7 +856,7 @@ var
   function AddCrumb(const ACaption, AHint: string;
     AWidth: Integer): TSpeedButton;
   begin
-    Result := TSpeedButton.Create(FCrumbs);
+    Result := TLedSpeedButton.Create(FCrumbs);
     Result.Parent := FCrumbs;
     Result.Caption := ACaption;
     Result.Left := X;
@@ -696,9 +953,14 @@ end;
 
 { Children are populated when a folder is first opened, so this is where they
   need ordering.  See the constructor for why it is not the LCL doing it. }
+{ A folder that has just been opened has had its children made by the LCL,
+  which knows nothing about LED's pictures or its filter -- so both are
+  applied here, where the nodes first exist. }
 procedure TLedFileBrowser.TreeExpanded(Sender: TObject; ANode: TTreeNode);
 begin
-  if ANode <> nil then ANode.AlphaSort;
+  if ANode = nil then Exit;
+  IconiseChildren(ANode);
+  ANode.AlphaSort;
 end;
 
 procedure TLedFileBrowser.CrumbClick(Sender: TObject);
@@ -718,8 +980,8 @@ end;
 function TLedFileBrowser.SelectedPath: string;
 begin
   Result := '';
-  if (FList.Focused or (FList.Selected <> nil)) and (FList.Selected <> nil) then
-    Result := FList.GetPathFromItem(FList.Selected);
+  if FTree.Selected <> nil then
+    Result := FTree.GetPathFromNode(FTree.Selected);
   if (Result = '') and (FTree.Selected <> nil) then
     Result := FTree.GetPathFromNode(FTree.Selected);
 end;
@@ -728,13 +990,97 @@ procedure TLedFileBrowser.ListDblClick(Sender: TObject);
 var
   Path: string;
 begin
-  if FList.Selected = nil then Exit;
-  Path := FList.GetPathFromItem(FList.Selected);
+  if FTree.Selected = nil then Exit;
+  Path := FTree.GetPathFromNode(FTree.Selected);
   if Path = '' then Exit;
   if DirectoryExists(Path) then
     SetRoot(Path)
   else if Assigned(FOnOpenFile) then
     FOnOpenFile(Path);
+end;
+
+{ What the row under the pointer is.  Rebuilt only when the row changes, so
+  moving along a row costs one comparison. }
+procedure TLedFileBrowser.TreeMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: Integer);
+var
+  Node: TTreeNode;
+  Path, Tip: string;
+  Size: Int64;
+  Rec: TSearchRec;
+begin
+  Node := FTree.GetNodeAt(X, Y);
+  if Node = FHintNode then Exit;
+  FHintNode := Node;
+  if Node = nil then
+  begin
+    FTree.Hint := '';
+    Exit;
+  end;
+
+  Path := ExcludeTrailingPathDelimiter(FTree.GetPathFromNode(Node));
+  Tip := Path;
+  if FileExists(Path) then
+  begin
+    Size := -1;
+    if FindFirst(Path, faAnyFile, Rec) = 0 then
+    begin
+      Size := Rec.Size;
+      FindClose(Rec);
+    end;
+    if Size >= 0 then
+      Tip := Path + LineEnding + LedFormatSize(Size);
+  end;
+  FTree.Hint := Tip;
+end;
+
+{ A right-angle chevron: two arms meeting at ninety degrees, pointing right
+  when the folder is shut and down when it is open.
+
+  Square rather than the flatter proportions LED's fold gutter uses.  That
+  one sits in a narrow column beside code and is drawn wide so it reads at a
+  glance; this one sits in a row of text where a wide chevron would look like
+  a mistake, and ninety degrees is what the eye expects beside a folder. }
+procedure TLedFileBrowser.TreeDrawArrow(Sender: TCustomTreeView;
+  const ARect: TRect; ACollapsed: Boolean);
+var
+  C: TCanvas;
+  Cx, Cy, Arm: Integer;
+begin
+  C := Sender.Canvas;
+  Cx := (ARect.Left + ARect.Right) div 2;
+  Cy := (ARect.Top + ARect.Bottom) div 2;
+
+  { Half the shorter side, less a pixel, so the arms stay inside the cell the
+    LCL measured for them. }
+  Arm := (ARect.Right - ARect.Left) div 2;
+  if (ARect.Bottom - ARect.Top) div 2 < Arm then
+    Arm := (ARect.Bottom - ARect.Top) div 2;
+  Dec(Arm);
+  if Arm < 2 then Arm := 2;
+
+  C.Pen.Color := Sender.ExpandSignColor;
+  if C.Pen.Color = clNone then C.Pen.Color := Sender.Font.Color;
+  C.Pen.Width := 1;
+  if Arm >= 5 then C.Pen.Width := 2;
+  C.Pen.Style := psSolid;
+  C.Pen.EndCap := pecRound;
+  C.Pen.JoinStyle := pjsRound;
+
+  if ACollapsed then
+  begin
+    { Pointing right: the apex on the right, arms back at ninety degrees. }
+    C.MoveTo(Cx - Arm div 2, Cy - Arm);
+    C.LineTo(Cx + Arm div 2, Cy);
+    C.LineTo(Cx - Arm div 2, Cy + Arm);
+  end
+  else
+  begin
+    { Pointing down. }
+    C.MoveTo(Cx - Arm, Cy - Arm div 2);
+    C.LineTo(Cx, Cy + Arm div 2);
+    C.LineTo(Cx + Arm, Cy - Arm div 2);
+  end;
 end;
 
 procedure TLedFileBrowser.TreeDblClick(Sender: TObject);
@@ -743,9 +1089,13 @@ var
 begin
   if FTree.Selected = nil then Exit;
   Path := FTree.GetPathFromNode(FTree.Selected);
-  { Descending by double-click, not only by expanding, keeps a deep tree
-    usable in a narrow pane. }
-  if DirectoryExists(Path) then SetRoot(Path);
+  { A folder descends, a file opens.  Opening was the file list's job before
+    the pane became one tree, and went with it -- leaving double-click doing
+    nothing on the rows most people double-click. }
+  if DirectoryExists(Path) then
+    SetRoot(Path)
+  else if FileExists(Path) and Assigned(FOnOpenFile) then
+    FOnOpenFile(Path);
 end;
 
 procedure TLedFileBrowser.Reload;
@@ -762,9 +1112,9 @@ procedure TLedFileBrowser.FilterChange(Sender: TObject);
 begin
   { The list has a real mask; index 0 is "everything". }
   if FFilter.ItemIndex <= 0 then
-    FList.Mask := ''
+    FMask := ''
   else
-    FList.Mask := FFilter.Text;
+    FMask := FFilter.Text;
 end;
 
 procedure TLedFileBrowser.HiddenChange(Sender: TObject);
@@ -772,12 +1122,12 @@ begin
   if FShowHidden.Checked then
   begin
     FTree.ObjectTypes := FTree.ObjectTypes + [otHidden];
-    FList.ObjectTypes := FList.ObjectTypes + [otHidden];
+    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden];
   end
   else
   begin
     FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
-    FList.ObjectTypes := FList.ObjectTypes - [otHidden];
+    FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
   end;
   Reload;
 end;
@@ -802,6 +1152,53 @@ end;
 procedure TLedFileBrowser.MenuRefresh(Sender: TObject);
 begin
   Reload;
+end;
+
+{ A new, empty file in the folder the selection is in, opened once it is
+  made -- making one and then having to find it again is a step nobody wants.
+
+  Beside MenuNewFolder because the two belong together, and both are on the
+  toolbar now as well as the context menu. }
+procedure TLedFileBrowser.MenuNewFile(Sender: TObject);
+var
+  Base, NewName, Full: string;
+  L: TStringList;
+begin
+  Base := SelectedPath;
+  if (Base = '') or (not DirectoryExists(Base)) then
+    Base := ExtractFileDir(Base);
+  if (Base = '') or (not DirectoryExists(Base)) then Base := FRoot;
+  if not DirectoryExists(Base) then Exit;
+
+  NewName := 'untitled.txt';
+  if not InputQuery('New File', 'Name for the new file:', NewName) then Exit;
+  NewName := Trim(NewName);
+  if NewName = '' then Exit;
+
+  Full := IncludeTrailingPathDelimiter(Base) + NewName;
+  if FileExists(Full) or DirectoryExists(Full) then
+  begin
+    ShowMessage('There is already something called ' + NewName + ' there.');
+    Exit;
+  end;
+
+  L := TStringList.Create;
+  try
+    try
+      L.SaveToFile(Full);
+    except
+      on E: Exception do
+      begin
+        ShowMessage('Could not create ' + NewName + ': ' + E.Message);
+        Exit;
+      end;
+    end;
+  finally
+    L.Free;
+  end;
+
+  Reload;
+  if Assigned(FOnOpenFile) then FOnOpenFile(Full);
 end;
 
 procedure TLedFileBrowser.MenuNewFolder(Sender: TObject);
@@ -840,7 +1237,7 @@ var
 begin
   Path := SelectedPath;
   if Path = '' then Exit;
-  { No trash: led deletes outright, so the question says so and names what
+  { No trash: LED deletes outright, so the question says so and names what
     is about to go. }
   if MessageDlg('led',
     Format('Delete "%s" permanently?', [ExtractFileName(Path)]),

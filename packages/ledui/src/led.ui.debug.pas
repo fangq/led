@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The debugger: a pane, and the thing that drives it.
+{ LED - a lightweight editor.  The debugger: a pane, and the thing that drives it.
 
   Two classes with one job each.
 
@@ -13,7 +13,7 @@
   which is what keeps this unit out of the form and the form out of gdb.
 
   The console is the Output pane rather than one of its own.  medit built a
-  second console because it had nothing else; led already has a pane that
+  second console because it had nothing else; LED already has a pane that
   colours lines, buffers partial ones and turns file:line into a jump, and a
   debugger that reuses it costs no new widget and behaves like the rest of
   the editor. }
@@ -101,6 +101,11 @@ type
       const AWidths: array of Integer): TListView;
   public
     constructor Create(AOwner: TComponent); override;
+    { FLocalNodes is a TFPList of this pane's own making, not a child
+      component, so nothing else will free it -- and neither will the rows
+      inside it.  Every other object here is Create(Self) and goes with the
+      component. }
+    destructor Destroy; override;
 
     { The application's icons, passed in rather than reached for, so this
       unit does not depend on where they come from. }
@@ -400,7 +405,7 @@ type
 implementation
 
 uses
-  LCLType, LazFileUtils;
+  LCLType, LazFileUtils, Led.UI.Icons;
 
 { --- TLedDebugPane --------------------------------------------------------- }
 
@@ -420,6 +425,9 @@ begin
   FBar.ShowCaptions := False;
   FBar.Flat := True;
   FBar.AutoSize := True;
+  { The same button painting the main toolbar uses, so a pointer over any of
+    LED's toolbars gets the same answer. }
+  LedStyleToolBar(FBar);
 
   { Built right to left: a TToolBar lays its children out in reverse order of
     creation unless each is given a Left, and giving them one hard-codes a
@@ -521,6 +529,13 @@ begin
   Result.ImageIndex := AImage;
   Result.Tag := Ord(ACommand);
   Result.OnClick := @BarClick;
+end;
+
+destructor TLedDebugPane.Destroy;
+begin
+  ClearLocalNodes;
+  FLocalNodes.Free;
+  inherited Destroy;
 end;
 
 function TLedDebugPane.AddList(const ACols: array of string;
@@ -947,6 +962,9 @@ begin
   FBar.List := True;
   FBar.Flat := True;
   FBar.AutoSize := True;
+  { The same button painting the main toolbar uses, so a pointer over any of
+    LED's toolbars gets the same answer. }
+  LedStyleToolBar(FBar);
 
   { Back to front, so they read left to right: a TToolBar lays its children
     out in reverse unless each is given a Left.  Each carries its own tag so
@@ -1048,7 +1066,7 @@ begin
     begin
       It := FList.Items.Add;
       { Dashed rather than blank while gdb has not answered yet, because a
-        breakpoint with no number is one that is only in led so far -- which
+        breakpoint with no number is one that is only in LED so far -- which
         is the ordinary state of one set before the session starts. }
       if ABreaks[i].Number > 0 then
         It.Caption := IntToStr(ABreaks[i].Number)
@@ -1326,7 +1344,7 @@ begin
   Result := -1;
 end;
 
-{ A watchpoint led has asked for but gdb has not numbered yet.  Matched on
+{ A watchpoint LED has asked for but gdb has not numbered yet.  Matched on
   the expression, which is all the reply carries. }
 function TLedDebugger.IndexOfPendingWatch(const AExpression: string): Integer;
 var
@@ -1823,8 +1841,20 @@ begin
     Exit;
   end;
 
-  { Nothing to ask when the program is not sitting at a stop -- and saying
-    so beats leaving "= ..." on screen for ever. }
+  { With no session at all there is nothing to say and no reason to say it:
+    hovering any word in an ordinary editing session was answering
+
+      count = (not stopped)
+
+    which reads as an error about the word rather than as the debugger
+    declining.  The message is kept for the case it was written for -- a
+    session that exists but is running -- where "nothing to ask just now" is
+    genuinely the answer. }
+  if not FSession.Alive then
+  begin
+    AView.HideHoverValue(AExpr);
+    Exit;
+  end;
   if not CanStep then
   begin
     AView.ShowHoverValue(AExpr, '(not stopped)');

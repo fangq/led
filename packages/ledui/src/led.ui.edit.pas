@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The editor view control.
+{ LED - a lightweight editor.  The editor view control.
 
   One TLedEdit is one *view*.  A document may own several of them, all sharing
   a single text buffer, which is how split view works. }
@@ -11,8 +11,9 @@ interface
 uses
   Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
-  SynEditKeyCmds, LCLType,
-  SynEditHighlighterFoldBase, SynEditHighlighter, LazVersion,
+  SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
+  SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
+  SynEditMarkup, SynEditMiscClasses, LazVersion,
   Led.Core.Hex,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
@@ -77,9 +78,15 @@ type
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
     FHexMode: Boolean;
+    FCurrentLineColour: TColor;
+    FCurrentLineRow: Integer;
+    FRuledLine: Integer;
+    FFoldedLineColour: TColor;
+    FHighlightWord: TSynEditMarkupHighlightAllCaret;
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
+    FWrapOn: Boolean;
     FCompletion: TSynCompletion;
     FSpell: TLedSpellMarkup;
     FLongLines: TLedLongLineView;
@@ -87,7 +94,7 @@ type
     { The debugger's two marks.  Painted here rather than made into
       TSynEditMarks because SynEdit only draws marks when
       BookMarkOptions.BookmarkImages is set, and setting it would also
-      replace the numbered glyphs led's ten bookmarks draw themselves with. }
+      replace the numbered glyphs LED's ten bookmarks draw themselves with. }
     FBreaks: TLedGutterBreaks;
     FDebugLine: Integer;
     FOnBreakpointClick: TLedBreakpointClick;
@@ -96,6 +103,23 @@ type
     procedure SetDebugLine(AValue: Integer);
     function MarksColumn(out ALeft, AWidth: Integer): Boolean;
     procedure DrawDebugMarks;
+    procedure DrawCurrentLineEdges;
+    procedure SpecialLineMarkup(Sender: TObject; Line: Integer;
+      var Special: Boolean; AMarkup: TSynSelectedColor);
+    procedure ClampCaretToLineEnd;
+    { The selection's own ends, clamped the same way.  Dragging is where the
+      caret clamp on its own is not enough: the drag carries the far end of
+      the selection past the line and the caret with it. }
+    procedure ClampSelectionToLineEnd;
+    { True when the selection covers any actual text.
+
+      A selection in the space past the end of a line is not nothing to
+      SynEdit: eoScrollPastEol lets a drag reach out there, and SelText comes
+      back as a run of spaces that are not in the buffer.  Nothing is drawn
+      for it -- LED stopped shading past the line end -- so treating it as a
+      selection meant a click that suppressed the current-line rules and put
+      nothing in their place. }
+    function SelectionIsReal: Boolean;
     procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
@@ -134,6 +158,35 @@ type
       keys go to OnHexKey instead of into the buffer.  The buffer is a
       rendering of bytes the document owns, so nothing else may write to it. }
     property HexMode: Boolean read FHexMode write SetHexMode;
+    { The colour of the two rules that mark the caret's row.  Set from the
+      theme's current-line style, which SynEdit would otherwise paint as a
+      filled band across the whole row. }
+    property CurrentLineColour: TColor
+      read FCurrentLineColour write FCurrentLineColour;
+    { The screen row the rules were last drawn on, or -1 when they were not
+      drawn at all.  Published because the ink itself cannot be checked from
+      a test: PaintTo into a bitmap reproduces LED's gutter drawing and not
+      its text-area drawing, so what the painter decided is the most a
+      scripted run can see.  The rules themselves are checked by eye. }
+    property CurrentLineRow: Integer read FCurrentLineRow;
+    { The tint behind a line whose block is folded shut.  Set from the theme
+      by the document, as the guide colour is. }
+    property FoldedLineColour: TColor
+      read FFoldedLineColour write FFoldedLineColour;
+    function LineIsFolded(ALine: Integer): Boolean;
+
+    { The document as it is *shown*: folded blocks counted once, not once per
+      line inside them.  SynEdit calls this view space, and TopLine is in it
+      -- which is why anything that scrolls the view has to speak it.  The
+      minimap drew and scrolled in text lines instead, so a file with a block
+      folded shut scrolled to the wrong place and further wrong the more was
+      folded. }
+    function ViewLineCount: Integer;
+    { A 1-based view line to the 0-based text line it shows. }
+    function ViewLineToTextIndex(AViewPos: Integer): Integer;
+    { The markup that shades every other appearance of the word at the caret.
+      Published so a check can count what it found. }
+    property HighlightWord: TSynEditMarkupHighlightAllCaret read FHighlightWord;
     { The markup that colours the three columns.  Exposed so the theme can
       be handed to it -- the colours are derived from the editor's own, and
       only the caller knows when those have changed. }
@@ -257,7 +310,13 @@ begin
        eoKeepCaretX]
     - [eoSmartTabs];
 
-  Options2 := Options2 + [eoEnhanceEndKey];   // smart End
+  { eoScrollPastEol above lets the caret sit past the last character, which
+    column selection needs -- and which also had an ordinary selection shade
+    the empty space out to the right edge of the view.  SynEdit has a switch
+    for exactly that, so a selection is now painted only as far as there is
+    text on the line. }
+  Options2 := Options2 + [eoEnhanceEndKey,           // smart End
+                          eoColorSelectionTillEol];
 
   { medit selected a rectangle with Ctrl+drag; SynEdit ships Alt+drag.  Both
     are bound, since Alt+drag is grabbed by the window manager on several
@@ -287,6 +346,39 @@ begin
     So the Ctrl entries go in MouseTextActions too, and the stock selection
     entries get ssCtrl added to their masks so they stand down when it is
     held.  emAltSetsColumnMode stays on, which is what keeps Alt+drag. }
+  { Click a word and every other appearance of it in view is shaded.  SynEdit
+    ships the markup and adds it to every editor; it stays dormant until it
+    is given a colour, which the theme does.
+
+    FullWord so that clicking "count" does not light up "counter"; a quarter
+    second so it follows the caret without chasing every keystroke; and
+    keywords included, because "if" and "end" are exactly what one clicks
+    when trying to see the shape of a block. }
+  FHighlightWord :=
+    TSynEditMarkupHighlightAllCaret(MarkupByClass[TSynEditMarkupHighlightAllCaret]);
+  if FHighlightWord <> nil then
+  begin
+    { Short enough to feel like a response to the click rather than a
+      afterthought.  SynEdit's own default is 1000, and 250 still read as a
+      lag; below about a hundred the search starts chasing the caret while
+      it is still moving. }
+    FHighlightWord.WaitTime := 120;
+    FHighlightWord.FullWord := True;
+    FHighlightWord.IgnoreKeywords := False;
+    FHighlightWord.Trim := True;
+    { And a word that appears once is still shaded.  SynEdit hides a lone
+      match by default, on the reasoning that there is nothing to compare it
+      with -- but from the outside that is a click that sometimes answers and
+      sometimes does not, with no way to tell which it will be until it has
+      already not answered.  Shading it says both things at once: the click
+      registered, and this is the only one here. }
+    FHighlightWord.HideSingleMatch := False;
+  end;
+
+  { A line whose block is folded shut is tinted, so a collapsed block reads
+    as one at a glance rather than only from the chevron beside it. }
+  OnSpecialLineMarkup := @SpecialLineMarkup;
+
   MouseOptions := MouseOptions + [emUseMouseActions, emAltSetsColumnMode];
   ResetMouseActions;
 
@@ -700,6 +792,174 @@ begin
   APts[7] := Point(ALeft,             ATop + C);
 end;
 
+{ Put the caret back on the last character of its line when it has landed
+  past the end.  Nothing to do when it has not, so this is safe to call on
+  every click. }
+procedure TLedEdit.ClampCaretToLineEnd;
+var
+  Last: Integer;
+begin
+  if FHexMode then Exit;       { a dump has its own snapping }
+  if (CaretY < 1) or (CaretY > Lines.Count) then Exit;
+  Last := Length(Lines[CaretY - 1]) + 1;
+  if CaretX > Last then CaretX := Last;
+end;
+
+procedure TLedEdit.ClampSelectionToLineEnd;
+
+  function Clamped(const P: TPoint): TPoint;
+  var
+    Last: Integer;
+  begin
+    Result := P;
+    if (Result.Y < 1) or (Result.Y > Lines.Count) then Exit;
+    Last := Length(Lines[Result.Y - 1]) + 1;
+    if Result.X > Last then Result.X := Last;
+  end;
+
+var
+  B, E: TPoint;
+begin
+  if FHexMode then Exit;
+  if SelectionMode = smColumn then Exit;   { a rectangle may reach past a line }
+  if not SelAvail then Exit;
+  B := Clamped(BlockBegin);
+  E := Clamped(BlockEnd);
+  if (B.X = BlockBegin.X) and (E.X = BlockEnd.X) then Exit;
+  { Assigned rather than set through SetCaretAndSelection, which is private
+    to TCustomSynEdit.  BlockBegin first: assigning it moves the anchor and
+    takes the far end with it. }
+  BlockBegin := B;
+  BlockEnd := E;
+end;
+
+function TLedEdit.SelectionIsReal: Boolean;
+
+  function Clamped(const P: TPoint): TPoint;
+  var
+    Last: Integer;
+  begin
+    Result := P;
+    if (Result.Y < 1) or (Result.Y > Lines.Count) then Exit;
+    Last := Length(Lines[Result.Y - 1]) + 1;
+    if Result.X > Last then Result.X := Last;
+  end;
+
+var
+  B, E: TPoint;
+begin
+  Result := SelAvail;
+  if not Result then Exit;
+  if SelectionMode = smColumn then Exit;
+  B := Clamped(BlockBegin);
+  E := Clamped(BlockEnd);
+  Result := (B.Y <> E.Y) or (B.X <> E.X);
+end;
+
+{ Give a folded line its tint.  SynEdit asks this for every line it is about
+  to draw, so the answer has to be cheap: one lookup of the fold state of the
+  screen row the line is on. }
+procedure TLedEdit.SpecialLineMarkup(Sender: TObject; Line: Integer;
+  var Special: Boolean; AMarkup: TSynSelectedColor);
+begin
+  if FFoldedLineColour = clNone then Exit;
+  if not LineIsFolded(Line) then Exit;
+
+  Special := True;
+  AMarkup.Background := FFoldedLineColour;
+end;
+
+{ True when ALine, a 1-based text line, carries a block that is folded shut.
+
+  The same question the fold gutter asks to decide which way to point its
+  chevron, and public so it can be asked without painting -- which is how the
+  tint is checked. }
+function TLedEdit.LineIsFolded(ALine: Integer): Boolean;
+var
+  FV: TSynEditFoldedView;
+  Row: Integer;
+begin
+  Result := False;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+  Row := FV.TextIndexToScreenLine(ALine - 1);
+  if (Row < 0) or (Row > LinesInWindow) then Exit;
+  Result := cfCollapsedFold in FV.FoldType[Row];
+end;
+
+{ The top of the view chain, not the folded view half way down it.
+
+  Each view in the chain hides or adds rows for its own reason -- folding
+  takes them away, word wrap puts them back -- and only the one the display
+  reads from has the answer they all add up to.  Asked of the folded view, a
+  wrapped line counted as one row while TopLine counted it as many, which is
+  the same disagreement folding caused before it was asked of the folded view
+  rather than of the buffer. }
+function TLedEdit.ViewLineCount: Integer;
+begin
+  if TextView <> nil then
+    Result := TextView.ViewedCount
+  else
+    Result := Lines.Count;
+end;
+
+function TLedEdit.ViewLineToTextIndex(AViewPos: Integer): Integer;
+begin
+  Result := AViewPos - 1;
+  if TextView <> nil then
+    Result := TextView.ViewToTextIndex(AViewPos - 1);
+  if Result < 0 then Result := 0;
+  if Result > Lines.Count - 1 then Result := Lines.Count - 1;
+end;
+
+{ The caret's row, marked with a rule above and below rather than filled in.
+
+  A band of colour behind the whole row competes with the syntax colouring it
+  sits under and, on a wide window, draws a stripe across mostly empty space.
+  Two rules say the same thing and leave the text alone -- which is what the
+  fold guides and the right margin already do.
+
+  Drawn over the text area only: the gutter has its own emphasis for the
+  caret's line, in the line number. }
+procedure TLedEdit.DrawCurrentLineEdges;
+var
+  FV: TSynEditFoldedView;
+  Row, TextIdx, Y, X0: Integer;
+begin
+  FCurrentLineRow := -1;
+  if FCurrentLineColour = clNone then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  { A selection is the thing to look at, not the row -- but only a selection
+    with something in it.  See SelectionIsReal. }
+  if SelectionIsReal then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+
+  X0 := 0;
+  if Gutter.Visible then X0 := Gutter.Width;
+
+  for Row := 0 to LinesInWindow do
+  begin
+    TextIdx := FV.ScreenLineToTextIndex(Row);
+    if TextIdx <> CaretY - 1 then Continue;
+
+    { Filled rather than stroked.  A one-pixel FillRect puts down exactly the
+      colour asked for; Canvas.Line goes through the pen, and the pen carries
+      state from whatever drew last -- which is how the first version of this
+      drew two pixels of the right colour and the rest in the page's. }
+    Canvas.Brush.Style := bsSolid;
+    Canvas.Brush.Color := FCurrentLineColour;
+
+    Y := Row * LineHeight;
+    FCurrentLineRow := Row;
+    Canvas.FillRect(X0, Y, ClientWidth, Y + 1);
+    { The lower rule sits on the last row of the line rather than the first
+      row of the next one, or two adjacent lines share a rule and the pair
+      reads as one band again. }
+    Canvas.FillRect(X0, Y + LineHeight - 1, ClientWidth, Y + LineHeight);
+    Break;
+  end;
+end;
+
 procedure TLedEdit.DrawDebugMarks;
 var
   FV: TSynEditFoldedView;
@@ -946,6 +1206,7 @@ end;
 procedure TLedEdit.Paint;
 begin
   inherited Paint;
+  DrawCurrentLineEdges;
   DrawBlockGuides;
   DrawLongLineMarkers;
   DrawDebugMarks;
@@ -1141,6 +1402,10 @@ end;
 destructor TLedEdit.Destroy;
 begin
   FreeAndNil(FCompletion);
+  { The wrap view belongs to the manager while wrapping is on and to nobody
+    while it is off, so this is the one place it has to be freed by hand. }
+  if (FWrapPlugin <> nil) and (not FWrapOn) then
+    FreeAndNil(FWrapPlugin.FLineMapView);
   inherited Destroy;
 end;
 
@@ -1181,6 +1446,19 @@ var
   Expr: string;
 begin
   inherited MouseMove(AShift, X, Y);
+
+  { A drag stops at the end of the line, as a click does.  Without this every
+    click was a tiny drag into the space past the line -- a mouse moves a
+    pixel or two between press and release -- which left a selection of
+    virtual spaces: nothing drawn, nothing to see, and the current-line rules
+    suppressed because SynEdit said there was a selection. }
+  if (ssLeft in AShift) and (AShift * [ssCtrl, ssAlt] = []) and
+     (SelectionMode <> smColumn) then
+  begin
+    ClampCaretToLineEnd;
+    ClampSelectionToLineEnd;
+  end;
+
   if not Assigned(FOnHoverExpression) then Exit;
   Expr := ExpressionAtPixels(X, Y);
   if Expr = FHoverExpr then Exit;
@@ -1250,6 +1528,17 @@ begin
     end;
   end;
 
+  { A click to the right of the last character puts the caret at the end of
+    the line rather than out in the empty space beside it.  eoScrollPastEol
+    is on because column selection needs it, and the side effect is a caret
+    that can sit where there is nothing -- so arrowing, typing or selecting
+    from there all begin somewhere the text does not reach.
+
+    Only for a plain click: a rectangle is selected by holding Ctrl or Alt
+    and is the one case that does want a column past the end of a short
+    line.  Applied after inherited, because SynEdit places a clicked caret
+    through its own machinery rather than through SetCaretXY -- the same
+    reason the hex view has to correct it here. }
   if (AButton = mbLeft) and (FLongLines <> nil) and (FLongLines.Limit > 0) then
   begin
     P := PixelsToRowColumn(Point(X, Y));
@@ -1263,6 +1552,15 @@ begin
     end;
   end;
   inherited MouseDown(AButton, AShift, X, Y);
+
+  { After inherited, not before: SynEdit places a clicked caret in there, so
+    clamping first corrects the position the caret was leaving. }
+  if (AButton = mbLeft) and (AShift * [ssCtrl, ssAlt] = []) and
+     (SelectionMode <> smColumn) then
+  begin
+    ClampCaretToLineEnd;
+    ClampSelectionToLineEnd;
+  end;
 
   { SynEdit places a clicked caret through its own machinery rather than
     through SetCaretXY, so a click in the offset column would otherwise land
@@ -1347,6 +1645,37 @@ begin
     between rows changes the painting of two rows and neither of them knows
     it. }
   if FHexMode and (scCaretY in AChanges) then Invalidate;
+
+  { The caret's row is ruled above and below, and the row it has just left
+    has to lose its rules.  SynEdit invalidates what it knows changed, which
+    is the caret's own line -- so the rules on the previous row stayed until
+    something else happened to repaint it.  That is the stale rule, the pair
+    of rules that disagreed with the caret, and the several rows ruled at
+    once: each is a row nobody told to repaint.
+
+    A selection takes the rules away entirely, so a selection appearing or
+    going is the same event. }
+  if AChanges * [scCaretY, scSelection] <> [] then
+  begin
+    if (FRuledLine > 0) and (FRuledLine <> CaretY) then
+      InvalidateLine(FRuledLine);
+    FRuledLine := CaretY;
+    InvalidateLine(FRuledLine);
+  end;
+
+  { The appearance highlight stands down for a selection of several lines.
+
+    With a selection, SynEdit's markup searches for the selected text rather
+    than for the word at the caret.  Over one line that is useful and is what
+    a double-click is for -- select a word, see the others.  Over several it
+    is not: the selection matches itself, so the search-match colour is
+    painted over every selected row, which in oblivion is green filling the
+    page behind the selection.  Two answers to one question, one of them
+    shouting. }
+  if (scSelection in AChanges) and (FHighlightWord <> nil) then
+    FHighlightWord.Enabled :=
+      not (SelectionIsReal and (BlockBegin.Y <> BlockEnd.Y));
+
   if FLongLines = nil then Exit;
   if AChanges * [scCaretX, scCaretY, scSelection] = [] then Exit;
 
@@ -1373,16 +1702,62 @@ end;
 
 function TLedEdit.GetWrapEnabled: Boolean;
 begin
-  Result := FWrapPlugin <> nil;
+  { The flag, not the plugin: the plugin outlives the wrapping -- see
+    SetWrapEnabled. }
+  Result := FWrapOn;
 end;
 
+{ Wrapping is turned off by unhooking the plugin's view, not by freeing it.
+
+  TLazSynEditLineWrapPlugin has no destructor in Lazarus 2.2, and its
+  constructor leaves three things behind that nothing ever takes back: a
+  TSynEditLineMappingView in the editor's view chain, a display object on that
+  view holding a back-reference to the plugin, and a status-changed handler
+  registered with the editor for scCharsInWindow.  Freeing the plugin undoes
+  none of them, and each one is a crash of its own:
+
+    * the next repaint asks the freed plugin for its wrap column, from inside
+      PaintLines -- an access violation in the middle of drawing the text;
+    * the next thing that changes the editor's width -- a window resize, or
+      opening a pane -- reaches the freed plugin's DoWidthChanged through the
+      status-handler list.
+
+  Turning wrap on and off again was enough for the first; opening a pane
+  afterwards was enough for the second.  Neither can be undone from outside:
+  the handler is a private method, so it cannot be named to unregister it, and
+  there is no API for dropping handlers by the object that owns them.
+
+  So the plugin is never freed.  It is created the first time this view wraps
+  and kept for the life of the editor; wrapping goes off by taking its view
+  out of the chain and on again by putting it back.  Both objects stay alive,
+  so both stale references stay valid: the handler poked a live view, the
+  display object points at a live plugin.
+
+  Unlinked rather than destroyed for one more reason: RemoveSynTextView with
+  aDestroy set frees the view before it unlinks it, and the ReconnectViews
+  that follows walks into the object it has just freed -- a segmentation fault
+  rather than an exception. }
 procedure TLedEdit.SetWrapEnabled(AValue: Boolean);
 begin
-  if AValue = GetWrapEnabled then Exit;
+  if AValue = FWrapOn then Exit;
+  FWrapOn := AValue;
+
   if AValue then
-    FWrapPlugin := TLazSynEditLineWrapPlugin.Create(Self)
+  begin
+    if FWrapPlugin = nil then
+      { The constructor adds the view and wraps what is already in it. }
+      FWrapPlugin := TLazSynEditLineWrapPlugin.Create(Self)
+    else
+    begin
+      GetTextViewsManager.AddTextView(FWrapPlugin.FLineMapView);
+      FWrapPlugin.WrapAll;
+    end;
+  end
   else
-    FreeAndNil(FWrapPlugin);
+  if FWrapPlugin <> nil then
+    GetTextViewsManager.RemoveSynTextView(FWrapPlugin.FLineMapView, False);
+
+  Invalidate;
 end;
 
 end.

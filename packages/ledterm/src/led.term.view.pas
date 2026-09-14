@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  The terminal widget.
+{ LED - a lightweight editor.  The terminal widget.
 
   Custom-drawn, because there is nothing in LCL to draw a character grid with
   per-cell colour.  It owns a pseudo-terminal and a screen model; a timer
@@ -18,7 +18,7 @@ uses
   Classes, SysUtils, Types, Controls, Graphics, Forms, ExtCtrls, LCLType,
   LCLIntf,
   { On the same terms Led.Term.Pane uses Led.UI.Splitter: LCL-only, with no
-    led dependency of its own, so ledterm still builds on its own.  Unlike the
+    LED dependency of its own, so ledterm still builds on its own.  Unlike the
     focus guard below -- four lines, and so repeated rather than imported --
     what this gives is the one place the display scale is decided, and a copy
     of that here would be a second answer to the same question. }
@@ -115,7 +115,7 @@ implementation
 
 const
   { medit shipped ten named ANSI palettes (mooterminal.c:86); all ten are
-    here as data, followed by led's own.  The cursor takes the foreground,
+    here as data, followed by LED's own.  The cursor takes the foreground,
     which is what VTE does when a scheme does not name one.
 
     Colours are TColor, so $00BBGGRR -- the byte order is reversed from the
@@ -315,7 +315,7 @@ begin
     select from. }
   Cursor := crIBeam;
   { The same default the editor uses, rather than a second opinion spelled
-    out here: led ships a font and the terminal should be in it too. }
+    out here: LED ships a font and the terminal should be in it too. }
   Font.Name := LedDefaultFontName;
   { Scaled, for the reason spelled out over LedScalePointSize: on gtk2 the
     point size is the only thing that moves the rendered height.  The cell
@@ -536,9 +536,9 @@ begin
   Canvas.Brush.Color := Schemes[FScheme].Background;
   Canvas.FillRect(ClientRect);
 
-  { The active band.  clHighlight rather than a colour of led's own: it is the
+  { The active band.  clHighlight rather than a colour of LED's own: it is the
     desktop's own selection colour, so it is the blue the rest of the session
-    already uses and it follows a theme led knows nothing about. }
+    already uses and it follows a theme LED knows nothing about. }
   if FActiveMark then
   begin
     Canvas.Brush.Color := clHighlight;

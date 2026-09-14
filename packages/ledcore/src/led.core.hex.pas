@@ -1,6 +1,6 @@
-{ led - a lightweight editor.  Reading a file that is not text.
+{ LED - a lightweight editor.  Reading a file that is not text.
 
-  Opening a binary in a text editor has two failure modes and led had both.
+  Opening a binary in a text editor has two failure modes and LED had both.
   The harmless one is that it looks like rubbish.  The one that matters is
   that saving it writes the rubbish back: the text path normalises every line
   ending and re-encodes the whole buffer, so a CR that happened to sit inside

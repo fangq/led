@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Scripted GUI self-test.
+{ LED - a lightweight editor.  Scripted GUI self-test.
 
   Run with `led --self-test`.  Drives the real main window through a sequence
   of actions, checking the state the user would see, and exits non-zero on the
@@ -23,9 +23,10 @@ function LedRunSelfTest: Integer;
 implementation
 
 uses
-  Classes, SysUtils, DateUtils, Forms, ComCtrls,
+  Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
   FileUtil,
-  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighterFoldBase,
+  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
+  SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -37,10 +38,12 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
+  Led.UI.HexMarkup, Led.UI.MiniMap, AnchorDocking, BaseUnix, LazFileUtils,
+  SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
   {$ENDIF}
-  Graphics, IntfGraphics, FPimage, StdCtrls,
+  Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -50,6 +53,13 @@ uses
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
   Controls,
   PairSplitter, LCLProc;
+
+type
+  { The gtk widget behind each menu item, watched for being replaced. }
+  TLedHandleArray = array of THandle;
+
+  { The view chain is protected on TSynEdit. }
+  TLedViewPeek = class(TLedEdit);
 
 var
   Failures: Integer = 0;
@@ -77,6 +87,68 @@ begin
     Say('  FAIL  ' + AName);
     Inc(Failures);
   end;
+end;
+
+{ Every menu item in the window that has a gtk widget, and the widget it has.
+
+  A handle is what is destroyed when the LCL rebuilds an item, so it is what
+  has to be watched.  Items with no handle yet -- a submenu nobody has opened
+  -- are skipped: they have nothing to lose. }
+procedure CollectMenuHandles(F: TLedMainForm; out AItems: TFPList;
+  out AHandles: TLedHandleArray);
+
+  procedure Walk(AItem: TMenuItem);
+  var
+    i: Integer;
+  begin
+    if AItem = nil then Exit;
+    if AItem.HandleAllocated then
+    begin
+      AItems.Add(AItem);
+      SetLength(AHandles, AItems.Count);
+      AHandles[AItems.Count - 1] := AItem.Handle;
+    end;
+    for i := 0 to AItem.Count - 1 do
+      Walk(AItem.Items[i]);
+  end;
+
+var
+  i: Integer;
+begin
+  AItems := TFPList.Create;
+  SetLength(AHandles, 0);
+  for i := 0 to F.ComponentCount - 1 do
+    if F.Components[i] is TMenu then
+      Walk(TMenu(F.Components[i]).Items);
+end;
+
+{ How many of them have been given a different widget since. }
+function ChangedHandles(AItems: TFPList;
+  const AHandles: TLedHandleArray): Integer;
+var
+  i: Integer;
+  Item: TMenuItem;
+begin
+  Result := 0;
+  for i := 0 to AItems.Count - 1 do
+  begin
+    Item := TMenuItem(AItems[i]);
+    if not Item.HandleAllocated then
+      Inc(Result)
+    else if Item.Handle <> AHandles[i] then
+      Inc(Result);
+  end;
+end;
+
+{ How many of a menu's entries the user can actually see. }
+function VisibleItems(AParent: TMenuItem): Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  if AParent = nil then Exit;
+  for i := 0 to AParent.Count - 1 do
+    if AParent.Items[i].Visible then Inc(Result);
 end;
 
 procedure CheckEq(const AName: string; const AExpected, AActual: string);
@@ -351,7 +423,7 @@ begin
     medit's preference page promises "everything in prose, comments and
     strings in code" and its implementation does neither -- it switches
     checking off for any file with a language, Markdown and LaTeX included.
-    led does what the label says, so this pins down both halves.
+    LED does what the label says, so this pins down both halves.
 
     Note the word: an earlier check above ignores "recieve" for the session,
     so reusing it here would test nothing. }
@@ -670,7 +742,13 @@ begin
 
   for i := 0 to 9 do V.ClearBookMark(i);
   F.PopulateBookmarkMenu;
-  CheckEqInt('with none set the menu is empty', 0, F.miBookmarks.Count);
+  { Nothing shown -- which is not the same as nothing there.  A dynamic
+    submenu is refilled from its own parent's OnClick, so its old contents
+    are hidden rather than destroyed: freeing the widgets of a menu gtk is in
+    the middle of opening is what crashed LED when the pointer was swept
+    quickly along the menu bar. }
+  CheckEqInt('with none set the menu shows nothing', 0,
+    VisibleItems(F.miBookmarks));
   Check('and says so', not F.miBookmarks.Enabled);
 
   F.ActiveTab.Document.Master.Modified := False;
@@ -1057,7 +1135,7 @@ begin
   end;
 
   { medit shipped ten named ANSI palettes.  Checked by name rather than by
-    count, so led is free to add its own without the check going off -- the
+    count, so LED is free to add its own without the check going off -- the
     parity note claimed five were missing when six were, which is what
     counting instead of naming gets you. }
   Say('terminal colour schemes');
@@ -1172,6 +1250,87 @@ begin
 
   DeleteFile(Path1);
   DeleteFile(Path2);
+end;
+
+{ How many pixels of AName's icon, as the application builds it, are still
+  the mask colour -- which is what a purple block in a menu is. }
+function IconMaskLeak(const AName: string): Integer;
+var
+  Images: TImageList;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y: Integer;
+  C: TFPColor;
+begin
+  Result := 0;
+  Images := TImageList.Create(nil);
+  Bmp := TBitmap.Create;
+  try
+    Images.Width := 20;
+    Images.Height := 20;
+    LedBuildIconList(Images, [AName], clBtnText);
+    if Images.Count = 0 then Exit;
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(20, 20);
+    Images.GetBitmap(0, Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Alpha >= $4000) and (C.Red > $C000) and (C.Blue > $C000) and
+             (C.Green < $4000) then Inc(Result);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+    Images.Free;
+  end;
+end;
+
+{ How many pixels of AName's icon, as the application builds it, are exactly
+  AColour.  Built here rather than read out of ImageList1 so the check is of
+  the drawing and not of one particular list. }
+function IconColourCount(const AName: string; AColour: TColor): Integer;
+var
+  Images: TImageList;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y: Integer;
+  C, Want: TFPColor;
+begin
+  Result := 0;
+  if AColour = clNone then Exit;
+  Want := TColorToFPColor(ColorToRGB(AColour));
+  Images := TImageList.Create(nil);
+  Bmp := TBitmap.Create;
+  try
+    Images.Width := 16;
+    Images.Height := 16;
+    LedBuildIconList(Images, [AName], clBtnText);
+    if Images.Count = 0 then Exit;
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(16, 16);
+    Images.GetBitmap(0, Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red = Want.Red) and (C.Green = Want.Green) and
+             (C.Blue = Want.Blue) then Inc(Result);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+    Images.Free;
+  end;
 end;
 
 { True when an icon has a hole in it: a background pixel with ink above,
@@ -1319,7 +1478,7 @@ begin
   if D = nil then Exit;
   try
     { Looked up here as well as in Led.UI.XError, so the request is sent
-      whether or not led installed anything -- a check that provokes nothing
+      whether or not LED installed anything -- a check that provokes nothing
       when the fix is missing proves nothing about the fix. }
     Major := 0;
     if not XQueryExtension(D, 'MIT-SHM', @Major, @FirstEvent, @FirstError) then
@@ -1344,7 +1503,7 @@ begin
     XCloseDisplay(D);
   end;
   { Reached at all only because the process did not exit. }
-  Check('and led is still running', F <> nil);
+  Check('and LED is still running', F <> nil);
 {$ELSE}
   Say('  (not an X11 build; nothing to provoke)');
   Check('the stub reports no opcode', LedXShmOpcode = -1);
@@ -1356,6 +1515,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   x, y, Clear, Opaque, Purple, i, Blank: Integer;
+  Leaky: string;
   C: TFPColor;
   Hidden: TForm;
   Ed: TEdit;
@@ -1412,6 +1572,14 @@ begin
   finally
     Bmp.Free;
   end;
+
+  { Every icon, not just one of them.  Two in the Help menu were showing the
+    mask as a purple block, which a check on 'save' alone could never see. }
+  Leaky := '';
+  for i := 0 to High(LedIconNames) do
+    if IconMaskLeak(LedIconNames[i]) > 0 then
+      Leaky := Leaky + LedIconNames[i] + ' ';
+  CheckEq('no icon lets the mask colour through: ' + Leaky, '', Leaky);
 
   { Breakpoint against Run.  Both are solid shapes in the same ink on a
     monochrome toolbar, and a filled disc and a filled triangle at sixteen
@@ -1476,7 +1644,7 @@ end;
 
 { Pane geometry.  AnchorDocking sizes a newly docked pane from the one it
   lands beside -- Max(1, Min(NewSite.Width, Sibling.Width div 2)) -- so before
-  led re-asserted the size itself, three panes down one edge came out 229, 114,
+  LED re-asserted the size itself, three panes down one edge came out 229, 114,
   57, and closing and reopening them walked the edge down to the Max(1,...)
   floor and left it there.  A pane one pixel wide is not a pane. }
 procedure TestPaneSizes(F: TLedMainForm);
@@ -1543,16 +1711,27 @@ begin
   end;
   F.Dock.HidePane('files');
   Pump; Pump;
-  { Narrow enough that one pane and the editor's floor genuinely do not both
-    fit -- 560 did, which is why this first asserted a growth that correctly
-    never happened. }
+  { As narrow as the window will go.  Not 400: the window has a floor of its
+    own -- the toolbar, checked further down -- and on a desktop whose fonts
+    make that floor 548, a pane and the editor's own floor both fit at it and
+    there is correctly nothing to grow for.  Asking for growth unconditionally
+    made this fail on the machine it was written on and pass elsewhere, which
+    says nothing about the dock either way.
+
+    So what is asserted is the property, which holds at any width: the pane
+    gets a usable size and the editor keeps its floor.  The growth is
+    asserted only where the two genuinely do not both fit. }
   F.Width := 400;
   Pump; Pump;
   W1 := F.Width;
   F.Dock.ShowPane('files');
   Pump; Pump;
-  CheckGt('a narrow window grows to fit a pane rather than shrinking it',
-    W1, F.Width);
+  if W1 < LedScale96(120) + LedScale96(240) then
+    CheckGt('a narrow window grows to fit a pane rather than shrinking it',
+      W1, F.Width)
+  else
+    Say(Format('  (the window will not go below %d, where a pane and the ' +
+      'editor both fit; no growth to check)', [W1]));
   CheckGt('and the pane it made room for is usable', 120,
     F.Dock.PaneSize('files'));
   CheckGt('and the editor keeps its floor', 200, F.Dock.Center.Width);
@@ -1625,6 +1804,85 @@ begin
     F.Dock.HidePane(Ids[i]);
     Pump;
   end;
+end;
+
+{ A pane keeps the size it was dragged to when it is closed and opened again.
+
+  Two sizes are in play and only one of them may be remembered.  The size a
+  layout pass produced must not be: feeding that back in is what made every
+  reopen shrink the edge a little further, which TestPaneSizes above still
+  guards.  The size a splitter drag produced must be, and that is what this
+  covers -- the user set it by hand and closing the pane is not a reason to
+  throw it away.
+
+  The drag is done in two pieces because a real one cannot be had headless:
+  TCustomSplitter reads the pointer with GetCursorPos, so synthetic MouseMove
+  events all compute an offset of zero.  So the size is moved by MoveSplitter,
+  which is what a drag calls, and the drag is then ended by the MouseUp the
+  dock hangs its recording off.  Both halves are the real code. }
+type
+  { MouseUp is protected, and ending a drag is the whole point here. }
+  TSplitAccess = class(TCustomSplitter);
+
+procedure TestPaneSizeMemory(F: TLedMainForm);
+var
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  Split: TAnchorDockSplitter;
+  W0, W1, W2: Integer;
+begin
+  Say('pane size memory');
+
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  W0 := F.Dock.PaneSize('files');
+  CheckGt('the files pane opens at a usable width', 40, W0);
+
+  Pane := F.Dock.FindPane('files');
+  Site := nil;
+  if Pane <> nil then Site := DockMaster.GetAnchorSite(Pane);
+  Split := nil;
+  { A left pane is anchored to the splitter on its right. }
+  if (Site <> nil) and (Site.AnchorSide[akRight].Control is TAnchorDockSplitter) then
+    Split := TAnchorDockSplitter(Site.AnchorSide[akRight].Control);
+  Check('the files pane has a splitter to drag', Split <> nil);
+  if Split = nil then Exit;
+
+  Split.MoveSplitter(LedScale96(70));
+  Pump;
+  W1 := F.Dock.PaneSize('files');
+  CheckGt('dragging the splitter widens the pane', W0 + LedScale96(20), W1);
+
+  { The end of the drag.  No MouseDown preceded it, so StopSplitterMove has
+    nothing to undo and this is only the notification. }
+  TSplitAccess(Split).MouseUp(mbLeft, [], 0, 0);
+
+  F.Dock.HidePane('files');
+  Pump; Pump;
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  W2 := F.Dock.PaneSize('files');
+
+  { Within a few pixels: the reopened pane is put back by moving a splitter,
+    and a splitter lands on whole steps of whatever the layout can give. }
+  CheckGt('a reopened pane comes back at the width it was dragged to',
+    W1 - LedScale96(12), W2);
+  CheckGt('and not wider than it was dragged to', W2 - LedScale96(12), W1);
+
+  { Back to where it started, so what follows sees the default edge.  The
+    same two pieces: move, then end the drag. }
+  Split := nil;
+  Site := DockMaster.GetAnchorSite(F.Dock.FindPane('files'));
+  if (Site <> nil) and (Site.AnchorSide[akRight].Control is TAnchorDockSplitter) then
+    Split := TAnchorDockSplitter(Site.AnchorSide[akRight].Control);
+  if Split <> nil then
+  begin
+    Split.MoveSplitter(W0 - F.Dock.PaneSize('files'));
+    Pump;
+    TSplitAccess(Split).MouseUp(mbLeft, [], 0, 0);
+  end;
+  F.Dock.HidePane('files');
+  Pump;
 end;
 
 { The tab strip's close button, the window's minimum size, and the band that
@@ -1706,7 +1964,7 @@ begin
   CheckEqInt('and closing a tab is what it does', Before - 1, F.TabCount);
 end;
 
-{ The font led brings with it.
+{ The font LED brings with it.
 
   Bundled rather than assumed installed, so the default is the same face on
   every machine instead of whatever the desktop calls "Monospace".  The two
@@ -1721,6 +1979,8 @@ end;
 procedure TestBundledFont(F: TLedMainForm);
 var
   Term: TLedTermView;
+  FontName: string;
+  FontSize: Integer;
 begin
   Say('bundled font');
 
@@ -1743,6 +2003,33 @@ begin
     CheckEq('and so is the terminal', LedBundledFontName, Term.Font.Name);
   F.Dock.HidePane('terminal');
   Pump;
+
+  { Upgrading from a prefs.ini written before the font was bundled.
+
+    "Monospace 10" is not a choice anyone made: it is what the Preferences
+    dialog stored when it was accepted, back when it was the resolved
+    default.  Left alone it shadows the shipped font for ever, and it
+    survives the not-installed check because the toolkit lists the alias
+    among its families -- which is why this is asserted rather than assumed. }
+  Check('the toolkit lists the alias as though it were a family',
+    Screen.Fonts.IndexOf('Monospace') >= 0);
+  Check('and it is recognised as an alias all the same',
+    LedIsGenericFamily('Monospace'));
+
+  LedParseFontSpec('Monospace 10', FontName, FontSize);
+  CheckEq('so an upgraded preference falls through to the bundled font',
+    LedBundledFontName, FontName);
+  CheckEqInt('keeping the size that was chosen', 10, FontSize);
+
+  { And a real face is left exactly where it is -- the whole point of the
+    distinction.  Checked with the bundled family itself, which is the one
+    name this suite knows is installed. }
+  LedParseFontSpec(LedBundledFontName + ' 13', FontName, FontSize);
+  CheckEq('a real family is never second-guessed',
+    LedBundledFontName, FontName);
+  CheckEqInt('nor its size', 13, FontSize);
+
+  Check('an alias is told from a face', not LedIsGenericFamily(LedBundledFontName));
 end;
 
 { Untitled numbering.
@@ -2172,6 +2459,74 @@ begin
   Check('opening a file records it as recent',
     (F.Recent.Count > 0) and (F.Recent[0] = ExpandFileName(Path)));
   DeleteFile(Path);
+end;
+
+{ The clipboard is left alone while a menu is open.
+
+  Asking whether it holds text is a synchronous X round trip on gtk2, and the
+  LCL waits for the answer by running the event loop -- so asking it from the
+  action-update pass, which runs on every idle including every idle while a
+  menu is open, re-enters gtk's menu handling from inside the menu.  Rows stay
+  lit behind the pointer, and sweeping the pointer up and down an open submenu
+  is an access violation inside gtk with none of LED's frames near it.
+  TLedMainForm.ClipboardHasText carries the stack it dies on.
+
+  Reproduced with the pointer driven by XTest over the Open Recent submenu and
+  another client owning the selection: nine runs out of nine died before the
+  guard, none of eleven after.  The selection owner is what two earlier hunts
+  were missing -- a clipboard nobody owns answers with no round trip at all,
+  so on a bare Xvfb this cannot happen.
+
+  The check asserts the number of times LED has actually asked, because a
+  round trip is what crashes: a flag holding the right value would say nothing
+  about whether the question went out.  Removing the guard fails it. }
+procedure TestClipboardUnderGrab(F: TLedMainForm);
+const
+  { Longer than the poll's own cache, which would otherwise be the reason
+    nothing was asked, and the check would pass with the guard removed. }
+  PastTheCache = 300;
+var
+  V: TLedEdit;
+  Before, i: Integer;
+begin
+  Say('the clipboard while a menu is open');
+  if (F.ActiveTab = nil) or (F.ActiveTab.ActiveView = nil) then
+  begin
+    Say('  (no document; skipped)');
+    Exit;
+  end;
+  V := F.ActiveTab.ActiveView;
+
+  Pump;
+  F.ClipboardHasText(V);
+  Sleep(PastTheCache);
+
+  Before := F.ClipboardPolls;
+  F.ClipboardHasText(V);
+  CheckEqInt('with nothing grabbing, the clipboard is asked',
+    Before + 1, F.ClipboardPolls);
+
+  if not LedToolkitGrabTake(F) then
+  begin
+    Say('  (this toolkit has no grab a check can raise; skipped)');
+    Exit;
+  end;
+  try
+    Check('a grab is visible while it is held', LedToolkitGrabActive);
+    Sleep(PastTheCache);
+    Before := F.ClipboardPolls;
+    for i := 1 to 20 do
+      F.ClipboardHasText(V);
+    CheckEqInt('and while it is held the clipboard is not asked once',
+      Before, F.ClipboardPolls);
+  finally
+    LedToolkitGrabRelease(F);
+  end;
+
+  Check('the grab is gone once it is given back', not LedToolkitGrabActive);
+  Before := F.ClipboardPolls;
+  F.ClipboardHasText(V);
+  CheckEqInt('and asking resumes', Before + 1, F.ClipboardPolls);
 end;
 
 procedure TestLanguageAndTheme(F: TLedMainForm);
@@ -2967,8 +3322,8 @@ begin
     CheckEq('a choice setting round-trips', 'oblivion',
       LedPrefs.GetStr('Editor/color_scheme', 'medit'));
 
-    { medit had eight preference pages and led had three, which is the gap
-      this counts.  Plugins are not one of them: led has no dynamic plugin
+    { medit had eight preference pages and LED had three, which is the gap
+      this counts.  Plugins are not one of them: LED has no dynamic plugin
       loading to configure. }
     CheckEqInt('every preference page is present', 6, Dlg.PageCount);
     Check('and the list pages built their contents', Dlg.ListPagesReady);
@@ -3182,12 +3537,34 @@ begin
 
 end;
 
+type
+  { Catches what the browser asks to open, so a double-click can be checked
+    without the main form actually opening a tab for it.  A class because
+    TLedOpenFileEvent is a method pointer. }
+  TBrowserOpenCatcher = class
+    Last: string;
+    procedure Note(const AFileName: string);
+  end;
+
+procedure TBrowserOpenCatcher.Note(const AFileName: string);
+begin
+  Last := AFileName;
+end;
+
 procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
-  Root: TTreeNode;
-  RootRaised: string;
-  EditH, i: Integer;
+  TabForIcon: TLedTab;
+  HintRect: TRect;
+  Root, Node: TTreeNode;
+  RootRaised, BrowseDir, Names, Kinds, LinkDir, LinkPath: string;
+  EditH, i, x, Tabs0, Tabs1: Integer;
+  SavedOpen: TLedOpenFileEvent;
+  Catcher: TBrowserOpenCatcher;
+  Pane: TLedPaneForm;
+  Host: TWinControl;
+  Hdr: TAnchorDockHeader;
+  L: TStringList;
 begin
   Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
@@ -3247,11 +3624,355 @@ begin
   Say(Format('    nav: %d px glyph on a %d px button',
     [F.Browser.NavGlyphSize, F.Browser.NavButtonSize]));
 
-  Check('the splitter has something to resize',
-    F.Browser.SplitterTarget <> nil);
-  Check('and it is the panel holding the file list, not the filter row',
-    (F.Browser.SplitterTarget <> nil) and
-    (F.Browser.FileList.Parent = F.Browser.SplitterTarget));
+  { One tree, holding folders and files together.  It replaced a folder tree
+    over a file list, so what used to be checked here -- that the splitter
+    resized the list and not the filter row -- has nothing left to be about. }
+  { The pane headers: a name in small capitals, in the desktop's blue. }
+  { The header belongs to the host site a pane is docked into, not to the
+    pane, so it is reached by walking up. }
+  Pane := F.Dock.FindPane('files');
+  Hdr := nil;
+  if Pane <> nil then
+  begin
+    Host := Pane.Parent;
+    while (Host <> nil) and (not (Host is TAnchorDockHostSite)) do
+      Host := Host.Parent;
+    if Host <> nil then Hdr := TAnchorDockHostSite(Host).Header;
+  end;
+  Check('the files pane has a header', Hdr <> nil);
+  if Hdr <> nil then
+  begin
+    Check('whose caption is not empty, so there is something to shape',
+      Trim(Hdr.Caption) <> '');
+    CheckEq('and is upper-cased', UpperCase(Hdr.Caption), Hdr.Caption);
+    { Against a real number rather than the form's, which reports 0 -- the
+      LCL's way of saying "whatever the desktop uses" -- so "smaller than the
+      form" compares 7 with 0 and means nothing. }
+    Check('sized explicitly rather than inherited', Hdr.Font.Size > 0);
+    Check('and set bold, which is what a smaller face needs back',
+      fsBold in Hdr.Font.Style);
+    CheckGt('and smaller than the nine points it derives from', Hdr.Font.Size,
+      9);
+    CheckEqInt('in the colour the dock mixes for it',
+      ColorToRGB(LedHeaderCaptionColour), ColorToRGB(Hdr.Font.Color));
+    { And that colour can actually be read off the band it sits on.  The
+      desktop's selection blue is chosen to carry white text, not to be text
+      on a dark grey, so on a dark desktop the first version of this was
+      unreadable. }
+    CheckGt('with enough contrast against the header band to read', 60,
+      Abs(LedColourLuma(LedHeaderCaptionColour) -
+          LedColourLuma(LedLiftColour(clForm, 12))));
+  end;
+
+  Check('the pane is a single tree', F.Browser.Tree <> nil);
+
+  { And painted in the editor's colours rather than the desktop's, so the two
+    halves of the window agree. }
+  if F.ActiveView <> nil then
+  begin
+    CheckEqInt('the tree takes the editor''s page colour',
+      ColorToRGB(F.ActiveView.Color), ColorToRGB(F.Browser.Tree.Color));
+    CheckEqInt('and its text colour',
+      ColorToRGB(F.ActiveView.Font.Color),
+      ColorToRGB(F.Browser.Tree.Font.Color));
+  end;
+  Check('there is no splitter left to resize anything',
+    F.Browser.SplitterTarget = nil);
+  Check('and the tree shows files as well as folders',
+    (otNonFolders in F.Browser.Tree.ObjectTypes) and
+    (otFolders in F.Browser.Tree.ObjectTypes));
+  Check('with the whole row selectable', F.Browser.Tree.RowSelect);
+  Check('and a chevron beside anything that opens',
+    F.Browser.Tree.ShowButtons);
+  { Drawn by LED, not by the LCL: its three built-in signs are a themed box,
+    a plus-minus and an outlined triangle, and a file tree wants a chevron. }
+  Check('which LED draws itself', F.Browser.DrawsOwnChevron);
+  Check('and pictures to put on the rows',
+    (F.Browser.Tree.Images <> nil) and (F.Browser.Tree.Images.Count > 0));
+
+  { The pictures are coloured, and the colour is the file kind's own.  Read
+    off the built bitmap rather than from the table that produced it: an
+    accent that never reaches the image list is a table nobody can see. }
+  Check('a file kind has a colour of its own',
+    LedIconAccent('filesource') <> clNone);
+  { The toolbar is coloured too now, in the Tango palette medit's stock GTK
+    icons came from.  This check used to assert the opposite -- that a
+    toolbar stays one ink -- which was my judgement before seeing the two
+    side by side. }
+  Check('and so does a toolbar action', LedIconAccent('save') <> clNone);
+  Check('with the kinds of action told apart by it',
+    LedIconAccent('save') <> LedIconAccent('delete'));
+  Check('while something with no natural colour keeps the caller''s',
+    LedIconAccent('wrap') = clNone);
+  CheckGt('the source icon is drawn in its blue', 0,
+    IconColourCount('filesource', LedIconAccent('filesource')));
+  CheckGt('and the pdf icon in its red', 0,
+    IconColourCount('filepdf', LedIconAccent('filepdf')));
+  CheckGt('and Save is drawn in its own blue', 0,
+    IconColourCount('save', LedIconAccent('save')));
+
+  { The fallback page too.  Drawn in the caller's ink it came out black, and
+    the file tree is painted in the editor's colours -- so on a dark scheme
+    an unrecognised file was a page-shaped hole.  A mid grey reads on both:
+    checked against black and white rather than against a taste. }
+  Check('the fallback page has a colour of its own',
+    LedIconAccent('doc') <> clNone);
+  CheckGt('which can be seen on a dark page', 30,
+    Round(10 * LedContrastRatio(LedIconAccent('doc'), clBlack)));
+  CheckGt('and on a light one', 30,
+    Round(10 * LedContrastRatio(LedIconAccent('doc'), clWhite)));
+  CheckGt('and it is drawn in it', 0,
+    IconColourCount('doc', LedIconAccent('doc')));
+
+  { One extension table, in Led.UI.Icons, so the tree and the tab headers
+    cannot disagree about what a file is. }
+  CheckEq('a C file is source', 'filesource', LedIconForFile('x.c'));
+  CheckEq('a markdown file is its own kind', 'filemarkdown',
+    LedIconForFile('README.md'));
+  CheckEq('an object file is binary', 'filebinary', LedIconForFile('x.o'));
+  CheckEq('and something unknown is a plain page', 'doc',
+    LedIconForFile('x.zzz'));
+
+  { And the tab header wears the same picture, which is the point of having
+    one rule: a file looks the same in the tree and on its tab. }
+  BrowseDir := TempName('tabicon');
+  ForceDirectories(BrowseDir);
+  L := TStringList.Create;
+  try
+    L.Add('int main(void) { return 0; }');
+    L.SaveToFile(BrowseDir + PathDelim + 'tab.c');
+  finally
+    L.Free;
+  end;
+  TabForIcon := F.AddTab(F.Documents.OpenFile(BrowseDir + PathDelim + 'tab.c'));
+  Pump;
+  if TabForIcon <> nil then
+  begin
+    CheckEqInt('a C file''s tab wears the source icon',
+      LedIconIndex('filesource'), TabForIcon.Sheet.ImageIndex);
+    { And says where the file is, which the strip has no room for -- when the
+      pointer is on the strip, and only then.
+
+      The path used to be the page's hint.  A page fills the notebook and
+      its children inherit the hint, so resting the pointer anywhere in the
+      text raised a tooltip with the file's path over the line being read. }
+    Check('the page itself carries no hint',
+      (TabForIcon.Sheet.Hint = '') and (not TabForIcon.Sheet.ShowHint));
+    HintRect := F.Notebook.TabRect(TabForIcon.Sheet.PageIndex);
+    if Assigned(F.Notebook.OnMouseMove) then
+      F.Notebook.OnMouseMove(F.Notebook, [],
+        (HintRect.Left + HintRect.Right) div 2,
+        (HintRect.Top + HintRect.Bottom) div 2);
+    Pump;
+    CheckEq('and hovering its tab carries the whole path',
+      BrowseDir + PathDelim + 'tab.c', F.Notebook.Hint);
+    Check('and the hint is switched on for it', F.Notebook.ShowHint);
+
+    { Off the strip again -- below the tabs is the page, and the notebook's
+      own hint must not linger there. }
+    if Assigned(F.Notebook.OnMouseMove) then
+      F.Notebook.OnMouseMove(F.Notebook, [], 4,
+        HintRect.Bottom + (F.Notebook.Height - HintRect.Bottom) div 2);
+    Pump;
+    CheckEq('and nothing is left behind when the pointer leaves the strip',
+      '', F.Notebook.Hint);
+    Check('which is not the plain page it used to wear',
+      TabForIcon.Sheet.ImageIndex <> LedIconIndex('doc'));
+
+    { Unsaved changes still take the marked page: which file it is stays in
+      the caption, and whether it is saved is what the icon answers. }
+    TabForIcon.ActiveView.SelText := ' ';
+    Pump;
+    CheckEqInt('and a modified one shows that instead',
+      LedIconIndex('docmodified'), TabForIcon.Sheet.ImageIndex);
+
+    TabForIcon.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  if DirectoryExists(BrowseDir) then DeleteDirectory(BrowseDir, False);
+
+  { What is actually in the tree when it is pointed at a real folder.  The
+    structure above says the pane is built to show files; this says it does,
+    and that each one got the picture its extension asks for. }
+  BrowseDir := TempName('browse');
+  ForceDirectories(BrowseDir + PathDelim + 'sub');
+  for x := 0 to 4 do
+  begin
+    L := TStringList.Create;
+    try
+      L.Add('x');
+      case x of
+        0: L.SaveToFile(BrowseDir + PathDelim + 'a.c');
+        1: L.SaveToFile(BrowseDir + PathDelim + 'b.md');
+        2: L.SaveToFile(BrowseDir + PathDelim + 'c.txt');
+        3: L.SaveToFile(BrowseDir + PathDelim + 'd.pdf');
+        4: L.SaveToFile(BrowseDir + PathDelim + 'e.o');
+      end;
+    finally
+      L.Free;
+    end;
+  end;
+
+  F.Browser.SetRoot(BrowseDir);
+  Pump; Pump;
+  Names := '';
+  Kinds := '';
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while Node <> nil do
+  begin
+    if Node.Parent <> nil then
+    begin
+      { A directory's path comes back with a trailing separator, so the name
+        has to be taken from the path with it stripped. }
+      Names := Names + ExtractFileName(ExcludeTrailingPathDelimiter(
+        F.Browser.Tree.GetPathFromNode(Node))) + ' ';
+      Kinds := Kinds + IntToStr(Node.ImageIndex) + ' ';
+    end;
+    Node := Node.GetNext;
+  end;
+  Say('  (tree holds: ' + Names + ')');
+  Say('  (icons:      ' + Kinds + ')');
+
+  Check('the folder is in the tree: ' + Names, Pos('sub ', Names) > 0);
+
+  { The root row carries the folder's name, not its whole path -- the crumb
+    bar directly above it is where the path belongs. }
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  Check('there is a root row', Node <> nil);
+  if Node <> nil then
+  begin
+    CheckEq('which shows the folder name alone',
+      ExtractFileName(ExcludeTrailingPathDelimiter(BrowseDir)), Node.Text);
+    { Retitling it must not break the paths, which the tree builds from each
+      node's own record rather than from what is written in it. }
+    { A row says where it is and, for a file, how big. }
+  CheckEq('a size reads as a person writes one', '1.5 KB',
+    LedFormatSize(1536));
+  CheckEq('and a small one stays in bytes', '12 bytes', LedFormatSize(12));
+
+  Check('and the tree still knows where that row is',
+      SameFileName(ExcludeTrailingPathDelimiter(
+        F.Browser.Tree.GetPathFromNode(Node)), BrowseDir));
+  end;
+
+  { Double-clicking a file opens it.  Opening was the file list's job before
+    the pane became one tree, and went with the list -- leaving the gesture
+    doing nothing on the rows people double-click most.  Driven through the
+    handler the LCL calls, with a file selected. }
+  Catcher := TBrowserOpenCatcher.Create;
+  SavedOpen := F.Browser.OnOpenFile;
+  F.Browser.OnOpenFile := @Catcher.Note;
+  try
+    Node := F.Browser.Tree.Items.GetFirstNode;
+    while (Node <> nil) and
+          (ExtractFileName(F.Browser.Tree.GetPathFromNode(Node)) <> 'a.c') do
+      Node := Node.GetNext;
+    Check('a file row was found to click', Node <> nil);
+    if Node <> nil then
+    begin
+      Node.Selected := True;
+      Pump;
+      if Assigned(F.Browser.Tree.OnDblClick) then
+        F.Browser.Tree.OnDblClick(F.Browser.Tree);
+      Pump;
+      Check('double-clicking a file opens it: ' + Catcher.Last,
+        Pos('a.c', Catcher.Last) > 0);
+    end;
+  finally
+    F.Browser.OnOpenFile := SavedOpen;
+    Catcher.Free;
+  end;
+
+  { Opening a file that is already open goes to its tab instead of reading it
+    again -- which would be bad enough for the parse and worse for a file with
+    unsaved edits in it. }
+  Tabs0 := F.Notebook.PageCount;
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while (Node <> nil) and
+        (ExtractFileName(F.Browser.Tree.GetPathFromNode(Node)) <> 'a.c') do
+    Node := Node.GetNext;
+  if Node <> nil then
+  begin
+    F.BrowserOpenFileNow(F.Browser.Tree.GetPathFromNode(Node));
+    Pump;
+    Tabs1 := F.Notebook.PageCount;
+    CheckEqInt('opening a file adds one tab', Tabs0 + 1, Tabs1);
+
+    { Edit it, then ask for it again the way a double-click does. }
+    if F.ActiveView <> nil then
+    begin
+      F.ActiveView.CaretXY := Point(1, 1);
+      F.ActiveView.SelText := 'EDITED ';
+      Pump;
+      Check('the document is now modified', F.ActiveTab.Document.Modified);
+
+      F.BrowserOpenFileNow(F.Browser.Tree.GetPathFromNode(Node));
+      Pump;
+      CheckEqInt('asking for it again opens no second tab', Tabs1,
+        F.Notebook.PageCount);
+      Check('and the edit is still there',
+        Pos('EDITED', F.ActiveView.Lines[0]) > 0);
+      Check('which means it was not read from disk again',
+        F.ActiveTab.Document.Modified);
+
+      { And through a second name for the same file.  A home directory that
+        links into a mounted volume is the ordinary case here, and matching
+        on the literal path opened the file twice -- two documents over one
+        file, each able to save over the other. }
+      LinkDir := TempName('viadir');
+      if ForceDirectories(LinkDir) then
+      begin
+        LinkPath := LinkDir + PathDelim + 'link';
+        if FpSymlink(PChar(BrowseDir), PChar(LinkPath)) = 0 then
+        begin
+          F.BrowserOpenFileNow(LinkPath + PathDelim + 'a.c');
+          Pump;
+          CheckEqInt('reaching it by a symlinked path opens no second tab',
+            Tabs1, F.Notebook.PageCount);
+          Check('and still shows the edit',
+            Pos('EDITED', F.ActiveView.Lines[0]) > 0);
+        end;
+        DeleteDirectory(LinkDir, False);
+      end;
+
+      F.ActiveTab.Document.Master.Modified := False;
+      F.CloseActiveTab(False);
+      Pump;
+    end;
+  end;
+
+  { The filter row is a row, not a container with two hundred pixels of
+    nothing under it -- which is what it was when the file list it had been
+    sized for went away. }
+  CheckGt('the tree fills the pane rather than a third of it',
+    F.Browser.Height div 2, F.Browser.Tree.Height);
+
+  { Making things, not only going places. }
+  { The navigation row only -- the breadcrumb trail below it is made of
+    speed buttons as well, so counting them by class across the pane finds
+    both and answers eight. }
+  CheckEqInt('six buttons on the row: four to navigate, two to create', 6,
+    F.Browser.NavButtonCount);
+  Check('every row got a picture', Pos('-1', Kinds) = 0);
+  Check('and so are the files', (Pos('a.c ', Names) > 0) and
+    (Pos('b.md ', Names) > 0) and (Pos('e.o ', Names) > 0));
+
+  { 0 folder, 1 source, 2 text, 3 markdown, 4 pdf, 5 image, 6 binary. }
+  CheckEqInt('a folder gets the folder icon', 0,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'sub'));
+  CheckEqInt('a C file gets the source icon', 1,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'a.c'));
+  CheckEqInt('a markdown file its own', 3,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'b.md'));
+  CheckEqInt('a text file its own', 2,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'c.txt'));
+  CheckEqInt('a pdf its own', 4,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'd.pdf'));
+  CheckEqInt('and an object file reads as binary', 6,
+    F.Browser.IconFor(BrowseDir + PathDelim + 'e.o'));
+
+  if DirectoryExists(BrowseDir) then DeleteDirectory(BrowseDir, False);
 
   { Clicking the tree's top row -- the root folder itself -- used to raise
     EShellCtrl, "The selected item does not exist on disk", and arrive as the
@@ -3383,6 +4104,120 @@ begin
   end;
 end;
 
+{ The symbol pane follows the active document.
+
+  It is an outline of what ctags found in the file on screen, grouped by kind
+  -- functions, classes, headings in a Markdown file -- and clicking an entry
+  goes to its line.  Which makes showing the wrong file actively harmful: the
+  line numbers are still live, so a click goes somewhere arbitrary in a
+  document those symbols were never in. }
+procedure TestSymbolsFollowTheDocument(F: TLedMainForm);
+var
+  MdPath, CPath: string;
+  L: TStringList;
+  V: TLedEdit;
+  Node: TTreeNode;
+  i: Integer;
+
+  function TreeText: string;
+  var
+    i: Integer;
+  begin
+    Result := '';
+    if F.SymbolPane = nil then Exit;
+    for i := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+      Result := Result + F.SymbolPane.Tree.Items[i].Text + '|';
+  end;
+
+begin
+  Say('symbols follow the document');
+  if not LedCtagsAvailable then
+  begin
+    Say('  (ctags is not installed; skipped)');
+    Exit;
+  end;
+  if F.SymbolPane = nil then Exit;
+
+  MdPath := TempName('outline.md');
+  L := TStringList.Create;
+  try
+    L.Add('# MarkdownChapterOne');
+    L.Add('');
+    L.Add('Some prose.');
+    L.Add('');
+    L.Add('## MarkdownSectionTwo');
+    L.SaveToFile(MdPath);
+  finally
+    L.Free;
+  end;
+
+  CPath := TempName('outline.c');
+  L := TStringList.Create;
+  try
+    L.Add('static int a_c_function(int x)');
+    L.Add('{');
+    L.Add('  return x;');
+    L.Add('}');
+    L.SaveToFile(CPath);
+  finally
+    L.Free;
+  end;
+
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+
+  F.AddTab(F.Documents.OpenFile(MdPath));
+  Pump; Pump;
+  Check('the outline of a Markdown file lists its headings: ' + TreeText,
+    Pos('MarkdownChapterOne', TreeText) > 0);
+
+  F.AddTab(F.Documents.OpenFile(CPath));
+  Pump; Pump;
+  Check('switching document rebuilds the outline: ' + TreeText,
+    Pos('a_c_function', TreeText) > 0);
+  Check('and nothing of the old file is left in it',
+    Pos('Markdown', TreeText) = 0);
+  CheckEq('and the pane agrees about which file it is showing',
+    CPath, F.SymbolPane.FileName);
+
+  { Grouped by what the symbol is.  ctags is asked for whole-word kinds, and
+    the reader understood only the one-letter ones, so every symbol in every
+    file was filed under a single group called Other. }
+  Check('the groups say what the symbols are, not "Other": ' + TreeText,
+    Pos('Function', TreeText) > 0);
+
+  { The line a symbol is on, after the file has been typed in.  ctags read
+    the copy on disk, so every line below an edit has moved and the outline's
+    numbers are stale the moment anything is inserted above them. }
+  V := F.ActiveView;
+  if V <> nil then
+  begin
+    for i := 1 to 5 do
+      V.Lines.Insert(0, '/* inserted */');
+    Pump;
+    Node := nil;
+    for i := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+      if F.SymbolPane.Tree.Items[i].Text = 'a_c_function' then
+        Node := F.SymbolPane.Tree.Items[i];
+    Check('the function is in the tree', Node <> nil);
+    if Node <> nil then
+    begin
+      F.SymbolPane.Tree.Selected := Node;
+      if Assigned(F.SymbolPane.Tree.OnDblClick) then
+        F.SymbolPane.Tree.OnDblClick(F.SymbolPane.Tree);
+      Pump;
+      CheckEqInt('and clicking it lands on the function, not five lines above',
+        6, V.CaretY);
+    end;
+  end;
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  F.Dock.HidePane('symbols');
+  Pump;
+  DeleteFile(MdPath);
+  DeleteFile(CPath);
+end;
+
 procedure TestCompletionAndSymbols(F: TLedMainForm);
 var
   V: TLedEdit;
@@ -3494,6 +4329,181 @@ begin
   DeleteFile(Path);
 end;
 
+{ Which screen LED opens on.
+
+  The window's position is restored from layout.xml, which carries it along
+  with the panes -- so on a desktop with more than one monitor LED reopened
+  wherever it was last closed, however far that was from the screen it had
+  just been launched from.
+
+  Two monitors cannot be had on a test display: Xvfb has no RandR outputs, so
+  neither +xinerama nor xrandr --setmonitor produces a second one, and the LCL
+  sees one screen however it is asked.  The arithmetic is therefore checked
+  against rectangles, which is where all of it lives, and the wiring is
+  checked against the one monitor there is. }
+procedure TestWindowPlacement(F: TLedMainForm);
+var
+  Mons: array[0..1] of TRect;
+  R, M, Saved: TRect;
+begin
+  Say('which screen it opens on');
+
+  { Two 1000x800 monitors side by side. }
+  Mons[0] := Rect(0, 0, 1000, 800);
+  Mons[1] := Rect(1000, 0, 2000, 800);
+
+  { Saved on the right-hand one, launched from the left: it comes across,
+    keeping its size and where it sat within its monitor. }
+  R := LedPlaceOnMonitor(Rect(1100, 60, 1700, 560), Mons, Point(400, 400));
+  CheckEqInt('a window saved on the other monitor comes to this one', 100,
+    R.Left);
+  CheckEqInt('at the same height', 60, R.Top);
+  CheckEqInt('keeping its width', 600, R.Right - R.Left);
+  CheckEqInt('and its height', 500, R.Bottom - R.Top);
+
+  { Launched from the monitor it was already on: untouched, including a
+    window the user has deliberately pushed off the left edge. }
+  R := LedPlaceOnMonitor(Rect(-40, 60, 560, 560), Mons, Point(400, 400));
+  CheckEqInt('a window already on this monitor is left alone', -40, R.Left);
+  CheckEqInt('exactly as it was', 60, R.Top);
+
+  { Saved somewhere no monitor covers any more -- the screen it was on is
+    unplugged -- and it is centred on the one the launch came from rather
+    than left in the void. }
+  R := LedPlaceOnMonitor(Rect(3000, 3000, 3600, 3500), Mons, Point(1400, 400));
+  Check('a window saved on a monitor that is gone lands on this one',
+    (R.Left >= Mons[1].Left) and (R.Right <= Mons[1].Right) and
+    (R.Top >= Mons[1].Top) and (R.Bottom <= Mons[1].Bottom));
+
+  { Bigger than the monitor it is moving to: shrunk to fit rather than
+    hanging off the edge. }
+  Mons[1] := Rect(1000, 0, 1400, 300);
+  R := LedPlaceOnMonitor(Rect(20, 20, 920, 720), Mons, Point(1200, 100));
+  Check('a window too big for the new monitor is shrunk onto it',
+    (R.Left >= Mons[1].Left) and (R.Right <= Mons[1].Right) and
+    (R.Top >= Mons[1].Top) and (R.Bottom <= Mons[1].Bottom));
+  Mons[1] := Rect(1000, 0, 2000, 800);
+
+  { A pointer on no monitor -- between two of them on an L-shaped desktop, or
+    not yet moved -- is not a reason to move anything. }
+  R := LedPlaceOnMonitor(Rect(1100, 60, 1700, 560), Mons, Point(5000, 5000));
+  CheckEqInt('a pointer on no monitor leaves the window where it was', 1100,
+    R.Left);
+
+  { One monitor, and a position saved when the desktop had another one or was
+    bigger: the window comes back rather than opening where nobody can see
+    it.  This is the case that matters on a single-screen machine, and it is
+    the same arithmetic. }
+  R := LedPlaceOnMonitor(Rect(2400, 1800, 3000, 2300), Mons[0..0],
+    Point(500, 400));
+  Check('a position saved off the edge of the desktop comes back',
+    (R.Left >= Mons[0].Left) and (R.Right <= Mons[0].Right) and
+    (R.Top >= Mons[0].Top) and (R.Bottom <= Mons[0].Bottom));
+
+  { And the same routines against the screen this suite is actually running
+    on.  poScreenCenter is what centred the window on the union of every
+    monitor, so it has to be off: LED positions the window itself now. }
+  Check('the window is positioned by LED, not by the LCL',
+    F.Position = poDesigned);
+
+  CheckGt('the test display has a monitor', 0, Screen.MonitorCount);
+  Saved := F.BoundsRect;
+  try
+    LedCentreOnLaunchMonitor(F);
+    Pump;
+    M := Screen.Monitors[0].WorkareaRect;
+    if (M.Right <= M.Left) or (M.Bottom <= M.Top) then
+      M := Screen.Monitors[0].BoundsRect;
+    { One monitor here, so the pointer is on it whatever it is doing. }
+    if Screen.MonitorCount = 1 then
+    begin
+      CheckEqInt('and centring puts the window in the middle of it',
+        M.Left + ((M.Right - M.Left) - F.Width) div 2, F.Left);
+      CheckEqInt('in both directions',
+        M.Top + ((M.Bottom - M.Top) - F.Height) div 2, F.Top);
+    end;
+  finally
+    F.BoundsRect := Saved;
+    Pump;
+  end;
+end;
+
+{ Word wrap, turned on and off and on again.
+
+  Once was fine and twice was fatal.  TLazSynEditLineWrapPlugin has no
+  destructor in Lazarus 2.2: its constructor puts a TSynEditLineMappingView
+  into the editor's view chain and hangs a display object on it holding a
+  back-reference to the plugin, and freeing the plugin undoes none of that.
+  The next repaint asked the freed plugin for its wrap column, in the middle
+  of drawing the text.
+
+  Taking the view out as well is what this covers, and it has to be taken out
+  in two steps: the manager's own RemoveSynTextView(..., True) frees the view
+  before unlinking it and then reconnects the chain through the corpse, which
+  is a segmentation fault rather than an exception.
+
+  Four toggles with a repaint after each, because the fault needs a paint to
+  show itself, and text long enough to actually wrap at this width. }
+procedure TestWordWrapToggling(F: TLedMainForm);
+var
+  V: TLedEdit;
+  i, WrapRows, PlainRows, W0: Integer;
+  Long: string;
+begin
+  Say('word wrap');
+
+  if F.ActiveTab = nil then F.actNewExecute(nil);
+  Pump;
+  V := F.ActiveView;
+  if V = nil then Exit;
+  { One line, long enough to wrap at any width this window can be. }
+  Long := '';
+  for i := 1 to 40 do
+    Long := Long + StringOfChar(Char(Ord('a') + i mod 26), 40) + ' ';
+  V.Lines.Text := Long;
+  Pump;
+
+  PlainRows := V.ViewLineCount;
+  for i := 1 to 4 do
+  begin
+    F.actWrapText.Execute;
+    Pump;
+    V.Repaint;
+    Pump;
+    if i = 1 then WrapRows := V.ViewLineCount;
+  end;
+
+  { It really wrapped the first time -- one line of text shown as several --
+    so what the repaints went through was the wrapped path and not a no-op. }
+  { One line of text, shown as many rows.  Counted off the top of the view
+    chain, which is the only view that sees both the folding below it and the
+    wrapping above: the folded view alone still says one. }
+  CheckEqInt('the text is one line', 1, V.Lines.Count);
+  CheckGt('turning wrap on shows it as several rows', PlainRows, WrapRows);
+  CheckEqInt('and turning it off puts them back', PlainRows, V.ViewLineCount);
+  Check('and LED is still running after four toggles', V.Parent <> nil);
+
+  { And a change of width once it is off.  The plugin registers a
+    status-changed handler for scCharsInWindow that nothing unregisters, so
+    with the plugin freed the next thing to resize the editor -- a window
+    resize, or opening a pane -- called into freed memory.  Reaching the next
+    line is the assertion: this was a hard crash, not an exception. }
+  W0 := F.Width;
+  F.Width := W0 - 60;
+  Pump;
+  F.Width := W0;
+  Pump;
+  F.Dock.ShowPane('files');
+  Pump;
+  F.Dock.HidePane('files');
+  Pump;
+  Check('and a width change after wrapping is off is harmless',
+    (V.Parent <> nil) and (F.ActiveView = V));
+
+  V.Lines.Text := '';
+  Pump;
+end;
+
 { Menus and language detection, both reported as broken from real use. }
 procedure TestMenusAndDetection(F: TLedMainForm);
 var
@@ -3504,6 +4514,14 @@ var
   Path, MakeDir: string;
   MenuFont, MenuFace: string;
   MenuSize: Integer;
+  FirstTheme, FirstLang: TMenuItem;
+  ThemeCount, LangCount: Integer;
+  Handles: TLedHandleArray;
+  Items: TFPList;
+  Fresh: TMenuItem;
+  FreshHandle: THandle;
+  Recreated: Integer;
+  Handled: Boolean;
   L: TStringList;
 
   function CountLeaves(AItem: TMenuItem): Integer;
@@ -3530,6 +4548,126 @@ begin
   Check('the encoding menu has entries', F.miEncoding.Count > 5);
   Check('the line-ending menu has three', F.miLineEnd.Count = 3);
 
+  { Nor may the action-update pass destroy one.
+
+    gtk2 builds a plain menu item for anything that is not checked, is not a
+    radio item and has no icon, and a plain item cannot carry a tick -- so the
+    LCL answers Checked := True on one by destroying the widget and building a
+    check item in its place.  LED assigns Checked from the action-update pass,
+    which runs on every idle, including every idle while the pointer is moving
+    over an open menu: the shell keeps pointing at the widget that has just
+    been freed, which is both the several-rows-highlighted-at-once and the
+    access violation that followed it.
+
+    Handles, because that is what is destroyed.  The states are flipped both
+    ways first, so every toggle LED owns is actually assigned in the pass
+    rather than left at the value it already had -- which is what makes this
+    catch a toggle added later and not made checkable. }
+  { A menu item built the way the form builds them, then ticked once.
+
+    This is the transition that used to destroy the widget, and it only
+    happens once per item: by the time the suite runs, every item the window
+    started with has long since been rebuilt as a check item, so watching
+    those catches nothing.  A fresh one catches it. }
+  { An action with no icon and no tick yet, which is the case gtk builds a
+    plain item for -- actToggleLeftPane is one of the three the debugger
+    caught being rebuilt.  An action that carries an icon was never affected:
+    gtk builds a check item for those anyway. }
+  F.actToggleLeftPane.Checked := False;
+  Fresh := TMenuItem.Create(F);
+  Fresh.Action := F.actToggleLeftPane;
+  F.mnuWindow.Add(Fresh);
+  try
+    F.MakeTogglesCheckable;
+    Pump;
+    Check('the new item has a widget to lose', Fresh.HandleAllocated);
+    if Fresh.HandleAllocated then
+    begin
+      FreshHandle := Fresh.Handle;
+      F.actToggleLeftPane.Checked := True;
+      Pump;
+      Check('ticking a freshly built menu item does not rebuild it',
+        Fresh.HandleAllocated and (Fresh.Handle = FreshHandle));
+      F.actToggleLeftPane.Checked := False;
+      Pump;
+      Check('and unticking it does not either',
+        Fresh.HandleAllocated and (Fresh.Handle = FreshHandle));
+    end;
+  finally
+    F.mnuWindow.Remove(Fresh);
+    Fresh.Free;
+  end;
+
+  CollectMenuHandles(F, Items, Handles);
+  try
+    CheckGt('there are menu items to watch', 40, Items.Count);
+
+    { A document, because half of these are greyed without one and an action
+      that is disabled is not assigned. }
+    if F.ActiveTab = nil then F.actNewExecute(nil);
+    Pump;
+
+    Recreated := 0;
+    for i := 1 to 2 do
+    begin
+      F.actShowToolbar.Execute;
+      F.actToggleLeftPane.Execute;
+      F.actToggleOutput.Execute;
+      Pump;
+      Handled := False;
+      F.ActionList1Update(F.actSave, Handled);
+      Pump;
+      Inc(Recreated, ChangedHandles(Items, Handles));
+    end;
+    CheckEqInt('ticking a menu item does not destroy it', 0, Recreated);
+  finally
+    Items.Free;
+  end;
+
+  { Refilling one must not destroy what is in it.
+
+    Every dynamic menu here is refilled from its own parent item's OnClick,
+    which is the moment gtk is opening that very submenu.  Emptying it first
+    destroyed the widgets of a menu the toolkit was in the middle of showing:
+    the shell went on drawing entries it no longer owned -- several of them
+    highlighted at once -- and sweeping the pointer along the menu bar fast
+    enough to refill one menu after another ended in an access violation
+    inside gtk, with nothing of LED's on the stack to say so.
+
+    Reported twice from use, and reproduced here by refilling the same menus
+    the way a hover does.  The property that makes it safe is that the items
+    survive: the same objects, in the same order, with their captions
+    rewritten. }
+  FirstTheme := nil;
+  if F.miTheme.Count > 0 then FirstTheme := F.miTheme.Items[0];
+  FirstLang := nil;
+  if F.miLanguage.Count > 0 then FirstLang := F.miLanguage.Items[0];
+  ThemeCount := F.miTheme.Count;
+  LangCount := F.miLanguage.Count;
+
+  for i := 1 to 5 do
+  begin
+    F.PopulateThemeMenu;
+    F.PopulateLanguageMenu;
+    F.PopulateEncodingMenu;
+    F.PopulateLineEndMenu;
+    F.PopulateToolMenu;
+    F.PopulateRecentMenu;
+    F.PopulateDocMenu;
+  end;
+
+  Check('refilling a menu keeps the item that was there',
+    (FirstTheme <> nil) and (F.miTheme.Count > 0) and
+    (F.miTheme.Items[0] = FirstTheme));
+  Check('and so does a menu of submenus',
+    (FirstLang <> nil) and (F.miLanguage.Count > 0) and
+    (F.miLanguage.Items[0] = FirstLang));
+  CheckEqInt('and it does not grow each time', ThemeCount, F.miTheme.Count);
+  CheckEqInt('nor does the one with submenus', LangCount,
+    F.miLanguage.Count);
+  Check('and the contents are still right',
+    (CountLeaves(F.miLanguage) > 100) and (F.miTheme.Count = LedThemes.Count));
+
   { Eight of the ninety-seven actions carried a Hint, so hovering almost any
     toolbar button produced nothing at all -- a TToolButton shows its
     action's hint, and the toolbar had ShowHint set the whole time.  Every
@@ -3546,11 +4684,16 @@ begin
         end;
   Check('there are actions to hint at all', HintTotal > 50);
   CheckEqInt('and every one of them has a hint', 0, HintLess);
-  { Derived from the caption, and carrying the shortcut so the tooltip says
-    which key does it. }
+  { Derived from the caption, and deliberately *without* the shortcut in it.
+    The LCL appends one at display time -- TControlActionLink.DoShowHint does
+    it whenever Application.HintShortCuts is on -- so a hint that carried its
+    own showed the keys twice: "Save  (Ctrl+S) (Ctrl+S)". }
   Check('a hint drops the caption''s accelerator',
     Pos('&', F.actSave.Hint) = 0);
-  Check('and names the shortcut', Pos('Ctrl+S', F.actSave.Hint) > 0);
+  Check('and does not carry the shortcut itself',
+    Pos('Ctrl+S', F.actSave.Hint) = 0);
+  Check('because the LCL is the one that adds it',
+    Application.HintShortCuts);
 
   { gtk2 draws the menus itself, at Xft.dpi, and knows nothing about the
     desktop's integer window-scaling factor -- so on a scaled display led's
@@ -3559,7 +4702,7 @@ begin
     with a gtk resource style; these are the parts of it that can be checked
     on a display of any shape. }
   { The LCL builds its message and unhandled-exception dialogs itself and
-    shows them without led ever holding a reference, so they used to arrive at
+    shows them without LED ever holding a reference, so they used to arrive at
     their design size with 10-point text -- a third of the window that raised
     them.  CreateMessageDialog is that construction without the modal loop, so
     the scaling can be checked rather than screenshotted.
@@ -3585,7 +4728,7 @@ begin
       0, MsgBefore);
     { And scaling has to leave it that way.  gtk2 resolves a font carrying
       neither size nor height from the default style, and the default style is
-      the scaled one led installs -- so the dialog is already drawn at the
+      the scaled one LED installs -- so the dialog is already drawn at the
       right size and there is nothing to put right.  Materialising a height
       here would read it back off that same scaled widget and multiply it by
       the PPI ratio a second time: 42 pixels became 84. }
@@ -3662,9 +4805,9 @@ begin
   RemoveDir(MakeDir);
 end;
 
-{ The state led opens in, before anything has touched it.  medit puts the
+{ The state LED opens in, before anything has touched it.  medit puts the
   caret at line 1 column 1 of an empty "Untitled 1" and shows that line's
-  number in the gutter; this asserts led does the same, because "it opened
+  number in the gutter; this asserts LED does the same, because "it opened
   looking wrong" is otherwise a report nobody can act on. }
 { Opening something that is not text.  The dump itself is covered headlessly
   in the core suite; what matters here is that the editor notices, refuses to
@@ -4005,7 +5148,7 @@ var
   FontPts, i: Integer;
   Found: Boolean;
 begin
-  Say('the document led starts with');
+  Say('the document LED starts with');
 
   CheckEqInt('exactly one tab is open at startup', 1, F.Notebook.PageCount);
   Tab := F.ActiveTab;
@@ -4033,7 +5176,7 @@ begin
   { The fold column has to be sized explicitly or SynEdit leaves its pen at
     one pixel whatever the DPI, which is what made the fold markers and the
     rule joining a block to its end look absent.  See Led.UI.Edit. }
-  { The fold column is led's own painter, drawing medit's chevrons rather than
+  { The fold column is LED's own painter, drawing medit's chevrons rather than
     SynEdit's boxed [-]/[+].  Checked by class name, as the highlighter is. }
   CheckEq('the fold column is led''s chevron painter',
     'TLedGutterCodeFolding', Tab.ActiveView.Gutter.CodeFoldPart.ClassName);
@@ -4048,7 +5191,7 @@ begin
   Check('the fold column is sized, not left on AutoSize',
     not Tab.ActiveView.Gutter.CodeFoldPart.AutoSize);
 
-  { Vertical guides down an open block, drawn by led itself in Paint. }
+  { Vertical guides down an open block, drawn by LED itself in Paint. }
   Check('the block guides have a colour',
     Tab.ActiveView.GuideColour <> clNone);
   Check('and is wide enough to draw a marker',
@@ -4097,6 +5240,113 @@ end;
 { The edge rails.  A pane closed from its own header used to be reachable
   only through the View menu, because AnchorDocking removes it rather than
   collapsing it to something clickable. }
+{ What share of a speed button, as a percentage, changes when the pointer
+  moves onto it.
+
+  A speed button is a TGraphicControl -- no handle -- so it is painted onto
+  whatever it is parented to, and the only way to see what it drew is to
+  paint the parent and look at the button's rectangle.  Hovering is done with
+  CM_MOUSEENTER rather than by moving a pointer: that is the message the
+  widgetset sends, and it is what sets the flag the button paints from. }
+function HoverPixels(Btn: TSpeedButton): Integer;
+var
+  Host: TWinControl;
+  R: TRect;
+  x, y: Integer;
+
+  function Shot: TLazIntfImage;
+  var
+    Bmp: TBitmap;
+  begin
+    Bmp := TBitmap.Create;
+    try
+      Bmp.PixelFormat := pf32bit;
+      Bmp.SetSize(Host.Width, Host.Height);
+      Host.PaintTo(Bmp.Canvas, 0, 0);
+      Result := Bmp.CreateIntfImage;
+    finally
+      Bmp.Free;
+    end;
+  end;
+
+var
+  Cold, Hot: TLazIntfImage;
+  Area, Changed: Integer;
+begin
+  Result := -1;
+  if (Btn = nil) or (Btn.Parent = nil) then Exit;
+  Host := Btn.Parent;
+  if (Host.Width <= 0) or (Host.Height <= 0) then Exit;
+  R := Btn.BoundsRect;
+
+  Btn.Perform(CM_MOUSELEAVE, 0, 0);
+  Pump;
+  Cold := Shot;
+  try
+    Btn.Perform(CM_MOUSEENTER, 0, 0);
+    Pump;
+    Hot := Shot;
+    try
+      { A share, not a count.  Counting pixels alone does not tell the two
+        apart: gtk2 does draw something for a hot speed button -- a frame
+        around the edge, 45% of the button -- and a check that only asked
+        whether anything changed passed with LED's painting taken away.
+        What a wash does and a frame does not is cover the whole button. }
+      Changed := 0;
+      Area := 0;
+      for y := Max(0, R.Top) to Min(Hot.Height, R.Bottom) - 1 do
+        for x := Max(0, R.Left) to Min(Hot.Width, R.Right) - 1 do
+        begin
+          Inc(Area);
+          if Cold.Colors[x, y] <> Hot.Colors[x, y] then Inc(Changed);
+        end;
+      if Area > 0 then Result := (Changed * 100) div Area;
+    finally
+      Hot.Free;
+    end;
+  finally
+    Cold.Free;
+    Btn.Perform(CM_MOUSELEAVE, 0, 0);
+    Pump;
+  end;
+end;
+
+{ Every row of buttons in LED answers the pointer, not just the ones that
+  happen to be TToolBars.
+
+  The main toolbar got a painter of its own because gtk2 asks for
+  ttbButtonHot and draws nothing for it.  The file browser's nav row, its
+  crumbs and the dock's edge rails are speed buttons, which OnPaintButton
+  does not reach, so they kept drawing nothing and looked dead next to the
+  bar above them.
+
+  Counted in pixels rather than asked of a property: a painter can be
+  assigned and still put down no ink, which is how the toolbar check that
+  only asserted OnPaintButton was satisfied by a bar that shaded nothing. }
+procedure TestSpeedButtonHover(F: TLedMainForm);
+var
+  N: Integer;
+begin
+  Say('hover on the hand-built toolbars');
+
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+
+  if (F.Browser <> nil) and (F.Browser.NavButtonCount > 0) then
+  begin
+    N := HoverPixels(F.Browser.NavButton(0));
+    CheckGt('the browser nav buttons shade under the pointer', 90, N);
+  end;
+
+  F.Dock.ShowRails := True;
+  Pump; Pump;
+  N := HoverPixels(F.Dock.RailButton(ledLeft, 0));
+  CheckGt('and so do the edge rail buttons', 90, N);
+
+  F.Dock.HidePane('files');
+  Pump;
+end;
+
 procedure TestPaneRail(F: TLedMainForm);
 var
   Names: TStringArray;
@@ -4222,10 +5472,10 @@ begin
     real and the choice has to stick.
 
     Deliberately not an exact count.  The built-in styles belong to
-    AnchorDocking, not to led, and there are six of them on Lazarus 2.2 but
+    AnchorDocking, not to LED, and there are six of them on Lazarus 2.2 but
     seven on 4.2, which added GradientMenuBar -- so asserting a total pins
     the suite to whichever Lazarus happened to be installed when it was
-    written, and it duly failed on the second machine it ran on.  What led
+    written, and it duly failed on the second machine it ran on.  What LED
     guarantees is that its own style is registered alongside the built-ins
     and that a choice takes effect. }
   Names := F.Dock.HeaderStyleNames;
@@ -4330,8 +5580,8 @@ begin
   V.LongLines.Display.SetHighlighterTokensLine(1, RealLine, StartByte, ByteLen);
   CheckEqInt('the painter is given only the visible bytes', 4096, ByteLen);
 
-  { The property led saves through.  This is the check that matters. }
-  CheckEqInt('the text led saves is the untruncated line',
+  { The property LED saves through.  This is the check that matters. }
+  CheckEqInt('the text LED saves is the untruncated line',
     Long, Length(V.Lines[1]));
 
   { And end to end, because a length can be right while the bytes are not. }
@@ -4397,6 +5647,97 @@ end;
   line under a click.  Only the first can be driven from here -- a click needs
   a mouse over a laid-out page -- but the mapping itself is the same one, and
   the headless tests cover the ids in the markup. }
+{ Clicking the page moves the caret, and leaves the page where it was.
+
+  The two directions of the sync fought each other.  A click reports the
+  source line it was made from, the caret goes there, the text view scrolls
+  to show the caret -- and that scroll is reported back as a request to put
+  the preview at whatever line is now the top one.  That is a different line
+  from the clicked one, and usually a different block, so the paragraph the
+  reader had just clicked jumped away from under the pointer.
+
+  The click is delivered through OnJumpToLine rather than by clicking the
+  widget: the pane reads the block under the pointer from the HTML control's
+  own hit-testing, which needs a real pointer over a laid-out page.
+  Everything downstream of that -- which is all of what broke -- is the same
+  code either way. }
+procedure TestPreviewClickKeepsPage(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+  i, Before, After, Target: Integer;
+  V: TLedEdit;
+begin
+  Say('preview click');
+  if F.Preview = nil then Exit;
+
+  P := TempName('clicked.md');
+  L := TStringList.Create;
+  try
+    { Long enough that the page scrolls and that the caret landing in the
+      middle puts a different block at the top of the text view. }
+    for i := 1 to 40 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      L.Add('Paragraph ' + IntToStr(i) + ' of the document.');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  F.actTogglePreviewExecute(nil);
+  Pump;
+  Check('the preview rendered the long document', F.Preview.RenderNow);
+
+  { The reader has scrolled down the page and is looking at a block in the
+    middle of it. }
+  Target := 4 * 20 + 1;          { the heading of section 21 }
+  F.Preview.ScrollToLine(Target);
+  Pump;
+  Before := F.Preview.ScrollPos;
+  CheckGt('the page is scrolled down before the click', 0, Before);
+
+  { A click on the paragraph under that heading. }
+  if Assigned(F.Preview.OnJumpToLine) then
+    F.Preview.OnJumpToLine(F.Preview, Target + 2);
+  Pump; Pump;
+
+  V := F.ActiveView;
+  if V <> nil then
+    CheckEqInt('the click put the caret on the line it was made from',
+      Target + 2, V.CaretY);
+
+  After := F.Preview.ScrollPos;
+  CheckEqInt('and left the page where the reader had it', Before, After);
+
+  { The same request arriving late.  The flag only covers the scroll SynEdit
+    reports from inside the move; a widgetset that scrolls again afterwards --
+    on the focus change, or on the next repaint -- delivers exactly this, and
+    it has to be just as harmless.  Asked for by hand because headless the
+    late one does not come. }
+  if V <> nil then
+  begin
+    F.Preview.ScrollToLine(V.TopLine);
+    Pump;
+    CheckEqInt('and a sync arriving after the jump moves nothing either',
+      Before, F.Preview.ScrollPos);
+  end;
+
+  F.Dock.EdgeVisible[ledRight] := False;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 procedure TestPreviewLineMapping(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -4477,7 +5818,7 @@ begin
   Pump;
   if Tab = nil then Exit;
 
-  { Upstream mediawiki.lang carries no globs, so without led's patch this
+  { Upstream mediawiki.lang carries no globs, so without LED's patch this
     opens as plain text and nothing below would be true. }
   Check('a .wiki file gets a language', Tab.Document.LangInfo <> nil);
   if Tab.Document.LangInfo <> nil then
@@ -4766,7 +6107,7 @@ begin
       CheckEqInt('the terminal shows a text cursor, not an arrow',
         Ord(crIBeam), Ord(F.Terminal.Active.Cursor));
 
-    { And its context menu had no icons at all, alone among led's menus. }
+    { And its context menu had no icons at all, alone among LED's menus. }
     Check('the terminal menu has an image list',
       F.Terminal.Menu.Images <> nil);
     WithIcons := 0;
@@ -5022,6 +6363,195 @@ begin
   end;
 end;
 
+{ The width in pixels of the widest chevron painted in the fold column.
+
+  Nothing else is drawn in that column, so the widest run of non-background
+  ink on any row is the chevron at its waist.  The background is taken as the
+  commonest colour in the column rather than assumed, because LED ships eight
+  themes and half of them are light. }
+{ The commonest colour on scanline AY of the text area. }
+function DominantColour(V: TLedEdit; AY: Integer): TColor;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, x0, i, Best: Integer;
+  C: TFPColor;
+  Cols: array of record C: TColor; N: Integer; end;
+  Cur: TColor;
+  Found: Boolean;
+begin
+  Result := clNone;
+  if (AY < 0) or (AY >= V.Height) then Exit;
+  x0 := 0;
+  if V.Gutter.Visible then x0 := V.Gutter.Width;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      SetLength(Cols, 0);
+      for x := x0 to Img.Width - 1 do
+      begin
+        C := Img.Colors[x, AY];
+        Cur := RGBToColor(C.Red shr 8, C.Green shr 8, C.Blue shr 8);
+        Found := False;
+        for i := 0 to High(Cols) do
+          if Cols[i].C = Cur then begin Inc(Cols[i].N); Found := True; Break; end;
+        if not Found then
+        begin
+          SetLength(Cols, Length(Cols) + 1);
+          Cols[High(Cols)].C := Cur; Cols[High(Cols)].N := 1;
+        end;
+      end;
+      Best := -1;
+      for i := 0 to High(Cols) do
+        if (Best < 0) or (Cols[i].N > Cols[Best].N) then Best := i;
+      if Best >= 0 then Result := Cols[Best].C;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The highlight-all markup keeps both its match list and the routine that
+  fills it protected, so both are reached the way this suite reaches any
+  protected member: through a descendant that publishes class methods.
+
+  Why the search has to be asked for at all: CheckState only arms a TTimer,
+  and the timer's handler is what searches.  A TTimer does not fire under
+  Application.ProcessMessages, which is what drives this suite -- the same
+  limitation Led.Core.Gdb documents and polls around.  The delay is
+  SynEdit's and unmodified; what is checked here is that the search, when it
+  runs, finds the right words. }
+type
+  TLedMarkupPeek = class(TSynEditMarkupHighlightAllCaret)
+  public
+    class function Count(A: TSynEditMarkupHighlightAllCaret): Integer;
+    class procedure SearchNow(A: TSynEditMarkupHighlightAllCaret);
+    { Whether those matches would be painted.  Not the same question as how
+      many there are: SynEdit drops a lone match unless it is told not to. }
+    class function Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
+    { Whether the painter will ask this markup for colours at all.  The
+      markup manager checks RealEnabled before every question it asks. }
+    class function Live(A: TSynEditMarkupHighlightAllCaret): Boolean;
+  end;
+
+class function TLedMarkupPeek.Count(A: TSynEditMarkupHighlightAllCaret): Integer;
+begin
+  Result := 0;
+  if A <> nil then Result := TLedMarkupPeek(A).Matches.Count;
+end;
+
+class function TLedMarkupPeek.Paints(A: TSynEditMarkupHighlightAllCaret): Boolean;
+begin
+  Result := (A <> nil) and TLedMarkupPeek(A).HasVisibleMatch;
+end;
+
+class function TLedMarkupPeek.Live(A: TSynEditMarkupHighlightAllCaret): Boolean;
+begin
+  Result := (A <> nil) and TLedMarkupPeek(A).RealEnabled;
+end;
+
+class procedure TLedMarkupPeek.SearchNow(A: TSynEditMarkupHighlightAllCaret);
+begin
+  if A = nil then Exit;
+  TLedMarkupPeek(A).CheckState;
+  TLedMarkupPeek(A).ScrollTimerHandler(A);
+end;
+
+{ How many pixels of scanline AY, across the text area, are exactly AColour. }
+function ScanlineCount(V: TLedEdit; AY: Integer; AColour: TColor): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, x0: Integer;
+  C, Want: TFPColor;
+begin
+  Result := 0;
+  if (AY < 0) or (AY >= V.Height) then Exit;
+  Want := TColorToFPColor(ColorToRGB(AColour));
+  x0 := 0;
+  if V.Gutter.Visible then x0 := V.Gutter.Width;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      for x := x0 to Img.Width - 1 do
+      begin
+        C := Img.Colors[x, AY];
+        if (C.Red = Want.Red) and (C.Green = Want.Green) and
+           (C.Blue = Want.Blue) then Inc(Result);
+      end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The width in pixels of the widest chevron painted in the fold column.
+
+  Nothing else is drawn in that column, so the widest run of non-background
+  ink on any row is the chevron at its waist. }
+function ChevronSpan(V: TLedEdit): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, x0, x1, Lo, Hi: Integer;
+  C, Bg: TFPColor;
+begin
+  Result := 0;
+  if (V.Gutter.CodeFoldPart = nil) or (not V.Gutter.CodeFoldPart.Visible) then
+    Exit;
+  x0 := V.Gutter.CodeFoldPart.Left;
+  x1 := x0 + V.Gutter.CodeFoldPart.Width - 1;
+
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(V.Width, V.Height);
+    V.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      if x1 >= Img.Width then x1 := Img.Width - 1;
+      if x1 < x0 then Exit;
+
+      for y := 0 to Img.Height - 1 do
+      begin
+        { This row's own background, read at the column's left edge.  Taken
+          per row rather than once for the view: the caret's line is painted
+          in a different colour, and against a single background every pixel
+          of that row counts as ink and the column measures full width. }
+        Bg := Img.Colors[x0, y];
+        Lo := -1; Hi := -1;
+        for x := x0 to x1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red <> Bg.Red) or (C.Green <> Bg.Green) or
+             (C.Blue <> Bg.Blue) then
+          begin
+            if Lo < 0 then Lo := x;
+            Hi := x;
+          end;
+        end;
+        if (Lo >= 0) and (Hi - Lo + 1 > Result) then Result := Hi - Lo + 1;
+      end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 { The same, in grey: a disabled breakpoint is drawn as a grey ring, and
   nothing else about the view says whether it reached the screen.
 
@@ -5084,7 +6614,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   C: TFPColor;
-  x, y, Reds, Rings, Greys: Integer;
+  x, y, Reds, Rings, Greys, Ticked: Integer;
   Row: TTreeNode;
   Btn: TToolButton;
 begin
@@ -5127,6 +6657,34 @@ begin
     end;
   end;
   Check('the F9 button was found at all', Btn <> nil);
+
+  { Every toolbar LED builds answers the pointer the same way.  The main one
+    got its painter first and the panes' did not, so a hover lit a button on
+    one toolbar and nothing on the others. }
+  Check('the main toolbar paints its own buttons',
+    Assigned(F.ToolBar1.OnPaintButton));
+
+  { A theme chooser on the toolbar, so switching does not mean going through
+    a menu.  Its list is built when it drops rather than written into the
+    form file, because the schemes are read from data/themes at run time. }
+  Check('there is a theme button', F.ThemeButton <> nil);
+  if F.ThemeButton <> nil then
+  begin
+    Check('which opens a menu', F.ThemeButton.DropdownMenu <> nil);
+    Check('and its face opens it too, not just the arrow',
+      Assigned(F.ThemeButton.OnClick));
+    F.ThemeButton.DropdownMenu.PopupComponent := F;
+    if Assigned(F.ThemeButton.DropdownMenu.OnPopup) then
+      F.ThemeButton.DropdownMenu.OnPopup(F.ThemeButton.DropdownMenu);
+    CheckEqInt('listing every shipped scheme', LedThemes.Count,
+      F.ThemeButton.DropdownMenu.Items.Count);
+    Ticked := 0;
+    for x := 0 to F.ThemeButton.DropdownMenu.Items.Count - 1 do
+      if F.ThemeButton.DropdownMenu.Items[x].Checked then Inc(Ticked);
+    CheckEqInt('with exactly one of them ticked', 1, Ticked);
+  end;
+  Check('and so does the debugger pane''s',
+    Assigned(F.DebugPane.Bar.OnPaintButton));
 
   Check('the debugger pane is registered', F.Dock.FindPane('debug') <> nil);
   Check('and the controller exists', F.Debugger <> nil);
@@ -5425,7 +6983,7 @@ begin
 
     { The struct row is the one shown as "name: type" -- an aggregate has no
       value of its own under --simple-values, which is what tells it from a
-      scalar without led parsing C types. }
+      scalar without LED parsing C types. }
     Row := nil;
     for x := 0 to F.DebugPane.Locals.Items.Count - 1 do
       if Copy(F.DebugPane.Locals.Items[x].Text, 1, 3) = 'p: ' then
@@ -5729,6 +7287,7 @@ var
   i, Body, Opener, Closer, BodyCol: Integer;
   Before, After: Integer;
   Outer: Integer;
+  Span: Integer;
 
   { The column ACol if the line carries a guide there, otherwise 0. }
   function GuideCol(const ACols: array of Integer; ACol: Integer): Integer;
@@ -5827,6 +7386,804 @@ begin
     Length(V.ComputeBlockGuides(0, V.Lines.Count - 1)));
   V.SelText := V.SelText;      { leave the document as it was }
 
+  { How big the chevron actually comes out.
+
+    It is drawn at a fraction of its column, and the column is scaled with
+    the display -- so at 3.125x the old figure gave a chevron forty-nine
+    pixels across, which is a button, not a hint.  Measured off the painted
+    view rather than computed, because what matters is the ink: nothing else
+    is drawn in that column, so the widest row of it is the chevron.
+
+    Asserted as a proportion of the column, so it holds at every scale. }
+  Span := ChevronSpan(V);
+  Say(Format('  (fold column %d px, chevron %d px)',
+    [V.Gutter.CodeFoldPart.Width, Span]));
+  CheckGt('a chevron is painted at all', 0, Span);
+  Check('and it no longer fills its column',
+    Span <= (V.Gutter.CodeFoldPart.Width * 4) div 5);
+  Check('while staying wide enough to read',
+    Span >= (V.Gutter.CodeFoldPart.Width * 2) div 5);
+end;
+
+{ Three ways a row is drawn, all reported as too loud or too loose.
+
+  The caret's row is marked with a rule above and below rather than a filled
+  band; a click past the last character lands on the last character; and a
+  selection stops where the text does instead of running out to the right
+  edge of the view.
+
+  Measured off the painted view, because every one of them is about ink. }
+procedure TestRowStyling(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Ymid, Wide, Past: Integer;
+begin
+  Say('row styling');
+
+  Dir := TempName('rowstyle');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'rows.txt';
+  L := TStringList.Create;
+  try
+    L.Add('short');
+    L.Add('a somewhat longer line of text to select across');
+    L.Add('tiny');
+    L.Add('another line so the caret has somewhere to be');
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  V.TopLine := 1;
+  V.SelectionMode := smNormal;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 3);
+  Pump;
+
+  { --- the caret's row: two rules, not a band --- }
+  Check('the row colour survived the move off SynEdit''s own fill',
+    V.CurrentLineColour <> clNone);
+  Check('and differs from the page, or there would be nothing to see',
+    V.CurrentLineColour <> V.Color);
+
+  { Which row the painter marked, rather than the ink it put down.  PaintTo
+    into a bitmap reproduces LED's gutter drawing and not its text-area
+    drawing -- a full-width fill in the text area comes back with two pixels
+    of it -- so the rules themselves were checked on a real X server and what
+    is asserted here is the decision behind them. }
+  V.Repaint;
+  Pump;
+  CheckEqInt('the rules are drawn on the caret''s row', 2, V.CurrentLineRow);
+  CheckEqInt('and SynEdit no longer fills it', clNone,
+    V.LineHighlightColor.Background);
+
+  { A selection is the thing to look at, so the row markers stand down. }
+  V.BlockBegin := Point(1, 2);
+  V.BlockEnd := Point(4, 2);
+  V.Repaint;
+  Pump;
+  CheckEqInt('and stand down while something is selected', -1,
+    V.CurrentLineRow);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 3);
+  V.Repaint;
+  Pump;
+  CheckEqInt('coming back when it is cleared', 2, V.CurrentLineRow);
+
+  { --- a click past the end of a line --- }
+  V.CaretXY := Point(1, 1);
+  Pump;
+  TLedMousePoke.Press(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Release(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  Pump;
+  CheckEqInt('clicking past the end of a line lands on its end',
+    Length(V.Lines[0]) + 1, V.CaretX);
+  { The same click as a real mouse makes it: a press, a pixel or two of
+    movement, a release.  That is a drag as far as SynEdit is concerned, and
+    with eoScrollPastEol it reaches out into the space past the line -- where
+    it selects virtual spaces that are not in the buffer.  Nothing is drawn
+    for them, since LED stopped shading past the line end, so what the user
+    saw was a click that moved the caret and took the current-line rules away
+    with it, replacing them with nothing. }
+  TLedMousePoke.Press(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Move(V, [ssLeft],
+    V.Gutter.Width + 2 + 44 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Release(V, [],
+    V.Gutter.Width + 2 + 44 * V.CharWidth, V.LineHeight div 2);
+  Pump;
+  V.Repaint;
+  Pump;
+  CheckEqInt('a drag past the end of a line ends at the line end',
+    Length(V.Lines[0]) + 1, V.CaretX);
+  Check('and selects nothing, rather than a run of virtual spaces',
+    not V.SelAvail);
+  CheckEqInt('so the row keeps its rules', 0, V.CurrentLineRow);
+
+  { And if a selection out there is arrived at some other way -- the caret
+    put past the line end by code, with eoScrollPastEol -- the rules are
+    still drawn, because a selection of nothing is not a selection. }
+  V.BlockBegin := Point(Length(V.Lines[0]) + 1, 1);
+  V.BlockEnd := Point(Length(V.Lines[0]) + 20, 1);
+  V.CaretXY := Point(Length(V.Lines[0]) + 20, 1);
+  V.Repaint;
+  Pump;
+  CheckEqInt('a selection with no text in it leaves the rules alone', 0,
+    V.CurrentLineRow);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 1);
+  Pump;
+
+  { A rectangle still reaches past it, which is what eoScrollPastEol is on
+    for -- clamping every click would have taken that with it. }
+  V.SelectionMode := smColumn;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(30, 3);
+  Pump;
+  CheckEqInt('a column selection still reaches past a short line', 30,
+    V.BlockEnd.X);
+  V.SelectionMode := smNormal;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Pump;
+
+  { --- a selection stops where the text does --- }
+  V.CaretXY := Point(1, 1);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(5, 3);
+  Pump;
+  Ymid := V.LineHeight div 2;          { line 1, "short" }
+  Wide := ScanlineCount(V, Ymid, V.SelectedColor.Background);
+  Say(Format('  (selection on a 5-char line: %d px shaded, char %d px)',
+    [Wide, V.CharWidth]));
+  CheckGt('the selected text is shaded', 0, Wide);
+  { Five characters and the newline after them; anything much past that is
+    empty space the selection has no business colouring. }
+  Past := (Length(V.Lines[0]) + 2) * V.CharWidth;
+  Check('but the empty space beyond the line is not', Wide <= Past);
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
+{ An attribute by its stored name, or nil. }
+function AttrNamed(AHighlighter: TSynCustomHighlighter;
+  const AName: string): TSynHighlighterAttributes;
+var
+  i: Integer;
+begin
+  Result := nil;
+  if AHighlighter = nil then Exit;
+  for i := 0 to AHighlighter.AttrCount - 1 do
+    if SameText(AHighlighter.Attribute[i].StoredName, AName) then
+      Exit(AHighlighter.Attribute[i]);
+end;
+
+{ A folded block is tinted, and clicking a word lights up the others.
+
+  Two markups that SynEdit provides and LED turns on: the first through
+  OnSpecialLineMarkup, the second by giving the highlight-all-at-caret markup
+  a colour, which is what wakes it. }
+type
+  { MouseDown and MouseUp are protected, and clicking is the thing to check. }
+  TMapPoke = class(TLedMiniMap);
+
+{ The mean brightness of one pixel column of a control. }
+function ColumnLuma(AControl: TWinControl; AX: Integer): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  y, Total, Rows: Integer;
+  C: TFPColor;
+begin
+  Result := -1;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(AControl.Width, AControl.Height);
+    AControl.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      if (AX < 0) or (AX >= Img.Width) or (Img.Height = 0) then Exit;
+      Total := 0;
+      Rows := 0;
+      for y := 0 to Img.Height - 1 do
+      begin
+        C := Img.Colors[AX, y];
+        Inc(Total, (C.Red div 257) * 299 div 1000 +
+                   (C.Green div 257) * 587 div 1000 +
+                   (C.Blue div 257) * 114 div 1000);
+        Inc(Rows);
+      end;
+      if Rows > 0 then Result := Total div Rows;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The minimap: the whole file too small to read, down the right of the view.
+
+  What is checked is that it draws the file rather than a blank strip, that
+  the strip follows the text down a file too long to fit in it, and that
+  clicking in it scrolls the text.  Ink is counted rather than described: a
+  minimap that paints its background and nothing else would satisfy every
+  property assertion about it, and looks exactly like a broken one. }
+procedure TestMiniMap(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Map: TLedMiniMap;
+  i, Ink, Blank, Top0, Top1, MapTop0, MapTop1: Integer;
+  ClickY, Wanted, ViewBefore: Integer;
+  Shade0, ShadeN: Integer;
+  T0: QWord;
+
+  { Pixels in the strip that are neither its background nor the box wash --
+    that is, bars drawn for the text. }
+  function InkPixels: Integer;
+  var
+    Bmp: TBitmap;
+    Img: TLazIntfImage;
+    x, y: Integer;
+    Bg: TFPColor;
+  begin
+    Result := 0;
+    Bmp := TBitmap.Create;
+    try
+      Bmp.PixelFormat := pf32bit;
+      Bmp.SetSize(Map.Width, Map.Height);
+      Map.PaintTo(Bmp.Canvas, 0, 0);
+      Img := Bmp.CreateIntfImage;
+      try
+        if (Img.Width = 0) or (Img.Height = 0) then Exit;
+        Bg := TColorToFPColor(ColorToRGB(Map.Color));
+        for y := 0 to Img.Height - 1 do
+          for x := 0 to Img.Width - 1 do
+            if Img.Colors[x, y] <> Bg then Inc(Result);
+      finally
+        Img.Free;
+      end;
+    finally
+      Bmp.Free;
+    end;
+  end;
+
+begin
+  Say('minimap');
+
+  Dir := TempName('minimap');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'long.c';
+  L := TStringList.Create;
+  try
+    { Long enough that it cannot fit in the strip, so the scrolling half of
+      this is exercised rather than skipped, and in blocks, so the folding
+      half is too. }
+    for i := 1 to 60 do
+    begin
+      L.Add('int function_' + IntToStr(i) + '(int x)');
+      L.Add('{');
+      L.Add('    int variable_' + IntToStr(i) + ' = ' + IntToStr(i) + ';');
+      L.Add('    int another_' + IntToStr(i) + ' = x;');
+      L.Add('    if (x > 0) {');
+      L.Add('        variable_' + IntToStr(i) + ' += another_' + IntToStr(i) + ';');
+      L.Add('    }');
+      L.Add('    return variable_' + IntToStr(i) + ';');
+      L.Add('}');
+      L.Add('');
+    end;
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  Map := Tab.MiniMap;
+  Check('a tab has a minimap', Map <> nil);
+  if Map = nil then Exit;
+
+  Check('and it is off until it is asked for', not Map.Visible);
+  Blank := InkPixels;
+
+  F.actToggleMiniMap.Execute;
+  Pump; Pump;
+  Check('the View menu turns it on', Map.Visible);
+  Check('and it maps the view it is beside', Map.Editor = V);
+  CheckGt('and it is a strip, not the whole pane', Map.Width, V.Width);
+  CheckGt('and wide enough to show the shape of a line', 40, Map.Width);
+
+  { How long a repaint of the strip takes.  It is repainted on every caret
+    move, so a slow one would be felt as sluggish typing. }
+  T0 := GetTickCount64;
+  for i := 1 to 50 do
+  begin
+    Map.Invalidate;
+    Map.Repaint;
+  end;
+  Say(Format('  (%d repaints of a %d-line strip in %d ms)',
+    [50, Map.LinesShown, Integer(GetTickCount64 - T0)]));
+
+  Ink := InkPixels;
+  CheckGt('it draws the file rather than a blank strip: ' + IntToStr(Ink),
+    Blank + 200, Ink);
+
+  { Down a file too long for the strip, the strip travels with the text --
+    otherwise the box would walk off the bottom of it and the map would be of
+    a part of the file nobody is looking at. }
+  CheckGt('the file is longer than the strip can hold', Map.LinesShown,
+    V.Lines.Count);
+  V.TopLine := 1;
+  Pump;
+  Top0 := V.TopLine;
+  MapTop0 := Map.TopLine;
+  V.TopLine := V.Lines.Count - V.LinesInWindow;
+  Pump;
+  Top1 := V.TopLine;
+  MapTop1 := Map.TopLine;
+  CheckGt('the text really moved', Top0, Top1);
+  CheckGt('and the strip followed it down the file', MapTop0, MapTop1);
+  CheckEqInt('from the very top when the text is at the top', 1, MapTop0);
+
+  { And the other direction: a click in the strip scrolls the text to it.
+    Through the control's own mouse handlers, which are protected -- the
+    point is that a click does this, not that a method exists. }
+  V.TopLine := 1;
+  Pump;
+  { The line aimed at, read before the click: the strip moves with the text,
+    so afterwards the same pixel row is a different line -- which is how the
+    first version of this check managed to fail while the code was right. }
+  ClickY := (Map.Height * 3) div 4;
+  Wanted := Map.LineAtY(ClickY);
+  TMapPoke(Map).MouseDown(mbLeft, [], Map.Width div 2, ClickY);
+  TMapPoke(Map).MouseUp(mbLeft, [], Map.Width div 2, ClickY);
+  Pump;
+  CheckGt('clicking low in the strip scrolls the text down', 1, V.TopLine);
+  { Centred on what was clicked, not pinned to the top of the view: a click
+    in a minimap means "show me this", and what is wanted is that line with
+    its surroundings. }
+  Check('and the line clicked is in the middle of the view: ' +
+    IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
+    Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
+
+  { The shadow down the left edge: a gradient, not a rule.  Measured as the
+    mean brightness of each of the first few columns -- it has to fall away
+    from the strip's own colour as it approaches the page, and the column
+    against the page has to differ from the strip at all. }
+  Shade0 := ColumnLuma(Map, 0);
+  ShadeN := ColumnLuma(Map, LedScale96(6) - 1);
+  Say(Format('  (edge shadow: column 0 = %d, column %d = %d, strip = %d)',
+    [Shade0, LedScale96(6) - 1, ShadeN, LedColourLuma(Map.Color)]));
+  CheckGt('the edge shadow is darkest against the page',
+    Abs(ShadeN - LedColourLuma(Map.Color)),
+    Abs(Shade0 - LedColourLuma(Map.Color)));
+  CheckGt('and fades out before the bars start', 0,
+    Abs(Shade0 - LedColourLuma(Map.Color)));
+
+  { A folded block is one line on screen, and the map has to agree.  SynEdit's
+    TopLine counts screen lines, so a map that counted buffer lines scrolled
+    to the wrong place the moment anything was folded -- and further wrong the
+    more was folded, which is why dragging in it went nowhere near where it
+    was pointed. }
+  V.CaretXY := Point(1, 1);
+  ViewBefore := Map.LinesShown;
+  LedFoldAll(V);
+  Pump;
+  V.Repaint;
+  Pump;
+  CheckGt('folding hides lines from the view', V.ViewLineCount,
+    V.Lines.Count);
+  Check('and the map is of the view, not the buffer: ' +
+    IntToStr(Map.LinesShown) + ' of ' + IntToStr(V.ViewLineCount),
+    Map.LinesShown <= V.ViewLineCount);
+  CheckGt('so the map got shorter too', Map.LinesShown, ViewBefore);
+
+  ClickY := Map.Height div 2;
+  Wanted := Map.LineAtY(ClickY);
+  TMapPoke(Map).MouseDown(mbLeft, [], Map.Width div 2, ClickY);
+  TMapPoke(Map).MouseUp(mbLeft, [], Map.Width div 2, ClickY);
+  Pump;
+  Check('and a drag still lands where it is pointed with a block folded: ' +
+    IntToStr(Wanted) + ' vs ' + IntToStr(V.TopLine + V.LinesInWindow div 2),
+    Abs(V.TopLine + V.LinesInWindow div 2 - Wanted) <= 2);
+
+  F.actToggleMiniMap.Execute;
+  Pump;
+  Check('and the View menu turns it off again', not Map.Visible);
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
+procedure TestWordAndFoldMarkup(F: TLedMainForm);
+var
+  Dir, Src: string;
+  L: TStringList;
+  Tab: TLedTab;
+  V: TLedEdit;
+  MarginGap: Integer;
+  DiagI, DiagJ: Integer;
+  StrAttr, Attr: TSynHighlighterAttributes;
+  KateString, Behind: TColor;
+  Ratio, Worst: Double;
+  WorstName: string;
+
+  { Puts the caret where a click would and returns how many appearances the
+    markup found.  The search is SynEdit's, driven by a timer that does not
+    fire under ProcessMessages -- but calling its handler does the search,
+    and a repaint afterwards establishes the range it searches over. }
+  function MatchesAt(AX, AY: Integer): Integer;
+  begin
+    V.CaretXY := Point(AX, AY);
+    Pump;
+    TLedMarkupPeek.SearchNow(V.HighlightWord);
+    V.Repaint;
+    Pump;
+    Result := TLedMarkupPeek.Count(V.HighlightWord);
+  end;
+
+begin
+  Say('word and fold markup');
+
+  Dir := TempName('markup');
+  ForceDirectories(Dir);
+  Src := IncludeTrailingPathDelimiter(Dir) + 'demo.c';
+  L := TStringList.Create;
+  try
+    L.Add('int count = 0;');             { 1 }
+    L.Add('int twice(int n)');           { 2 }
+    L.Add('{');                          { 3 }
+    L.Add('    int count = n;');         { 4 }
+    L.Add('    count = count * 2;');     { 5 }
+    L.Add('    return count;');          { 6 }
+    L.Add('}');                          { 7 }
+    L.Add('/* count in a comment */');   { 8 }
+    L.Add('char *s = "count here";');    { 9 }
+    L.Add('int snake_case_2 = 0;');      { 10 }
+    L.Add('int b = snake_case_2;');      { 11 }
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  V.TopLine := 1;
+  Pump;
+
+  { --- every appearance of the word at the caret --- }
+  { On the markup that follows the caret, not on TSynEdit.HighlightAllColor.
+    That published property is the *search* markup's, so the first version of
+    this asserted a colour on an object the feature never consults -- and
+    passed, while clicking a word did nothing.  Read it back off the markup
+    LED actually configures. }
+  { --- and it stands down for a selection of several rows --- }
+
+  { With a selection, SynEdit's markup searches for the selected text rather
+    than for the word at the caret.  Over one line that is what a
+    double-click is for.  Over several the selection matches itself, so the
+    search-match colour was painted over every selected row -- oblivion's
+    green filling the page behind the selection. }
+  V.BlockBegin := Point(1, 4);
+  V.BlockEnd := Point(5, 6);
+  Pump;
+  Check('a selection of several rows silences the appearance highlight',
+    not TLedMarkupPeek.Live(V.HighlightWord));
+
+  V.BlockBegin := Point(5, 5);
+  V.BlockEnd := Point(10, 5);
+  Pump;
+  Check('but a selection on one line still lights up its other appearances',
+    TLedMarkupPeek.Live(V.HighlightWord));
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Pump;
+  Check('and it comes back when the selection goes',
+    TLedMarkupPeek.Live(V.HighlightWord));
+
+  { --- switching themes has to undo the last one --- }
+
+  { Applying a scheme colours the scopes that scheme mentions and leaves the
+    rest alone, so what one scheme colours and the next does not stays as the
+    first one left it.  Switching from kate to classic left strings red:
+    kate colours def:string, classic says nothing about it, and nothing put
+    it back.  SynEdit keeps each attribute's defaults privately and offers no
+    way to read them, so LED keeps its own copy and restores from it first. }
+  StrAttr := AttrNamed(V.Highlighter, 'def.string');
+  Check('the C highlighter has a string attribute', StrAttr <> nil);
+  if StrAttr <> nil then
+  begin
+    LedSetCurrentTheme('kate');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    KateString := StrAttr.Foreground;
+
+    LedSetCurrentTheme('classic');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    Check('switching schemes does not leave the last one'#39's string colour: ' +
+      Format('%.6x then %.6x', [ColorToRGB(KateString),
+        ColorToRGB(StrAttr.Foreground)]),
+      StrAttr.Foreground <> KateString);
+
+    { And back again, to the same answer as the first time: restoring must be
+      repeatable, not a one-way trip through the defaults. }
+    LedSetCurrentTheme('kate');
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    CheckEqInt('and going back gives the same colour again',
+      KateString, StrAttr.Foreground);
+  end;
+
+  { --- every theme readable on its own page --- }
+
+  { A grammar's colours were chosen for whatever page its author had in mind,
+    and a scheme colours only the scopes it thinks about; what is left over
+    is a colour nobody picked for this background.  Measured before the floor
+    went in, on white: tango's strings at 1.5 to one, its keywords at 2.1,
+    solarized-light's strings at 1.4 -- a mustard yellow on white. }
+  Worst := 100;
+  WorstName := '';
+  for DiagI := 0 to LedThemes.Count - 1 do
+  begin
+    LedSetCurrentTheme(LedThemes[DiagI].Id);
+    LedRetheme(LedCurrentTheme);
+    LedApplyThemeToEditor(LedCurrentTheme, V);
+    for DiagJ := 0 to V.Highlighter.AttrCount - 1 do
+    begin
+      Attr := V.Highlighter.Attribute[DiagJ];
+      if (Attr = nil) or (Attr.Foreground = clNone) then Continue;
+      Behind := Attr.Background;
+      if Behind = clNone then Behind := V.Color;
+      Ratio := LedContrastRatio(Attr.Foreground, Behind);
+      if Ratio < Worst then
+      begin
+        Worst := Ratio;
+        WorstName := LedThemes[DiagI].Id + '/' + Attr.StoredName;
+      end;
+    end;
+
+    { The rules on the caret's row, which are drawn from the theme's
+      current-line colour -- a tint meant to fill a whole row, and invisible
+      in a one-pixel rule until it is pushed off the page. }
+    CheckGt('the current-line rule can be seen in ' + LedThemes[DiagI].Id,
+      25, Abs(LedColourLuma(LedThemeCurrentLineColour(LedCurrentTheme,
+        V.Font.Color, V.Color)) - LedColourLuma(V.Color)));
+
+    { And the word-appearance highlight has to be readable on its own
+      background, whatever the scheme did or did not say about it: kate's
+      search match is yellow with no foreground, so the word kept the
+      selection's white and was drawn white on yellow. }
+    if V.HighlightWord.MarkupInfo.Background <> clNone then
+      CheckGt('the appearance highlight is readable in ' + LedThemes[DiagI].Id,
+        40, Round(10 * LedContrastRatio(V.HighlightWord.MarkupInfo.Foreground,
+          V.HighlightWord.MarkupInfo.Background)));
+  end;
+  Check(Format('no syntax colour is unreadable on its own page ' +
+    '(worst: %s at %.1f to one)', [WorstName, Worst]), Worst >= 3.9);
+
+  LedSetCurrentTheme('medit');
+  LedRetheme(LedCurrentTheme);
+  LedApplyThemeToEditor(LedCurrentTheme, V);
+
+  Check('the caret markup has a colour, which is what wakes it',
+    (V.HighlightWord <> nil) and
+    (V.HighlightWord.MarkupInfo.Background <> clNone));
+  Check('and it is not merely the search markup that was coloured',
+    V.HighlightWord.MarkupInfo.Background <> clNone);
+  Check('and LED configured it to whole words',
+    (V.HighlightWord <> nil) and V.HighlightWord.FullWord);
+
+  { What the suite can reach, and what it cannot.
+
+    LED's part is turning the markup on: giving it a colour, which is what
+    wakes it, and telling it to match whole words.  Both are asserted above.
+
+    The search itself is SynEdit's, driven by a TTimer over the visible
+    range.  A TTimer does not fire under Application.ProcessMessages, which
+    is what drives this suite, and calling the handler by hand still finds
+    nothing because the range is established by painting.  So the shading is
+    confirmed by using the editor, not from here -- asserting a match count
+    would mean asserting zero, which would pass whether it worked or not. }
+  { Every appearance, wherever it is.  Seven of "count": five in code, one in
+    a comment and one inside a string literal. }
+  CheckEqInt('clicking a word finds every appearance of it', 7,
+    MatchesAt(6, 5));
+  Check('and they are shaded', TLedMarkupPeek.Paints(V.HighlightWord));
+
+  { The caret at either end of a word, not only in the middle of one -- a
+    click lands where the pointer was, and that is often the first character
+    or the space after the last. }
+  CheckEqInt('the caret at the start of a word counts as being in it', 6,
+    MatchesAt(1, 2));
+  CheckEqInt('and so does the caret just past its end', 6, MatchesAt(4, 2));
+
+  { Whole words, so clicking "count" leaves "counter" alone.  Nothing here is
+    called counter; what this asserts is that the option survived, since
+    without it the count above would be the same. }
+  Check('whole words only', V.HighlightWord.FullWord);
+
+  { Underscores and digits are part of an identifier, not breaks in it.  A
+    word-boundary rule that disagreed would report the two halves of
+    snake_case_2 separately and shade the wrong span. }
+  CheckEqInt('an identifier with underscores and digits is one word', 2,
+    MatchesAt(9, 10));
+
+  { A word that appears once is shaded too.  SynEdit hides a lone match by
+    default, which from the outside is a click that answers for some words
+    and not others -- and that is what it looked like: clicking count lit up
+    the file and clicking twice, three lines above it, did nothing at all. }
+  CheckEqInt('a word that appears once is still found', 1, MatchesAt(6, 2));
+  Check('and it is still shaded, so the click is never ignored',
+    TLedMarkupPeek.Paints(V.HighlightWord));
+
+  V.CaretXY := Point(6, 5);
+  Pump;
+  TLedMarkupPeek.SearchNow(V.HighlightWord);
+  { Hovering with no debugger running says nothing at all.  It used to answer
+    every word in an ordinary editing session with
+
+      count = (not stopped)
+
+    which reads as a complaint about the word rather than as the debugger
+    declining to answer. }
+  Check('no debug session is running here', not F.Debugger.Session.Alive);
+  V.RequestHover('');
+  V.RequestHover('count');
+  Pump;
+  CheckEq('so hovering a word leaves no tooltip', '', V.Hint);
+  Check('and the hint is switched off', not V.ShowHint);
+
+  { --- a folded block is tinted --- }
+  { The right margin is a note about a limit, not a rule through the page.
+    Drawn in the style's own colour it was the brightest thing in the window
+    on oblivion, whose right-margin foreground is very nearly white. }
+  Check('the right margin has a colour', V.RightEdgeColor <> clNone);
+  { Visible, but a note rather than a rule: far enough from the page to be
+    seen and not so far as to compete with the code.  Both halves matter --
+    the first mix had none at all on a scheme whose margin colour is close to
+    its page, and the margin vanished. }
+  MarginGap := Abs(LedColourLuma(V.RightEdgeColor) - LedColourLuma(V.Color));
+  CheckGt('the margin can be seen against the page', 10, MarginGap);
+  Check('but is softer than the text on it: ' + IntToStr(MarginGap),
+    MarginGap < Abs(LedColourLuma(V.Font.Color) - LedColourLuma(V.Color)));
+
+  { The preview sets code in the editor's own face rather than IPro's
+    'Courier New', which no Linux desktop has. }
+  if F.Preview <> nil then
+    CheckEq('the preview sets code in the editor''s font',
+      V.Font.Name, F.Preview.FixedFace);
+
+  Check('the theme gave a fold tint', V.FoldedLineColour <> clNone);
+  Check('and it differs from the page', V.FoldedLineColour <> V.Color);
+
+  Check('nothing is folded to begin with', not V.LineIsFolded(3));
+  LedFoldAll(V);
+  Pump;
+  Check('folding the block marks the line that carries it',
+    V.LineIsFolded(3));
+  Check('and not a line that carries nothing', not V.LineIsFolded(1));
+  LedUnfoldAll(V);
+  Pump;
+  Check('unfolding takes the tint away again', not V.LineIsFolded(3));
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
+end;
+
+{ A byte is two cells: one in the hex half, one in the text half.
+
+  Putting the caret on either lights both -- the side being typed into
+  strongly, its counterpart faintly -- so the eye can cross the row without
+  counting.  The same for a selection.  Asked of the markup rather than read
+  off the screen, because what is being checked is the pairing: which cells
+  light, and which of the pair is the brighter. }
+procedure TestHexPairing(F: TLedMainForm);
+var
+  Dir, Bin: string;
+  St: TFileStream;
+  B: array[0..31] of Byte;
+  i: Integer;
+  Tab: TLedTab;
+  V: TLedEdit;
+  M: TLedHexMarkup;
+  HexCol, TxtCol, Active, Mirror: Integer;
+begin
+  Say('hex pairing');
+
+  Dir := TempName('hexpair');
+  ForceDirectories(Dir);
+  Bin := IncludeTrailingPathDelimiter(Dir) + 'data.bin';
+  for i := 0 to High(B) do B[i] := i;
+  B[3] := 0;                      { a NUL, so LED reads it as binary }
+  St := TFileStream.Create(Bin, fmCreate);
+  try
+    St.WriteBuffer(B, SizeOf(B));
+  finally
+    St.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Bin));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  Check('it opened as a dump', V.HexMode);
+  M := V.HexMarkup;
+  Check('and the dump has its markup', M <> nil);
+  if M = nil then Exit;
+
+  { Byte 5 of row 1, from the hex side. }
+  HexCol := LedHexByteColumn(5);
+  TxtCol := LedHexTextColumn(5);
+  V.CaretXY := Point(HexCol, 1);
+  Pump;
+
+  Active := ColorToRGB(M.BackgroundAt(1, HexCol));
+  Mirror := ColorToRGB(M.BackgroundAt(1, TxtCol));
+  Check('the byte under the caret is shaded', M.BackgroundAt(1, HexCol) <> clNone);
+  Check('and so is the same byte in the text column',
+    M.BackgroundAt(1, TxtCol) <> clNone);
+  Check('the two differ, so which side has the caret is visible',
+    Active <> Mirror);
+  Check('a byte the caret is not on stays unshaded',
+    M.BackgroundAt(1, LedHexByteColumn(9)) = clNone);
+
+  { Now from the text side: the same pair, the strengths swapped. }
+  V.CaretXY := Point(TxtCol, 1);
+  Pump;
+  CheckEqInt('crossing to the text side makes that cell the bright one',
+    Active, ColorToRGB(M.BackgroundAt(1, TxtCol)));
+  CheckEqInt('and the hex cell the faint one',
+    Mirror, ColorToRGB(M.BackgroundAt(1, HexCol)));
+
+  { A selection lights every byte in it, on both sides. }
+  V.CaretXY := Point(LedHexByteColumn(2), 1);
+  V.BlockBegin := Point(LedHexByteColumn(2), 1);
+  V.BlockEnd := Point(LedHexByteColumn(6), 1);
+  Pump;
+  Check('a selected byte is shaded in the hex half',
+    M.BackgroundAt(1, LedHexByteColumn(4)) <> clNone);
+  Check('and in the text half',
+    M.BackgroundAt(1, LedHexTextColumn(4)) <> clNone);
+  Check('while a byte outside it is not',
+    M.BackgroundAt(1, LedHexByteColumn(12)) = clNone);
+
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  if DirectoryExists(Dir) then DeleteDirectory(Dir, False);
 end;
 
 { Two independent tab groups in one window.
@@ -5934,7 +8291,7 @@ end;
 
   The drop itself comes from the window manager and cannot be simulated here,
   so this drives the handler the widgetset would call.  That still covers the
-  part led owns -- that a dropped path opens, through the same route as the
+  part LED owns -- that a dropped path opens, through the same route as the
   Open dialog -- and asserts the window is registered to receive drops at all,
   which is the half that silently does nothing when it is missing. }
 procedure TestDropFiles(F: TLedMainForm);
@@ -6026,7 +8383,7 @@ end;
   ApplyCommandLine joined the working directory to every path it was given,
   including ones already starting at the root, so "led /some/where/file.pas"
   looked for /cwd//some/where/file.pas and reported that the file did not
-  exist.  Found by taking a screenshot of led under Xvfb, which is a poor
+  exist.  Found by taking a screenshot of LED under Xvfb, which is a poor
   substitute for a check and is why there is one now.
 
   The cwd passed here is deliberately not the file's directory: that is the
@@ -6163,7 +8520,7 @@ begin
   if ExceptionSink = nil then ExceptionSink := TSelfTestExceptionSink.Create;
   Application.OnException := @ExceptionSink.Handle;
 
-  Say('led self-test');
+  Say('LED self-test');
   WriteLn;
 
   F := LedMainForm;
@@ -6174,7 +8531,7 @@ begin
   Pump;
 
   { First, before anything else has had a chance to open a tab or move a
-    caret: this section is about the state led actually starts in. }
+    caret: this section is about the state LED actually starts in. }
   TestStartupDocument(F);
   TestBinaryFiles(F);
   TestBJDataFiles(F);
@@ -6202,12 +8559,15 @@ begin
   TestShowPaneShowsThatPane(F);
   TestDockEdges(F);
   TestPaneSizes(F);
+  TestPaneSizeMemory(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
   WriteLn;
   TestDocumentBehaviour(F);
   WriteLn;
   TestRecentFiles(F);
+  WriteLn;
+  TestClipboardUnderGrab(F);
   WriteLn;
   TestLanguageAndTheme(F);
   WriteLn;
@@ -6224,9 +8584,14 @@ begin
   TestTools(F);
   WriteLn;
   TestFoldGuides(F);
+  TestRowStyling(F);
+  TestWordAndFoldMarkup(F);
+  TestMiniMap(F);
+  TestHexPairing(F);
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
+  TestPreviewClickKeepsPage(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);
@@ -6242,15 +8607,19 @@ begin
   TestAbsolutePathOnCommandLine(F);
   WriteLn;
   TestPaneRail(F);
+  TestSpeedButtonHover(F);
   WriteLn;
   TestFileBrowser(F);
   WriteLn;
   TestTerminal(F);
   WriteLn;
   TestCompletionAndSymbols(F);
+  TestSymbolsFollowTheDocument(F);
   WriteLn;
   TestFolding(F);
   WriteLn;
+  TestWindowPlacement(F);
+  TestWordWrapToggling(F);
   TestMenusAndDetection(F);
   WriteLn;
 

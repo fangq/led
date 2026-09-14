@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for the layered config and modelines. }
+{ LED - a lightweight editor.  Headless tests for the layered config and modelines. }
 unit Led.Core.Tests.Config;
 
 {$mode objfpc}{$H+}

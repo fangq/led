@@ -1,8 +1,8 @@
-{ led - a lightweight editor.  Display-only truncation of very long lines.
+{ LED - a lightweight editor.  Display-only truncation of very long lines.
 
   medit truncates any line past 4096 characters and draws a clickable "..."
   marker to reveal 4096 more, because GtkTextView's line-layout cache
-  collapses on very long lines.  led's first pass at this concluded SynEdit
+  collapses on very long lines.  LED's first pass at this concluded SynEdit
   did not need it, on the grounds that a 5 MB single line still *opens* in
   128 ms.  That was the wrong measurement.  `led --bench-longline` was
   already reporting the real cost in the same output:
@@ -28,7 +28,7 @@
 
     * FLines, the real buffer.  TCustomSynEdit.Lines is a TSynEditLines built
       directly on it -- `FStrings := TSynEditLines.Create(FLines, ...)` -- so
-      it bypasses the view chain entirely.  led loads and saves through
+      it bypasses the view chain entirely.  LED loads and saves through
       Lines, so the bytes on disk are the bytes in the buffer, always.
 
     * FTheLinesView, the top of the view chain, which is what the caret and
@@ -302,7 +302,7 @@ end;
   Shortening the logical line here is what made this fast -- it caps
   GetPhysicalCharWidths, which reads Strings[Index] whole, and the tab
   expander, which rescans a changed line end to end.  It also splits the
-  editor into two coordinate spaces, and led has about fifteen places that
+  editor into two coordinate spaces, and LED has about fifteen places that
   read a length from TCustomSynEdit.Lines (the buffer) and then write through
   TextBetweenPoints (the view).  Every one of them is wrong the moment those
   two disagree.

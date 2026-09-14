@@ -1,4 +1,4 @@
-{ led - a lightweight editor.  Headless tests for user tools and output filters. }
+{ LED - a lightweight editor.  Headless tests for user tools and output filters. }
 unit Led.Core.Tests.Tools;
 
 {$mode objfpc}{$H+}
@@ -371,7 +371,7 @@ begin
   try
     AssertTrue('data/tools exists at ' + Dir, DirectoryExists(Dir));
     Tools.LoadDirectory(Dir);
-    { medit shipped fourteen; led carries those plus Make. }
+    { medit shipped fourteen; LED carries those plus Make. }
     AssertTrue('all the shipped tools loaded (got ' +
       IntToStr(Tools.Count) + ')', Tools.Count >= 14);
   finally
