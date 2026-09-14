@@ -1556,6 +1556,44 @@ begin
   CheckGt('and the pane it made room for is usable', 120,
     F.Dock.PaneSize('files'));
   CheckGt('and the editor keeps its floor', 200, F.Dock.Center.Width);
+
+  { Right size on the dock that opened it, not one action later.
+    AnchorDocking moves its splitters through a queued call, so the sizing
+    that ran inline was working from a layout still in flight: the pane came
+    out at 163 of 229 with the editor sitting on room it could have spared,
+    and only caught up when some later dock happened to run the sizing again.
+
+    This does not reproduce that.  Taking the queued pass out again leaves it
+    passing: the failure needs the layout to still be in flight when the
+    sizing runs, and by the time this check is reached the suite has opened
+    and closed enough that everything fits on the inline pass.  It was
+    measured directly instead -- 163 before the queued pass, 229 after, same
+    window and same two panes -- and what is left here is the invariant, not
+    a guard on it. }
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Ids[i]);
+    Pump;
+  end;
+  F.Dock.HidePane('files');
+  Pump; Pump;
+  F.Width := 560;
+  Pump; Pump;
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  CheckGt('a second pane is its full size at once, not on the next dock',
+    200, F.Dock.PaneSize('symbols'));
+  F.Dock.HidePane('files');
+  F.Dock.HidePane('symbols');
+  F.Width := W0;
+  Pump; Pump;
+  for i := 0 to 2 do
+  begin
+    F.Dock.ShowPane(Ids[i]);
+    Pump;
+  end;
   F.Dock.HidePane('files');
   F.Width := W0;
   Pump; Pump;

@@ -115,6 +115,7 @@ type
     procedure SetEdgeSize(AEdge: TLedDockEdge; AValue: Integer);
     function PaneById(const AId: string): TLedPaneForm;
     function CentreFloor(AEdge: TLedDockEdge): Integer;
+    procedure SettleSizes(Data: PtrInt);
     function GrowWindowFor(AEdge: TLedDockEdge; AWanted: Integer): Integer;
     procedure SizeEdgePanes(AEdge: TLedDockEdge; AMayGrow: Boolean);
     procedure DockPane(APane: TLedPaneForm);
@@ -594,6 +595,28 @@ end;
 { What the editor area may not be taken below.  The main form sets it from
   the editor's own character cell; the constants are only what is left when
   nobody has. }
+{ The sizing again, once the message cycle this dock happened in has turned.
+
+  AnchorDocking does not put its splitters where they finally go while the
+  dock is still running: TAnchorDockSplitter updates its bounds through
+  Application.QueueAsyncCall.  So the pass that runs inline is working from a
+  layout that is still mid-flight, and MoveSplitter will not give a pane room
+  the layout does not know it has yet -- the pane that asked came out at 163
+  of the 229 it wanted, with the editor sitting on 186 pixels it could have
+  spared, and only reached its size when some later dock ran the sizing again.
+
+  Neither a second inline pass nor an explicit Realign moved it, which is what
+  says this is a queue and not a stale field.  So the last word is queued too,
+  behind AnchorDocking's own. }
+procedure TLedDockHost.SettleSizes(Data: PtrInt);
+var
+  E: TLedDockEdge;
+begin
+  if csDestroying in ComponentState then Exit;
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    SizeEdgePanes(E, E = TLedDockEdge(Data));
+end;
+
 function TLedDockHost.CentreFloor(AEdge: TLedDockEdge): Integer;
 begin
   if AEdge in [ledLeft, ledRight] then
@@ -893,6 +916,12 @@ begin
     for E := Low(TLedDockEdge) to High(TLedDockEdge) do
       if E <> APane.Edge then
         SizeEdgePanes(E, False);
+
+    { And again once AnchorDocking has finished moving its own splitters --
+      see SettleSizes.  Removing an outstanding one first, so a run of docks
+      queues one settle rather than a queue of them. }
+    Application.RemoveAsyncCalls(Self);
+    Application.QueueAsyncCall(@SettleSizes, PtrInt(APane.Edge));
   end;
   DockMaster.ShowControl(APane.Name, True);
 end;
