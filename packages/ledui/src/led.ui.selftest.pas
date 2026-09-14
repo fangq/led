@@ -1768,6 +1768,85 @@ begin
   Pump;
 end;
 
+{ A binary that fails to reopen as text must still be the binary.
+
+  LoadFromFile used to clear FIsBinary and FBytes on its way into the text
+  branch, and that branch can raise: a decode it cannot do leaves the document
+  claiming not to be binary, with no bytes, and the hex dump still sitting in
+  the buffer.  SaveToFile believed all three and took the text path, writing
+  the dump -- in ASCII -- over the file.  Twenty bytes in, a hundred and sixty
+  two out.
+
+  Both routes that reach it are here: Open as Text, which a UTF-32 BOM makes
+  fail, and Reopen with Encoding, which fails on any binary. }
+procedure TestBinarySurvivesFailedDecode(F: TLedMainForm);
+var
+  Doc: TLedDocument;
+  Path, Raw, OnDisk: string;
+  St: TFileStream;
+  Raised: Boolean;
+
+  function FileBytes(const AName: string): string;
+  var S2: TFileStream;
+  begin
+    Result := '';
+    S2 := TFileStream.Create(AName, fmOpenRead);
+    try
+      SetLength(Result, S2.Size);
+      if S2.Size > 0 then S2.Read(Result[1], S2.Size);
+    finally
+      S2.Free;
+    end;
+  end;
+
+begin
+  Say('a binary survives a decode that fails');
+
+  { A UTF-32 BOM, then bytes that make it plainly binary.  The BOM is what
+    Open as Text cannot get past. }
+  Path := TempName('failed-decode.bin');
+  Raw := #$FF#$FE#$00#$00 + 'MZ'#0#0#1#2#3#0#0'hello'#0#0;
+  St := TFileStream.Create(Path, fmCreate);
+  try St.Write(Raw[1], Length(Raw)); finally St.Free; end;
+
+  Doc := F.ActiveTab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('it opens as a dump', Doc.IsBinary);
+  CheckEqInt('with its bytes', Length(Raw), Doc.HexSize);
+
+  Raised := False;
+  try
+    Doc.OpenAsText;
+  except
+    on E: Exception do Raised := True;
+  end;
+  Pump;
+  Check('Open as Text fails on it', Raised);
+  Check('and it is still a binary afterwards', Doc.IsBinary);
+  CheckEqInt('with its bytes still there', Length(Raw), Doc.HexSize);
+
+  { The one that matters: what a save writes now. }
+  Doc.SaveToFile(Path);
+  OnDisk := FileBytes(Path);
+  CheckEq('and saving writes the file, not the dump', Raw, OnDisk);
+
+  { The other route in. }
+  Raised := False;
+  try
+    Doc.Reload('utf-8');
+  except
+    on E: Exception do Raised := True;
+  end;
+  Pump;
+  Check('Reopen with Encoding fails too', Raised);
+  Check('and leaves it a binary', Doc.IsBinary);
+  Doc.SaveToFile(Path);
+  CheckEq('and it still saves the file', Raw, FileBytes(Path));
+
+  DeleteFile(Path);
+end;
+
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
@@ -5836,6 +5915,7 @@ begin
   TestMeditTrim(F);
   TestBundledFont(F);
   TestUntitledNumbering(F);
+  TestBinarySurvivesFailedDecode(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   WriteLn;

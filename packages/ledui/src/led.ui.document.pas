@@ -577,37 +577,49 @@ var
   Text, Cached, Raw: string;
   Encodings: TStringList;
   Err: TLedFileError;
+  Binary: Boolean;
+  NewInfo: TLedTextInfo;
 begin
   { The bytes first, because whether this is text at all is decided from
     them and a hex dump is made from them.  One read either way: the text
     path decodes what is already in hand rather than opening the file
     again. }
   Raw := LedReadRawFile(AFileName);
-  FIsBinary := (not FForceText) and (AForcedEncoding = '') and
+  Binary := (not FForceText) and (AForcedEncoding = '') and
     LedLooksBinary(Raw);
 
-  if FIsBinary then
+  { Worked out into locals, and only written to the document once it has all
+    succeeded.
+
+    Committing as it went was a way to lose a file.  FIsBinary and FBytes were
+    cleared on the way into the text branch, which then raised on a decode it
+    could not do -- so a dump that failed to reopen as text was left claiming
+    not to be binary, with no bytes, and the hex dump still in the buffer.
+    SaveToFile believed it: it took the text path and wrote the dump, in
+    ASCII, over the user's binary.  Measured on a twenty-byte file, reopened
+    with an encoding it could not be read in: it came back a hundred and
+    sixty-two bytes of hexadecimal.
+
+    Reachable from File > Open as Text on anything with a UTF-32 BOM, and from
+    Reopen with Encoding on any binary at all -- both of which report the
+    error and leave the document open, which is exactly when the next Ctrl+S
+    happens. }
+  NewInfo := LedDefaultTextInfo;
+  if Binary then
   begin
     { No decoding, no encoding, no line-ending convention: the buffer holds a
       rendering of the file rather than the file, and saying otherwise would
       invite the save path to write it back. }
-    FBytes := Raw;
-    FHexUndoCount := 0;
-    FHexDirty := False;
     Text := LedHexDump(Raw);
-    FInfo := LedDefaultTextInfo;
     { Claim neither.  The buffer is a rendering of the bytes, so it has no
       encoding and no line-ending convention of its own, and recording the
       defaults would put a guess into the session file and onto the status
       bar as though it were known. }
-    FInfo.Encoding := '';
-    FInfo.LineEnd := leUnknown;
+    NewInfo.Encoding := '';
+    NewInfo.LineEnd := leUnknown;
   end
   else
   begin
-    FBytes := '';
-    FHexUndoCount := 0;
-    FHexDirty := False;
     Encodings := TStringList.Create;
     try
       LedParseEncodingList(
@@ -619,13 +631,20 @@ begin
       { The same error LedLoadTextFile would have raised; only the reading is
         done differently, so "Reopen with encoding" still reports what went
         wrong with the encoding it was given. }
-      Err := LedDecodeText(Raw, AForcedEncoding, Cached, Encodings, Text, FInfo);
+      Err := LedDecodeText(Raw, AForcedEncoding, Cached, Encodings, Text, NewInfo);
       if Err <> lfeNone then
         raise ELedFileError.Create(Err, AFileName);
     finally
       Encodings.Free;
     end;
   end;
+
+  { Past every raise: the document may be changed now. }
+  FIsBinary := Binary;
+  if Binary then FBytes := Raw else FBytes := '';
+  FHexUndoCount := 0;
+  FHexDirty := False;
+  FInfo := NewInfo;
 
   FMaster.BeginUpdate;
   try
