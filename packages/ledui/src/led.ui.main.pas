@@ -1803,6 +1803,11 @@ begin
     else
       Tab := FindTabFor(Doc);
     FRecent.Add(Doc.FileName);
+    { The other way in.  A file named on the command line reaches a tab here
+      rather than through OpenFiles, so the report has to be made here too --
+      before the explicit line below, which is the user asking for somewhere
+      in particular and outranks it. }
+    ReportBJDataFallback(Doc);
 
     if (Tab <> nil) and (Arg.Line > 0) then
     begin

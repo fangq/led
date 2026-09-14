@@ -3863,12 +3863,46 @@ end;
 
 procedure TestBJDataFiles(F: TLedMainForm);
 var
-  Good, Bad: string;
+  Good, Bad, Bad2: string;
   Raw, Text: string;
   Doc: TLedDocument;
   Tab: TLedTab;
-  Files: TStringList;
-  Where: PtrUInt;
+  Files, Args: TStringList;
+  Cmd: TLedCommandLine;
+
+  { The same checks for either way a file reaches a tab. }
+  procedure CheckBadOpen(const ALabel, APath: string);
+  var
+    D: TLedDocument;
+    T: TLedTab;
+    W: PtrUInt;
+  begin
+    T := F.ActiveTab;
+    D := T.Document;
+    CheckEq(ALabel + ': it is the file on screen', APath, D.FileName);
+    Check(ALabel + ': it does not open as a structure', not D.IsBJData);
+    Check(ALabel + ': it opens as a dump instead', D.IsBinary);
+    Check(ALabel + ': and the buffer is a hex dump',
+      Pos('00000000  7b 55 03 70', D.Master.Lines.Text) = 1);
+
+    W := D.BJDataErrorOffset;
+    Check(ALabel + ': the failure is placed in the file',
+      (W > 0) and (W <= PtrUInt(Length(Raw))));
+    { Past the first row of the dump, which is what lets the caret checks
+      tell a moved caret from an untouched one. }
+    Check(ALabel + ': and past the first row of the dump',
+      W >= PtrUInt(LedHexBytesPerLine));
+    CheckEqInt(ALabel + ': the caret row is the row of that byte',
+      Integer(W) div LedHexBytesPerLine + 1, T.ActiveView.CaretY);
+    CheckEqInt(ALabel + ': and the column is that byte',
+      LedHexByteColumn(Integer(W) mod LedHexBytesPerLine),
+      T.ActiveView.CaretX);
+    { Read and cleared: the window reports once, and a redraw or a focus
+      change must not bring the dialog back. }
+    Check(ALabel + ': the message is taken when it is reported',
+      D.TakeBJDataError(W) = '');
+  end;
+
 begin
   Say('Binary JData files');
 
@@ -3926,48 +3960,41 @@ begin
          #$55#$01'a' + #$53#$55#$40'short' + #$7D;
   Bad := TempName('broken.bjd');
   WriteBytes(Bad, Raw);
+  Bad2 := TempName('broken2.bjd');
+  WriteBytes(Bad2, Raw);
 
+  { Through OpenFiles, not LoadFromFile: the caret and the message are the
+    window's job, and testing the document alone would not reach them. }
   Files := TStringList.Create;
   try
     Files.Add(Bad);
-    { Through OpenFiles, not LoadFromFile: the caret and the message are the
-      window's job, and testing the document alone would not reach them. }
     F.OpenFiles(Files);
     Pump;
   finally
     Files.Free;
   end;
+  CheckBadOpen('opened from the file list', Bad);
 
-  Tab := F.ActiveTab;
-  Doc := Tab.Document;
-  CheckEq('the broken file is the one on screen', Bad, Doc.FileName);
-  Check('it does not open as a structure', not Doc.IsBJData);
-  Check('it opens as a dump instead', Doc.IsBinary);
-  Check('and the buffer is a hex dump',
-    Pos('00000000  7b 55 03 70', Doc.Master.Lines.Text) = 1);
-
-  Where := Doc.BJDataErrorOffset;
-  Check('the failure is placed somewhere in the file', Where > 0);
-  Check('and inside it', Where <= PtrUInt(Length(Raw)));
-  { Past the first row of the dump, which is what makes the caret checks
-    below able to tell a moved caret from an untouched one. }
-  Check('and past the first row of the dump',
-    Where >= PtrUInt(LedHexBytesPerLine));
-  { The caret is on that byte, so the dump opens looking at the damage
-    rather than at byte zero. }
-  CheckEqInt('the caret row is the row of that byte',
-    Integer(Where) div LedHexBytesPerLine + 1, Tab.ActiveView.CaretY);
-  CheckEqInt('and the column is that byte',
-    LedHexByteColumn(Integer(Where) mod LedHexBytesPerLine),
-    Tab.ActiveView.CaretX);
-
-  { Read and cleared: the window reports once, and a redraw or a focus change
-    must not bring the dialog back. }
-  Check('the message is taken when it is reported',
-    Doc.TakeBJDataError(Where) = '');
+  { And again through the command line, which reaches a tab by its own route.
+    The first version of this reported only from OpenFiles, so led opened a
+    bad file named on the command line as a dump with no message and the
+    caret at byte zero.  Running it found that; this test did not. }
+  Cmd := TLedCommandLine.Create;
+  Args := TStringList.Create;
+  try
+    Args.Add(Bad2);
+    Cmd.Parse(Args);
+    F.ApplyCommandLine(Cmd, '');
+    Pump;
+  finally
+    Args.Free;
+    Cmd.Free;
+  end;
+  CheckBadOpen('opened from the command line', Bad2);
 
   DeleteFile(Good);
   DeleteFile(Bad);
+  DeleteFile(Bad2);
 end;
 
 procedure TestStartupDocument(F: TLedMainForm);
