@@ -14,7 +14,7 @@ uses
   SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
   SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
   SynEditMarkup, SynEditMiscClasses, LazVersion,
-  Led.Core.Hex,
+  Led.Core.Hex, Led.Core.BJDView,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
 
@@ -78,6 +78,7 @@ type
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
                           // a circular unit reference
     FHexMode: Boolean;
+    FBJDataMode: Boolean;
     FCurrentLineColour: TColor;
     FCurrentLineRow: Integer;
     FRuledLine: Integer;
@@ -132,6 +133,9 @@ type
     procedure CollectWords(const APrefix: string; AInto: TStrings);
     function SnapHexColumn(ACol: Integer): Integer;
     procedure SetHexMode(AValue: Boolean);
+    procedure SetBJDataMode(AValue: Boolean);
+    function HexOrBJMarkup: TLedHexMarkup;
+    function SnapBJColumn(ACol: Integer): Integer;
   protected
     procedure Paint; override;
     { Keeps the long-line view's live range on the caret and the selection.
@@ -158,6 +162,10 @@ type
       keys go to OnHexKey instead of into the buffer.  The buffer is a
       rendering of bytes the document owns, so nothing else may write to it. }
     property HexMode: Boolean read FHexMode write SetHexMode;
+    { The BJData structure view: ordinary text with a column of file offsets
+      down its left.  Not a hex dump -- none of the byte geometry applies --
+      but the offsets are drawn like a dump's and are no more clickable. }
+    property BJDataMode: Boolean read FBJDataMode write SetBJDataMode;
     { The colour of the two rules that mark the caret's row.  Set from the
       theme's current-line style, which SynEdit would otherwise paint as a
       filled band across the whole row. }
@@ -1310,17 +1318,66 @@ end;
 
 { Created on first use and owned by the markup manager, as the spell markup
   is.  An ordinary document never asks for one. }
-procedure TLedEdit.SetHexMode(AValue: Boolean);
+{ The markup that colours an offset column, made on first use.  Both binary
+  views want one and no ordinary document wants any. }
+function TLedEdit.HexOrBJMarkup: TLedHexMarkup;
 begin
-  if FHexMode = AValue then Exit;
-  FHexMode := AValue;
-  if FHexMode and (FHexMarkup = nil) then
+  if FHexMarkup = nil then
   begin
     FHexMarkup := TLedHexMarkup.Create(Self);
     MarkupManager.AddMarkUp(FHexMarkup);
   end;
-  if FHexMarkup <> nil then FHexMarkup.Enabled := FHexMode;
+  Result := FHexMarkup;
+end;
+
+procedure TLedEdit.SetHexMode(AValue: Boolean);
+begin
+  if FHexMode = AValue then Exit;
+  FHexMode := AValue;
+  if FHexMode then
+  begin
+    HexOrBJMarkup.Kind := lmkHexDump;
+    HexOrBJMarkup.OffsetWidth := LedHexByteColumn(0) - 2;
+  end;
+  if FHexMarkup <> nil then
+    FHexMarkup.Enabled := FHexMode or FBJDataMode;
+
+  { A dump has no words in it.  Clicking one byte pair lit up every other
+    place those two characters happen to fall -- which in a wall of hex is
+    most of the screen, and means nothing: they are not the same value, they
+    are the same two glyphs.  The markup follows the caret, so it has to be
+    silenced here rather than left to find nothing. }
+  if FHighlightWord <> nil then
+    FHighlightWord.Enabled := not FHexMode;
+
   Invalidate;
+end;
+
+procedure TLedEdit.SetBJDataMode(AValue: Boolean);
+begin
+  if FBJDataMode = AValue then Exit;
+  FBJDataMode := AValue;
+  if FBJDataMode then
+  begin
+    HexOrBJMarkup.Kind := lmkOffsetOnly;
+    HexOrBJMarkup.OffsetWidth := LedBJOffsetWidth;
+  end;
+  if FHexMarkup <> nil then
+    FHexMarkup.Enabled := FHexMode or FBJDataMode;
+  Invalidate;
+end;
+
+{ The first column a caret may sit in, in a structure view.
+
+  A row is an offset, two spaces, and then the record -- so the offset is
+  eight characters of file position, which is a fact about the file and not
+  text anybody can put a caret in the middle of and mean anything by.  A
+  click in it lands on the record instead, which is the same courtesy a hex
+  dump's address column gets from SnapHexColumn. }
+function TLedEdit.SnapBJColumn(ACol: Integer): Integer;
+begin
+  Result := ACol;
+  if Result < LedBJOffsetWidth + 3 then Result := LedBJOffsetWidth + 3;
 end;
 
 procedure TLedEdit.SetSpellScope(AScope: TLedSpellScope);
@@ -1568,6 +1625,7 @@ begin
     place a caret can be corrected without fighting the notification it came
     from. }
   if FHexMode then CaretX := SnapHexColumn(CaretX);
+  if FBJDataMode then CaretX := SnapBJColumn(CaretX);
 end;
 
 { The nearest column the caret may occupy, at or after ACol.
@@ -1601,6 +1659,7 @@ end;
 procedure TLedEdit.SetCaretXY(Value: TPoint);
 begin
   if FHexMode then Value.X := SnapHexColumn(Value.X);
+  if FBJDataMode then Value.X := SnapBJColumn(Value.X);
   inherited SetCaretXY(Value);
 end;
 
@@ -1673,7 +1732,7 @@ begin
     page behind the selection.  Two answers to one question, one of them
     shouting. }
   if (scSelection in AChanges) and (FHighlightWord <> nil) then
-    FHighlightWord.Enabled :=
+    FHighlightWord.Enabled := (not FHexMode) and
       not (SelectionIsReal and (BlockBegin.Y <> BlockEnd.Y));
 
   if FLongLines = nil then Exit;

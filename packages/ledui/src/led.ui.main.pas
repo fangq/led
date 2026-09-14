@@ -638,7 +638,7 @@ type
     procedure ShowFindForm(AReplace: Boolean);
     procedure BookChange(Sender: TObject);
     procedure SyncActiveDocument;
-    procedure SetMiniMaps(AOn: Boolean);
+
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure UpdateStatusBar;
@@ -710,6 +710,9 @@ type
       moment it is built -- see the implementation for what happens to one
       that cannot.  Public so the check can build an item the way the form
       does and watch what ticking it costs. }
+    { Turns the minimaps on or off across the window, and remembers it.
+      Public for the check that a hex dump does not get one. }
+    procedure SetMiniMaps(AOn: Boolean);
     procedure MakeTogglesCheckable;
     { Whether the clipboard holds text, cached -- and never asked of the X
       server while the toolkit holds a grab.  Public, with the count of times
@@ -4091,6 +4094,8 @@ begin
   except
     on E: Exception do ReportError(E.Message);
   end;
+  { It is text now, so it gets a minimap if minimaps are on. }
+  Tab.RefreshMiniMap;
   UpdateStatusBar;
 end;
 
@@ -4232,6 +4237,9 @@ begin
   else
     FShownDoc := nil;
   UpdateStatusBar;
+  { A dump has no minimap and a text file does, and the tab in front may have
+    changed from one to the other. }
+  if ActiveTab <> nil then ActiveTab.RefreshMiniMap;
   { The document-dependent menus -- which language is ticked, which encoding,
     which tools apply -- follow the active document. }
   PopulateLanguageMenu;

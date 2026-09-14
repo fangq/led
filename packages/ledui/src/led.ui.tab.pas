@@ -75,6 +75,11 @@ type
       one window is four times the width for no more information; the map
       follows whichever view has the focus instead, which is the one the
       question "where am I in this file" is about. }
+    { Re-decides whether the map is shown and what it is of.  Public because a
+      document can turn into a hex dump, or stop being one, without the tab
+      being told -- Open as Text is the case that does it. }
+    procedure RefreshMiniMap;
+
     property MiniMap: TLedMiniMap read FMiniMap;
     property ShowMiniMap: Boolean read FShowMiniMap write SetShowMiniMap;
   end;
@@ -130,9 +135,26 @@ end;
 procedure TLedTab.SetShowMiniMap(AValue: Boolean);
 begin
   FShowMiniMap := AValue;
+  RefreshMiniMap;
+end;
+
+{ Shown when it is asked for and there is something for it to be a map of.
+
+  A hex dump is not.  Every row of one is the same shape -- an address, the
+  same sixteen byte cells, the same sixteen characters -- so the map of it is
+  a solid rectangle the height of the file, which tells the reader nothing
+  and takes a strip of the window to do it.  The structure view keeps its
+  map: those rows have an outline, and an outline is what a minimap draws.
+
+  Called whenever what the tab is showing might have changed, because a
+  document turns into a dump and back -- Open as Text -- without the tab
+  being told. }
+procedure TLedTab.RefreshMiniMap;
+begin
   if FMiniMap = nil then Exit;
-  FMiniMap.Visible := AValue;
-  if AValue then
+  FMiniMap.Visible := FShowMiniMap and (FActiveView <> nil) and
+    (not FActiveView.HexMode);
+  if FMiniMap.Visible then
     FMiniMap.Attach(FActiveView);
 end;
 
@@ -201,8 +223,7 @@ begin
   if FActiveView = nil then
   begin
     FActiveView := Result;
-    if (FMiniMap <> nil) and FShowMiniMap then
-      FMiniMap.Attach(FActiveView);
+    RefreshMiniMap;
   end;
 end;
 
@@ -211,8 +232,7 @@ begin
   FActiveView := TLedEdit(Sender);
   { The map is of the view being looked at.  In a split tab that is whichever
     one has just taken the focus. }
-  if (FMiniMap <> nil) and FShowMiniMap then
-    FMiniMap.Attach(FActiveView);
+  RefreshMiniMap;
 end;
 
 function TLedTab.SplitIsVertical: Boolean;
@@ -308,8 +328,7 @@ begin
 
   if FViews.Count > 0 then
     FActiveView := TLedEdit(FViews[0]);
-  if (FMiniMap <> nil) and FShowMiniMap then
-    FMiniMap.Attach(FActiveView);
+  RefreshMiniMap;
   LedTryFocus(FActiveView);
 end;
 
@@ -321,8 +340,7 @@ begin
   i := FViews.IndexOf(FActiveView);
   i := (i + 1) mod FViews.Count;
   FActiveView := TLedEdit(FViews[i]);
-  if (FMiniMap <> nil) and FShowMiniMap then
-    FMiniMap.Attach(FActiveView);
+  RefreshMiniMap;
   LedTryFocus(FActiveView);
 end;
 

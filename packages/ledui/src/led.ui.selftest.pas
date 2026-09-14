@@ -27,7 +27,7 @@ uses
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
-  ShellCtrls, Dialogs, Led.Core.Hex,
+  ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -5004,12 +5004,31 @@ begin
     end;
 end;
 
+{ What the offset markup would paint at a column, asked the way the painter
+  asks it: through the markup's own GetMarkupAttributeAtRowCol. }
+function MarkupColourAt(V: TLedEdit; ARow, ACol: Integer): TColor;
+var
+  Bound: TLazSynDisplayTokenBound;
+  Rtl: TLazSynDisplayRtlInfo;
+  Attr: TSynSelectedColor;
+begin
+  Result := clNone;
+  if V.HexMarkup = nil then Exit;
+  Bound := Default(TLazSynDisplayTokenBound);
+  Bound.Logical := ACol;
+  Bound.Physical := ACol;
+  Rtl := Default(TLazSynDisplayRtlInfo);
+  Attr := V.HexMarkup.GetMarkupAttributeAtRowCol(ARow, Bound, Rtl);
+  if Attr <> nil then Result := Attr.Foreground;
+end;
+
 procedure TestBJDataFiles(F: TLedMainForm);
 var
   Good, Bad, Bad2: string;
   Raw, Text: string;
   Doc: TLedDocument;
   Tab: TLedTab;
+  V: TLedEdit;
   Files, Args: TStringList;
   Cmd: TLedCommandLine;
 
@@ -5084,6 +5103,45 @@ begin
     the two tests in LoadFromFile and this fails. }
   Check('the bytes do look binary', LedLooksBinary(Raw));
   Check('and a BJData file opens as a structure regardless', Doc.IsBJData);
+
+  { ---- the offset column reads as one, and is not somewhere to put a caret ---- }
+
+  { The same treatment a dump's address column gets.  A structure row starts
+    with eight characters of file offset and two spaces, and that is a fact
+    about the file rather than text: it recedes, and a click in it lands on
+    the record instead of between two digits of a number. }
+  V := Tab.ActiveView;
+  Check('the structure view is not a hex dump', not V.HexMode);
+  Check('but it says it is the structure view', V.BJDataMode);
+  Check('and it has an offset markup', V.HexMarkup <> nil);
+  if V.HexMarkup <> nil then
+  begin
+    CheckEqInt('which knows it has only an offset column',
+      Ord(lmkOffsetOnly), Ord(V.HexMarkup.Kind));
+    CheckEqInt('eight characters wide', LedBJOffsetWidth,
+      V.HexMarkup.OffsetWidth);
+  end;
+
+  { Coloured, and only there.  Asked of the markup the way the painter asks
+    it: a column inside the offset answers with a colour, one past it does
+    not. }
+  Check('the offset column is given a colour',
+    MarkupColourAt(V, 1, 3) <> clNone);
+  Check('and the record beside it is left to the highlighter',
+    MarkupColourAt(V, 1, LedBJOffsetWidth + 4) = clNone);
+
+  { And the caret cannot be put in it, by click or by code. }
+  V.CaretXY := Point(2, 1);
+  Pump;
+  CheckEqInt('a caret aimed into the offset lands on the record',
+    LedBJOffsetWidth + 3, V.CaretX);
+  TLedMousePoke.Press(V, [], V.Gutter.Width + 2 + 2 * V.CharWidth,
+    V.LineHeight div 2);
+  TLedMousePoke.Release(V, [], V.Gutter.Width + 2 + 2 * V.CharWidth,
+    V.LineHeight div 2);
+  Pump;
+  CheckGt('and a click in it does not stay there', LedBJOffsetWidth + 2,
+    V.CaretX);
 
   { The way out is the same as for a dump. }
   Doc.OpenAsText;
@@ -8145,6 +8203,50 @@ begin
   { Byte 5 of row 1, from the hex side. }
   HexCol := LedHexByteColumn(5);
   TxtCol := LedHexTextColumn(5);
+  V.CaretXY := Point(HexCol, 1);
+  Pump;
+
+  { --- and the two things a dump has no use for --- }
+
+  { The appearance highlight follows the caret and lights up every other
+    place the same word appears.  A dump has no words: clicking one byte pair
+    lit up every other place those two glyphs happened to fall, which in a
+    wall of hexadecimal is most of the screen and means nothing -- 3A in one
+    row and 3A in another are two different bytes at two different offsets. }
+  Check('a dump does not light up repeated byte pairs',
+    not TLedMarkupPeek.Live(V.HighlightWord));
+
+  { And the minimap is a picture of a file's shape, which a dump does not
+    have: every row is an address, sixteen cells and sixteen characters, so
+    the map of one is a solid rectangle down the side of the window. }
+  F.SetMiniMaps(True);
+  Pump;
+  Check('the minimap is asked for', LedPrefs.GetBool(LedPrefMiniMap, False));
+  Check('and still not shown over a dump',
+    (Tab.MiniMap = nil) or (not Tab.MiniMap.Visible));
+
+  { It comes back for text, which is what says the rule is about dumps and
+    not about the map having been switched off. }
+  Tab.Document.OpenAsText;
+  Tab.RefreshMiniMap;
+  Pump;
+  Check('the same document as text gets one',
+    (Tab.MiniMap <> nil) and Tab.MiniMap.Visible);
+  Check('and its words light up again',
+    TLedMarkupPeek.Live(V.HighlightWord));
+  F.SetMiniMaps(False);
+  Pump;
+
+  { Back to the dump for the pairing checks below. }
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Bin));
+  Pump;
+  if Tab = nil then Exit;
+  V := Tab.ActiveView;
+  M := V.HexMarkup;
+  if M = nil then Exit;
   V.CaretXY := Point(HexCol, 1);
   Pump;
 

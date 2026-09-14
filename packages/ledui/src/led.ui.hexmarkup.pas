@@ -30,8 +30,19 @@ uses
   Led.Core.Hex;
 
 type
+  { What the markup is looking at.
+
+    A hex dump is three columns and this knows all three.  The BJData
+    structure view is ordinary text with one column of file offsets down its
+    left, and wants exactly one thing from here: that column recedes the way
+    a dump's offsets do, so the two binary views agree about what an offset
+    looks like. }
+  TLedMarkupKind = (lmkHexDump, lmkOffsetOnly);
+
   TLedHexMarkup = class(TSynEditMarkup)
   private
+    FKind: TLedMarkupKind;
+    FOffsetWidth: Integer;
     FEnabled: Boolean;
     FOffsetFore: TColor;
     FOffsetBack: TColor;
@@ -63,6 +74,11 @@ type
 
     { Off for an ordinary document, so the markup costs a comparison. }
     property Enabled: Boolean read FEnabled write FEnabled;
+
+    { Which of the two views this is, and -- for the offset-only one, whose
+      geometry is not Led.Core.Hex's -- how many characters the offset takes. }
+    property Kind: TLedMarkupKind read FKind write FKind;
+    property OffsetWidth: Integer read FOffsetWidth write FOffsetWidth;
     { What the markup would paint behind the cell at ACol on ARow, or clNone
       where it paints nothing.  Public so the pairing can be checked without
       a screen: which cells light up, and which of the two is the brighter. }
@@ -103,6 +119,8 @@ end;
 constructor TLedHexMarkup.Create(ASynEdit: TSynEditBase);
 begin
   inherited Create(ASynEdit);
+  FKind := lmkHexDump;
+  FOffsetWidth := LedHexByteColumn(0) - 2;
   FOffsetFore := clNone;
   FOffsetBack := clNone;
   FCurrentFore := clNone;
@@ -112,6 +130,8 @@ end;
 
 function TLedHexMarkup.OffsetEndCol: Integer;
 begin
+  if FKind = lmkOffsetOnly then
+    Exit(FOffsetWidth);
   { The offset is everything before the first byte, less the two spaces that
     separate them -- those belong to neither and are left alone. }
   Result := LedHexByteColumn(0) - 2;
@@ -193,7 +213,8 @@ var
   ActiveIsText: Boolean;
 begin
   Result := clNone;
-  if (not FEnabled) or (ACol <= OffsetEndCol) then Exit;
+  if (not FEnabled) or (FKind <> lmkHexDump) then Exit;
+  if ACol <= OffsetEndCol then Exit;
   if not RowHighlight(ARow, FirstB, LastB, ActiveIsText) then Exit;
   Idx := LedHexColumnToIndex(ACol);
   if (Idx < FirstB) or (Idx > LastB) then Exit;
@@ -279,7 +300,8 @@ begin
     sides of the row: strongly where the typing would go, faintly on the
     matching cell opposite.  Reading a dump means going back and forth
     between the two halves, and this is the line between them drawn. }
-  if (Col > OffsetEndCol) and RowHighlight(aRow, FirstB, LastB, ActiveIsText) then
+  if (FKind = lmkHexDump) and (Col > OffsetEndCol) and
+     RowHighlight(aRow, FirstB, LastB, ActiveIsText) then
   begin
     Idx := LedHexColumnToIndex(Col);
     if (Idx >= FirstB) and (Idx <= LastB) then
@@ -311,7 +333,7 @@ begin
     Exit(MarkupInfo);
   end;
 
-  if Col >= TextStartCol then
+  if (FKind = lmkHexDump) and (Col >= TextStartCol) then
   begin
     MarkupInfo.Foreground := FTextFore;
     MarkupInfo.Background := clNone;
@@ -340,8 +362,12 @@ begin
     tokens where the colour changes and nowhere else. }
   if Col <= OffsetEndCol then
     ANextLog := OffsetEndCol + 1
-  else if Col < TextStartCol then
+  else if (FKind = lmkHexDump) and (Col < TextStartCol) then
     ANextLog := TextStartCol;
+
+  { Past the offset there is nothing else to say about a structure view: the
+    rest of the row is the language highlighter's. }
+  if FKind <> lmkHexDump then Exit;
 
   { On a row that carries the caret or part of the selection the colour can
     change at every column, so the answer is the next column.  That is a

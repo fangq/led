@@ -354,6 +354,9 @@ begin
     keys routed to HexKey.  A structure view shares none of that geometry, so
     it is read-only like a dump but is not one. }
   AView.HexMode := IsHexDump;
+  { And the structure view says so too, which is what colours its offset
+    column and keeps the caret out of it. }
+  AView.BJDataMode := FIsBJData;
   if IsHexDump then
     AView.OnHexKey := @HexKey
   else
@@ -404,7 +407,10 @@ begin
   { After the theme has been applied, because the column colours are mixed
     from the editor's own -- asking earlier would mix them from the last
     theme's. }
-  if IsHexDump and (AView.HexMarkup <> nil) then
+  { Both binary views, not just the dump: the structure view's offsets are
+    drawn from the same colours, so that a file offset looks the same
+    whichever of the two it is being read in. }
+  if FIsBinary and (AView.HexMarkup <> nil) then
     AView.HexMarkup.SetColours(AView.Font.Color, AView.Color,
       AView.Gutter.LineNumberPart.MarkupInfo.Foreground,
       AView.CurrentLineColour);
