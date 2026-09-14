@@ -92,6 +92,11 @@ type
     FShowRails: Boolean;
     FRailsStale: Boolean;
     FRailsSettle: TTimer;
+    { The smallest the editor area may be left at when panes take room from
+      it.  Set from outside: the dock has no opinion about what an editor
+      needs, and the control that does know is not one it can see. }
+    FMinCentreW: Integer;
+    FMinCentreH: Integer;
     FDraggingWanted: Boolean;
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
@@ -109,6 +114,7 @@ type
     function GetEdgeSize(AEdge: TLedDockEdge): Integer;
     procedure SetEdgeSize(AEdge: TLedDockEdge; AValue: Integer);
     function PaneById(const AId: string): TLedPaneForm;
+    function CentreFloor(AEdge: TLedDockEdge): Integer;
     function GrowWindowFor(AEdge: TLedDockEdge; AWanted: Integer): Integer;
     procedure SizeEdgePanes(AEdge: TLedDockEdge; AMayGrow: Boolean);
     procedure DockPane(APane: TLedPaneForm);
@@ -200,6 +206,15 @@ type
       read GetEdgeVisible write SetEdgeVisible;
     property EdgeSize[AEdge: TLedDockEdge]: Integer
       read GetEdgeSize write SetEdgeSize;
+
+    { What the editor area must keep when a pane takes room from it, in real
+      pixels.  Zero -- the default -- falls back to a scaled constant, which
+      is what this used to be everywhere: 240 by 160, numbers with nothing
+      behind them but the window I happened to be testing on.  The main form
+      sets these from the editor's own character cell, so the floor follows
+      the font somebody chose rather than a guess. }
+    property MinCentreWidth: Integer read FMinCentreW write FMinCentreW;
+    property MinCentreHeight: Integer read FMinCentreH write FMinCentreH;
   end;
 
 const
@@ -576,6 +591,23 @@ end;
   Not when maximized or full screen: there is nowhere to grow into, and
   dropping the window out of that state to fit a pane would be a rude answer
   to a click.  Returns what it actually got, which may be nothing. }
+{ What the editor area may not be taken below.  The main form sets it from
+  the editor's own character cell; the constants are only what is left when
+  nobody has. }
+function TLedDockHost.CentreFloor(AEdge: TLedDockEdge): Integer;
+begin
+  if AEdge in [ledLeft, ledRight] then
+  begin
+    Result := FMinCentreW;
+    if Result <= 0 then Result := LedScale96(240);
+  end
+  else
+  begin
+    Result := FMinCentreH;
+    if Result <= 0 then Result := LedScale96(160);
+  end;
+end;
+
 function TLedDockHost.GrowWindowFor(AEdge: TLedDockEdge;
   AWanted: Integer): Integer;
 var
@@ -797,9 +829,9 @@ begin
         Inc(Short, Max(0, Wants[i] - Sites[i].Height));
 
     if AEdge in [ledLeft, ledRight] then
-      Deficit := LedScale96(240) - FCenter.Width
+      Deficit := CentreFloor(AEdge) - FCenter.Width
     else
-      Deficit := LedScale96(160) - FCenter.Height;
+      Deficit := CentreFloor(AEdge) - FCenter.Height;
 
     Short := Short + Max(0, Deficit);
     if Short <= 0 then Break;
@@ -818,9 +850,9 @@ begin
     missing, so this is the last resort it reads as rather than the first
     thing tried. }
   if AEdge in [ledLeft, ledRight] then
-    Deficit := LedScale96(240) - FCenter.Width
+    Deficit := CentreFloor(AEdge) - FCenter.Width
   else
-    Deficit := LedScale96(160) - FCenter.Height;
+    Deficit := CentreFloor(AEdge) - FCenter.Height;
 
   if (Deficit > 0) and (TotalWant > Deficit) then
   begin

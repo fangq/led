@@ -521,6 +521,7 @@ type
     FClipAskedAt: QWord;
     function ClipboardHasText(AView: TLedEdit): Boolean;
     procedure ApplyMinimumSize;
+    procedure ApplyCentreFloor;
     procedure TabCloseClick(Sender: TObject);
     procedure BookResize(Sender: TObject);
     procedure PlaceTabCloseButtons;
@@ -3479,6 +3480,36 @@ begin
   end;
 end;
 
+{ How small the editor area may be left when panes take room from it.
+
+  The dock used to carry two constants for this, 240 by 160, which were the
+  numbers that looked right on the window I was testing on.  Scaled for the
+  display they became 750 by 500 on a 3.125x desktop -- a claim on most of an
+  ordinary window, so the budget that was supposed to protect the editor
+  instead starved every pane that tried to open.
+
+  Measured off the editor instead: forty columns and eight lines of whatever
+  font is actually in use, plus the gutter.  Forty columns is about the width
+  at which code stops being worth looking at, and the numbers move with the
+  font and the display scale on their own, which is the point -- there is
+  nothing here to be wrong on somebody else's machine. }
+procedure TLedMainForm.ApplyCentreFloor;
+var
+  View: TLedEdit;
+  W, H: Integer;
+begin
+  if FDock = nil then Exit;
+  View := ActiveView;
+  if (View = nil) or (View.CharWidth <= 0) or (View.LineHeight <= 0) then Exit;
+
+  W := View.CharWidth * 40;
+  if View.Gutter <> nil then Inc(W, View.Gutter.Width);
+  H := View.LineHeight * 8;
+
+  FDock.MinCentreWidth := W;
+  FDock.MinCentreHeight := H;
+end;
+
 { The smallest the window may be made.
 
   TToolBar is wrapable, so a window narrowed past the buttons pushes the last
@@ -3518,6 +3549,7 @@ end;
 procedure TLedMainForm.FormActivate(Sender: TObject);
 begin
   ApplyMinimumSize;
+  ApplyCentreFloor;
   { The editor could not be focused while the window was still being built,
     so the first activation is where it actually happens. }
   if not FFocusedOnce then

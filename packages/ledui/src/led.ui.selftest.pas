@@ -1520,6 +1520,17 @@ begin
   for i := 0 to 2 do
     First[i] := F.Dock.PaneSize(Ids[i]);
 
+  { The floor the editor is protected by comes off the editor, not off a
+    constant.  It was two numbers with nothing behind them -- 240 by 160 --
+    which scaled up to 750 by 500 on a 3.125x display and left no budget for
+    a pane to open into. }
+  Check('the editor floor is set, not left at the fallback',
+    F.Dock.MinCentreWidth > 0);
+  if (F.ActiveView <> nil) and (F.ActiveView.CharWidth > 0) then
+    CheckEqInt('and it is forty columns of the editor''s own font, plus gutter',
+      F.ActiveView.CharWidth * 40 + F.ActiveView.Gutter.Width,
+      F.Dock.MinCentreWidth);
+
   { A window too small for what is being asked of it grows, rather than the
     panes being shaved to fit.  Opening a pane on a narrow window used to give
     it whatever was left -- a strip, at the scales where the editor's own
