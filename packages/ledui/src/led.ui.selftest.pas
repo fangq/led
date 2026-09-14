@@ -4936,7 +4936,7 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   C: TFPColor;
-  x, y, Reds, Rings, Greys, Watch: Integer;
+  x, y, Reds, Rings, Greys: Integer;
   Row: TTreeNode;
   Btn: TToolButton;
 begin
@@ -5469,10 +5469,16 @@ begin
       line 7 with the breakpoint behind us can only stop on the watchpoint. }
     F.Debugger.SetBreakpointEnabled(0, False);
     Pump;
-    Watch := F.Debugger.CurrentLine;
     F.Debugger.Command(ldcContinue);
+    { Waits for the line it should stop on rather than for the line to
+      change.  Waiting for a change and then reading raced gdb: a stop
+      reported before the caret had settled satisfied the loop, the check read
+      whatever was there at that instant, and this failed perhaps three runs
+      in eight -- on code nobody had touched.  Waiting for the value itself
+      loses nothing, because a run that never reaches line 13 still falls out
+      at the timeout and still fails on what it did reach. }
     Waited := 0;
-    while (F.Debugger.CurrentLine = Watch) and (Waited < 15000) do
+    while (F.Debugger.CurrentLine <> 13) and (Waited < 15000) do
     begin
       Pump; Sleep(20); Inc(Waited, 20);
     end;
