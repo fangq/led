@@ -1847,6 +1847,85 @@ begin
   DeleteFile(Path);
 end;
 
+{ Asking for a pane shows that pane, and only that pane.
+
+  ShowPane docks what was asked for and then, if the edge still does not
+  report itself visible, used to call SetEdgeVisible -- which shows "the first
+  pane registered for the edge".  That is the same pane only when the first
+  one happens to be the one wanted: clicking Preview, with Symbols registered
+  first on the right, opened Symbols too.  One button, two panes.
+
+  Read the second half of this before trusting the first.  The fallback only
+  runs when the edge does not report itself visible in the instant after the
+  dock, and here it always does -- so these checks pass on the old code as
+  well, and putting the old call back does not fail them.  They say what the
+  behaviour should be; they do not reproduce the report.
+
+  What is reproducible is the hazard underneath, and that is checked
+  separately below: SetEdgeVisible opens the edge's first pane whatever it is
+  asked about, which is why nothing that wants a particular pane may go
+  through it. }
+procedure TestShowPaneShowsThatPane(F: TLedMainForm);
+var
+  i: Integer;
+  Right: array[0..2] of string = ('symbols', 'preview', 'debug');
+begin
+  Say('showing a pane shows that pane');
+
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Right[i]);
+    Pump;
+  end;
+  Pump;
+
+  { The second one registered for the edge, so a fallback to the first would
+    be visible as a pane nobody asked for. }
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  Check('the pane asked for is open', F.Dock.PaneVisible('preview'));
+  Check('and the edge''s first pane was not opened as well',
+    not F.Dock.PaneVisible('symbols'));
+  Check('nor the third', not F.Dock.PaneVisible('debug'));
+
+  { And from cold on the last one registered, which is the furthest from
+    whatever SetEdgeVisible would have picked. }
+  F.Dock.HidePane('preview');
+  Pump; Pump;
+  F.Dock.TogglePane('debug');
+  Pump; Pump;
+  Check('toggling the last pane on an empty edge opens it',
+    F.Dock.PaneVisible('debug'));
+  Check('and nothing else', (not F.Dock.PaneVisible('symbols')) and
+    (not F.Dock.PaneVisible('preview')));
+
+  F.Dock.HidePane('debug');
+  Pump;
+
+  { The hazard itself.  SetEdgeVisible is not pane-specific and cannot be:
+    "show this edge" has no pane in it.  Asked to show the right-hand edge it
+    opens Symbols -- the first registered there -- and would do so no matter
+    which pane the click had been on. }
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Right[i]);
+    Pump;
+  end;
+  Pump;
+  F.Dock.EdgeVisible[ledRight] := True;
+  Pump; Pump;
+  Check('showing an edge opens its first pane, whichever was wanted',
+    F.Dock.PaneVisible('symbols'));
+  Check('which is why ShowPane must not go through it',
+    not F.Dock.PaneVisible('debug'));
+
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Right[i]);
+    Pump;
+  end;
+end;
+
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
@@ -5916,6 +5995,7 @@ begin
   TestBundledFont(F);
   TestUntitledNumbering(F);
   TestBinarySurvivesFailedDecode(F);
+  TestShowPaneShowsThatPane(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   WriteLn;

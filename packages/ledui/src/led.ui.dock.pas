@@ -877,9 +877,19 @@ begin
     this themselves and the edge buttons did not, which is why clicking
     Output showed nothing until the terminal -- also a bottom pane -- was
     opened and revealed the edge for it.  Doing it here means every route to
-    a pane behaves the same. }
-  if not GetEdgeVisible(Pane.Edge) then
-    SetEdgeVisible(Pane.Edge, True);
+    a pane behaves the same.
+
+    This pane, though, and not SetEdgeVisible.  That shows "the first pane
+    registered for the edge", which is only the same pane when the first one
+    is what was asked for: clicking Preview when Symbols was registered first
+    opened Symbols as well, so one button put two panes on screen.  Asking
+    again for the pane that was actually wanted has the same effect on an
+    edge that is hidden and no effect on one that is not. }
+  if not PaneVisible(AId) then
+  begin
+    DockPane(Pane);
+    GuardCentreHeader;
+  end;
 
   { Docking a pane makes AnchorDocking rebuild sites, and a rebuilt centre
     site comes back with the close button that would shut the editor area.
