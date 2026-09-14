@@ -641,7 +641,6 @@ type
 
     procedure DocChanged(ADoc: TLedDocument);
     procedure RefreshTabCaption(ATab: TLedTab);
-    procedure UpdateStatusBar;
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
     function ConfirmCloseAll: Boolean;
@@ -712,6 +711,10 @@ type
       does and watch what ticking it costs. }
     { Turns the minimaps on or off across the window, and remembers it.
       Public for the check that a hex dump does not get one. }
+    { Public for the check that reads the status bar back: what it says about
+      a binary view is the only thing telling the reader which of the two
+      they are looking at. }
+    procedure UpdateStatusBar;
     procedure SetMiniMaps(AOn: Boolean);
     procedure MakeTogglesCheckable;
     { Whether the clipboard holds text, cached -- and never asked of the X
@@ -4345,7 +4348,13 @@ begin
       true.  The language column says what the window is instead. }
     StatusBar1.Panels[1].Text := '';
     StatusBar1.Panels[2].Text := '';
-    StatusBar1.Panels[3].Text := 'Binary (hex)';
+    { Which of the two binary views this is.  It said hex over a structure
+      view, which is the one thing a reader of that column would be looking
+      to find out. }
+    if D.IsBJData then
+      StatusBar1.Panels[3].Text := 'Binary (BJData)'
+    else
+      StatusBar1.Panels[3].Text := 'Binary (hex)';
   end
   else
   begin

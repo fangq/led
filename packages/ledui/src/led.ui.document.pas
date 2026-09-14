@@ -21,6 +21,7 @@ uses
   Classes, SysUtils, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
+  Led.Syn.BJData,
   Led.Core.Encodings,
   Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
@@ -64,6 +65,10 @@ type
       the document does not put dialogs on the screen. }
     FBJError: string;
     FBJErrorOffset: PtrUInt;
+    { The structure view's own highlighter, made when a document first needs
+      one and owned by the document: it carries that document's rows, so it
+      cannot be shared the way the language ones in Led.Syn.Factory are. }
+    FBJHigh: TLedBJHighlighter;
     FForceText: Boolean;        // the user asked for the text editor anyway
     { The bytes themselves, when the document is a dump.  This is the file;
       the buffer the views show is a rendering of it, rebuilt a row at a time
@@ -297,6 +302,9 @@ destructor TLedDocument.Destroy;
 begin
   FConfig.Free;
   FViews.Free;
+  { Owned here rather than by a component, because it carries this document's
+    rows and nothing else's. }
+  FBJHigh.Free;
   inherited Destroy;
 end;
 
@@ -455,6 +463,13 @@ procedure TLedDocument.ApplyConfigToViews;
 var
   i: Integer;
 begin
+  { The structure view's highlighter belongs to this document, so LedRetheme
+    -- which re-themes the shared language ones -- never reaches it.  Without
+    this a theme change left the structure view in the old scheme's colours,
+    which is how the check that reads a marker's contrast in every scheme
+    found it. }
+  if FBJHigh <> nil then
+    LedApplyThemeToHighlighter(LedCurrentTheme, FBJHigh);
   for i := 0 to FViews.Count - 1 do
     ApplyConfigToView(TLedEdit(FViews[i]));
 end;
@@ -491,7 +506,19 @@ var
   HL: TSynCustomHighlighter;
   i: Integer;
 begin
-  HL := LedHighlighterFor(FConfig.GetStr(LedSetLang));
+  { The structure view is coloured from the walk that rendered it rather than
+    from a language.  The walk knew what every field was -- this record is a
+    string, that column is a key, this count is LED's own -- so the view is
+    told, instead of a grammar reading the text back and deciding again. }
+  if FIsBJData then
+  begin
+    if FBJHigh = nil then FBJHigh := TLedBJHighlighter.Create(nil);
+    FBJHigh.SetRows(FBJRows);
+    LedApplyThemeToHighlighter(LedCurrentTheme, FBJHigh);
+    HL := FBJHigh;
+  end
+  else
+    HL := LedHighlighterFor(FConfig.GetStr(LedSetLang));
   if HL <> nil then
     LedApplyThemeToHighlighter(LedCurrentTheme, HL);
   { The highlighter is a property of each editor, not of the shared buffer:
@@ -771,7 +798,11 @@ begin
   begin
     ReadModelines;
     DetectLanguage;
-  end;
+  end
+  else if FIsBJData then
+    { Except the structure view, which is coloured from the walk that built
+      it rather than from a language: see ApplyLanguage. }
+    FConfig.SetStr(LedSetLang, '', lcsAuto);
   { Glob rules are applied after detection because a rule may select on the
     language, and they outrank the modeline read just above. }
   LedFilterSettings.ApplyTo(FConfig, FFileName, FConfig.GetStr(LedSetLang));

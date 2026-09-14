@@ -38,7 +38,7 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
-  Led.UI.HexMarkup, Led.UI.MiniMap, AnchorDocking, BaseUnix, LazFileUtils,
+  Led.UI.HexMarkup, Led.UI.MiniMap, Led.Syn.BJData, AnchorDocking, BaseUnix, LazFileUtils,
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
@@ -5004,6 +5004,54 @@ begin
     end;
 end;
 
+{ The colour a scheme gave one scope, read off the highlighter that is in
+  use -- which is where the answer actually is, after the map-to chain, the
+  theme lookup and the readability floor have all had their say. }
+function AttrColour(V: TLedEdit; const AScope: string): TColor;
+var
+  i: Integer;
+begin
+  Result := clNone;
+  if V.Highlighter = nil then Exit;
+  for i := 0 to V.Highlighter.AttrCount - 1 do
+    if SameText(V.Highlighter.Attribute[i].StoredName, AScope) then
+      Exit(V.Highlighter.Attribute[i].Foreground);
+end;
+
+{ The scope the highlighter puts on the token at a column: the attribute's
+  stored name, which for a grammar-driven highlighter is the scope the
+  grammar asked for -- 'def.identifier', 'def.type'.  Empty where the
+  highlighter says nothing.
+
+  Asked of the highlighter directly rather than read off the screen, because
+  what is being checked is which scope a field gets; whether the theme then
+  paints it, and in what colour, is the theme's business and is checked
+  separately. }
+function ScopeAt(V: TLedEdit; ALine, ACol: Integer): string;
+var
+  HL: TSynCustomHighlighter;
+  Tok: PChar;
+  TokLen, TokPos: Integer;
+  Attr: TSynHighlighterAttributes;
+begin
+  Result := '';
+  HL := V.Highlighter;
+  if (HL = nil) or (ALine < 1) or (ALine > V.Lines.Count) then Exit;
+  HL.StartAtLineIndex(ALine - 1);
+  while not HL.GetEol do
+  begin
+    HL.GetTokenEx(Tok, TokLen);
+    TokPos := HL.GetTokenPos;
+    if (ACol > TokPos) and (ACol <= TokPos + TokLen) then
+    begin
+      Attr := HL.GetTokenAttribute;
+      if Attr <> nil then Result := Attr.StoredName;
+      Exit;
+    end;
+    HL.Next;
+  end;
+end;
+
 { What the offset markup would paint at a column, asked the way the painter
   asks it: through the markup's own GetMarkupAttributeAtRowCol. }
 function MarkupColourAt(V: TLedEdit; ARow, ACol: Integer): TColor;
@@ -5029,6 +5077,9 @@ var
   Doc: TLedDocument;
   Tab: TLedTab;
   V: TLedEdit;
+  L1, L2, SavedTheme: string;
+  i: Integer;
+  KeyCol, MarkCol, ValCol, RemCol: TColor;
   Files, Args: TStringList;
   Cmd: TLedCommandLine;
 
@@ -5074,7 +5125,13 @@ begin
     The 7 is written as an int32 on purpose, so three of the first ten bytes
     are NUL.  That is what makes the ordering check below mean something. }
   Raw := #$7B + #$55#$01'a' + #$6C#$07#$00#$00#$00 +
-         #$55#$02'hi' + #$53#$55#$02'hi' + #$7D;
+         #$55#$02'hi' + #$53#$55#$02'hi' +
+         { and one of each of the other things a row can carry, so the
+           colouring below is asked about all of them }
+         #$55#$01'n' + #$5A +                                    { null }
+         #$55#$01'f' + #$44#$00#$00#$00#$00#$00#$00#$F8#$3F +    { 1.5 }
+         #$55#$03'arr' + #$5B#$24#$55#$23#$55#$03 + #$01#$02#$03 +
+         #$7D;
   Good := TempName('probe.bjd');
   WriteBytes(Good, Raw);
 
@@ -5103,6 +5160,102 @@ begin
     the two tests in LoadFromFile and this fails. }
   Check('the bytes do look binary', LedLooksBinary(Raw));
   Check('and a BJData file opens as a structure regardless', Doc.IsBJData);
+
+  { And the status bar says which of the two binary views this is: it said
+    hex over a structure view, which is exactly the question that column is
+    there to answer. }
+  F.UpdateStatusBar;
+  Pump;
+  CheckEq('the status bar names the structure view', 'Binary (BJData)',
+    F.StatusBar1.Panels[3].Text);
+
+  { ---- the structure is colour-coded, by the same machinery as a language ---- }
+
+  { Coloured from the walk that rendered it, not by reading the rendering
+    back: the walker tagged every field as it wrote it, and the highlighter
+    hands those tags to SynEdit.  So there is no language and no grammar --
+    and nothing for a regex to be wrong about. }
+  V := Tab.ActiveView;
+  CheckEq('the structure view is not a language', '',
+    Doc.Config.GetStr(LedSetLang));
+  Check('and is coloured by the walk that built it',
+    V.Highlighter is TLedBJHighlighter);
+
+  L1 := V.Lines[1];                      { '       4    a  l  7' }
+  L2 := V.Lines[2];                      { '      13    hi  S #2  "hi"' }
+  CheckEq('the file offset is not data', 'def.comment', ScopeAt(V, 2, 8));
+  CheckEq('the key is an identifier', 'def.identifier',
+    ScopeAt(V, 2, Pos('a  l', L1)));
+  CheckEq('the type marker is a type', 'def.type',
+    ScopeAt(V, 2, Pos('l  7', L1)));
+  CheckEq('an integer is a number', 'def.decimal', ScopeAt(V, 2, Pos('7', L1)));
+
+  CheckEq('a string keeps its key apart from its marker', 'def.identifier',
+    ScopeAt(V, 3, Pos('hi  S', L2)));
+  CheckEq('a length is part of the marker', 'def.type',
+    ScopeAt(V, 3, Pos('S #2', L2) + 2));
+  CheckEq('and the string itself is a string', 'def.string',
+    ScopeAt(V, 3, Pos('"hi"', L2) + 1));
+
+  CheckEq('null is a constant, not a word', 'def.special-constant',
+    ScopeAt(V, 4, Pos('null', V.Lines[3])));
+  CheckEq('a float is a float', 'def.floating-point',
+    ScopeAt(V, 5, Pos('1.5', V.Lines[4])));
+  CheckEq('an ND-array marker is one marker, brackets and all', 'def.type',
+    ScopeAt(V, 6, Pos('[$U#[3]', V.Lines[5]) + 3));
+  CheckEq('and the values it was inlined into are numbers', 'def.decimal',
+    ScopeAt(V, 6, Pos('1, 2, 3', V.Lines[5])));
+
+  { A container's marker is a marker like any other: a brace is the byte the
+    file holds, and the count beside it is LED's. }
+  CheckEq('a container marker is a type too', 'def.type',
+    ScopeAt(V, 1, Pos('{', V.Lines[0])));
+
+  { And LED's own remarks recede.  This is the distinction the whole scheme
+    is for: "5 items" is not in the file, it is LED counting. }
+  CheckEq('a count LED worked out reads as a remark', 'def.comment',
+    ScopeAt(V, 1, Pos('5 items', V.Lines[0])));
+
+  { ---- and every scheme paints it ---- }
+
+  { The scopes above are the shared def: ones, so a scheme that colours C
+    colours this.  What is checked per scheme is that the three fields do not
+    all come out the same colour -- a view where the key, the marker and the
+    value are one colour is not colour-coded -- and that each of them can be
+    read on the page, which is the floor every syntax colour goes through. }
+  SavedTheme := LedPrefs.GetStr(LedPrefColorScheme, 'medit');
+  try
+    for i := 0 to LedThemes.Count - 1 do
+    begin
+      { Through the path the program uses when the theme is switched -- the
+        document re-applies its config to its views, which is also where its
+        own highlighter is re-themed.  Reaching past that and colouring the
+        editor alone is how the first version of this check reported a marker
+        nobody could read: the view had the new page and the highlighter
+        still had the old scheme's colours. }
+      LedSetCurrentTheme(LedThemes[i].Id);
+      LedRetheme(LedCurrentTheme);
+      Doc.ApplyConfigToViews;
+      Pump;
+
+      KeyCol := AttrColour(V, 'def.identifier');
+      MarkCol := AttrColour(V, 'def.type');
+      ValCol := AttrColour(V, 'def.string');
+      RemCol := AttrColour(V, 'def.comment');
+
+      Check('the fields are told apart by colour in ' + LedThemes[i].Id,
+        (KeyCol <> MarkCol) or (MarkCol <> ValCol) or (KeyCol <> ValCol));
+      Check('and LED''s remarks are a colour of their own in ' +
+        LedThemes[i].Id, (RemCol <> KeyCol) or (RemCol <> MarkCol));
+      CheckGt('the marker can be read in ' + LedThemes[i].Id, 39,
+        Round(10 * LedContrastRatio(MarkCol, V.Color)));
+    end;
+  finally
+    LedSetCurrentTheme(SavedTheme);
+    LedRetheme(LedCurrentTheme);
+    Doc.ApplyConfigToViews;
+    Pump;
+  end;
 
   { ---- the offset column reads as one, and is not somewhere to put a caret ---- }
 

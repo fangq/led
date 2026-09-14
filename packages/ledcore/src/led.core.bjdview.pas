@@ -40,6 +40,24 @@ uses
   Classes, SysUtils, bjdata;
 
 type
+  { What a field of a rendered row holds.
+
+    The walk tags each row as it renders it, rather than leaving the view to
+    read the text back and work it out.  It is the only thing that can be
+    sure: a key with two spaces in it, a string whose contents look like one
+    of LED's own summaries, an angle bracket inside a value, a list of
+    numbers that was inlined next to a count that was not -- all ambiguous on
+    the page and none of them ambiguous here. }
+  TLedBJFieldKind = (
+    bjfOffset,      { the file position LED prints, not bytes from the file }
+    bjfKey,         { an object key }
+    bjfMarker,      { the type marker the file actually contains }
+    bjfString,      { a string or character value }
+    bjfNumber,      { an integer }
+    bjfFloat,
+    bjfConstant,    { null, no-op, true, false }
+    bjfSummary);    { LED counting or eliding: "5 items", "<200 values...>" }
+
   { One rendered record.  Value is the cursor it came from, so a caller that
     wants to edit has what TryPatch needs without looking the row up again. }
   TLedBJRow = record
@@ -49,6 +67,7 @@ type
     Marker: string;       // 'S U 3', '[$U#24', '{' -- what the bytes say
     Text: string;         // the payload, rendered, possibly elided
     Elided: Boolean;      // Text is a summary; the whole value is larger
+    TextKind: TLedBJFieldKind;  // what the Text column is, decided as it was made
     Value: TBJValue;      // the cursor, for editing
   end;
   TLedBJRows = array of TLedBJRow;
@@ -82,6 +101,27 @@ procedure LedBJWalk(const ARaw: string; out ARows: TLedBJRows);
 
 { One row as it appears in the buffer. }
 function LedBJRowText(const ARow: TLedBJRow): string;
+
+{ Where each field of a rendered row starts and how long it is, in 1-based
+  character columns, and what kind of thing it holds.
+
+  The walk knows what every field is -- it is the thing that rendered it --
+  so the view is coloured from this rather than from a grammar reading the
+  text back.  A key that happens to contain two spaces, a string whose
+  contents look like one of LED's own summaries, an angle bracket inside a
+  value: all of them are ambiguous to a reader of the line and none of them
+  is ambiguous here.
+
+  Lengths of zero mean the row has no such field: an array element has no
+  key, a container has no value of its own. }
+type
+  TLedBJField = record
+    Start, Len: Integer;
+    Kind: TLedBJFieldKind;
+  end;
+  TLedBJFields = array of TLedBJField;
+
+function LedBJRowFields(const ARow: TLedBJRow): TLedBJFields;
 
 { Every row, LF-separated, no trailing newline -- the same contract
   LedHexDump keeps, so the buffer does not gain a phantom last line. }
@@ -229,15 +269,21 @@ end;
   Only 1-D: the elements of a matrix do not mean anything laid end to end,
   and there the shape really is the point.  Above the element cap it goes
   back to a summary, because that is where these files get their size. }
-function NDArrayText(const AValue: TBJValue): string;
+{ AKind says what came back: a short vector is printed out in full and is
+  data from the file, a long or many-dimensional one is summarised and is
+  LED's own sentence about it. }
+function NDArrayText(const AValue: TBJValue;
+  out AKind: TLedBJFieldKind): string;
 var
   i, n: Int64;
   Packed_: Boolean;
 begin
+  AKind := bjfSummary;
   n := AValue.ElementCount;
   if (AValue.DimCount = 1) and (n <= LedBJMaxElements) then
   begin
     Packed_ := BJKindOf(AValue.ElemMarker) = bjkFloat;
+    if Packed_ then AKind := bjfFloat else AKind := bjfNumber;
     Result := '[';
     for i := 0 to n - 1 do
     begin
@@ -264,17 +310,41 @@ end;
 
   Returns False when a container turns up, and the caller then walks it
   normally -- the enumerator is two pointers, so starting again costs nothing. }
+{ What one scalar is, for colouring.  From the cursor rather than from the
+  rendering: an elided string and an elided number read alike on the page. }
+function ScalarFieldKind(const AValue: TBJValue): TLedBJFieldKind;
+begin
+  case AValue.Kind of
+    bjkString: Result := bjfString;
+    bjkInt, bjkUInt: Result := bjfNumber;
+    bjkFloat: Result := bjfFloat;
+    bjkNull, bjkNoOp, bjkBoolean: Result := bjfConstant;
+  else
+    Result := bjfSummary;
+  end;
+end;
+
 function TryInlineArray(const AValue: TBJValue; out AText: string;
-  out AElided: Boolean): Boolean;
+  out AElided: Boolean; out AKind: TLedBJFieldKind): Boolean;
 var
   It: TBJIterator;
   Parts: string;
   n: Integer;
   Ignored: Boolean;
+  ElemKind: TLedBJFieldKind;
+  Mixed: Boolean;
 begin
   Result := False;
   AText := '';
   AElided := False;
+  { An inlined list is values from the file, not a remark about them, so it is
+    coloured as what it holds.  A typed array -- which is what these files are
+    mostly made of -- holds one kind throughout; a plain array that mixes
+    kinds is coloured as a number, there being no one answer and numbers
+    being what such a list is usually mostly made of. }
+  AKind := bjfNumber;
+  ElemKind := bjfNumber;
+  Mixed := False;
   if AValue.Kind <> bjkArray then Exit;
 
   Parts := '';
@@ -283,6 +353,10 @@ begin
   while It.MoveNext do
   begin
     if It.Current.IsContainer or It.Current.IsNDArray then Exit;
+    if n = 0 then
+      ElemKind := ScalarFieldKind(It.Current)
+    else if ScalarFieldKind(It.Current) <> ElemKind then
+      Mixed := True;
     if n >= LedBJMaxElements then
     begin
       { Past the point of reading.  The count is already on the row, so this
@@ -297,6 +371,7 @@ begin
   end;
 
   AText := '[' + Parts + ']';
+  if (n > 0) and (not Mixed) then AKind := ElemKind;
   Result := True;
 end;
 
@@ -368,6 +443,10 @@ begin
   Rows[Count].Value := AValue;
   Rows[Count].Elided := False;
   Rows[Count].Text := '';
+  { Overwritten wherever a text is actually produced.  Summary is the right
+    default: a row with no value of its own carries a count, and a count is
+    LED's. }
+  Rows[Count].TextKind := bjfSummary;
   Inc(Count);
 end;
 
@@ -378,6 +457,7 @@ var
   Elided, Known: Boolean;
   It: TBJIterator;
   Inline_: string;
+  InlineKind: TLedBJFieldKind;
   n: SizeInt;
   Taken: Integer;
 begin
@@ -410,7 +490,7 @@ begin
   case AValue.Kind of
     bjkNDArray:
       try
-        Rows[Here].Text := NDArrayText(AValue);
+        Rows[Here].Text := NDArrayText(AValue, Rows[Here].TextKind);
       except
         on E: Exception do begin Fail(E, ADepth); Exit; end;
       end;
@@ -419,9 +499,14 @@ begin
       begin
         { A flat array is its own row and has no children of its own. }
         try
-          if TryInlineArray(AValue, Inline_, Elided) then
+          { Into a local and copied over only on success: an out parameter is
+            assigned either way, and an object -- which TryInlineArray
+            declines -- would have had its count tagged as a list of
+            numbers. }
+          if TryInlineArray(AValue, Inline_, Elided, InlineKind) then
           begin
             Rows[Here].Text := Inline_;
+            Rows[Here].TextKind := InlineKind;
             Rows[Here].Elided := Elided;
             Exit;
           end;
@@ -496,6 +581,7 @@ begin
   else
     try
       Rows[Here].Text := ScalarText(AValue, Elided);
+      Rows[Here].TextKind := ScalarFieldKind(AValue);
       Rows[Here].Elided := Elided;
     except
       on E: Exception do begin Fail(E, ADepth); Exit; end;
@@ -614,6 +700,42 @@ begin
                                  ARow.Marker]);
   if ARow.Text <> '' then
     Result := Result + '  ' + ARow.Text;
+end;
+
+function LedBJRowFields(const ARow: TLedBJRow): TLedBJFields;
+var
+  n, Col: Integer;
+
+  procedure Add(AStart, ALen: Integer; AKind: TLedBJFieldKind);
+  begin
+    if ALen <= 0 then Exit;
+    SetLength(Result, n + 1);
+    Result[n].Start := AStart;
+    Result[n].Len := ALen;
+    Result[n].Kind := AKind;
+    Inc(n);
+  end;
+
+begin
+  SetLength(Result, 0);
+  n := 0;
+
+  { The same arithmetic LedBJRowText lays the row out with, in the same order,
+    so the two cannot describe different rows. }
+  Add(1, LedBJOffsetWidth, bjfOffset);
+  Col := LedBJOffsetWidth + 3 + ARow.Depth * LedBJIndentWidth;
+
+  if ARow.Key <> '' then
+  begin
+    Add(Col, Length(ARow.Key), bjfKey);
+    Inc(Col, Length(ARow.Key) + 2);
+  end;
+
+  Add(Col, Length(ARow.Marker), bjfMarker);
+  Inc(Col, Length(ARow.Marker) + 2);
+
+  if ARow.Text <> '' then
+    Add(Col, Length(ARow.Text), ARow.TextKind);
 end;
 
 function LedBJRowsText(const ARows: TLedBJRows): string;
