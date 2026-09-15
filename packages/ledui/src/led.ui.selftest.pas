@@ -1897,6 +1897,7 @@ var
   Host: TWinControl;
   R: TRect;
   Before, TbH, W0, H0: Integer;
+  X, Y, Lo, Hi, BtnTop, Out_: Integer;
 begin
   Say('medit trim');
 
@@ -1949,15 +1950,43 @@ begin
   Check('the close button has a host of its own, not the notebook''s panel',
     Host <> F.Notebook.Parent);
 
-  { On the strip, not above the window.  gtk2 reports TabRect relative to the
-    page area, so a naive placement put it at a negative top. }
+  { On the tabs, and centred on them.
+
+    Measured by asking the notebook which tab is at a point, scanning down
+    the middle of the first tab until it stops answering.  TabRect would say
+    the same thing on this desktop, but it is the rectangle the placement is
+    computed from, and a check that reads it back cannot see the placement
+    being wrong -- which it was: gtk2 measures that rectangle from the page
+    area, and the button was hung from the top of the control instead, five
+    pixels above the tab.
+
+    In the notebook's client coordinates throughout, which is what
+    IndexOfTabAt takes; on gtk2 those are the page area's, so the strip is at
+    negative y and the numbers below are meant to be negative. }
   R := F.Notebook.TabRect(0);
-  Check('it sits inside the tab strip, not off the top',
-    (Host.Top >= F.Notebook.Top) and
-    (Host.Top + Host.Height <= F.Notebook.Top + (R.Bottom - R.Top) + 2));
+  Lo := 9999;
+  Hi := -9999;
+  X := (R.Left + R.Right) div 2;
+  for Y := -F.Notebook.Height to F.Notebook.ClientHeight do
+    if F.Notebook.IndexOfTabAt(Point(X, Y)) = 0 then
+    begin
+      if Y < Lo then Lo := Y;
+      if Y > Hi then Hi := Y;
+    end;
+  Check('the notebook says where its first tab is', Hi >= Lo);
+
+  { Both edges of the cross inside the band, with a pixel of slack for the
+    rounding in the middle of an odd number of them. }
+  BtnTop := Host.ControlOrigin.y - F.Notebook.ClientOrigin.y;
+  Check('the close button is on the tab band, not above it',
+    (BtnTop >= Lo - 1) and (BtnTop + Host.Height <= Hi + 2));
+  Out_ := Abs((BtnTop + Host.Height div 2) - ((Lo + Hi) div 2));
+  Check(Format('and is centred on it, not hung from one edge (%d px out)',
+    [Out_]), Out_ <= 1);
   Check('and at the right-hand end of it',
     Host.Left + Host.Width <= F.Notebook.Left + F.Notebook.Width);
   CheckGt('well to the right of the middle', F.Notebook.Width div 2, Host.Left);
+
 
   Before := F.TabCount;
   Btn.Click;

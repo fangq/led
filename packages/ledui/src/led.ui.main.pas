@@ -542,6 +542,7 @@ type
     procedure TabCloseClick(Sender: TObject);
     procedure BookResize(Sender: TObject);
     procedure PlaceTabCloseButtons;
+    procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
     procedure SyncPreviewToLine;
@@ -3869,7 +3870,7 @@ end;
 
 procedure TLedMainForm.PlaceTabCloseButtons;
 var
-  i, Sz, Pad: Integer;
+  i, Sz, Pad, Size, StripTop: Integer;
   Book: TPageControl;
   Btn: TSpeedButton;
   Host: TPanel;
@@ -3945,19 +3946,46 @@ begin
       Continue;
     end;
 
-    { Only the strip's *height* is taken from TabRect.  Its origin is not
-      usable here: gtk2 reports the rectangle relative to the page area, so
-      the strip comes back with a negative top -- reading it as a control
-      coordinate put the button above the window.  The height is the same
-      number either way, and the strip is at the top of the control by the
-      test just above, so that is all this needs. }
+    { Where the strip is, and how tall.  Both come from TabRect, and its
+      origin needs converting rather than discarding.
+
+      gtk2 reports the rectangle relative to the page area, so a strip above
+      the page comes back with a negative top; reading that as a control
+      coordinate puts the button above the window, which is why this used to
+      take the height alone and place the button at the top of the control.
+      But the strip does not start at the top of the control -- there is a
+      notebook frame above it, 29 pixels of it on this desktop -- so a cross
+      placed there sits high of the tab it belongs to, which is what it did.
+
+      The conversion is the distance from the control to the page area,
+      which is the difference between the two origins.  A widgetset that
+      measures the rectangle from the control itself reports a positive top
+      and wants no conversion; the sign says which one this is. }
     R := Book.TabRect(0);
     Sz := R.Bottom - R.Top;
-    if Sz < LedScale96(12) then Sz := LedScale96(16);
     Pad := LedScale96(2);
+    if Sz >= LedScale96(12) then
+    begin
+      StripTop := Book.Top + R.Top;
+      if R.Top < 0 then
+        Inc(StripTop, Book.ClientOrigin.y - Book.ControlOrigin.y);
+    end
+    else
+    begin
+      { No rectangle to be had -- no handle yet, or a widgetset that does not
+        answer.  A strip is about this tall, and starts where the control
+        does; a button in roughly the right place beats none. }
+      Sz := LedScale96(16);
+      StripTop := Book.Top;
+    end;
 
-    Host.SetBounds(Book.Left + Book.Width - Sz - Pad * 2,
-                   Book.Top + Pad, Sz - Pad, Sz - Pad);
+    { Square, inset by the same padding on all four sides, and centred on
+      the band rather than hung from the top of it. }
+    Size := Sz - Pad * 2;
+    if Size < LedScale96(8) then Size := LedScale96(8);
+
+    Host.SetBounds(Book.Left + Book.Width - Size - Pad * 2,
+                   StripTop + (Sz - Size) div 2, Size, Size);
     Host.Visible := True;
     Host.BringToFront;
   end;
@@ -4487,7 +4515,20 @@ begin
   if FBook2 <> nil then
     FBook2.ShowTabs := Always or (FBook2.PageCount > 1);
   { Every route that adds, removes or hides a tab comes through here, so this
-    is the one place the button has to be put back. }
+    is the one place the button has to be put back.
+
+    Twice: now, so it is never missing for a frame, and again once the
+    toolkit has finished laying the strip out.  Showing the strip is what
+    creates the tabs to measure, and asking gtk where they are in the same
+    call that turned them on answers from the allocation they had a moment
+    ago -- a pixel out, which is a pixel of the centring this is placed
+    from. }
+  PlaceTabCloseButtons;
+  Application.QueueAsyncCall(@PlaceTabCloseButtonsDeferred, 0);
+end;
+
+procedure TLedMainForm.PlaceTabCloseButtonsDeferred(AData: PtrInt);
+begin
   PlaceTabCloseButtons;
 end;
 
