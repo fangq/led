@@ -5447,7 +5447,7 @@ var
   Doc: TLedDocument;
   Tab: TLedTab;
   Strokes: TLedGuideStrokes;
-  i, Deepest, Reaching, Rows_: Integer;
+  i, j, k, Deepest, Reaching, Rows_: Integer;
 begin
   Say('Binary JData guides');
 
@@ -5552,6 +5552,71 @@ begin
     sits in. }
   Check('the last row is covered by its guides, got ' + IntToStr(Reaching),
     Reaching >= 2);
+
+  DeleteFile(Path);
+
+  { ---- far from the top of the file ---- }
+
+  { Ten containers of ten containers of ten values: 1,111 rows, four deep,
+    and every level within the element cap so nothing is held back.
+
+    Scrolled to the end, the containers enclosing the last screenful opened
+    hundreds or thousands of rows above it.  The guide scan used to begin a
+    fixed run-up above the screen with an empty stack, so a block that opened
+    before that point had no column recorded and drew no rule at all -- which
+    is why the end of a deeply nested file showed none. }
+  Raw := #$7B;
+  for i := 0 to 9 do
+  begin
+    Raw := Raw + #$55#$02'k' + Chr(Ord('0') + i) + #$7B;
+    for j := 0 to 9 do
+    begin
+      Raw := Raw + #$55#$02'j' + Chr(Ord('0') + j) + #$7B;
+      for k := 0 to 9 do
+        Raw := Raw + #$55#$02'm' + Chr(Ord('0') + k) + #$55 + Chr(k);
+      Raw := Raw + #$7D;
+    end;
+    Raw := Raw + #$7D;
+  end;
+  Raw := Raw + #$7D;
+
+  Path := TempName('deep.bjd');
+  WriteBytes(Path, Raw);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Rows_ := Doc.Master.Lines.Count;
+  CheckEqInt('eleven hundred and eleven rows', 1111, Rows_);
+
+  Tab.ActiveView.TopLine := Rows_;
+  Pump;
+  Check('the view really is at the end',
+    Tab.ActiveView.TopLine > Rows_ - Tab.ActiveView.LinesInWindow - 2);
+
+  { The last rows sit three deep, so the columns are the root's, its k
+    container's and its j container's -- and all three must be there.
+
+    Counting strokes is not enough, and neither is looking only for the
+    outermost column: with the stack starting empty, the first container to
+    open within the run-up was pushed at the root's own column.  A rule still
+    appeared at column 11; it just belonged to the wrong block.  So the test
+    asks for the whole set. }
+  Strokes := Tab.ActiveView.ComputeGuideStrokes;
+  Deepest := 0;
+  for j := 0 to 2 do
+  begin
+    Reaching := 0;
+    for i := 0 to High(Strokes) do
+      if Strokes[i].Col = LedBJOffsetWidth + 3 + j * LedBJIndentWidth then
+        Inc(Reaching);
+    Check('a guide at level ' + IntToStr(j) + ', got ' +
+      IntToStr(Length(Strokes)) + ' strokes in all', Reaching > 0);
+    if Reaching > 0 then Inc(Deepest);
+  end;
+  CheckEqInt('all three levels are ruled', 3, Deepest);
 
   DeleteFile(Path);
 end;

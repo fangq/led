@@ -639,15 +639,44 @@ begin
   if ALastText >= Lines.Count then ALastText := Lines.Count - 1;
   if AFirstText > ALastText then Exit;
 
-  Start := AFirstText - ScanBack;
-  if Start < 0 then Start := 0;
+  { Where to start, and what is already open there.
 
-  SetLength(Stack, 0);
-  Depth := 0;
-  if Start > 0 then
-    PrevEnd := HL.FoldBlockEndLevel(Start - 1)
+    A block's guide is drawn in the column its opening line is indented to,
+    and that line may be far above the screen -- so the scan begins early
+    enough to have seen it.  Blocks that opened even earlier than that are
+    lost: the stack starts empty however deep PrevEnd says we are, and a
+    block with no column recorded draws no rule.  Scrolling into the end of a
+    deeply nested file therefore showed no guides at all, every enclosing
+    container having been opened thousands of lines above.
+
+    A structure view does not have to search.  Its indentation is arithmetic
+    -- two spaces per level from a fixed left edge -- so the column of the
+    i-th enclosing block is known from i alone, and the stack can simply be
+    stated.  That also means it needs no run-up at all. }
+  if FBJDataMode then
+  begin
+    Start := AFirstText;
+    if Start > 0 then
+      PrevEnd := HL.FoldBlockEndLevel(Start - 1)
+    else
+      PrevEnd := 0;
+    Depth := PrevEnd;
+    SetLength(Stack, Depth + 8);
+    for i := 0 to Depth - 1 do
+      Stack[i] := LedBJOffsetWidth + 3 + i * LedBJIndentWidth;
+  end
   else
-    PrevEnd := 0;
+  begin
+    Start := AFirstText - ScanBack;
+    if Start < 0 then Start := 0;
+
+    SetLength(Stack, 0);
+    Depth := 0;
+    if Start > 0 then
+      PrevEnd := HL.FoldBlockEndLevel(Start - 1)
+    else
+      PrevEnd := 0;
+  end;
 
   SetLength(Result, ALastText - AFirstText + 1);
   N := 0;
