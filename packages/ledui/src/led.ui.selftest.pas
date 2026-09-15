@@ -27,7 +27,7 @@ uses
   FileUtil,
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
-  ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView,
+  ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -2871,6 +2871,27 @@ type
       X1, Y1, X2, Y2, ASteps: Integer);
   end;
 
+{ The same trick for the keyboard.  Key comes back as the handler left it,
+  so a check can tell a key that was taken from one that fell through. }
+type
+  TLedKeyPoke = class(TLedEdit)
+  public
+    class procedure Press(AView: TLedEdit; var AKey: Word;
+      AShift: TShiftState);
+    class procedure Double(AView: TLedEdit);
+  end;
+
+class procedure TLedKeyPoke.Press(AView: TLedEdit; var AKey: Word;
+  AShift: TShiftState);
+begin
+  TLedKeyPoke(AView).KeyDown(AKey, AShift);
+end;
+
+class procedure TLedKeyPoke.Double(AView: TLedEdit);
+begin
+  TLedKeyPoke(AView).DblClick;
+end;
+
 class procedure TLedMousePoke.Press(AView: TLedEdit; AShift: TShiftState;
   X, Y: Integer);
 begin
@@ -5356,6 +5377,222 @@ begin
   DeleteFile(Good);
   DeleteFile(Bad);
   DeleteFile(Bad2);
+end;
+
+{ Changing a value in a structure view, which is the half of the BJData work
+  that writes.  What is measured here is the document's side of it -- the
+  view is a rendering, so "it worked" means the bytes changed and the page
+  agrees with them afterwards -- plus the three gestures that reach it. }
+procedure TestBJDataEditing(F: TLedMainForm);
+var
+  Path, Raw, Opened, Why: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Kind: TLedBJEditKind;
+  Moved: PtrUInt;
+  i, Bad: Integer;
+  Key: Word;
+  Handled: Boolean;
+
+  function L4(AValue: LongInt): string;
+  begin
+    SetLength(Result, 4);
+    Move(AValue, Result[1], 4);
+  end;
+
+  function D8(AValue: Double): string;
+  begin
+    SetLength(Result, 8);
+    Move(AValue, Result[1], 8);
+  end;
+
+begin
+  Say('Binary JData editing');
+
+  { One of each thing an edit has to deal with: a number whose marker is
+    wider than it needs, a string, a float, a boolean, an array that is
+    rendered on one line, and a container held back for being large. }
+  Raw := '{' + #$55#$01'n' + 'l' + L4(1000)
+             + #$55#$01's' + 'S' + #$55#$05 + 'hello'
+             + #$55#$01'f' + 'D' + D8(1.5)
+             + #$55#$01'b' + 'T'
+             + #$55#$03'arr' + '[' + 'i'#$01 + 'i'#$02 + ']'
+             + #$55#$03'big' + '[';
+  for i := 1 to LedBJMaxElements + 1 do
+    Raw := Raw + '{' + #$55#$01'a' + #$55#$01 + '}';
+  Raw := Raw + ']' + '}';
+
+  Path := TempName('edit.bjd');
+  WriteBytes(Path, Raw);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('it opens as a structure', Doc.IsBJData);
+  Opened := Doc.Master.Lines.Text;
+  Check('and nothing has been changed yet', not Doc.Modified);
+
+  { ---- what can be edited ---- }
+
+  Check('a value can be edited', Doc.BJRowCanEdit(1, Why));
+  Check('a container cannot', not Doc.BJRowCanEdit(0, Why));
+  Check('and says so in a sentence', Pos('container', Why) > 0);
+  Check('nor can a line that is not a record at all',
+    not Doc.BJRowCanEdit(9999, Why));
+  Check('which also says why', Why <> '');
+  CheckEq('a value comes back as text to type over',
+    '1000', Doc.BJRowValueText(1));
+  CheckEq('a string comes back without its quotes',
+    'hello', Doc.BJRowValueText(2));
+
+  { ---- a patch: the same size, so nothing moves ---- }
+
+  Moved := Doc.BJDataRows[2].Offset;
+  Kind := Doc.EditBJRow(1, '7', Why);
+  Check('a number that still fits its marker is patched', Kind = bjePatched);
+  CheckEq('and the new value reads back', '7', Doc.BJRowValueText(1));
+  Check('the rows below it did not move', Doc.BJDataRows[2].Offset = Moved);
+  CheckEqInt('the file is the length it was', Length(Raw), Doc.HexSize);
+  Check('and the document is modified', Doc.Modified);
+  { The page against the records it is a rendering of.  A patch re-renders
+    one line and a splice rebuilds the lot, and this is what says the right
+    one of the two happened: after a splice every offset down the left has
+    moved, and a page that kept the old ones reads plausibly and lies. }
+  CheckEq('the page agrees with the records',
+    LedBJRowsText(Doc.BJDataRows), TrimRight(Doc.Master.Lines.Text));
+
+  Check('there is something to undo', Doc.CanUndoBJEdit);
+  CheckEqInt('undo says which line it put back', 1, Doc.UndoBJEdit);
+  CheckEq('and the old value is back', '1000', Doc.BJRowValueText(1));
+  Check('with nothing left to undo the document is clean', not Doc.Modified);
+
+  { ---- a splice: a different size, so everything below moves ---- }
+
+  Moved := Doc.BJDataRows[3].Offset;
+  Kind := Doc.EditBJRow(2, 'hello there', Why);
+  Check('a longer string is spliced', Kind = bjeSpliced);
+  CheckEq('and reads back', 'hello there', Doc.BJRowValueText(2));
+  Check('the rows below it moved', Doc.BJDataRows[3].Offset > Moved);
+  CheckEq('and the record below it still reads',
+    '1.5', Doc.BJRowValueText(3));
+  CheckEqInt('the file grew by the difference',
+    Length(Raw) + 6, Doc.HexSize);
+  CheckEq('and the page agrees with the records it now has',
+    LedBJRowsText(Doc.BJDataRows), TrimRight(Doc.Master.Lines.Text));
+
+  { A second edit above the first, so the bytes the first one would put back
+    have moved by the time it is taken back.  Undoing both in the order they
+    are offered must still give the file that was opened, byte for byte --
+    which is the whole of what makes an edit safe to try. }
+  Kind := Doc.EditBJRow(1, '5000000000', Why);
+  Check('a number too big for its marker widens, so it splices',
+    Kind = bjeSpliced);
+  CheckEq('the widened number reads back',
+    '5000000000', Doc.BJRowValueText(1));
+  CheckEq('and the string below it is where it was left',
+    'hello there', Doc.BJRowValueText(2));
+
+  CheckEqInt('undo takes back the last edit made', 1, Doc.UndoBJEdit);
+  CheckEq('the number is back', '1000', Doc.BJRowValueText(1));
+  CheckEqInt('and undo again takes back the one before it',
+    2, Doc.UndoBJEdit);
+  CheckEq('the string is back', 'hello', Doc.BJRowValueText(2));
+  CheckEq('and the page agrees with the records again',
+    LedBJRowsText(Doc.BJDataRows), TrimRight(Doc.Master.Lines.Text));
+  Check('with nothing left to undo', not Doc.CanUndoBJEdit);
+  Check('and the document is clean again', not Doc.Modified);
+
+  Bad := 0;
+  for i := 1 to Length(Raw) do
+    if Doc.HexByte(i - 1) <> Ord(Raw[i]) then Inc(Bad);
+  CheckEqInt('every byte is the one the file came with', 0, Bad);
+  CheckEqInt('and the file is not a byte longer', Length(Raw), Doc.HexSize);
+  CheckEq('the page is the one it opened with', Opened, Doc.Master.Lines.Text);
+
+  { ---- refusals write nothing ---- }
+
+  Kind := Doc.EditBJRow(1, 'rubbish', Why);
+  Check('text where a number is expected is refused', Kind = bjeRefused);
+  Check('and says why', Why <> '');
+  Check('nothing was written', not Doc.Modified);
+  Kind := Doc.EditBJRow(0, '9', Why);
+  Check('so is a container', Kind = bjeRefused);
+  Kind := Doc.EditBJRow(5, '9', Why);
+  Check('and so is an array shown on one line', Kind = bjeRefused);
+  Kind := Doc.EditBJRow(1, '1000', Why);
+  Check('typing what is already there does nothing', Kind = bjeUnchanged);
+  Check('and leaves the document clean', not Doc.Modified);
+
+  { ---- saving writes the bytes, not the page ---- }
+
+  Doc.EditBJRow(3, '2.5', Why);
+  Check('an edited structure view is modified', Doc.Modified);
+  Doc.SaveToFile(Path);
+  Pump;
+  Check('saving leaves it unmodified', not Doc.Modified);
+  Check('and with nothing to undo', not Doc.CanUndoBJEdit);
+  Doc.LoadFromFile(Path);
+  Pump;
+  CheckEq('and the change is in the file on disk',
+    '2.5', Doc.BJRowValueText(3));
+
+  { ---- the three gestures ---- }
+
+  Check('the view has somewhere to send an edit',
+    Assigned(Tab.ActiveView.OnBJEdit));
+
+  Tab.ActiveView.CaretXY := Point(Tab.ActiveView.CaretX, 2);
+  Pump;
+  { Asked for rather than waited for: an action's state is worked out on the
+    idle pass, and a check that reads it without one is reading the value it
+    was created with. }
+  Handled := False;
+  F.ActionList1Update(F.actEditValue, Handled);
+  Check('the action is offered on a record', F.actEditValue.Enabled);
+
+  F.SilentValueChoice := '77';
+  F.actEditValue.Execute;
+  Pump;
+  CheckEq('and edits the record the caret is on',
+    '77', Doc.BJRowValueText(1));
+
+  F.SilentValueChoice := '42';
+  Key := VK_RETURN;
+  TLedKeyPoke.Press(Tab.ActiveView, Key, []);
+  Pump;
+  CheckEqInt('Return over a record is taken by the view', 0, Key);
+  CheckEq('and edits it', '42', Doc.BJRowValueText(1));
+
+  F.SilentValueChoice := '43';
+  TLedKeyPoke.Double(Tab.ActiveView);
+  Pump;
+  CheckEq('a double click does the same', '43', Doc.BJRowValueText(1));
+
+  { The same two gestures over a container the walk held back open it
+    instead, which is the reason the view decides which of the two a line
+    wants rather than the window. }
+  F.SilentValueChoice := '';
+  Bad := Doc.Master.Lines.Count;
+  Tab.ActiveView.CaretXY := Point(Tab.ActiveView.CaretX, 7);
+  Pump;
+  Check('a held-back container is on that line', Doc.BJDataRows[6].CanExpand);
+  Handled := False;
+  F.ActionList1Update(F.actEditValue, Handled);
+  Check('and the action is not offered for it', not F.actEditValue.Enabled);
+  Key := VK_RETURN;
+  TLedKeyPoke.Press(Tab.ActiveView, Key, []);
+  Pump;
+  CheckEqInt('Return there is taken too', 0, Key);
+  CheckGt('and opens the container rather than editing it',
+    Bad, Doc.Master.Lines.Count);
+
+  { Put the window back the way the rest of the run expects it. }
+  F.SilentValueChoice := '';
+  DeleteFile(Path);
 end;
 
 procedure TestBJDataFolding(F: TLedMainForm);
@@ -9129,6 +9366,7 @@ begin
   TestBinaryFiles(F);
   TestBJDataFiles(F);
   TestBJDataFolding(F);
+  TestBJDataEditing(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;

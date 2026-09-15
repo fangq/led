@@ -17,6 +17,7 @@ uses
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
+  Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
@@ -41,6 +42,7 @@ type
     actSave: TAction;
     actSaveAs: TAction;
     actOpenAsText: TAction;
+    actEditValue: TAction;
     actReload: TAction;
     actCloseTab: TAction;
     actPrint: TAction;
@@ -296,6 +298,8 @@ type
     PopupEditor: TPopupMenu;
     miSpelling: TMenuItem;
     mcSpellSep: TMenuItem;
+    mcEditValue: TMenuItem;
+    mcEditValueSep: TMenuItem;
     mcUndo: TMenuItem;
     mcRedo: TMenuItem;
     mcSep1: TMenuItem;
@@ -393,6 +397,7 @@ type
     procedure actUnsplitExecute(Sender: TObject);
     function HexUndo(ATab: TLedTab): Boolean;
     procedure actOpenAsTextExecute(Sender: TObject);
+    procedure actEditValueExecute(Sender: TObject);
     procedure actReloadExecute(Sender: TObject);
     procedure FormActivate(Sender: TObject);
     procedure FormDropFiles(Sender: TObject; const FileNames: array of string);
@@ -658,6 +663,10 @@ type
     Silent: Boolean;
     { Answered instead of asking, when Silent; '' means "give up". }
     SilentEncodingChoice: string;
+    { Typed instead of asked, when Silent: the new value for a BJData record.
+      '' means the reader cancelled, which is why a check cannot set a string
+      to empty this way. }
+    SilentValueChoice: string;
     procedure ReportError(const AMessage: string);
     { Offers the user a list of encodings after a decode has failed.  Returns
       '' when they decline, which means the file is simply not opened. }
@@ -700,6 +709,8 @@ type
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
     function ConfirmBJExpand(ACount: Int64): Boolean;
+    { Public so a check can press Return on a record without a dialog. }
+    procedure BJEditRequested(Sender: TObject; ATextIdx: Integer);
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
@@ -4073,10 +4084,26 @@ end;
   would leave the buffer disagreeing with the bytes. }
 function TLedMainForm.HexUndo(ATab: TLedTab): Boolean;
 var
-  Offset: Integer;
+  Offset, Line: Integer;
 begin
   Result := (ATab <> nil) and ATab.Document.IsBinary;
   if not Result then Exit;
+
+  { A structure view takes back a value rather than a byte, and it puts the
+    caret on the record it restored -- the same courtesy, one column over. }
+  if ATab.Document.IsBJData then
+  begin
+    Line := ATab.Document.UndoBJEdit;
+    if (Line >= 0) and (ATab.ActiveView <> nil) then
+    begin
+      ATab.ActiveView.CaretXY := Point(ATab.ActiveView.CaretX, Line + 1);
+      ATab.ActiveView.EnsureCursorPosVisible;
+    end;
+    RefreshTabCaption(ATab);
+    UpdateStatusBar;
+    Exit;
+  end;
+
   Offset := ATab.Document.UndoHexByte;
   { Show what was put back.  The caret is wherever typing left it, which may
     be rows away from the byte an undo just restored. }
@@ -4085,6 +4112,65 @@ begin
       LedHexByteColumn(Offset mod LedHexBytesPerLine),
       Offset div LedHexBytesPerLine + 1);
   UpdateStatusBar;
+end;
+
+{ Return, F2 or a double click over a record of a BJData file.  A container
+  never reaches here -- the view opens those itself -- so this is a value,
+  and what it wants is somewhere to type a new one.
+
+  The prompt names the key, because a structure view is read down a column
+  and by the time a dialog is up the line it came from is behind it. }
+procedure TLedMainForm.BJEditRequested(Sender: TObject; ATextIdx: Integer);
+var
+  Tab: TLedTab;
+  Doc: TLedDocument;
+  Prompt, Typed, Why: string;
+  Kind: TLedBJEditKind;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsBJData) then Exit;
+  Doc := Tab.Document;
+
+  if not Doc.BJRowCanEdit(ATextIdx, Why) then
+  begin
+    { Said out loud rather than swallowed: the reader pressed Return on a
+      row and is owed a reason nothing happened. }
+    ReportError(Why);
+    Exit;
+  end;
+
+  Prompt := 'New value:';
+  if (ATextIdx >= 0) and (ATextIdx <= High(Doc.BJDataRows)) and
+     (Doc.BJDataRows[ATextIdx].Key <> '') then
+    Prompt := Format('New value for "%s":', [Doc.BJDataRows[ATextIdx].Key]);
+
+  Typed := Doc.BJRowValueText(ATextIdx);
+  if Silent then
+  begin
+    if SilentValueChoice = '' then Exit;
+    Typed := SilentValueChoice;
+  end
+  else if not InputQuery('Edit Value', Prompt, Typed) then
+    Exit;
+
+  Kind := Doc.EditBJRow(ATextIdx, Typed, Why);
+  if Kind = bjeRefused then
+  begin
+    ReportError(Why);
+    Exit;
+  end;
+
+  RefreshTabCaption(Tab);
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actEditValueExecute(Sender: TObject);
+var
+  V: TLedEdit;
+begin
+  V := CurrentView;
+  if (V = nil) or (not V.BJDataMode) then Exit;
+  BJEditRequested(V, V.CaretY - 1);
 end;
 
 procedure TLedMainForm.actOpenAsTextExecute(Sender: TObject);
@@ -4156,6 +4242,7 @@ begin
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
+  Result.ViewBJEdit := @BJEditRequested;
   Result.ViewHoverExpression := @DebugHover;
   { A window setting, so a tab opened later gets what the window is already
     showing rather than the default. }
@@ -4558,6 +4645,7 @@ procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
 var
   Tab: TLedTab;
   HasDoc, CanPaste: Boolean;
+  Why: string;
 begin
   { Cheap: a pointer comparison, and it does anything at all only on the pass
     after the document actually changed. }
@@ -4584,9 +4672,13 @@ begin
     SynEdit's undo knows nothing about it and CanUndo is always false. }
   if HasDoc and Tab.Document.IsBinary then
   begin
-    actUndo.Enabled := Tab.Document.CanUndoHex;
+    actUndo.Enabled := Tab.Document.CanUndoHex or Tab.Document.CanUndoBJEdit;
     actRedo.Enabled := False;
   end;
+  { Only where there is a record to type over.  The caret is on one or it is
+    not, so this is answered per line rather than per document. }
+  actEditValue.Enabled := HasDoc and Tab.Document.IsBJData and
+    Tab.Document.BJRowCanEdit(Tab.ActiveView.CaretY - 1, Why);
   actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;
   actCopy.Enabled := actCut.Enabled;
   actPaste.Enabled := CanPaste;
@@ -5500,6 +5592,12 @@ var
 begin
   V := CurrentView;
   HasSel := (V <> nil) and V.SelAvail;
+  { Only over a structure view, where it is the one thing the context menu
+    can usefully do: nothing else on it applies to a read-only rendering. }
+  mcEditValue.Visible := (V <> nil) and V.BJDataMode;
+  mcEditValueSep.Visible := mcEditValue.Visible;
+  if mcEditValue.Visible then
+    mcEditValue.Enabled := actEditValue.Enabled;
   mcUndo.Enabled := (V <> nil) and V.CanUndo;
   mcRedo.Enabled := (V <> nil) and V.CanRedo;
   mcCut.Enabled := HasSel;

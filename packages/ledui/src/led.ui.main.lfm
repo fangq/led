@@ -72,6 +72,11 @@ object LedMainForm: TLedMainForm
       Caption = 'Open as &Text'
       OnExecute = actOpenAsTextExecute
     end
+    object actEditValue: TAction
+      Caption = 'Edit &Value...'
+      ShortCut = 113
+      OnExecute = actEditValueExecute
+    end
     object actReload: TAction
       Caption = '&Reload from Disk'
       ShortCut = 116
@@ -1121,6 +1126,12 @@ object LedMainForm: TLedMainForm
       Caption = 'Spelling'
     end
     object mcSpellSep: TMenuItem
+      Caption = '-'
+    end
+    object mcEditValue: TMenuItem
+      Action = actEditValue
+    end
+    object mcEditValueSep: TMenuItem
       Caption = '-'
     end
     object mcUndo: TMenuItem

@@ -28,6 +28,7 @@ type
     FViewPopupMenu: TPopupMenu;
     FViewBreakpointClick: TLedBreakpointClick;
     FViewHoverExpression: TLedHoverExpression;
+    FViewBJEdit: TLedBJOpenEvent;
     FMiniMap: TLedMiniMap;
     FShowMiniMap: Boolean;
     procedure SetShowMiniMap(AValue: Boolean);
@@ -36,6 +37,7 @@ type
     procedure SetViewPopupMenu(AValue: TPopupMenu);
     procedure SetViewBreakpointClick(AValue: TLedBreakpointClick);
     procedure SetViewHoverExpression(AValue: TLedHoverExpression);
+    procedure SetViewBJEdit(AValue: TLedBJOpenEvent);
     function GetViewCount: Integer;
     function GetView(AIndex: Integer): TLedEdit;
   public
@@ -66,6 +68,10 @@ type
       read FViewBreakpointClick write SetViewBreakpointClick;
     property ViewHoverExpression: TLedHoverExpression
       read FViewHoverExpression write SetViewHoverExpression;
+    { Return or a double click over a record of a BJData file.  On every view
+      for the same reason as the two above: whichever half of a split tab the
+      reader is looking at is the one they will press Return in. }
+    property ViewBJEdit: TLedBJOpenEvent read FViewBJEdit write SetViewBJEdit;
     property Sheet: TTabSheet read FSheet write FSheet;
 
     { The minimap, and whether it is shown.
@@ -210,6 +216,15 @@ begin
     TLedEdit(FViews[i]).OnHoverExpression := AValue;
 end;
 
+procedure TLedTab.SetViewBJEdit(AValue: TLedBJOpenEvent);
+var
+  i: Integer;
+begin
+  FViewBJEdit := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).OnBJEdit := AValue;
+end;
+
 function TLedTab.AddView(AParent: TWinControl): TLedEdit;
 begin
   Result := FDocument.CreateView(Self);
@@ -219,6 +234,7 @@ begin
   Result.PopupMenu := FViewPopupMenu;
   Result.OnBreakpointClick := FViewBreakpointClick;
   Result.OnHoverExpression := FViewHoverExpression;
+  Result.OnBJEdit := FViewBJEdit;
   FViews.Add(Result);
   if FActiveView = nil then
   begin

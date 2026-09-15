@@ -18,9 +18,10 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
+  Classes, SysUtils, Math, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
+  Led.Core.BJDEdit,
   Led.Syn.BJData,
   Led.Core.Encodings,
   Led.Core.Config,
@@ -37,6 +38,21 @@ type
   TLedHexUndo = record
     Offset: Integer;
     Value: Byte;
+  end;
+
+  { One value edit in a structure view, kept so it can be taken back.  The
+    bytes that were there, not a copy of the file: these files run to tens of
+    megabytes and a stack of copies of one is not something to hold in
+    memory.
+
+    Offset is where those bytes go back.  It stays true without being
+    maintained: a later edit above this one moves them, but that edit is also
+    undone before this one is, so by the time this entry is used the file is
+    the one it was recorded against. }
+  TLedBJUndo = record
+    Offset: PtrUInt;
+    Size: PtrUInt;      // how many bytes occupy that slot now
+    Old: string;        // what was there before
   end;
 
   TLedDocument = class;
@@ -84,6 +100,8 @@ type
     FBytes: string;
     FHexUndo: array of TLedHexUndo;
     FHexUndoCount: Integer;
+    FBJUndo: array of TLedBJUndo;
+    FBJUndoCount: Integer;
     FHexDirty: Boolean;
     FOnChanged: TLedDocumentEvent;
     function GetModified: Boolean;
@@ -98,6 +116,8 @@ type
       const AChar: string; var AHandled: Boolean);
     procedure BJOpenRequested(Sender: TObject; ATextIdx: Integer);
     function BJLineForOffset(AOffset: PtrUInt): Integer;
+    function BJRow(ATextIdx: Integer; out ARow: TLedBJRow): Boolean;
+    function BJRewalk(ATextIdx: Integer; APatched: Boolean): Boolean;
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -183,6 +203,30 @@ type
       The rows below it are renumbered, so every view's caret is put back on
       the record it was on rather than on the line number it was at. }
     function BJOpenRow(ATextIdx: Integer): Boolean;
+
+    { The value on buffer line ATextIdx as text to be typed over -- the
+      number, the string without its quotes -- and whether it can be typed
+      over at all.  AWhy is a sentence to show the reader when it cannot. }
+    function BJRowValueText(ATextIdx: Integer): string;
+    function BJRowCanEdit(ATextIdx: Integer; out AWhy: string): Boolean;
+
+    { Writes ANewText into that record.  bjePatched means the new value was
+      the same size as the old one and went where it was, so nothing below it
+      moved and one line was re-rendered; bjeSpliced means it was a different
+      size and the page was rebuilt.  Either way the rows are walked again,
+      because a row's Value is a cursor into bytes that are now a different
+      string.
+
+      bjeRefused changes nothing and AWhy says what stopped it. }
+    function EditBJRow(ATextIdx: Integer; const ANewText: string;
+      out AWhy: string): TLedBJEditKind;
+    { Puts back the last value that changed, and returns the line it is on so
+      the caller can show it.  -1 when there was nothing to take back.
+
+      Byte for byte, not by re-typing the old text: a value that widened its
+      marker on the way in would not come back through the same door. }
+    function CanUndoBJEdit: Boolean;
+    function UndoBJEdit: Integer;
 
     { Asked before opening something large; nil means do not ask.  The
       document does not put dialogs on the screen -- the window supplies
@@ -740,6 +784,180 @@ begin
   Result := True;
 end;
 
+function TLedDocument.BJRow(ATextIdx: Integer; out ARow: TLedBJRow): Boolean;
+begin
+  Result := FIsBJData and (ATextIdx >= 0) and (ATextIdx <= High(FBJRows));
+  if Result then ARow := FBJRows[ATextIdx];
+end;
+
+function TLedDocument.BJRowValueText(ATextIdx: Integer): string;
+var
+  Row: TLedBJRow;
+begin
+  Result := '';
+  if BJRow(ATextIdx, Row) then Result := LedBJValueText(Row);
+end;
+
+function TLedDocument.BJRowCanEdit(ATextIdx: Integer; out AWhy: string): Boolean;
+var
+  Row: TLedBJRow;
+begin
+  { Said before LedBJCanEdit is asked, because that clears AWhy on its way
+    in: a line that is not a record at all never reaches it. }
+  AWhy := 'this line is not a record of the file';
+  Result := BJRow(ATextIdx, Row) and LedBJCanEdit(Row, AWhy);
+end;
+
+{ Puts the view back in step with FBytes after an edit changed them.
+
+  APatched means no offset moved, so the only line whose rendering can have
+  changed is ATextIdx's and the page does not so much as flicker.  A splice
+  moved everything below the edit, so the buffer is rebuilt.
+
+  The walk happens either way.  A row's Value is a pointer into the bytes,
+  and the bytes are a different string now -- keeping the old rows would
+  leave every cursor in the document pointing at a buffer nothing holds. }
+function TLedDocument.BJRewalk(ATextIdx: Integer; APatched: Boolean): Boolean;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  ErrAt: PtrUInt;
+  i: Integer;
+  V: TLedEdit;
+  Carets: array of TPoint;
+  Tops: array of Integer;
+begin
+  Result := LedBJTryWalk(FBytes, Rows, Err, ErrAt, FBJExpanded);
+  if not Result then Exit;
+  FBJRows := Rows;
+  if FBJHigh <> nil then FBJHigh.SetRows(FBJRows);
+
+  if APatched and (ATextIdx >= 0) and (ATextIdx < FMaster.Lines.Count) and
+     (ATextIdx <= High(FBJRows)) then
+  begin
+    { Straight into the buffer rather than through an edit command, the same
+      way a dump re-renders a row: the views are read-only and the undo that
+      matters is the document's own. }
+    FMaster.Lines[ATextIdx] := LedBJRowText(FBJRows[ATextIdx]);
+    Exit;
+  end;
+
+  SetLength(Carets, FViews.Count);
+  SetLength(Tops, FViews.Count);
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    Carets[i] := V.CaretXY;
+    Tops[i] := V.TopLine;
+  end;
+
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := LedBJRowsText(FBJRows);
+    FMaster.ClearUndo;
+    FMaster.Modified := False;
+  finally
+    FMaster.EndUpdate;
+  end;
+
+  { By line, unlike opening a container.  Changing a value never adds or
+    removes a record, so the row a caret was on is still the record it was
+    on even when every byte under it moved. }
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    Carets[i].y := Min(Carets[i].y, FMaster.Lines.Count);
+    V.CaretXY := Carets[i];
+    V.TopLine := Tops[i];
+  end;
+end;
+
+function TLedDocument.EditBJRow(ATextIdx: Integer; const ANewText: string;
+  out AWhy: string): TLedBJEditKind;
+var
+  Row: TLedBJRow;
+  Keep: string;
+  Start, Size, NewSize: PtrUInt;
+begin
+  Result := bjeRefused;
+  AWhy := 'this line is not a record of the file';
+  if not BJRow(ATextIdx, Row) then Exit;
+
+  { The bytes as they stand, held for the length of the edit.  Row.Value
+    points into them and the edit hands FBytes a different string, so
+    without this the cursor being edited would dangle halfway through its
+    own edit.  It is also where a failed walk goes back to. }
+  Keep := FBytes;
+  Start := Row.Offset;
+  Size := Row.Value.Size;
+
+  Result := LedBJEditValue(FBytes, Row, ANewText, AWhy);
+  if not (Result in [bjePatched, bjeSpliced]) then Exit;
+
+  if not BJRewalk(ATextIdx, Result = bjePatched) then
+  begin
+    { Not something a value edit should be able to do -- the marker written
+      is one the file already used or one the library chose -- but a
+      structure view that has stopped describing its own file is worse than
+      an edit that refuses. }
+    FBytes := Keep;
+    BJRewalk(ATextIdx, False);
+    AWhy := 'the file would not read back after that change';
+    Exit(bjeRefused);
+  end;
+
+  { Where those bytes go back, and how many of them are there now.  Both are
+    recorded as the file stands at this moment, and both are still true when
+    this entry comes off the top of the stack: undo is last in, first out, so
+    every edit made after this one has already been taken back by then and
+    the file is byte for byte the one this entry was written against. }
+  NewSize := PtrUInt(Int64(Size) +
+    (Int64(Length(FBytes)) - Int64(Length(Keep))));
+
+  if FBJUndoCount >= Length(FBJUndo) then
+    SetLength(FBJUndo, Length(FBJUndo) * 2 + 16);
+  FBJUndo[FBJUndoCount].Offset := Start;
+  FBJUndo[FBJUndoCount].Size := NewSize;
+  FBJUndo[FBJUndoCount].Old := Copy(Keep, Start + 1, Size);
+  Inc(FBJUndoCount);
+
+  FHexDirty := True;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+function TLedDocument.CanUndoBJEdit: Boolean;
+begin
+  Result := FIsBJData and (FBJUndoCount > 0);
+end;
+
+function TLedDocument.UndoBJEdit: Integer;
+var
+  Old: string;
+  At, Size: PtrUInt;
+begin
+  Result := -1;
+  if not CanUndoBJEdit then Exit;
+
+  Dec(FBJUndoCount);
+  At := FBJUndo[FBJUndoCount].Offset;
+  Size := FBJUndo[FBJUndoCount].Size;
+  Old := FBJUndo[FBJUndoCount].Old;
+  FBJUndo[FBJUndoCount].Old := '';      // the bytes are going back in the file
+
+  FBytes := Copy(FBytes, 1, At) + Old + Copy(FBytes, At + Size + 1, MaxInt);
+
+  { The same rule a dump keeps: unmodified again only when every change has
+    been taken back, because what is on the stack is the file's own bytes. }
+  FHexDirty := FBJUndoCount > 0;
+  Result := BJLineForOffset(At);
+  BJRewalk(Result, PtrUInt(Length(Old)) = Size);
+  { Looked up again after the walk when the page was rebuilt: the record is
+    on the same line, but saying so from the rows in front of us is cheaper
+    to believe than saying so from the ones that have gone. }
+  if Result < 0 then Result := BJLineForOffset(At);
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
 { The line a record is on now, or -1.  Linear: this runs once per click. }
 function TLedDocument.BJLineForOffset(AOffset: PtrUInt): Integer;
 var
@@ -894,6 +1112,8 @@ begin
   FBJErrorOffset := BJOffset;
   if FIsBinary then FBytes := Raw else FBytes := '';
   FHexUndoCount := 0;
+  FBJUndoCount := 0;
+  SetLength(FBJUndo, 0);
   FHexDirty := False;
   FInfo := NewInfo;
 
@@ -1154,6 +1374,8 @@ begin
     FFileName := AFileName;
     FHexDirty := False;
     FHexUndoCount := 0;
+    FBJUndoCount := 0;
+    SetLength(FBJUndo, 0);
     NoteDiskState;
     if Assigned(FOnChanged) then FOnChanged(Self);
     Exit;

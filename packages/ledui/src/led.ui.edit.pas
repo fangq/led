@@ -102,6 +102,7 @@ type
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
     FOnBJOpen: TLedBJOpenEvent;
+    FOnBJEdit: TLedBJOpenEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FWrapOn: Boolean;
     FCompletion: TSynCompletion;
@@ -152,6 +153,7 @@ type
     procedure SetBJDataMode(AValue: Boolean);
     function BJCanOpen(ATextIdx: Integer): Boolean;
     procedure BJOpenClicked(ATextIdx: Integer);
+    procedure BJEditOrOpen;
     function HexOrBJMarkup: TLedHexMarkup;
     function SnapBJColumn(ACol: Integer): Integer;
   protected
@@ -168,6 +170,14 @@ type
     { Typing over a dump edits a byte rather than inserting a character, so
       the key never reaches SynEdit's own input. }
     procedure UTF8KeyPress(var Key: TUTF8Char); override;
+    { Return over a structure view means "this record", the way it does in a
+      list of things: a container opens, a value is typed over.  Nothing else
+      is listening for it -- the buffer is read-only, so SynEdit drops it. }
+    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    { The same gesture with the mouse.  Selecting the word under the pointer,
+      which is what a double click does everywhere else, is worth little in a
+      view whose words are a rendering. }
+    procedure DblClick; override;
     { Where the caret is allowed to be.  Overridden rather than corrected
       afterwards in StatusChanged: that is SynEdit's own notification, and a
       caret moved from inside it does not take. }
@@ -221,6 +231,10 @@ type
     { Fired when the reader clicks the chevron on a container that was
       summarised rather than walked. }
     property OnBJOpen: TLedBJOpenEvent read FOnBJOpen write FOnBJOpen;
+    { A request to edit the value on a line.  The document cannot own this
+      the way it owns OnBJOpen: asking the reader what the value should be
+      takes a dialog, and dialogs belong to the window. }
+    property OnBJEdit: TLedBJOpenEvent read FOnBJEdit write FOnBJEdit;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
     { SynEdit tracks the physical row/column of the last mouse click here,
@@ -1481,6 +1495,43 @@ function TLedEdit.BJCanOpen(ATextIdx: Integer): Boolean;
 begin
   Result := FBJDataMode and (Highlighter is TLedBJHighlighter) and
             TLedBJHighlighter(Highlighter).CanExpand(ATextIdx);
+end;
+
+{ What Return and a double click both mean.  A container the walk summarised
+  opens; anything else is a value, and the window is asked to edit it.  The
+  distinction is the view's to make because it is the one that knows which
+  lines can open. }
+procedure TLedEdit.BJEditOrOpen;
+var
+  Idx: Integer;
+begin
+  if not FBJDataMode then Exit;
+  Idx := CaretY - 1;
+  if BJCanOpen(Idx) then
+    BJOpenClicked(Idx)
+  else if Assigned(FOnBJEdit) then
+    FOnBJEdit(Self, Idx);
+end;
+
+procedure TLedEdit.KeyDown(var Key: Word; Shift: TShiftState);
+begin
+  if FBJDataMode and (Key = VK_RETURN) and (Shift = []) then
+  begin
+    Key := 0;
+    BJEditOrOpen;
+    Exit;
+  end;
+  inherited KeyDown(Key, Shift);
+end;
+
+procedure TLedEdit.DblClick;
+begin
+  if FBJDataMode then
+  begin
+    BJEditOrOpen;
+    Exit;
+  end;
+  inherited DblClick;
 end;
 
 procedure TLedEdit.BJOpenClicked(ATextIdx: Integer);
