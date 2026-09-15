@@ -1196,6 +1196,30 @@ object LedMainForm: TLedMainForm
     OnPopup = PopupTabPopup
     Left = 48
     Top = 432
+    object mtCloseTab: TMenuItem
+      Action = actCloseTab
+    end
+    object miTabCloseOthers: TMenuItem
+      Caption = 'Close &Other Tabs'
+      OnClick = miTabCloseOthersClick
+    end
+    object mtCloseAll: TMenuItem
+      Action = actCloseAll
+    end
+    object mtSep1: TMenuItem
+      Caption = '-'
+    end
+    object miTabOpenFolder: TMenuItem
+      Caption = 'Open Containing &Folder'
+      OnClick = miTabOpenFolderClick
+    end
+    object miTabCopyPath: TMenuItem
+      Caption = 'Cop&y Full Path'
+      OnClick = miTabCopyPathClick
+    end
+    object mtSep2: TMenuItem
+      Caption = '-'
+    end
     object mtSave: TMenuItem
       Action = actSave
     end
@@ -1204,30 +1228,6 @@ object LedMainForm: TLedMainForm
     end
     object mtReload: TMenuItem
       Action = actReload
-    end
-    object mtSep1: TMenuItem
-      Caption = '-'
-    end
-    object mtCloseTab: TMenuItem
-      Action = actCloseTab
-    end
-    object mtCloseAll: TMenuItem
-      Action = actCloseAll
-    end
-    object mtSep2: TMenuItem
-      Caption = '-'
-    end
-    object miTabCloseOthers: TMenuItem
-      Caption = 'Close &Other Tabs'
-      OnClick = miTabCloseOthersClick
-    end
-    object miTabCopyPath: TMenuItem
-      Caption = 'Cop&y Full Path'
-      OnClick = miTabCopyPathClick
-    end
-    object miTabOpenFolder: TMenuItem
-      Caption = 'Open Containing &Folder'
-      OnClick = miTabOpenFolderClick
     end
     object mtSep3: TMenuItem
       Caption = '-'

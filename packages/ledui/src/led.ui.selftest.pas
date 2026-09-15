@@ -5490,11 +5490,15 @@ begin
   Deepest := 0;
   for i := 0 to High(Strokes) do
   begin
-    if Strokes[i].BottomRow >= Tab.ActiveView.LinesInWindow then
+    { Past LinesInWindow, not merely up to it.  That count is the rows which
+      fit whole, and the view almost always shows a sliver of one more below
+      them; a rule that stops at the boundary leaves the bottom line of the
+      view unruled. }
+    if Strokes[i].BottomRow > Tab.ActiveView.LinesInWindow then
       Inc(Reaching);
     if Strokes[i].Col > Deepest then Deepest := Strokes[i].Col;
   end;
-  Check('a guide reaches the foot of the view, got ' + IntToStr(Reaching),
+  Check('a guide runs past the last whole row, got ' + IntToStr(Reaching),
     Reaching > 0);
 
   { Column 11 is where a depth-0 record starts: eight of offset, two spaces,

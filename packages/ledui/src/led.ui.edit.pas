@@ -1245,7 +1245,14 @@ begin
       deeply nested file showed a few short rules near the top and nothing at
       all under the containers below them. }
     Row := FV.TextIndexToScreenLine(Runs[i].TextIdx);
-    if (Row < 0) or (Row >= LinesInWindow) or
+    { LinesInWindow counts the rows that fit whole, and the view usually shows
+      a sliver of one more below them.  Everything else here treats that row
+      as real -- the current-line edges, the long-line markers and the debug
+      marks all run to LinesInWindow inclusive -- and the guides were alone in
+      stopping one row short, which left the bottom line of the view unruled
+      whenever the window height was not an exact multiple of the line
+      height.  The stroke runs past the edge and the canvas clips it. }
+    if (Row < 0) or (Row > LinesInWindow) or
        (FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx) then
     begin
       EndRuns(LastRow + 1);
