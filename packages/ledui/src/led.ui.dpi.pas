@@ -837,8 +837,14 @@ begin
     leaves the window where it was rather than guessing. }
   if Target < 0 then Exit;
 
-  Centre := Point((ASaved.Left + ASaved.Right) div 2,
-                  (ASaved.Top + ASaved.Bottom) div 2);
+  { Assigned field by field rather than built with Point().
+
+    This unit's implementation section uses Windows, and that unit declares
+    POINT as a *type* -- so on a Windows build "Point(x, y)" is read as a
+    type cast, which takes one argument, and the comma is a syntax error.
+    Nothing here needs the helper, and the two lines cannot be shadowed. }
+  Centre.X := (ASaved.Left + ASaved.Right) div 2;
+  Centre.Y := (ASaved.Top + ASaved.Bottom) div 2;
   Source := -1;
   for i := 0 to High(AMonitors) do
     if Holds(AMonitors[i], Centre) then
