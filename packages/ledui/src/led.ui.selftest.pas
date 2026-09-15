@@ -5513,6 +5513,47 @@ begin
       Strokes[i].BottomRow > Strokes[i].TopRow);
 
   DeleteFile(Path);
+
+  { ---- the last row of the file ---- }
+
+  { { a:{ b:1 c:2 } d:{ e:3 f:4 } } -- seven rows, all on screen, and the
+    last of them is two deep.  SynEdit keeps a line's fold levels as the
+    state the next line starts from, so the last line -- having no next line
+    -- reported that every block had closed on it, and the rules stopped one
+    row short of the bottom of the file. }
+  Raw := #$7B +
+           #$55#$01'a' + #$7B +
+             #$55#$01'b' + #$55#$01 +
+             #$55#$01'c' + #$55#$02 +
+           #$7D +
+           #$55#$01'd' + #$7B +
+             #$55#$01'e' + #$55#$03 +
+             #$55#$01'f' + #$55#$04 +
+           #$7D +
+         #$7D;
+  Path := TempName('lastrow.bjd');
+  WriteBytes(Path, Raw);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Rows_ := Doc.Master.Lines.Count;
+  CheckEqInt('seven rows', 7, Rows_);
+  Check('and they all fit on screen', Rows_ <= Tab.ActiveView.LinesInWindow);
+
+  Strokes := Tab.ActiveView.ComputeGuideStrokes;
+  Reaching := 0;
+  for i := 0 to High(Strokes) do
+    if (Strokes[i].TopRow <= Rows_ - 1) and
+       (Strokes[i].BottomRow > Rows_ - 1) then Inc(Reaching);
+  { Two of them: the root's rule and the rule of the container the last row
+    sits in. }
+  Check('the last row is covered by its guides, got ' + IntToStr(Reaching),
+    Reaching >= 2);
+
+  DeleteFile(Path);
 end;
 
 procedure TestStartupDocument(F: TLedMainForm);

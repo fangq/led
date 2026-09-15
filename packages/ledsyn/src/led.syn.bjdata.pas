@@ -61,6 +61,8 @@ type
   protected
     function GetDefaultAttribute(Index: Integer): TSynHighlighterAttributes;
       override;
+    function FoldBlockMinLevel(ALineIndex: TLineIdx;
+      const AFilter: TSynFoldBlockFilter): integer; override; overload;
   public
     constructor Create(AOwner: TComponent); override;
 
@@ -188,6 +190,29 @@ begin
     Result := FRows[ALine].Depth
   else
     Result := 0;
+end;
+
+{ The lowest nesting level a line passes through, which for a structure view
+  is simply the row's own depth: the blocks that close do so before the row
+  and the one it opens does so after.
+
+  Worked out rather than looked up, because the stored answer is wrong for
+  the last line.  SynEdit keeps a line's fold levels as the state the *next*
+  line begins from, and the last line has no next line, so the store answers
+  zero -- which tells anything reading it that every block closed there.
+
+  Folding never noticed: there is nothing below the last line to hide.  The
+  guides did.  In a source file it is invisible too, because the last line is
+  usually outside every block anyway; in a structure view the last row is the
+  innermost record in the file, and it lost every rule that should have run
+  past it. }
+function TLedBJHighlighter.FoldBlockMinLevel(ALineIndex: TLineIdx;
+  const AFilter: TSynFoldBlockFilter): integer;
+begin
+  if (ALineIndex >= 0) and (ALineIndex <= High(FRows)) then
+    Result := FRows[ALineIndex].Depth
+  else
+    Result := inherited FoldBlockMinLevel(ALineIndex, AFilter);
 end;
 
 function TLedBJHighlighter.CanExpand(ALine: Integer): Boolean;
