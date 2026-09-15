@@ -5556,6 +5556,63 @@ begin
   DeleteFile(Path);
 end;
 
+{ Finding text in a structure view.
+
+  The buffer is UTF-8 like any other, so Find has nothing special to do --
+  but the view is read-only, is driven by a highlighter that does not read
+  the text, and its rows are rebuilt underneath it when a container is
+  opened, so "nothing special" is worth checking rather than assuming. }
+procedure TestBJDataSearch(F: TLedMainForm);
+const
+  Maeda  = #$E5#$89#$8D#$E7#$94#$B0#$E3#$81#$82#$E3#$82#$86#$E3#$81#$BF;
+  Prefix = #$E5#$89#$8D#$E7#$94#$B0#$E3#$81#$82#$E3#$82#$86;
+var
+  Path, Raw: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  State: TLedSearchState;
+  i: Integer;
+begin
+  Say('searching a Binary JData view');
+
+  { { pad: "...", name: "前田あゆみ" } -- the padding puts the name off the
+    first row, so a search that found nothing and a search that never moved
+    cannot be confused. }
+  Raw := #$7B + #$55#$03'pad' + #$53#$55#$05'aaaaa';
+  for i := 1 to 30 do
+    Raw := Raw + #$55#$02 + 'k' + Chr(Ord('a') + i) + #$55 + Chr(i);
+  Raw := Raw + #$55#$04'name' + #$53#$55#$0F + Maeda + #$7D;
+
+  Path := TempName('jp.bjd');
+  WriteBytes(Path, Raw);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('it opens as a structure', Doc.IsBJData);
+  Check('and the buffer carries the Japanese',
+    Pos(Maeda, Doc.Master.Lines.Text) > 0);
+
+  State := TLedSearchState.Create;
+  try
+    State.SearchText := Prefix;
+    Tab.ActiveView.CaretXY := Point(1, 1);
+    Check('Find reaches it',
+      LedFindNext(Tab.ActiveView, State, False) in [lfoFound, lfoWrapped]);
+    Check('and selects it, got: ' + Tab.ActiveView.SelText,
+      Tab.ActiveView.SelText = Prefix);
+    Check('on the row it is on',
+      Pos(Maeda, Tab.ActiveView.Lines[Tab.ActiveView.CaretY - 1]) > 0);
+  finally
+    State.Free;
+  end;
+
+  DeleteFile(Path);
+end;
+
 procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -8997,6 +9054,7 @@ begin
   TestBJDataFiles(F);
   TestBJDataFolding(F);
   TestBJDataGuides(F);
+  TestBJDataSearch(F);
   WriteLn;
 
   TestLineEndDetection;
