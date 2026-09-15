@@ -46,17 +46,37 @@ interface
 uses
   Classes, SysUtils, Math, Graphics, LCLIntf, LCLType,
   SynEditTypes, SynEditFoldedView, SynGutterCodeFolding, SynEditMiscClasses,
-  SynEditMiscProcs;
+  SynEditMiscProcs, SynEditMouseCmds, LazSynEditMouseCmdsTypes;
 
 type
+  { Asked of a 0-based text line. }
+  TLedFoldLineQuery = function(ATextIdx: Integer): Boolean of object;
+  TLedFoldLineEvent = procedure(ATextIdx: Integer) of object;
+
   TLedGutterCodeFolding = class(TSynGutterCodeFolding)
   private
+    FOnCanOpen: TLedFoldLineQuery;
+    FOnOpen: TLedFoldLineEvent;
     function LedFoldTypeForLine(AScreenLine: Integer): TSynEditFoldLineCapability;
+    function TextIdxOf(AScreenLine: Integer): Integer;
     procedure DrawChevron(ACanvas: TCanvas; const ARect: TRect;
       ACollapsed: Boolean);
   public
     procedure Paint(ACanvas: TCanvas; AClip: TRect;
       FirstLine, LastLine: Integer); override;
+    function MaybeHandleMouseAction(var AnInfo: TSynEditMouseActionInfo;
+      HandleActionProc: TSynEditMouseActionHandler): Boolean; override;
+
+    { A line that is not folded but stands for content the view has chosen not
+      to build: a BJData container with more children than the walk renders.
+
+      It has no fold block -- there are no lines under it to hide -- so the
+      fold machinery knows nothing about it.  But to the reader it is the same
+      gesture: a chevron that says "there is more here", and a click that
+      shows it.  OnCanOpen decides which lines those are and OnOpen is what a
+      click on one does. }
+    property OnCanOpen: TLedFoldLineQuery read FOnCanOpen write FOnCanOpen;
+    property OnOpen: TLedFoldLineEvent read FOnOpen write FOnOpen;
   end;
 
 implementation
@@ -71,6 +91,15 @@ const
   FoldTypeForLine -- the look at the line above, the block-selection
   classifications, the single-line-hide special case -- is gone.  It existed
   to place a rule and to fold selections, and this column does neither. }
+{ The 0-based text line a screen line is showing, or -1. }
+function TLedGutterCodeFolding.TextIdxOf(AScreenLine: Integer): Integer;
+begin
+  Result := -1;
+  if AScreenLine < 0 then Exit;
+  if AScreenLine >= FoldView.Count then Exit;
+  Result := FoldView.TextIndex[AScreenLine];
+end;
+
 function TLedGutterCodeFolding.LedFoldTypeForLine(
   AScreenLine: Integer): TSynEditFoldLineCapability;
 var
@@ -78,6 +107,13 @@ var
 begin
   Result := cfNone;
   if AScreenLine < 0 then Exit;
+
+  { A container held back for its size draws the collapsed chevron even
+    though nothing is folded: what the mark means to the reader is "there is
+    more here", and that is true either way. }
+  if Assigned(FOnCanOpen) and FOnCanOpen(TextIdxOf(AScreenLine)) then
+    Exit(cfCollapsedFold);
+
   Caps := FoldView.FoldType[AScreenLine];
   if cfCollapsedFold in Caps then Result := cfCollapsedFold
   else if cfFoldStart in Caps then Result := cfFoldStart;
@@ -201,6 +237,31 @@ begin
     if NodeType = cfNone then Continue;
     DrawChevron(ACanvas, rcFold, NodeType = cfCollapsedFold);
   end;
+end;
+
+{ A click on one of those chevrons opens the record instead of folding.
+
+  Taken before the inherited handler rather than after: the line may also
+  start a real fold block -- a container can be both over the element cap and
+  the parent of the rows already shown -- and then both would fire, opening
+  the record and collapsing it in the same click. }
+function TLedGutterCodeFolding.MaybeHandleMouseAction(
+  var AnInfo: TSynEditMouseActionInfo;
+  HandleActionProc: TSynEditMouseActionHandler): Boolean;
+var
+  Idx: Integer;
+begin
+  if Assigned(FOnOpen) and Assigned(FOnCanOpen) and
+     (AnInfo.Button = LazSynEditMouseCmdsTypes.mbLeft) then
+  begin
+    Idx := ToIdx(AnInfo.NewCaret.LinePos);
+    if FOnCanOpen(Idx) then
+    begin
+      FOnOpen(Idx);
+      Exit(True);
+    end;
+  end;
+  Result := inherited MaybeHandleMouseAction(AnInfo, HandleActionProc);
 end;
 
 end.

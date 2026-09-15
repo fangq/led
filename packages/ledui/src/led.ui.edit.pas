@@ -14,7 +14,7 @@ uses
   SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
   SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
   SynEditMarkup, SynEditMiscClasses, LazVersion,
-  Led.Core.Hex, Led.Core.BJDView,
+  Led.Core.Hex, Led.Core.BJDView, Led.Syn.BJData,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
 
@@ -70,6 +70,11 @@ type
   { A key pressed over a hex dump.  The view knows where the caret is and
     which half of the row it is in; what a byte should become is the
     document's business, so it is asked. }
+  { A request to show a BJData container the walk held back, by 0-based text
+    line.  The view knows which lines those are -- it can ask the highlighter
+    -- but only the document can do anything about it. }
+  TLedBJOpenEvent = procedure(Sender: TObject; ATextIdx: Integer) of object;
+
   TLedHexKeyEvent = procedure(Sender: TObject; AOffset: Integer;
     ANibble: Integer; const AChar: string; var AHandled: Boolean) of object;
 
@@ -86,6 +91,7 @@ type
     FHighlightWord: TSynEditMarkupHighlightAllCaret;
     FHexMarkup: TLedHexMarkup;
     FOnHexKey: TLedHexKeyEvent;
+    FOnBJOpen: TLedBJOpenEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FWrapOn: Boolean;
     FCompletion: TSynCompletion;
@@ -134,6 +140,8 @@ type
     function SnapHexColumn(ACol: Integer): Integer;
     procedure SetHexMode(AValue: Boolean);
     procedure SetBJDataMode(AValue: Boolean);
+    function BJCanOpen(ATextIdx: Integer): Boolean;
+    procedure BJOpenClicked(ATextIdx: Integer);
     function HexOrBJMarkup: TLedHexMarkup;
     function SnapBJColumn(ACol: Integer): Integer;
   protected
@@ -200,6 +208,9 @@ type
       only the caller knows when those have changed. }
     property HexMarkup: TLedHexMarkup read FHexMarkup;
     property OnHexKey: TLedHexKeyEvent read FOnHexKey write FOnHexKey;
+    { Fired when the reader clicks the chevron on a container that was
+      summarised rather than walked. }
+    property OnBJOpen: TLedBJOpenEvent read FOnBJOpen write FOnBJOpen;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
     { SynEdit tracks the physical row/column of the last mouse click here,
@@ -498,6 +509,11 @@ begin
   Gutter.CodeFoldPart.Free;
   TLedGutterCodeFolding.Create(Gutter.Parts).Name := 'LedGutterCodeFolding1';
   Gutter.CodeFoldPart.ResetMouseActions;
+  { The column draws and answers clicks for containers that were summarised
+    rather than walked, which are not fold blocks and which it cannot
+    recognise on its own. }
+  TLedGutterCodeFolding(Gutter.CodeFoldPart).OnCanOpen := @BJCanOpen;
+  TLedGutterCodeFolding(Gutter.CodeFoldPart).OnOpen := @BJOpenClicked;
 
   Gutter.CodeFoldPart.AutoSize := False;
   { Wider than the stock column, both because the chevron wants the room and
@@ -658,7 +674,15 @@ begin
     { Blocks that start here enclose the lines below, not this one. }
     if Opens > 0 then
     begin
-      Col := LineIndentColumn(L);
+      { A structure row is an offset, two spaces, then the record indented by
+        its depth -- so its indentation is not where the text starts, which is
+        the first digit of the offset.  Asking LineIndentColumn would run the
+        guide down the middle of the file positions.  Depth here is the number
+        of blocks already enclosing this line, which is the row's own depth. }
+      if FBJDataMode then
+        Col := LedBJOffsetWidth + 3 + Depth * LedBJIndentWidth
+      else
+        Col := LineIndentColumn(L);
       for i := 1 to Opens do
       begin
         if Length(Stack) <= Depth then SetLength(Stack, Depth + 8);
@@ -1374,6 +1398,22 @@ end;
   text anybody can put a caret in the middle of and mean anything by.  A
   click in it lands on the record instead, which is the same courtesy a hex
   dump's address column gets from SnapHexColumn. }
+{ Whether a line stands for a container the walk summarised.
+
+  Asked of the highlighter rather than of a second copy of the rows: it holds
+  them already, and they are the same ones the line was rendered from, so the
+  two cannot drift. }
+function TLedEdit.BJCanOpen(ATextIdx: Integer): Boolean;
+begin
+  Result := FBJDataMode and (Highlighter is TLedBJHighlighter) and
+            TLedBJHighlighter(Highlighter).CanExpand(ATextIdx);
+end;
+
+procedure TLedEdit.BJOpenClicked(ATextIdx: Integer);
+begin
+  if Assigned(FOnBJOpen) then FOnBJOpen(Self, ATextIdx);
+end;
+
 function TLedEdit.SnapBJColumn(ACol: Integer): Integer;
 begin
   Result := ACol;

@@ -45,6 +45,10 @@ type
     procedure TheErrorOffsetLandsOnTheDamage;
     procedure AShortPackedVectorIsInlined;
     procedure ALongPackedVectorIsNot;
+    procedure ABigContainerSaysItCanBeOpened;
+    procedure AskingForItShowsTheChildren;
+    procedure AnElidedStringIsNotOpenable;
+    procedure OpeningOneLeavesTheOthersShut;
   end;
 
 implementation
@@ -386,6 +390,116 @@ begin
   S := Render(B);
   AssertTrue('summarised, got: ' + S, Pos('300 values', S) > 0);
   AssertTrue('not spelt out', Pos('7, 7, 7', S) = 0);
+end;
+
+{ Builds an object whose "big" key holds ACount two-key objects -- containers,
+  so the flat-array path does not take it and the element cap applies. }
+function BigDoc(ACount: Integer): string;
+var
+  i: Integer;
+begin
+  Result := #$7B + #$55#$03'big' + #$5B;
+  for i := 1 to ACount do
+    Result := Result + #$7B + #$55#$01'a' + #$55#$01 + #$7D;
+  Result := Result + #$5D + #$55#$04'tail' + #$55#$07 + #$7D;
+end;
+
+procedure TTestBJDView.ABigContainerSaysItCanBeOpened;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  At_: PtrUInt;
+begin
+  AssertTrue('walks', LedBJTryWalk(BigDoc(LedBJMaxElements + 1), Rows, Err, At_));
+  AssertEquals('root, big, tail and nothing under big', 3, Length(Rows));
+  AssertTrue('big is held back', Rows[1].Elided);
+  AssertTrue('and says so on the row', Pos('not shown', Rows[1].Text) > 0);
+  { The two facts the gutter needs: that there is a chevron to draw, and what
+    to tell the reader before building that many lines. }
+  AssertTrue('and offers to open', Rows[1].CanExpand);
+  AssertEquals('and knows how many are behind it',
+    LedBJMaxElements + 1, Rows[1].ChildCount);
+end;
+
+procedure TTestBJDView.AskingForItShowsTheChildren;
+var
+  Raw: string;
+  Rows: TLedBJRows;
+  Err: string;
+  At_: PtrUInt;
+  Want: TLedBJExpanded;
+begin
+  Raw := BigDoc(LedBJMaxElements + 1);
+  AssertTrue('walks shut', LedBJTryWalk(Raw, Rows, Err, At_));
+  SetLength(Want, 1);
+  Want[0] := Rows[1].Offset;       { the offset of big, not its row number }
+
+  AssertTrue('walks open', LedBJTryWalk(Raw, Rows, Err, At_, Want));
+  { root + big + (count x (object + 1 key)) + tail }
+  AssertEquals('every child is there now',
+    3 + (LedBJMaxElements + 1) * 2, Length(Rows));
+  AssertFalse('big is no longer held back', Rows[1].Elided);
+  AssertFalse('and no longer offers to open', Rows[1].CanExpand);
+  AssertTrue('the summary drops the apology, got: ' + Rows[1].Text,
+    Pos('not shown', Rows[1].Text) = 0);
+  AssertEquals('a child is one level deeper', 2, Rows[2].Depth);
+end;
+
+procedure TTestBJDView.AnElidedStringIsNotOpenable;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  At_: PtrUInt;
+  Raw: string;
+  i: Integer;
+begin
+  { A string past the length cap is Elided too, but opening it would only
+    show more of the same line -- there is nothing behind it to build. }
+  Raw := #$7B + #$55#$01's' + #$53 + #$75;
+  Raw := Raw + Chr((LedBJMaxStringLen + 50) and $FF) +
+               Chr((LedBJMaxStringLen + 50) shr 8);
+  for i := 1 to LedBJMaxStringLen + 50 do Raw := Raw + 'x';
+  Raw := Raw + #$7D;
+
+  AssertTrue('walks', LedBJTryWalk(Raw, Rows, Err, At_));
+  AssertTrue('the string is cut short', Rows[1].Elided);
+  AssertFalse('but there is nothing to open', Rows[1].CanExpand);
+end;
+
+procedure TTestBJDView.OpeningOneLeavesTheOthersShut;
+var
+  Raw: string;
+  Rows: TLedBJRows;
+  Err: string;
+  At_: PtrUInt;
+  Want: TLedBJExpanded;
+  i, Open_, Shut: Integer;
+begin
+  { Two big containers side by side.  Opening the first must not open the
+    second: the set names records, not a global "show everything". }
+  Raw := #$7B;
+  Raw := Raw + #$55#$01'p' + #$5B;
+  for i := 1 to LedBJMaxElements + 1 do
+    Raw := Raw + #$7B + #$55#$01'a' + #$55#$01 + #$7D;
+  Raw := Raw + #$5D;
+  Raw := Raw + #$55#$01'q' + #$5B;
+  for i := 1 to LedBJMaxElements + 1 do
+    Raw := Raw + #$7B + #$55#$01'a' + #$55#$01 + #$7D;
+  Raw := Raw + #$5D + #$7D;
+
+  AssertTrue('walks shut', LedBJTryWalk(Raw, Rows, Err, At_));
+  AssertEquals('root and two summaries', 3, Length(Rows));
+  SetLength(Want, 1);
+  Want[0] := Rows[1].Offset;
+
+  AssertTrue('walks with p open', LedBJTryWalk(Raw, Rows, Err, At_, Want));
+  Open_ := 0;
+  Shut := 0;
+  for i := 0 to High(Rows) do
+    if Rows[i].CanExpand then Inc(Shut)
+    else if (Rows[i].Key = 'p') or (Rows[i].Key = 'q') then Inc(Open_);
+  AssertEquals('one of the two is open', 1, Open_);
+  AssertEquals('and the other is still shut', 1, Shut);
 end;
 
 initialization

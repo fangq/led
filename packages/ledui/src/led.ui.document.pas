@@ -43,6 +43,9 @@ type
 
   TLedDocumentEvent = procedure(ADoc: TLedDocument) of object;
 
+  { Asked whether to build ACount rows for one container.  True goes ahead. }
+  TLedBJConfirmExpand = function(ACount: Int64): Boolean of object;
+
   TLedDocument = class(TComponent)
   private
     FMaster: TSynEdit;          // buffer owner; never parented, never shown
@@ -65,6 +68,11 @@ type
       the document does not put dialogs on the screen. }
     FBJError: string;
     FBJErrorOffset: PtrUInt;
+    { Containers the reader has asked to see in full, by file offset.  Kept
+      across re-walks and reloads of the same file, so opening one and then
+      opening another inside it does not close the first. }
+    FBJExpanded: TLedBJExpanded;
+    FOnConfirmExpand: TLedBJConfirmExpand;
     { The structure view's own highlighter, made when a document first needs
       one and owned by the document: it carries that document's rows, so it
       cannot be shared the way the language ones in Led.Syn.Factory are. }
@@ -88,6 +96,8 @@ type
     procedure RenderHexRow(AOffset: Integer);
     procedure HexKey(Sender: TObject; AOffset, ANibble: Integer;
       const AChar: string; var AHandled: Boolean);
+    procedure BJOpenRequested(Sender: TObject; ATextIdx: Integer);
+    function BJLineForOffset(AOffset: PtrUInt): Integer;
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -166,6 +176,19 @@ type
       reload reports again and a redraw does not. }
     property BJDataErrorOffset: PtrUInt read FBJErrorOffset;
     function TakeBJDataError(out AOffset: PtrUInt): string;
+
+    { Shows a container the walk summarised, given the 0-based buffer line it
+      is on.  False when that line is not one, or when the reader said no.
+
+      The rows below it are renumbered, so every view's caret is put back on
+      the record it was on rather than on the line number it was at. }
+    function BJOpenRow(ATextIdx: Integer): Boolean;
+
+    { Asked before opening something large; nil means do not ask.  The
+      document does not put dialogs on the screen -- the window supplies
+      this, the same way it reports a failed decode. }
+    property OnConfirmExpand: TLedBJConfirmExpand
+      read FOnConfirmExpand write FOnConfirmExpand;
     property Master: TSynEdit read FMaster;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
@@ -369,6 +392,10 @@ begin
     AView.OnHexKey := @HexKey
   else
     AView.OnHexKey := nil;
+  if FIsBJData then
+    AView.OnBJOpen := @BJOpenRequested
+  else
+    AView.OnBJOpen := nil;
 
   AView.TabWidth := FConfig.GetInt(LedSetTabWidth);
   AView.BlockIndent := FConfig.GetInt(LedSetIndentWidth);
@@ -626,6 +653,103 @@ end;
 
 { Modelines are read after the text is in the buffer, at source lcsFile, so
   they beat the user's preferences but still lose to a filename-glob rule. }
+{ The view asked for a container to be opened. }
+procedure TLedDocument.BJOpenRequested(Sender: TObject; ATextIdx: Integer);
+begin
+  BJOpenRow(ATextIdx);
+end;
+
+function TLedDocument.BJOpenRow(ATextIdx: Integer): Boolean;
+var
+  Row: TLedBJRow;
+  Rows: TLedBJRows;
+  Err: string;
+  ErrAt, Want: PtrUInt;
+  i, j: Integer;
+  Carets: array of PtrUInt;
+  Tops: array of Integer;
+  V: TLedEdit;
+begin
+  Result := False;
+  if not FIsBJData then Exit;
+  if (ATextIdx < 0) or (ATextIdx > High(FBJRows)) then Exit;
+  Row := FBJRows[ATextIdx];
+  if not Row.CanExpand then Exit;
+
+  { Asked before the work, not after: building a couple of hundred thousand
+    rows is quick but the page that comes back is not one anybody scrolls
+    through by accident. }
+  if Assigned(FOnConfirmExpand) and (Row.ChildCount > LedBJAskAbove) then
+    if not FOnConfirmExpand(Row.ChildCount) then Exit;
+
+  Want := Row.Offset;
+  for i := 0 to High(FBJExpanded) do
+    if FBJExpanded[i] = Want then Exit;   // already open; nothing to do
+  SetLength(FBJExpanded, Length(FBJExpanded) + 1);
+  FBJExpanded[High(FBJExpanded)] := Want;
+
+  { Which record each view was looking at, by offset.  Line numbers below the
+    one being opened all change, so putting a caret back where it was on the
+    page would land it somewhere else in the file. }
+  SetLength(Carets, FViews.Count);
+  SetLength(Tops, FViews.Count);
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    Carets[i] := 0;
+    Tops[i] := 1;
+    j := V.CaretY - 1;
+    if (j >= 0) and (j <= High(FBJRows)) then Carets[i] := FBJRows[j].Offset;
+    Tops[i] := V.TopLine;
+  end;
+
+  if not LedBJTryWalk(FBytes, Rows, Err, ErrAt, FBJExpanded) then
+  begin
+    { The file has not changed, so a walk that fails now is a walk that would
+      have failed before -- put the expansion back and leave the view alone
+      rather than replacing a readable page with half of one. }
+    SetLength(FBJExpanded, Length(FBJExpanded) - 1);
+    Exit;
+  end;
+
+  FBJRows := Rows;
+  if FBJHigh <> nil then FBJHigh.SetRows(FBJRows);
+
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := LedBJRowsText(FBJRows);
+    FMaster.ClearUndo;
+    FMaster.Modified := False;
+  finally
+    FMaster.EndUpdate;
+  end;
+
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    j := BJLineForOffset(Carets[i]);
+    if j >= 0 then
+    begin
+      V.CaretXY := Point(V.CaretX, j + 1);
+      V.TopLine := Tops[i];
+      V.EnsureCursorPosVisible;
+    end;
+  end;
+
+  if Assigned(FOnChanged) then FOnChanged(Self);
+  Result := True;
+end;
+
+{ The line a record is on now, or -1.  Linear: this runs once per click. }
+function TLedDocument.BJLineForOffset(AOffset: PtrUInt): Integer;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FBJRows) do
+    if FBJRows[i].Offset = AOffset then Exit(i);
+  Result := -1;
+end;
+
 procedure TLedDocument.ReadModelines;
 var
   L: TStringList;

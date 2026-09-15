@@ -67,6 +67,11 @@ type
     Marker: string;       // 'S U 3', '[$U#24', '{' -- what the bytes say
     Text: string;         // the payload, rendered, possibly elided
     Elided: Boolean;      // Text is a summary; the whole value is larger
+    { A container held back only because of how many children it has, and how
+      many those are.  A long string is Elided too but cannot be opened: there
+      is nothing to show but more of the same line. }
+    CanExpand: Boolean;
+    ChildCount: Int64;
     TextKind: TLedBJFieldKind;  // what the Text column is, decided as it was made
     Value: TBJValue;      // the cursor, for editing
   end;
@@ -77,6 +82,11 @@ const
     viewers in the bjdata repository use the same two numbers, so a file reads
     about the same here as it does through njv. }
   LedBJMaxElements = 100;
+
+  { Above this many children, opening a container asks first.  Not a limit --
+    the reader may still say yes -- but a quarter of a million rows is a
+    different thing from a hundred and worth a question. }
+  LedBJAskAbove = 2000;
   LedBJMaxStringLen = 200;
 
   { How far a row's columns are apart.  Fixed, so the markers line up down the
@@ -88,6 +98,16 @@ const
   deciding which view to open a file in.  It answers for the shape, not the
   contents -- a file that starts plausibly and is rubbish afterwards is caught
   by the parse, not here. }
+type
+  { The containers the reader has asked to see in full, by the offset of the
+    record itself.
+
+    An offset rather than a row index, because a row index means nothing
+    across a re-walk: opening one container renumbers every row below it,
+    and the next expansion would open something else.  The offset is the
+    file's own name for the record and does not move. }
+  TLedBJExpanded = array of PtrUInt;
+
 function LedBJLooksBJData(const ARaw: string): Boolean;
 
 { Whether AFileName's extension is one of the binary JData ones.  Note .jdat
@@ -146,7 +166,8 @@ function LedBJRowsText(const ARows: TLedBJRows): string;
   so the root row alone traverses the whole file and one bad byte anywhere
   used to surface as a failure at byte 0. }
 function LedBJTryWalk(const ARaw: string; out ARows: TLedBJRows;
-  out AError: string; out AErrorOffset: PtrUInt): Boolean;
+  out AError: string; out AErrorOffset: PtrUInt;
+  const AExpanded: TLedBJExpanded = nil): Boolean;
 
 implementation
 
@@ -396,6 +417,8 @@ type
     Depth: Integer;       // where the walk stopped, for the error row
     Failed: Boolean;
     ErrMsg: string;
+    Expanded: TLedBJExpanded;
+    function IsExpanded(AOffset: PtrUInt): Boolean;
     procedure Add(const AKey: string; ADepth: Integer; const AValue: TBJValue);
     procedure Fail(E: Exception; ADepth: Integer);
     function StopOffset: PtrUInt;
@@ -423,6 +446,17 @@ begin
   end;
 end;
 
+function TWalker.IsExpanded(AOffset: PtrUInt): Boolean;
+var
+  i: Integer;
+begin
+  { Linear, because the set is what one reader has clicked on: a handful,
+    not a data structure. }
+  for i := 0 to High(Expanded) do
+    if Expanded[i] = AOffset then Exit(True);
+  Result := False;
+end;
+
 procedure TWalker.Fail(E: Exception; ADepth: Integer);
 begin
   if Failed then Exit;          // the first break is the informative one
@@ -442,6 +476,8 @@ begin
   Rows[Count].Marker := MarkerText(AValue);
   Rows[Count].Value := AValue;
   Rows[Count].Elided := False;
+  Rows[Count].CanExpand := False;
+  Rows[Count].ChildCount := 0;
   Rows[Count].Text := '';
   { Overwritten wherever a text is actually produced.  Summary is the right
     default: a row with no value of its own carries a count, and a count is
@@ -535,9 +571,16 @@ begin
         { Elided containers are not walked at all -- that is the whole point
           at these sizes.  The row keeps its cursor, so expanding one later is
           a walk from here rather than a re-parse of the file. }
-        if Known and (n > LedBJMaxElements) then
+        if Known and (n > LedBJMaxElements) and
+           not IsExpanded(Rows[Here].Offset) then
         begin
+          { Held back, but openable: the row says how many are behind it and
+            carries the flag the gutter draws a chevron from.  Asking for it
+            adds the offset to Expanded and walks again, and then this test
+            no longer fires for this record. }
           Rows[Here].Elided := True;
+          Rows[Here].CanExpand := True;
+          Rows[Here].ChildCount := n;
           Rows[Here].Text := Rows[Here].Text + ', not shown';
           Exit;
         end;
@@ -637,7 +680,8 @@ begin
 end;
 
 function LedBJTryWalk(const ARaw: string; out ARows: TLedBJRows;
-  out AError: string; out AErrorOffset: PtrUInt): Boolean;
+  out AError: string; out AErrorOffset: PtrUInt;
+  const AExpanded: TLedBJExpanded): Boolean;
 var
   W: TWalker;
   Root: TBJValue;
@@ -654,6 +698,7 @@ begin
   W.Depth := 0;
   W.Failed := False;
   W.ErrMsg := '';
+  W.Expanded := AExpanded;
   Root := TBJValue.Create(W.Base, Length(ARaw));
 
   { Walk records its own failures, so the only thing left to catch here is a

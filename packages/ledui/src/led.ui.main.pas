@@ -699,6 +699,7 @@ type
     procedure CloseActiveTab(AReplace: Boolean);
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
+    function ConfirmBJExpand(ACount: Int64): Boolean;
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
@@ -4150,6 +4151,7 @@ begin
   Result.Parent := Sheet;
   Result.Sheet := Sheet;
   ADoc.OnChanged := @DocChanged;
+  ADoc.OnConfirmExpand := @ConfirmBJExpand;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
@@ -4752,6 +4754,21 @@ begin
     reopened from the recent list -- so the change notification cannot be
     relied on to have fired. }
   RefreshPreview(True);
+end;
+
+{ Opening a container the structure view held back.
+
+  Only asked above LedBJAskAbove, so the common case -- a few hundred records
+  behind a summary -- opens on the click with no dialog in the way.  The ones
+  that do ask are the converted-JSON files, where a single array holds two
+  hundred thousand records and the page that comes back is not one anybody
+  wants by accident. }
+function TLedMainForm.ConfirmBJExpand(ACount: Int64): Boolean;
+begin
+  Result := Confirm(Format(
+    'This record has %.0n items.'#10 +
+    'Showing them all will build that many lines.  Continue?',
+    [ACount + 0.0]), False);
 end;
 
 { A file named .bnii, .bmsh, .bjd and so on that would not decode is open as

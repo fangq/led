@@ -5351,6 +5351,92 @@ begin
   DeleteFile(Bad2);
 end;
 
+procedure TestBJDataFolding(F: TLedMainForm);
+var
+  Path, Raw: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  HL: TLedBJHighlighter;
+  i, Before, After: Integer;
+  BigLine: Integer;
+begin
+  Say('Binary JData folding and opening');
+
+  { { "big": [ 101 two-key objects ], "tail": U 7 } -- containers, so the
+    flat-array path does not take it and the element cap applies. }
+  Raw := #$7B + #$55#$03'big' + #$5B;
+  for i := 1 to LedBJMaxElements + 1 do
+    Raw := Raw + #$7B + #$55#$01'a' + #$55#$01 + #$7D;
+  Raw := Raw + #$5D + #$55#$04'tail' + #$55#$07 + #$7D;
+
+  Path := TempName('fold.bjd');
+  WriteBytes(Path, Raw);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('it opens as a structure', Doc.IsBJData);
+  Before := Doc.Master.Lines.Count;
+  CheckEqInt('shut, it is three rows', 3, Before);
+
+  { ---- folding ---- }
+
+  { The highlighter is what SynEdit asks for fold levels, and the guides down
+    the body read the same numbers.  Both come from the row depths, so this
+    is the one place to check that they are there at all. }
+  Check('the view has a fold highlighter',
+    Tab.ActiveView.Highlighter is TLedBJHighlighter);
+  HL := TLedBJHighlighter(Tab.ActiveView.Highlighter);
+
+  { Line 0 is the root object and line 1 is big; both are containers, so the
+    root opens a block that line 1 is inside. }
+  CheckEqInt('the root is at depth 0', 0, HL.DepthOf(0));
+  CheckEqInt('and its children one deeper', 1, HL.DepthOf(1));
+  CheckEqInt('a block is open after the root line', 1,
+    HL.FoldBlockEndLevel(0));
+  CheckEqInt('and still open over its children', 1,
+    HL.FoldBlockEndLevel(1));
+  CheckEqInt('and closed after the last of them', 0,
+    HL.FoldBlockEndLevel(2));
+
+  { ---- opening a container the walk held back ---- }
+
+  BigLine := 1;
+  Check('big is held back', Doc.BJDataRows[BigLine].CanExpand);
+  CheckEqInt('and says how many are behind it',
+    LedBJMaxElements + 1, Doc.BJDataRows[BigLine].ChildCount);
+  { That flag is what puts a chevron on a line with nothing folded under it.
+    The gutter asks the view, which asks the highlighter. }
+  Check('so the gutter is offered a chevron there', HL.CanExpand(BigLine));
+  Check('but not on a row that has nothing behind it', not HL.CanExpand(0));
+
+  Check('opening it succeeds', Doc.BJOpenRow(BigLine));
+  Pump;
+  After := Doc.Master.Lines.Count;
+  CheckEqInt('every child is on the page now',
+    3 + (LedBJMaxElements + 1) * 2, After);
+  Check('and the row no longer offers to open',
+    not Doc.BJDataRows[BigLine].CanExpand);
+  Check('nor says it is holding anything back',
+    Pos('not shown', Doc.Master.Lines[BigLine]) = 0);
+
+  { The rows below big all moved, so tail is no longer line 2.  Its offset is
+    what did not change, which is why the expansion set names offsets. }
+  Check('the file is unchanged by looking at it', not Doc.Modified);
+  Check('and it is still a structure view', Doc.IsBJData);
+
+  { Opening the same row twice is not an error and does not double it. }
+  Check('opening it again does nothing', not Doc.BJOpenRow(BigLine));
+  CheckEqInt('and the page is the same length', After,
+    Doc.Master.Lines.Count);
+
+  DeleteFile(Path);
+end;
+
 procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -8790,6 +8876,7 @@ begin
   TestStartupDocument(F);
   TestBinaryFiles(F);
   TestBJDataFiles(F);
+  TestBJDataFolding(F);
   WriteLn;
 
   TestLineEndDetection;

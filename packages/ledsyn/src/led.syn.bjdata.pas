@@ -29,14 +29,23 @@ unit Led.Syn.BJData;
 interface
 
 uses
-  Classes, SysUtils, Graphics, SynEditHighlighter, SynEditTypes,
+  Classes, SysUtils, Graphics, SynEditHighlighter, SynEditHighlighterFoldBase,
+  SynEditTypes,
   Led.Core.BJDView;
 
 type
 
   { TLedBJHighlighter }
 
-  TLedBJHighlighter = class(TSynCustomHighlighter)
+  { A fold highlighter, because the rows already carry the nesting.
+
+    Every container in the file is a fold block and its descendants are the
+    body, which is exactly what Depth says -- so nothing is scanned for.  The
+    two things LED draws from folding, the gutter chevrons and the vertical
+    guides down the body, both come from TSynCustomFoldHighlighter, so
+    deriving from it gets a structure view that folds by the same rules and
+    with the same marks as a source file. }
+  TLedBJHighlighter = class(TSynCustomFoldHighlighter)
   private
     FRows: TLedBJRows;
     FLine: string;
@@ -69,6 +78,16 @@ type
       are computed as each line is asked about, which costs an array walk per
       line and no parsing at all. }
     procedure SetRows(const ARows: TLedBJRows);
+
+    { The nesting level of a line, for anything that needs it without going
+      through the fold machinery. }
+    function DepthOf(ALine: Integer): Integer;
+
+    { Whether a line is a container held back for its size, and how many
+      children it has.  The rows are here already, so the gutter asks the
+      highlighter rather than being handed a second copy of them. }
+    function CanExpand(ALine: Integer): Boolean;
+    function ChildCount(ALine: Integer): Int64;
 
     class function GetLanguageName: string; override;
   end;
@@ -158,9 +177,38 @@ begin
   end;
 end;
 
+{ The nesting depth of a line, and 0 for anything past the rows.
+
+  A line the rows do not cover -- an error message appended to the view, or a
+  buffer momentarily out of step during a reload -- closes every open block
+  rather than inheriting a depth it knows nothing about. }
+function TLedBJHighlighter.DepthOf(ALine: Integer): Integer;
+begin
+  if (ALine >= 0) and (ALine <= High(FRows)) then
+    Result := FRows[ALine].Depth
+  else
+    Result := 0;
+end;
+
+function TLedBJHighlighter.CanExpand(ALine: Integer): Boolean;
+begin
+  Result := (ALine >= 0) and (ALine <= High(FRows)) and FRows[ALine].CanExpand;
+end;
+
+function TLedBJHighlighter.ChildCount(ALine: Integer): Int64;
+begin
+  if (ALine >= 0) and (ALine <= High(FRows)) then
+    Result := FRows[ALine].ChildCount
+  else
+    Result := 0;
+end;
+
 procedure TLedBJHighlighter.SetLine(const NewValue: string;
   LineNumber: Integer);
+var
+  Here, Next_: Integer;
 begin
+  inherited SetLine(NewValue, LineNumber);
   FLine := NewValue;
   FLineNumber := LineNumber;
   SetLength(FFields, 0);
@@ -174,6 +222,21 @@ begin
   FTokenLen := 0;
   FField := -1;
   StepTo(1);
+
+  { The fold structure, stated rather than scanned.
+
+    A row's Depth is its level, so the blocks to close on this line are
+    however many the running level is above it, and a block opens here when
+    the next row sits one deeper.  Opening after the closes, and after the
+    line's own level is settled, is what makes the block cover the children
+    and not the container's own row. }
+  Here := DepthOf(LineNumber);
+  while CurrentCodeFoldBlockLevel > Here do
+    EndCodeFoldBlock;
+
+  Next_ := DepthOf(LineNumber + 1);
+  if (LineNumber < High(FRows)) and (Next_ > Here) then
+    StartCodeFoldBlock(nil);
 end;
 
 { Positions the cursor on whatever begins at the 1-based column AStart: the
