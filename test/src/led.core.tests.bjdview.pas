@@ -49,6 +49,12 @@ type
     procedure AskingForItShowsTheChildren;
     procedure AnElidedStringIsNotOpenable;
     procedure OpeningOneLeavesTheOthersShut;
+    procedure ANewlineInAValueStaysOnOneRow;
+    procedure BytesThatAreNotUtf8BecomeEscapes;
+    procedure RealUtf8IsLeftAlone;
+    procedure ANewlineInAKeyStaysOnOneRow;
+    procedure ABackslashIsDoubled;
+    procedure ALongStringIsCutBetweenCharacters;
   end;
 
 implementation
@@ -500,6 +506,112 @@ begin
     else if (Rows[i].Key = 'p') or (Rows[i].Key = 'q') then Inc(Open_);
   AssertEquals('one of the two is open', 1, Open_);
   AssertEquals('and the other is still shut', 1, Shut);
+end;
+
+{ Counts the lines a render came out as. }
+function LineCount(const AText: string): Integer;
+var
+  i: Integer;
+begin
+  Result := 1;
+  for i := 1 to Length(AText) do
+    if AText[i] = #10 then Inc(Result);
+end;
+
+procedure TTestBJDView.ANewlineInAValueStaysOnOneRow;
+var
+  S: string;
+begin
+  { { "t": S U 3 "a<LF>b" } -- a record is a row, and a row is a line.  The
+    twitter sample carries newlines inside its text: unescaped they split one
+    record over ten buffer lines, the offsets stop lining up, and the fold
+    column starts marking lines that are not records at all. }
+  S := Render([$7B, $55,1,Ord('t'), $53, $55,3, Ord('a'), 10, Ord('b'), $7D]);
+  AssertEquals('the object and one record, and nothing else', 2, LineCount(S));
+  AssertTrue('the newline is shown as an escape, got: ' + S,
+    Pos('"a\nb"', S) > 0);
+end;
+
+procedure TTestBJDView.BytesThatAreNotUtf8BecomeEscapes;
+var
+  S: string;
+begin
+  { $FF is not a UTF-8 start byte, and the same sample is full of runs of it.
+    Passed through it reaches SynEdit as a character it cannot draw. }
+  S := Render([$7B, $55,1,Ord('t'), $53, $55,3, Ord('a'), $FF, Ord('b'), $7D]);
+  AssertTrue('the byte is named in hex, got: ' + S, Pos('\xFF', S) > 0);
+  AssertEquals('and it is still one row', 2, LineCount(S));
+end;
+
+procedure TTestBJDView.RealUtf8IsLeftAlone;
+var
+  S: string;
+begin
+  { U+65E5 is E6 97 A5 -- well formed, so it goes through untouched.  The
+    escaping is for what is broken, not for everything above ASCII. }
+  S := Render([$7B, $55,1,Ord('t'), $53, $55,3, $E6, $97, $A5, $7D]);
+  AssertTrue('the character survives, got: ' + S,
+    Pos(#$E6#$97#$A5, S) > 0);
+  AssertTrue('and is not escaped', Pos('\x', S) = 0);
+end;
+
+procedure TTestBJDView.ANewlineInAKeyStaysOnOneRow;
+var
+  S: string;
+begin
+  { A key is bytes from the file too. }
+  S := Render([$7B, $55,3, Ord('a'), 10, Ord('b'), $55,7, $7D]);
+  AssertEquals('one row for the record', 2, LineCount(S));
+  AssertTrue('the key shows its newline, got: ' + S, Pos('a\nb', S) > 0);
+end;
+
+procedure TTestBJDView.ABackslashIsDoubled;
+var
+  S: string;
+begin
+  { Otherwise a value containing the two characters \ and n could not be told
+    from one containing a newline. }
+  S := Render([$7B, $55,1,Ord('t'), $53, $55,2, Ord('\'), Ord('n'), $7D]);
+  AssertTrue('doubled, got: ' + S, Pos('"\\n"', S) > 0);
+end;
+
+procedure TTestBJDView.ALongStringIsCutBetweenCharacters;
+var
+  S, Raw: string;
+  Rows: TLedBJRows;
+  Err: string;
+  At_: PtrUInt;
+  i: Integer;
+begin
+  { A run of three-byte characters long enough to be elided.  Halving a byte
+    count lands inside one two times in three, and half a character is not
+    something SynEdit can draw. }
+  Raw := #$7B + #$55#$01't' + #$53 + #$75;
+  Raw := Raw + Chr((3 * 200) and $FF) + Chr((3 * 200) shr 8);
+  for i := 1 to 200 do Raw := Raw + #$E6#$97#$A5;
+  Raw := Raw + #$7D;
+
+  AssertTrue('walks', LedBJTryWalk(Raw, Rows, Err, At_));
+  S := LedBJRowsText(Rows);
+  AssertTrue('it was cut, got: ' + Copy(S, 1, 80), Pos(' ... ', S) > 0);
+  AssertTrue('the row says so', Rows[1].Elided);
+  { Every byte above ASCII in the result must still belong to a whole
+    character, which is exactly what Utf8Len checks for. }
+  i := 1;
+  while i <= Length(S) do
+  begin
+    if Byte(S[i]) < $80 then Inc(i)
+    else
+    begin
+      AssertTrue('a whole character at byte ' + IntToStr(i),
+        (Byte(S[i]) and $E0) = $E0);
+      AssertTrue('with its continuations',
+        (i + 2 <= Length(S)) and
+        ((Byte(S[i + 1]) and $C0) = $80) and
+        ((Byte(S[i + 2]) and $C0) = $80));
+      Inc(i, 3);
+    end;
+  end;
 end;
 
 initialization

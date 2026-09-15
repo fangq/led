@@ -237,13 +237,144 @@ begin
   end;
 end;
 
+{ How many bytes the UTF-8 character starting at APos occupies, or 0 when
+  what is there is not a well-formed character.
+
+  Zero is the whole point.  A BJData string is bytes the file happened to
+  put there, and files in the wild are not all UTF-8 -- twitter.json3.jdb
+  carries runs of $FF in the middle of its text.  The view has to show them
+  as something, and "something" must not be the byte itself. }
+function Utf8Len(const AText: string; APos: Integer): Integer;
+var
+  n, i: Integer;
+  b: Byte;
+begin
+  b := Byte(AText[APos]);
+  if b < $80 then Exit(1);
+  if (b and $E0) = $C0 then n := 2
+  else if (b and $F0) = $E0 then n := 3
+  else if (b and $F8) = $F0 then n := 4
+  else Exit(0);                      { a continuation or $F8..$FF on its own }
+  if APos + n - 1 > Length(AText) then Exit(0);
+  for i := 1 to n - 1 do
+    if (Byte(AText[APos + i]) and $C0) <> $80 then Exit(0);
+  Result := n;
+end;
+
+{ A string value as a row may safely carry it.
+
+  Two things would otherwise wreck the page, and both are in the sample
+  files.  A newline inside a value splits one record across several buffer
+  lines: the offsets stop lining up, the colouring walks off the end of its
+  spans, and the fold column starts marking lines that are not records.  A
+  byte that is not valid UTF-8 reaches SynEdit as a character it cannot draw.
+
+  So control characters and malformed bytes become escapes.  The backslash is
+  doubled to keep those unambiguous; the double quote is left alone, because
+  the value runs to the end of the line and there is nothing for it to be
+  confused with -- and these files are full of HTML and URLs that are far
+  easier to read unescaped. }
+function BJEscapeText(const AText: string): string;
+var
+  i, n, j: Integer;
+  b: Byte;
+  Needs: Boolean;
+begin
+  { Most strings need nothing; walk once to find out before allocating. }
+  Needs := False;
+  i := 1;
+  while i <= Length(AText) do
+  begin
+    b := Byte(AText[i]);
+    if (b < $20) or (b = $7F) or (b = Ord('\')) then
+    begin
+      Needs := True;
+      Break;
+    end;
+    if b < $80 then
+    begin
+      Inc(i);
+      Continue;
+    end;
+    n := Utf8Len(AText, i);
+    if n = 0 then
+    begin
+      Needs := True;
+      Break;
+    end;
+    Inc(i, n);
+  end;
+  if not Needs then Exit(AText);
+
+  Result := '';
+  i := 1;
+  while i <= Length(AText) do
+  begin
+    b := Byte(AText[i]);
+    if b = Ord('\') then
+    begin
+      Result := Result + '\\';
+      Inc(i);
+    end
+    else if (b < $20) or (b = $7F) then
+    begin
+      case b of
+        9:  Result := Result + '\t';
+        10: Result := Result + '\n';
+        13: Result := Result + '\r';
+      else
+        Result := Result + '\x' + HexStr(b, 2);
+      end;
+      Inc(i);
+    end
+    else if b < $80 then
+    begin
+      Result := Result + AText[i];
+      Inc(i);
+    end
+    else
+    begin
+      n := Utf8Len(AText, i);
+      if n = 0 then
+      begin
+        Result := Result + '\x' + HexStr(b, 2);
+        Inc(i);
+      end
+      else
+      begin
+        for j := 0 to n - 1 do
+          Result := Result + AText[i + j];
+        Inc(i, n);
+      end;
+    end;
+  end;
+end;
+
+{ The last byte position at or before APos that starts a character, so a cut
+  never lands inside one and leaves SynEdit half a character to draw. }
+function Utf8Back(const AText: string; APos: Integer): Integer;
+begin
+  Result := APos;
+  if Result > Length(AText) then Result := Length(AText);
+  while (Result > 1) and ((Byte(AText[Result]) and $C0) = $80) do
+    Dec(Result);
+end;
+
 function Ellipsis(const AText: string; AMax: Integer): string;
+var
+  Head, Tail: Integer;
 begin
   { Both ends kept, because the interesting part of a long string is as often
-    its tail -- a path, a URL, a units suffix -- as its head. }
+    its tail -- a path, a URL, a units suffix -- as its head.
+
+    Cut on character boundaries: AMax counts bytes, and halving a byte count
+    lands inside a multi-byte character often enough that the Japanese in the
+    sample files would come back broken. }
   if Length(AText) <= AMax then Exit(AText);
-  Result := Copy(AText, 1, AMax div 2) + ' ... ' +
-            Copy(AText, Length(AText) - AMax div 2 + 1, AMax div 2);
+  Head := Utf8Back(AText, AMax div 2);
+  Tail := Utf8Back(AText, Length(AText) - AMax div 2 + 1);
+  Result := Copy(AText, 1, Head - 1) + ' ... ' +
+            Copy(AText, Tail, Length(AText) - Tail + 1);
 end;
 
 function QuoteText(const AText: string): string;
@@ -264,11 +395,15 @@ begin
     bjkFloat:   Result := BJFloatToStr(AValue.AsDouble);
     bjkString:
       begin
-        AElided := AValue.TextLength > LedBJMaxStringLen;
+        { Escaped first and measured afterwards: what the row has to fit is
+          what will be printed, and a run of malformed bytes is four
+          characters each. }
+        Result := BJEscapeText(AValue.AsString);
+        AElided := Length(Result) > LedBJMaxStringLen;
         if AValue.Marker = 'C' then
-          Result := '''' + AValue.AsString + ''''
+          Result := '''' + Result + ''''
         else
-          Result := QuoteText(AValue.AsString);
+          Result := QuoteText(Result);
       end;
     bjkExtension:
       { The type id lives on the tree, not on the cursor, and a walk that
@@ -472,7 +607,9 @@ begin
     SetLength(Rows, Length(Rows) * 2 + 64);
   Rows[Count].Offset := AValue.BytePos(Base);
   Rows[Count].Depth := ADepth;
-  Rows[Count].Key := AKey;
+  { A key is bytes from the file too, and a newline in one would break the
+    row just as surely as a newline in a value. }
+  Rows[Count].Key := BJEscapeText(AKey);
   Rows[Count].Marker := MarkerText(AValue);
   Rows[Count].Value := AValue;
   Rows[Count].Elided := False;
