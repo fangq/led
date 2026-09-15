@@ -38,7 +38,8 @@ uses
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
   Led.UI.Debug, Led.Core.Gdb, Led.Core.Project, Led.UI.XError, process,
-  Led.UI.HexMarkup, Led.UI.MiniMap, Led.Syn.BJData, AnchorDocking, BaseUnix, LazFileUtils,
+  Led.UI.HexMarkup, Led.UI.MiniMap, Led.Syn.BJData, AnchorDocking, LazFileUtils,
+  {$IFDEF UNIX}BaseUnix,{$ENDIF}
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
@@ -3919,7 +3920,12 @@ begin
       { And through a second name for the same file.  A home directory that
         links into a mounted volume is the ordinary case here, and matching
         on the literal path opened the file twice -- two documents over one
-        file, each able to save over the other. }
+        file, each able to save over the other.
+
+        Unix only, because the check needs a symlink to exist and FpSymlink
+        is the only way this tree makes one.  Importing BaseUnix for it
+        regardless is what kept the editor from building on Windows at all. }
+      {$IFDEF UNIX}
       LinkDir := TempName('viadir');
       if ForceDirectories(LinkDir) then
       begin
@@ -3935,6 +3941,7 @@ begin
         end;
         DeleteDirectory(LinkDir, False);
       end;
+      {$ENDIF}
 
       F.ActiveTab.Document.Master.Modified := False;
       F.CloseActiveTab(False);
