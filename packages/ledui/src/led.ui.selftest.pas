@@ -5437,6 +5437,84 @@ begin
   DeleteFile(Path);
 end;
 
+{ The guides down the body, which come from the same fold levels as the
+  chevrons.  Checked as strokes rather than as pixels: they are computed in
+  one place and drawn in another, and the bug that made this test necessary
+  was entirely in the first. }
+procedure TestBJDataGuides(F: TLedMainForm);
+var
+  Path, Raw: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Strokes: TLedGuideStrokes;
+  i, Deepest, Reaching, Rows_: Integer;
+begin
+  Say('Binary JData guides');
+
+  { { a:{ b:1 c:2 } d:{ e:3 ... } } with enough under d to run off the foot
+    of the view, which is the case that used to draw nothing. }
+  Raw := #$7B +
+           #$55#$01'a' + #$7B +
+             #$55#$01'b' + #$55#$01 +
+             #$55#$01'c' + #$55#$02 +
+           #$7D +
+           #$55#$01'd' + #$7B;
+  for i := 1 to 80 do
+    Raw := Raw + #$55#$02 + Chr(Ord('a') + (i mod 26)) +
+           Chr(Ord('a') + (i div 26)) + #$55 + Chr(i);
+  Raw := Raw + #$7D + #$7D;
+
+  Path := TempName('guides.bjd');
+  WriteBytes(Path, Raw);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Rows_ := Doc.Master.Lines.Count;
+  Check('it opens as a structure', Doc.IsBJData);
+  Check('and is taller than the window',
+    Rows_ > Tab.ActiveView.LinesInWindow);
+
+  Strokes := Tab.ActiveView.ComputeGuideStrokes;
+  Check('there are guides at all, got ' + IntToStr(Length(Strokes)),
+    Length(Strokes) > 0);
+
+  { The root's guide starts at the top of the view and is still open at the
+    bottom of it.  That is the one that used to vanish: the run builder was
+    asked for one row past the last visible, took its out-of-window branch,
+    and dropped every run still open instead of ending it.  What was left on
+    screen were only the guides that had closed higher up the page. }
+  Reaching := 0;
+  Deepest := 0;
+  for i := 0 to High(Strokes) do
+  begin
+    if Strokes[i].BottomRow >= Tab.ActiveView.LinesInWindow then
+      Inc(Reaching);
+    if Strokes[i].Col > Deepest then Deepest := Strokes[i].Col;
+  end;
+  Check('a guide reaches the foot of the view, got ' + IntToStr(Reaching),
+    Reaching > 0);
+
+  { Column 11 is where a depth-0 record starts: eight of offset, two spaces,
+    then the record.  The root's guide belongs under its own brace, not
+    under the file positions to its left. }
+  Reaching := 0;
+  for i := 0 to High(Strokes) do
+    if Strokes[i].Col = LedBJOffsetWidth + 3 then Inc(Reaching);
+  Check('the outermost guide is at the root record column', Reaching > 0);
+  Check('and a nested one is further in', Deepest > LedBJOffsetWidth + 3);
+
+  { Every stroke is a real span; a zero-height one would be a rule that is
+    not there. }
+  for i := 0 to High(Strokes) do
+    Check('stroke ' + IntToStr(i) + ' spans rows',
+      Strokes[i].BottomRow > Strokes[i].TopRow);
+
+  DeleteFile(Path);
+end;
+
 procedure TestStartupDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -8877,6 +8955,7 @@ begin
   TestBinaryFiles(F);
   TestBJDataFiles(F);
   TestBJDataFolding(F);
+  TestBJDataGuides(F);
   WriteLn;
 
   TestLineEndDetection;

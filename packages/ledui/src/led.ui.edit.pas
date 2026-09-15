@@ -67,6 +67,16 @@ type
   end;
   TLedGuideRuns = array of TLedGuideRun;
 
+  { One rule to draw: a column, and the screen rows it runs between.  Kept
+    apart from the drawing so that what the guides *are* can be asked for and
+    checked -- the run-building had a bug that lost every guide reaching the
+    foot of the view, and nothing could see it but an eye on a screenshot. }
+  TLedGuideStroke = record
+    Col: Integer;
+    TopRow, BottomRow: Integer;
+  end;
+  TLedGuideStrokes = array of TLedGuideStroke;
+
   { A key pressed over a hex dump.  The view knows where the caret is and
     which half of the row it is in; what a byte should become is the
     document's business, so it is asked. }
@@ -224,6 +234,8 @@ type
       is pixels, but which columns are guided is the decision, and it is the
       same routine Paint uses. }
     function ComputeBlockGuides(AFirstText, ALastText: Integer): TLedGuideRuns;
+    { The rules the guides come to, for the rows on screen now. }
+    function ComputeGuideStrokes: TLedGuideStrokes;
     { SynEdit implements wrapping as a view plugin rather than a property;
       attaching and detaching it is how the View menu toggles wrap. }
     property WrapEnabled: Boolean read GetWrapEnabled write SetWrapEnabled;
@@ -1104,11 +1116,11 @@ begin
   end;
 end;
 
-procedure TLedEdit.DrawBlockGuides;
+function TLedEdit.ComputeGuideStrokes: TLedGuideStrokes;
 var
   Runs: TLedGuideRuns;
   FV: TSynEditFoldedView;
-  FirstText, LastText, i, j, Row, TextLeft, LastRow: Integer;
+  FirstText, LastText, i, j, Row, LastRow, Count_: Integer;
   RunTop, RunCol: array of Integer;
 
   function HasCol(const ACols: array of Integer; ACol: Integer): Boolean;
@@ -1129,16 +1141,14 @@ var
     Result := -1;
   end;
 
-  { One line from the top of ATop's row to the top of ABelow's row. }
-  procedure StrokeRun(ACol, ATop, ABelow: Integer);
-  var
-    X: Integer;
+  procedure Emit(ACol, ATop, ABelow: Integer);
   begin
     if ABelow <= ATop then Exit;
-    X := TextLeft + (ACol - LeftChar) * CharWidth;
-    if X < TextLeft then Exit;
-    Canvas.MoveTo(X, ATop * LineHeight);
-    Canvas.LineTo(X, ABelow * LineHeight);
+    if Count_ >= Length(Result) then SetLength(Result, Count_ * 2 + 16);
+    Result[Count_].Col := ACol;
+    Result[Count_].TopRow := ATop;
+    Result[Count_].BottomRow := ABelow;
+    Inc(Count_);
   end;
 
   procedure OpenRun(ACol, ARow: Integer);
@@ -1158,20 +1168,21 @@ var
     RunTop[High(RunTop)] := ARow;
   end;
 
-  procedure FlushRuns(ABelow: Integer);
+  procedure EndRuns(ABelow: Integer);
   var
     k: Integer;
   begin
     for k := 0 to High(RunCol) do
       if RunCol[k] >= 0 then
       begin
-        if ABelow >= 0 then StrokeRun(RunCol[k], RunTop[k], ABelow);
+        Emit(RunCol[k], RunTop[k], ABelow);
         RunCol[k] := -1;
       end;
   end;
 
 begin
-  if FGuideColour = clNone then Exit;
+  Result := nil;
+  Count_ := 0;
   if not (Highlighter is TSynCustomFoldHighlighter) then Exit;
   if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
   FV := TSynEditFoldedView(FoldedTextBuffer);
@@ -1183,6 +1194,63 @@ begin
   Runs := ComputeBlockGuides(FirstText, LastText);
   if Length(Runs) = 0 then Exit;
   LastRow := -1;
+
+  { One stroke per unbroken vertical run, not one per line.  Drawing each row
+    separately left the rule looking dotted: a per-row LineTo stops a pixel
+    short on some backends, and a row the fold view has no screen line for
+    punched a hole that never closed up. }
+  SetLength(RunTop, 0);
+  SetLength(RunCol, 0);
+
+  for i := 0 to High(Runs) do
+  begin
+    { Folded-away lines have no row of their own; TextIndexToScreenLine gives
+      the row the fold collapsed onto, so they would stack guides on one
+      line.  Such a row ends every run rather than continuing it.
+
+      Ends, not abandons.  This used to drop the open runs without emitting
+      them, and the range asked for always runs one line past the last
+      visible one -- so the final iteration took this branch and threw away
+      every guide still open at the foot of the view.  What survived was only
+      the guides that had already closed higher up the page, which is why a
+      deeply nested file showed a few short rules near the top and nothing at
+      all under the containers below them. }
+    Row := FV.TextIndexToScreenLine(Runs[i].TextIdx);
+    if (Row < 0) or (Row >= LinesInWindow) or
+       (FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx) then
+    begin
+      EndRuns(LastRow + 1);
+      Continue;
+    end;
+
+    { Close any run whose column is not on this line, then open or extend
+      the ones that are. }
+    for j := 0 to High(RunCol) do
+      if (RunCol[j] >= 0) and not HasCol(Runs[i].Cols, RunCol[j]) then
+      begin
+        Emit(RunCol[j], RunTop[j], Row);
+        RunCol[j] := -1;
+      end;
+
+    for j := 0 to High(Runs[i].Cols) do
+      if IndexOfRun(Runs[i].Cols[j]) < 0 then
+        OpenRun(Runs[i].Cols[j], Row);
+
+    LastRow := Row;
+  end;
+
+  EndRuns(LastRow + 1);
+  SetLength(Result, Count_);
+end;
+
+procedure TLedEdit.DrawBlockGuides;
+var
+  Strokes: TLedGuideStrokes;
+  i, TextLeft, X: Integer;
+begin
+  if FGuideColour = clNone then Exit;
+  Strokes := ComputeGuideStrokes;
+  if Length(Strokes) = 0 then Exit;
 
   { Where column 1 starts.  TCustomSynEdit.TextLeftPixelOffset computes
     exactly this and is private, so the two lines it amounts to are repeated
@@ -1196,43 +1264,13 @@ begin
   Canvas.Pen.Width := 1;
   Canvas.Pen.Style := psSolid;
 
-  { One stroke per unbroken vertical run, not one per line.  Drawing each row
-    separately left the rule looking dotted: a per-row LineTo stops a pixel
-    short on some backends, and a row the fold view has no screen line for
-    punched a hole that never closed up. }
-  SetLength(RunTop, 0);
-  SetLength(RunCol, 0);
-
-  for i := 0 to High(Runs) do
+  for i := 0 to High(Strokes) do
   begin
-    { Folded-away lines have no row of their own; TextIndexToScreenLine gives
-      the row the fold collapsed onto, so they would stack guides on one
-      line.  Such a row ends every run rather than continuing it. }
-    Row := FV.TextIndexToScreenLine(Runs[i].TextIdx);
-    if (Row < 0) or (Row >= LinesInWindow) or
-       (FV.ScreenLineToTextIndex(Row) <> Runs[i].TextIdx) then
-    begin
-      FlushRuns(-1);
-      Continue;
-    end;
-
-    { Close any run whose column is not on this line, then open or extend
-      the ones that are. }
-    for j := 0 to High(RunCol) do
-      if (RunCol[j] >= 0) and not HasCol(Runs[i].Cols, RunCol[j]) then
-      begin
-        StrokeRun(RunCol[j], RunTop[j], Row);
-        RunCol[j] := -1;
-      end;
-
-    for j := 0 to High(Runs[i].Cols) do
-      if IndexOfRun(Runs[i].Cols[j]) < 0 then
-        OpenRun(Runs[i].Cols[j], Row);
-
-    LastRow := Row;
+    X := TextLeft + (Strokes[i].Col - LeftChar) * CharWidth;
+    if X < TextLeft then Continue;
+    Canvas.MoveTo(X, Strokes[i].TopRow * LineHeight);
+    Canvas.LineTo(X, Strokes[i].BottomRow * LineHeight);
   end;
-
-  FlushRuns(LastRow + 1);
 end;
 
 procedure TLedEdit.Paint;
@@ -1744,6 +1782,20 @@ begin
     between rows changes the painting of two rows and neither of them knows
     it. }
   if FHexMode and (scCaretY in AChanges) then Invalidate;
+
+  { A block guide is a rule the full height of the block, drawn over the text
+    after SynEdit has painted it.  SynEdit scrolls by moving the pixels it can
+    keep and repainting only the band that has just come into view, so a rule
+    crossing that boundary is clipped to the band and what is left on screen
+    is a ladder of short segments -- one per wheel notch -- rather than a
+    line.  Scrolling therefore repaints the lot.
+
+    Only when there are guides to draw: without them the cheap scroll is
+    still right, and this is the common case for anyone whose theme leaves
+    them off. }
+  if (FGuideColour <> clNone) and
+     (AChanges * [scTopLine, scLeftChar] <> []) then
+    Invalidate;
 
   { The caret's row is ruled above and below, and the row it has just left
     has to lose its rules.  SynEdit invalidates what it knows changed, which
