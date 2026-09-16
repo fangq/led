@@ -29,14 +29,36 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
-  Graphics, Forms, LazUTF8,
+  Graphics, Forms, ImgList, LazUTF8,
   IpHtml, Ipfilebroker,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.Markdown,
-  Led.Syn.Factory, Led.Syn.Theme,
+  Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
 type
   TLedNBCellEvent = procedure(Sender: TObject; ACell: Integer) of object;
+
+  { The rendered prose of one cell.
+
+    A descendant rather than the panel itself, for two things the panel does
+    not do on its own.  It keeps the mouse wheel: the panel is exactly as
+    tall as its page and so has nothing to scroll, but it still swallows the
+    event, and the page behind it is what the reader was trying to move.  And
+    it is opened for editing by a double click, which is the gesture every
+    notebook front end uses for prose -- a single click has to stay a single
+    click so that text can be selected and a link can be followed. }
+  TLedNBProse = class(TIpHtmlPanel)
+  private
+    FOnWheel: TMouseWheelEvent;
+    FOnEnterEdit: TNotifyEvent;
+  protected
+    function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+      AMousePos: TPoint): Boolean; override;
+    procedure DblClick; override;
+  public
+    property OnWheelPassedUp: TMouseWheelEvent read FOnWheel write FOnWheel;
+    property OnEnterEdit: TNotifyEvent read FOnEnterEdit write FOnEnterEdit;
+  end;
 
   { The colours the pane draws with; see LedNBColours. }
   TLedNBColourSet = record
@@ -57,7 +79,7 @@ type
       on that is a way in that sometimes is not there. }
     FEditBtn: TSpeedButton;
     FEdit: TLedEdit;
-    FRender: TIpHtmlPanel;
+    FRender: TLedNBProse;
     FProvider: TIpFileDataProvider;
     FOnRun: TLedNBCellEvent;
     FOnEdited: TLedNBCellEvent;
@@ -70,13 +92,17 @@ type
     procedure MakeRender;
     procedure ProvideImage(Sender: TIpHtmlNode; const URL: string;
       var Picture: TPicture);
+    { The wheel, from a child that would otherwise swallow it, handed to the
+      page the reader was trying to scroll. }
+    procedure ChildWheel(Sender: TObject; AShift: TShiftState;
+      AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
     procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
     function ProsePage(const ASource: string): string;
 
   public
     constructor Create(AOwner: TComponent; ADoc: TLedDocument;
-      ACell: Integer); reintroduce;
+      ACell: Integer; AImages: TCustomImageList); reintroduce;
     { Lays the cell out for AWidth and answers how tall it came to.
 
       The width is given rather than read back from the box: laying the pane
@@ -96,7 +122,7 @@ type
     procedure Commit;
     property Cell: Integer read FCell;
     property Editor: TLedEdit read FEdit;
-    property Rendered: TIpHtmlPanel read FRender;
+    property Rendered: TLedNBProse read FRender;
     property RunButton: TSpeedButton read FRun;
     { The button that turns rendered prose into text and back.  nil on a code
       cell, which is text already. }
@@ -117,6 +143,7 @@ type
     FDoc: TLedDocument;
     FBoxes: TFPList;           // of TLedNBCellBox
     FNote: TLabel;
+    FImages: TCustomImageList;
     FOnRun: TLedNBCellEvent;
     { Resizing is coalesced.  Dragging the splitter fires a resize per pixel,
       and every one of them would re-wrap every cell and re-measure every
@@ -154,6 +181,9 @@ type
     function BoxOf(ACell: Integer): TLedNBCellBox;
 
     property Document: TLedDocument read FDoc;
+    { Where the cells take their button icons from.  The window's own list,
+      so a notebook's Run button is the same glyph as the toolbar's. }
+    property Images: TCustomImageList read FImages write FImages;
     { Fired when a cell's Run button is pressed; the window runs it, because
       the kernel is the document's and the reporting is the window's. }
     property OnRunCell: TLedNBCellEvent read FOnRun write FOnRun;
@@ -164,11 +194,9 @@ implementation
 const
   Pad = 6;
   LabelWidth = 76;
-  { The prose face and size.  Proportional and a size bigger than the code,
-    which is what a notebook front end does: prose is read and code is
-    scanned. }
+  { The prose face.  Proportional, and at a size taken from the reader's own
+    editor font rather than fixed -- see ProseSize. }
   ProseFace = 'Sans';
-  ProseSize = 10;
   { Prose runs nearly the full width, the way it does in a notebook front
     end: a paragraph is read across the page, and the column a code cell
     needs for its execution count is room a paragraph should not give up.
@@ -183,6 +211,22 @@ const
   which is what makes this work for a scheme nobody has seen -- a code block
   a few per cent away from the page is a code block on a light theme and on
   a dark one, where a fixed grey is right on one and wrong on the other. }
+{ How big the prose is: the size the reader set for their editor, and three
+  points more.
+
+  Fixed at ten points it was smaller than the code beside it on some
+  machines and smaller than the editor on all of them, which is the wrong way
+  round -- prose is read and code is scanned, and a notebook front end sets
+  prose larger.  Derived, it follows the font preference: a reader who makes
+  the editor bigger gets a bigger page. }
+function ProseSize(ADoc: TLedDocument): Integer;
+begin
+  Result := 10;
+  if (ADoc <> nil) and (ADoc.Master.Font.Size > 0) then
+    Result := ADoc.Master.Font.Size;
+  Result := Result + 3;
+end;
+
 function LedNBColours: TLedNBColourSet;
 var
   Style: TLedStyle;
@@ -243,10 +287,27 @@ begin
   Result := R.Bottom - R.Top;
 end;
 
+function TLedNBProse.DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+  AMousePos: TPoint): Boolean;
+var
+  Handled: Boolean;
+begin
+  Handled := False;
+  if Assigned(FOnWheel) then FOnWheel(Self, AShift, AWheelDelta, AMousePos, Handled);
+  if Handled then Exit(True);
+  Result := inherited DoMouseWheel(AShift, AWheelDelta, AMousePos);
+end;
+
+procedure TLedNBProse.DblClick;
+begin
+  if Assigned(FOnEnterEdit) then FOnEnterEdit(Self);
+  inherited DblClick;
+end;
+
 { ---- one cell ---- }
 
 constructor TLedNBCellBox.Create(AOwner: TComponent; ADoc: TLedDocument;
-  ACell: Integer);
+  ACell: Integer; AImages: TCustomImageList);
 var
   Colours: TLedNBColourSet;
 begin
@@ -273,12 +334,20 @@ begin
   begin
     FRun := TSpeedButton.Create(Self);
     FRun.Parent := Self;
-    FRun.Caption := '>';
     FRun.Hint := 'Run this cell';
     FRun.ShowHint := True;
     FRun.Flat := True;
+    { LED's own run icon, the one the toolbar and the debugger use, so this
+      button looks like the rest of the editor.  A caption only where there
+      is no image list to take it from -- a pane built without one still has
+      a working button rather than a blank square. }
+    FRun.Images := AImages;
+    if AImages <> nil then
+      FRun.ImageIndex := LedIconIndex('run')
+    else
+      FRun.Caption := '>';
     FRun.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
-      LedScale96(20), LedScale96(20));
+      LedScale96(22), LedScale96(22));
     FRun.OnClick := @RunClicked;
   end
   else
@@ -286,7 +355,7 @@ begin
     FEditBtn := TSpeedButton.Create(Self);
     FEditBtn.Parent := Self;
     FEditBtn.Caption := '...';
-    FEditBtn.Hint := 'Edit this cell as text';
+    FEditBtn.Hint := 'Edit this cell as text (or double-click the text)';
     FEditBtn.ShowHint := True;
     FEditBtn.Flat := True;
     FEditBtn.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
@@ -309,6 +378,28 @@ end;
 procedure TLedNBCellBox.EditClicked(Sender: TObject);
 begin
   SetEditing(not FEditing);
+end;
+
+{ A wheel notch over a cell scrolls the page of cells.
+
+  Every windowed child of a cell keeps the wheel for itself -- the editor
+  because SynEdit scrolls, the prose because the renderer does -- and both of
+  them have nothing to scroll, being exactly as tall as their contents.  So
+  the notch is passed to the pane, which is what the reader meant. }
+procedure TLedNBCellBox.ChildWheel(Sender: TObject; AShift: TShiftState;
+  AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
+var
+  Box: TScrollBox;
+  Notches: Integer;
+begin
+  if not (Parent is TScrollBox) then Exit;
+  Box := TScrollBox(Parent);
+  Notches := AWheelDelta div 120;
+  if Notches = 0 then
+    if AWheelDelta > 0 then Notches := 1 else Notches := -1;
+  Box.VertScrollBar.Position :=
+    Box.VertScrollBar.Position - Notches * LedScale96(48);
+  AHandled := True;
 end;
 
 procedure TLedNBCellBox.RunClicked(Sender: TObject);
@@ -420,6 +511,7 @@ begin
     LedApplyThemeToHighlighter(LedCurrentTheme, FEdit.Highlighter);
 
   FEdit.OnExit := @EditExited;
+  FEdit.OnMouseWheel := @ChildWheel;
 end;
 
 procedure TLedNBCellBox.MakeRender;
@@ -433,16 +525,19 @@ begin
     notebook managed on the first try: a Markdown cell referring to an image
     by a bare name took the error out through the paint. }
   FProvider.OnGetImage := @ProvideImage;
-  FRender := TIpHtmlPanel.Create(Self);
+  FRender := TLedNBProse.Create(Self);
   FRender.Parent := Self;
   FRender.DataProvider := FProvider;
-  FRender.OnClick := @RenderClicked;
+  { A double click opens it; a single one is left alone so that text can
+    still be selected and a link followed. }
+  FRender.OnEnterEdit := @RenderClicked;
+  FRender.OnWheelPassedUp := @ChildWheel;
   { Said out loud rather than left to the default, because the same face and
     size have to be given to the throwaway document that measures how tall a
     page comes out: a measurement taken in one font and drawn in another is
     how a paragraph of prose came to be given a single line of room. }
   FRender.DefaultTypeFace := ProseFace;
-  FRender.DefaultFontSize := ProseSize;
+  FRender.DefaultFontSize := ProseSize(FDoc);
   FRender.FixedTypeface := FDoc.Master.Font.Name;
   C := LedNBColours;
   FRender.BgColor := C.Page;
@@ -563,7 +658,7 @@ begin
     try
       { The same face and size the panel was given, for the same reason. }
       Doc.DefaultTypeFace := ProseFace;
-      Doc.DefaultFontSize := ProseSize;
+      Doc.DefaultFontSize := ProseSize(FDoc);
       Doc.LoadFromStream(Stream);
       { A height of nothing lays nothing out: the page is measured with as
         much room as it could want and comes back with what it used. }
@@ -572,7 +667,7 @@ begin
         always exactly, and the costs are not symmetrical: a little too much
         room is a little white space, while a little too little folds the
         cell into a box with a scrollbar, which is the thing this is for. }
-      if H > 0 then Result := H + ProseSize * 2;
+      if H > 0 then Result := H + ProseSize(FDoc) * 2;
     except
       { A page that will not lay out gets the default height rather than
         taking the cell down with it. }
@@ -907,8 +1002,18 @@ begin
   FNote.Font.Color := LedNBColours.Muted;
   DisableAutoSizing;
   try
+    { Released rather than freed.  A cell box holds the controls a reader
+      clicks, and freeing one while the LCL still has it in hand is what
+      "TLedNBCellBox.Destroy with LCLRefCount>0.  Maybe the component is
+      processing an event?" means -- after which the editor is standing on
+      freed memory.  Nothing should rebuild the pane from inside a cell's own
+      event any more, and this is the guard for the paths nobody thought of:
+      the box goes away once the event that was using it has finished. }
     for i := 0 to FBoxes.Count - 1 do
-      TLedNBCellBox(FBoxes[i]).Free;
+    begin
+      TLedNBCellBox(FBoxes[i]).Visible := False;
+      Application.ReleaseComponent(TLedNBCellBox(FBoxes[i]));
+    end;
     FBoxes.Clear;
 
     if FDoc = nil then
@@ -922,7 +1027,7 @@ begin
     Y := 0;
     for i := 0 to FDoc.Notebook.CellCount - 1 do
     begin
-      B := TLedNBCellBox.Create(Self, FDoc, i);
+      B := TLedNBCellBox.Create(Self, FDoc, i, FImages);
       B.Parent := Self;
       B.OnRunCell := @CellRun;
       B.OnEdited := @CellEdited;

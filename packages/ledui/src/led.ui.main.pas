@@ -726,6 +726,8 @@ type
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
     procedure NBPaneRun(Sender: TObject; ACell: Integer);
+    procedure NBCellChanged(ADoc: TLedDocument; ACell: Integer);
+    procedure NBCellDeferred(AData: PtrInt);
     property SymbolPane: TLedSymbolPane read FSymbols;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
@@ -1075,6 +1077,7 @@ begin
 
   FNBPane := TLedNotebookPane.Create(Self);
   FNBPane.OnRunCell := @NBPaneRun;
+  FNBPane.Images := ImageList1;
   FDock.AddPane(ledRight, 'notebook', 'Notebook', FNBPane, 'doc');
 
   { Except where there is no pseudo-terminal to be had.  Registering it there
@@ -1431,8 +1434,24 @@ begin
     ReportError(Why);
     Exit;
   end;
-  if FNBPane <> nil then FNBPane.RefreshCell(ACell);
   UpdateStatusBar;
+end;
+
+{ One cell of the notebook changed.  Redrawn after the event that changed it
+  has finished, never during: this arrives from a kernel poll or from a Run
+  button's own click, and rebuilding a cell box while the button inside it is
+  being clicked destroys the control that is processing the event. }
+procedure TLedMainForm.NBCellChanged(ADoc: TLedDocument; ACell: Integer);
+begin
+  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if (ADoc = nil) or (ActiveTab = nil) or (ADoc <> ActiveTab.Document) then Exit;
+  Application.QueueAsyncCall(@NBCellDeferred, PtrInt(ACell));
+end;
+
+procedure TLedMainForm.NBCellDeferred(AData: PtrInt);
+begin
+  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  FNBPane.RefreshCell(Integer(AData));
 end;
 
 procedure TLedMainForm.actToggleNotebookPaneExecute(Sender: TObject);
@@ -4337,11 +4356,13 @@ end;
 procedure TLedMainForm.KernelChanged(ADoc: TLedDocument);
 begin
   UpdateStatusBar;
-  { The pane's cells carry the output too, so they are built again as it
-    arrives -- the same moment the line view's own rows are. }
-  if (FNBPane <> nil) and FDock.PaneVisible('notebook') and
-     (ADoc <> nil) and (ADoc = ActiveTab.Document) then
-    FNBPane.Reload;
+  { Deliberately not rebuilding the pane here.  The cells that changed say so
+    themselves, through OnCellChanged, and rebuilding the pane from a kernel
+    event was what took the editor out: it frees every cell box, including
+    the one whose Run button is still in the middle of its own click, and the
+    LCL says so -- "TLedNBCellBox.Destroy with LCLRefCount>0.  Maybe the
+    component is processing an event?"  On a notebook of a hundred cells it
+    was also fifty page layouts per kernel event. }
   if (ADoc <> nil) and (ADoc.NBKernelState = lksFailed) and
      (ADoc.NBKernelStatus <> FLastKernelReport) then
   begin
@@ -4500,6 +4521,7 @@ begin
   Result.ViewBreakpointClick := @DebugGutterClick;
   Result.ViewBJEdit := @BJEditRequested;
   ADoc.OnKernelChanged := @KernelChanged;
+  ADoc.OnCellChanged := @NBCellChanged;
   Result.ViewHoverExpression := @DebugHover;
   { A window setting, so a tab opened later gets what the window is already
     showing rather than the default. }

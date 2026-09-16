@@ -60,6 +60,11 @@ type
   TLedDocument = class;
 
   TLedDocumentEvent = procedure(ADoc: TLedDocument) of object;
+  { One cell of a notebook changed -- it ran, or its output arrived.  Carries
+    which cell, so a view of the cells can redo that one rather than all of
+    them. }
+  TLedDocumentCellEvent = procedure(ADoc: TLedDocument;
+    ACell: Integer) of object;
 
   { Asked whether to build ACount rows for one container.  True goes ahead. }
   TLedBJConfirmExpand = function(ACount: Int64): Boolean of object;
@@ -126,6 +131,7 @@ type
     FRuns: array of record Id, Cell: Integer; end;
     FDirtyCells: array of Integer;   // cells whose output has just changed
     FOnKernel: TLedDocumentEvent;
+    FOnCell: TLedDocumentCellEvent;
     FForceText: Boolean;        // the user asked for the text editor anyway
     { The bytes themselves, when the document is a dump.  This is the file;
       the buffer the views show is a rendering of it, rebuilt a row at a time
@@ -329,6 +335,11 @@ type
       arrive, which is the order they are on the page. }
     function NBRunAll(out AWhy: string): Boolean;
     property OnKernelChanged: TLedDocumentEvent read FOnKernel write FOnKernel;
+    { Fired for the one cell whose header or output has just changed.  A view
+      that shows the cells uses this instead of rebuilding itself: on a real
+      notebook rebuilding is a hundred cells and fifty page layouts, and
+      doing it from inside a kernel event took the editor out. }
+    property OnCellChanged: TLedDocumentCellEvent read FOnCell write FOnCell;
 
     { Asked before opening something large; nil means do not ask.  The
       document does not put dialogs on the screen -- the window supplies
@@ -1501,6 +1512,7 @@ begin
     V.CaretXY := Carets[i];
   end;
 
+  if Assigned(FOnCell) then FOnCell(Self, ACell);
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 

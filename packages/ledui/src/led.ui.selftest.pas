@@ -2942,6 +2942,27 @@ begin
   TLedKeyPoke(AView).DblClick;
 end;
 
+{ The notebook prose control's wheel and double click are protected, and
+  what is worth checking is that they are routed at all -- so they are
+  reached the way every other protected part is in here. }
+type
+  TLedProsePoke = class(TLedNBProse)
+  public
+    class function Wheel(AProse: TLedNBProse; ADelta: Integer): Boolean;
+    class procedure DoubleClick(AProse: TLedNBProse);
+  end;
+
+class function TLedProsePoke.Wheel(AProse: TLedNBProse;
+  ADelta: Integer): Boolean;
+begin
+  Result := TLedProsePoke(AProse).DoMouseWheel([], ADelta, Point(10, 10));
+end;
+
+class procedure TLedProsePoke.DoubleClick(AProse: TLedNBProse);
+begin
+  TLedProsePoke(AProse).DblClick;
+end;
+
 class procedure TLedMousePoke.Press(AView: TLedEdit; AShift: TShiftState;
   X, Y: Integer);
 begin
@@ -5429,6 +5450,33 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ Whether this machine can run a notebook cell: the helper is there and the
+  Python it would be run with has the client library.  Asked of that same
+  Python, because having jupyter_client is a property of an interpreter and
+  not of a machine. }
+function NotebookKernelAvailable: Boolean;
+var
+  P: TProcess;
+begin
+  Result := FileExists(LedKernelHelper);
+  if not Result then Exit;
+  P := TProcess.Create(nil);
+  try
+    P.Executable := LedKernelPython;
+    P.Parameters.Add('-c');
+    P.Parameters.Add('import jupyter_client, ipykernel');
+    P.Options := [poWaitOnExit, poUsePipes, poNoConsole];
+    try
+      P.Execute;
+      Result := P.ExitStatus = 0;
+    except
+      Result := False;
+    end;
+  finally
+    P.Free;
+  end;
+end;
+
 { The notebook pane: the same file as cells rather than as lines.
 
   What is worth checking is what this view does that the line view cannot,
@@ -5452,6 +5500,9 @@ var
   Host: TForm;
   Loose: TLedNotebookPane;
   Dark, Light: TLedNBColourSet;
+  WasBox: TLedNBCellBox;
+  Handled: Boolean;
+  Deadline: TDateTime;
 
   function Fixture: string;
   begin
@@ -5747,6 +5798,135 @@ begin
   finally
     Host.Free;
   end;
+
+  { ---- pressing Run must not destroy the cell it is in ---- }
+
+  { The reported symptom was the editor going away on a click, with the LCL
+    saying "TLedNBCellBox.Destroy with LCLRefCount>0.  Maybe the component is
+    processing an event?"  It was: the kernel's change event rebuilt the whole
+    pane, which frees every cell box -- including the one whose Run button
+    was in the middle of its own click.
+
+    So what is checked is that the box survives its own button.  The same
+    box, not merely a box: a rebuilt pane would answer with a new one. }
+  WasBox := Pane.Box(1);
+  Pane.Box(1).RunButton.Click;
+  Pump; Pump;
+  Check('the cell box outlives a press of its own Run button',
+    Pane.Box(1) = WasBox);
+  CheckEqInt('and the pane still has every cell', 5, Pane.CellCount);
+  { The deferred refresh has had its chance by now, and must not have swapped
+    the boxes either. }
+  Pump; Pump;
+  Check('and still does once the deferred redraw has run',
+    Pane.Box(1) = WasBox);
+
+  { And with a kernel on the machine, the click does what it is for: the
+    cell runs and its output arrives in the box.  This is the whole path the
+    report was about -- the button, the document, the helper, the kernel, and
+    the redraw that comes back. }
+  if NotebookKernelAvailable then
+  begin
+    Deadline := Now + 90 / 86400.0;
+    while (Now < Deadline) and
+          (Pos('forty-two', LabelsIn(Pane.Box(1))) = 0) do
+    begin
+      Pump;
+      Sleep(20);
+    end;
+    Check('the cell ran and its output is in the pane: ' +
+      LabelsIn(Pane.Box(1)), Pos('forty-two', LabelsIn(Pane.Box(1))) > 0);
+    Check('and the header says it ran',
+      Pos('In [1]', LabelsIn(Pane.Box(1))) > 0);
+    Doc.NBKernelStop;
+    Pump;
+  end;
+
+  { ---- the wheel belongs to the page, not to the cell under it ---- }
+
+  { Both windowed children swallow the wheel and have nothing to scroll,
+    being exactly as tall as their contents, so a notch over a cell moved
+    nothing at all.
+
+    Checked on a pane short enough to have somewhere to scroll to: the docked
+    one is taller than this small notebook, and a pane with no range answers
+    every wheel notch with the same nothing whether it forwards it or not. }
+  B := Pane.Box(0);
+  Check('the prose control takes the wheel and passes it up',
+    TLedProsePoke.Wheel(B.Rendered, -120));
+  Check('a code cell is asked about the wheel too',
+    Assigned(Pane.Box(1).Editor.OnMouseWheel));
+
+  Host := TForm.CreateNew(nil);
+  try
+    Host.SetBounds(0, 0, 500, 260);
+    Loose := TLedNotebookPane.Create(Host);
+    Loose.Parent := Host;
+    Loose.Align := alNone;
+    Loose.SetBounds(0, 0, 480, 240);
+    Loose.ShowDocument(Doc);
+    Pump;
+    { Shown, because a scroll box works out how far it may scroll from the
+      children it has on screen: on a window that was never shown the range
+      is nothing and every wheel notch moves nothing, whoever handled it. }
+    Host.Show;
+    Pump; Pump;
+    CheckGt('the cells are taller than this pane, so there is room to '
+      + 'scroll', Loose.ClientHeight,
+      Loose.Box(Loose.CellCount - 1).Top);
+
+    Loose.VertScrollBar.Position := 0;
+    Pump;
+    TLedProsePoke.Wheel(Loose.Box(0).Rendered, -120);
+    Pump;
+    CheckGt('a notch over the prose scrolls the page of cells', 0,
+      Loose.VertScrollBar.Position);
+    Was := Loose.VertScrollBar.Position;
+    TLedProsePoke.Wheel(Loose.Box(0).Rendered, 120);
+    Pump;
+    Check('and a notch the other way scrolls it back',
+      Loose.VertScrollBar.Position < Was);
+
+    { The same for a code cell, through the handler the editor is given. }
+    Loose.VertScrollBar.Position := 0;
+    Pump;
+    Handled := False;
+    Loose.Box(1).Editor.OnMouseWheel(Loose.Box(1).Editor, [], -120,
+      Point(10, 10), Handled);
+    Pump;
+    Check('a notch over a code cell is taken', Handled);
+    CheckGt('and scrolls the page too', 0, Loose.VertScrollBar.Position);
+  finally
+    Host.Hide;
+    Host.Free;
+  end;
+
+  { ---- the gestures and the glyph ---- }
+
+  { Double click, which is what every notebook front end opens prose with.
+    A single click is left alone so that text can still be selected and a
+    link followed. }
+  Check('prose is not being edited to start with', not B.Editing);
+  TLedProsePoke.DoubleClick(B.Rendered);
+  Pump;
+  Check('a double click on prose opens it for editing', B.Editing);
+  { And the way back is the button: once a cell is showing its source the
+    rendered prose is not there to be clicked. }
+  B.EditButton.Click;
+  Pump;
+  Check('and the button puts it back', not B.Editing);
+
+  Check('the Run button wears LED''s own run icon rather than a character',
+    (Pane.Box(1).RunButton.Images <> nil) and
+    (Pane.Box(1).RunButton.ImageIndex >= 0));
+
+  { ---- and it is readable ---- }
+
+  { Fixed at ten points the prose came out smaller than the code beside it,
+    which is the wrong way round.  It follows the reader's own editor font
+    now, so a bigger editor font gives a bigger page. }
+  CheckGt('prose is set larger than the code it explains',
+    Pane.Box(1).Editor.Font.Size, B.Rendered.DefaultFontSize);
 
   { ---- the colours are the theme's ---- }
 
