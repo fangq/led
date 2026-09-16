@@ -342,6 +342,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Markdown Pre&view'
       OnExecute = actTogglePreviewExecute
     end
+    object actToggleNotebookPane: TAction
+      Caption = '&Notebook Cells'
+      OnExecute = actToggleNotebookPaneExecute
+    end
     object actToggleMiniMap: TAction
       Caption = '&Minimap'
       OnExecute = actToggleMiniMapExecute
@@ -1011,6 +1015,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_TogglePreview: TMenuItem
         Action = actTogglePreview
+      end
+      object mi_ToggleNotebookPane: TMenuItem
+        Action = actToggleNotebookPane
       end
       object mi_ToggleMiniMap: TMenuItem
         Action = actToggleMiniMap

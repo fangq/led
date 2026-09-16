@@ -24,7 +24,7 @@ uses
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
   Led.Core.Project,
-  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
+  Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, Led.UI.BJEdit, LCLProc, LazFileUtils;
@@ -130,6 +130,7 @@ type
     actToggleTerminal: TAction;
     actToggleSymbols: TAction;
     actTogglePreview: TAction;
+    actToggleNotebookPane: TAction;
     actToggleMiniMap: TAction;
     actComplete: TAction;
     actToggleLeftPane: TAction;
@@ -481,6 +482,7 @@ type
     procedure actToggleSymbolsExecute(Sender: TObject);
     procedure actPrintExecute(Sender: TObject);
     procedure actTogglePreviewExecute(Sender: TObject);
+    procedure actToggleNotebookPaneExecute(Sender: TObject);
     procedure actToggleMiniMapExecute(Sender: TObject);
   private
     FFocusedOnce: Boolean;
@@ -538,6 +540,9 @@ type
     FSymbols: TLedSymbolPane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
+    { The notebook pane: the same file as the line view, shown as cells with
+      the prose rendered and the pictures drawn. }
+    FNBPane: TLedNotebookPane;
     { The document the panes were last built for.  Compared on idle, because
       knowing which document is active is not the same as being told. }
     FShownDoc: TObject;
@@ -718,6 +723,9 @@ type
       what the converter produced is not observable from anywhere else --
       the render path turns an exception into a message label. }
     property Preview: TLedPreviewPane read FPreview;
+    property NotebookPane: TLedNotebookPane read FNBPane;
+    procedure RefreshNotebookPane;
+    procedure NBPaneRun(Sender: TObject; ACell: Integer);
     property SymbolPane: TLedSymbolPane read FSymbols;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
@@ -1065,6 +1073,10 @@ begin
   FPreview.OnJumpToLine := @PreviewJumpToLine;
   FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
 
+  FNBPane := TLedNotebookPane.Create(Self);
+  FNBPane.OnRunCell := @NBPaneRun;
+  FDock.AddPane(ledRight, 'notebook', 'Notebook', FNBPane, 'doc');
+
   { Except where there is no pseudo-terminal to be had.  Registering it there
     would put a button on the rail for a pane that can only apologise. }
   if LedPtyAvailable then
@@ -1385,6 +1397,55 @@ begin
   { Immediately: the pane has just appeared with nothing in it, and a quarter
     second of blank panel reads as a pane that does not work. }
   RefreshPreview(True);
+end;
+
+{ The notebook pane, filled from the document in front of you.
+
+  Only when it is showing: building a cell for every cell of a notebook is
+  cheap -- 59 ms for a hundred of them, measured -- but it is not free, and a
+  pane nobody has opened should cost nothing at all. }
+procedure TLedMainForm.RefreshNotebookPane;
+begin
+  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if ActiveTab = nil then
+  begin
+    FNBPane.ShowDocument(nil);
+    Exit;
+  end;
+  { What the reader has typed into the line view is copied into the notebook
+    first, so the cells show the file as it stands rather than as it was
+    saved. }
+  if ActiveTab.Document.IsNotebook then ActiveTab.Document.NBSyncFromBuffer;
+  FNBPane.ShowDocument(ActiveTab.Document);
+end;
+
+{ A Run button in the pane.  The kernel belongs to the document and the
+  reporting belongs to the window, so the pane asks rather than doing it. }
+procedure TLedMainForm.NBPaneRun(Sender: TObject; ACell: Integer);
+var
+  Why: string;
+begin
+  if ActiveTab = nil then Exit;
+  if not ActiveTab.Document.NBRunCell(ACell, Why) then
+  begin
+    ReportError(Why);
+    Exit;
+  end;
+  if FNBPane <> nil then FNBPane.RefreshCell(ACell);
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actToggleNotebookPaneExecute(Sender: TObject);
+begin
+  if FNBPane = nil then Exit;
+  FDock.ShowPane('notebook');
+  FDock.EdgeVisible[ledRight] := True;
+  { Wider than the other panes on that edge start at.  A notebook cell is
+    code, and code in a strip two hundred pixels wide wraps every line into
+    four -- which is what the first version of this looked like. }
+  if FDock.EdgeSize[ledRight] < LedScale96(460) then
+    FDock.EdgeSize[ledRight] := LedScale96(460);
+  RefreshNotebookPane;
 end;
 
 procedure TLedMainForm.actPrintExecute(Sender: TObject);
@@ -3213,7 +3274,9 @@ begin
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
       Immediately, for the same reason: the pane is on screen now. }
-    RefreshPreview(True);
+    RefreshPreview(True)
+  else if SameText(AId, 'notebook') then
+    RefreshNotebookPane;
 end;
 
 
@@ -4271,6 +4334,11 @@ end;
 procedure TLedMainForm.KernelChanged(ADoc: TLedDocument);
 begin
   UpdateStatusBar;
+  { The pane's cells carry the output too, so they are built again as it
+    arrives -- the same moment the line view's own rows are. }
+  if (FNBPane <> nil) and FDock.PaneVisible('notebook') and
+     (ADoc <> nil) and (ADoc = ActiveTab.Document) then
+    FNBPane.Reload;
   if (ADoc <> nil) and (ADoc.NBKernelState = lksFailed) and
      (ADoc.NBKernelStatus <> FLastKernelReport) then
   begin

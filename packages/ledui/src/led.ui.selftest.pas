@@ -29,6 +29,7 @@ uses
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
+  Led.UI.NBPane,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -2236,11 +2237,14 @@ end;
 procedure TestShowPaneShowsThatPane(F: TLedMainForm);
 var
   i: Integer;
-  Right: array[0..2] of string = ('symbols', 'preview', 'debug');
+  { Every pane on the right-hand edge.  The list has to be all of them: the
+    check hides the edge's panes and then asks which one showing the edge
+    opens, and a pane left off the list is a pane left showing. }
+  Right: array[0..3] of string = ('symbols', 'preview', 'notebook', 'debug');
 begin
   Say('showing a pane shows that pane');
 
-  for i := 0 to 2 do
+  for i := 0 to High(Right) do
   begin
     F.Dock.HidePane(Right[i]);
     Pump;
@@ -2274,7 +2278,7 @@ begin
     "show this edge" has no pane in it.  Asked to show the right-hand edge it
     opens Symbols -- the first registered there -- and would do so no matter
     which pane the click had been on. }
-  for i := 0 to 2 do
+  for i := 0 to High(Right) do
   begin
     F.Dock.HidePane(Right[i]);
     Pump;
@@ -2287,7 +2291,7 @@ begin
   Check('which is why ShowPane must not go through it',
     not F.Dock.PaneVisible('debug'));
 
-  for i := 0 to 2 do
+  for i := 0 to High(Right) do
   begin
     F.Dock.HidePane(Right[i]);
     Pump;
@@ -5423,6 +5427,250 @@ begin
   DeleteFile(Good);
   DeleteFile(Bad);
   DeleteFile(Bad2);
+end;
+
+{ The notebook pane: the same file as cells rather than as lines.
+
+  What is worth checking is what this view does that the line view cannot,
+  and that the two do not drift apart.  So: a box per cell, prose rendered
+  rather than shown as Markdown source, a picture decoded and drawn at its
+  own size, a wide one scaled to fit, and a cell typed into here arriving in
+  the line buffer.
+
+  The pictures are the point, and they are real: a 24 by 9 PNG and a 900 by
+  300 one, so "it was shown" can be checked in pixels rather than as the
+  presence of a widget. }
+procedure TestNotebookPane(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Pane: TLedNotebookPane;
+  B: TLedNBCellBox;
+  i, Bottom: Integer;
+  Img: TImage;
+
+  function Fixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "markdown",' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "source": [' + #10 +
+    '    "## A heading\n",' + #10 +
+    '    "\n",' + #10 +
+    '    "prose with **bold** in it, and a second sentence so that the rendered block is more than one line tall.\n",' + #10 +
+    '    "\n",' + #10 +
+    '    "and a third paragraph."' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 4,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "name": "stdout",' + #10 +
+    '     "output_type": "stream",' + #10 +
+    '     "text": [' + #10 +
+    '      "forty-two\n"' + #10 +
+    '     ]' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "print(''forty-two'')"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 5,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "data": {' + #10 +
+    '      "image/png": "iVBORw0KGgoAAAANSUhEUgAAABgAAAAJCAIAAACnn3uRAAAAFUlEQVR4nGM4oaFBFcQwatCoQVRAAMNy7EEtcnPeAAAAAElFTkSuQmCC",' + #10 +
+    '      "text/plain": [' + #10 +
+    '       "<Figure>"' + #10 +
+    '      ]' + #10 +
+    '     },' + #10 +
+    '     "metadata": {},' + #10 +
+    '     "output_type": "display_data"' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "plot()"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": null,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "x = 1\n",' + #10 +
+    '    "y = 2"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 6,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "data": {' + #10 +
+    '      "image/png": "iVBORw0KGgoAAAANSUhEUgAAA4QAAAEsCAIAAAAU/OrGAAAFsElEQVR4nO3WMQ0AMAzAsMIZnMEurMHIMUsGkDNz7gIAQGLyAgAAvmVGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMmYUAICMGQUAIGNGAQDImFEAADJmFACAjBkFACBjRgEAyJhRAAAyZhQAgIwZBQAgY0YBAMiYUQAAMg83Vak75JjA2AAAAABJRU5ErkJggg=="' + #10 +
+    '     },' + #10 +
+    '     "metadata": {},' + #10 +
+    '     "output_type": "display_data"' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "wideplot()"' + #10 +
+    '   ]' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+  function ImageIn(ABox: TLedNBCellBox): TImage;
+  var
+    k: Integer;
+  begin
+    Result := nil;
+    for k := 0 to ABox.ComponentCount - 1 do
+      if ABox.Components[k] is TImage then
+        Exit(TImage(ABox.Components[k]));
+  end;
+
+  function LabelsIn(ABox: TLedNBCellBox): string;
+  var
+    k: Integer;
+  begin
+    Result := '';
+    for k := 0 to ABox.ComponentCount - 1 do
+      if ABox.Components[k] is TLabel then
+        Result := Result + TLabel(ABox.Components[k]).Caption + '|';
+  end;
+
+begin
+  Say('Jupyter notebook pane');
+
+  Path := TempName('nbpane.ipynb');
+  WriteBytes(Path, Fixture);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('the notebook opened', Doc.IsNotebook);
+
+  Pane := F.NotebookPane;
+  Check('the window has a notebook pane', Pane <> nil);
+  if Pane = nil then Exit;
+
+  F.actToggleNotebookPane.Execute;
+  Pump;
+  Check('the pane is showing', F.Dock.PaneVisible('notebook'));
+  CheckEqInt('a box per cell', 5, Pane.CellCount);
+
+  { ---- prose ---- }
+  B := Pane.Box(0);
+  Check('the prose cell is rendered, not shown as source',
+    (B <> nil) and (B.Rendered <> nil) and B.Rendered.Visible);
+  Check('and has no Run button, because there is nothing to run',
+    B.RunButton = nil);
+  { Every prose cell was forty pixels high and showed its first line until
+    the rendered height was measured instead of assumed. }
+  CheckGt('a prose cell is as tall as its prose',
+    Tab.ActiveView.LineHeight * 3, B.Rendered.Height);
+
+  { ---- code and its text output ---- }
+  B := Pane.Box(1);
+  Check('a code cell has an editor', (B <> nil) and (B.Editor <> nil));
+  CheckEq('holding that cell and nothing else', 'print(''forty-two'')',
+    TrimRight(B.Editor.Lines.Text));
+  Check('its header says what ran', Pos('In [4]', LabelsIn(B)) > 0);
+  Check('its output is under it: ' + LabelsIn(B),
+    Pos('forty-two', LabelsIn(B)) > 0);
+  Check('and it has a Run button', B.RunButton <> nil);
+
+  { ---- the pictures, which are why this pane exists ---- }
+  B := Pane.Box(2);
+  Img := ImageIn(B);
+  Check('the plot is drawn as a picture', Img <> nil);
+  if Img <> nil then
+  begin
+    CheckEqInt('at the width it was stored at', 24, Img.Picture.Width);
+    CheckEqInt('and the height', 9, Img.Picture.Height);
+    CheckEqInt('and small enough to show whole, so it is not scaled',
+      24, Img.Width);
+  end;
+
+  B := Pane.Box(4);
+  Img := ImageIn(B);
+  Check('a wide plot is drawn too', Img <> nil);
+  if Img <> nil then
+  begin
+    CheckEqInt('its own width is what the file says', 900, Img.Picture.Width);
+    Check(Format('but it is shown no wider than its box (%d in %d)',
+      [Img.Width, B.Width]), Img.Width <= B.Width);
+    CheckGt('with a height to match, not squashed flat',
+      Tab.ActiveView.LineHeight, Img.Height);
+    Check(Format('and in proportion (%d by %d, from 900 by 300)',
+      [Img.Width, Img.Height]),
+      Abs(Img.Width / Img.Height - 3.0) < 0.35);
+  end;
+
+  { ---- typing here arrives there ---- }
+  B := Pane.Box(3);
+  Check('the last code cell has an editor', B.Editor <> nil);
+  { Against the cell editor's own line height, not the main view's: the two
+    have different fonts, and comparing across them measures the fonts. }
+  CheckGt('whose box fits the lines it holds',
+    B.Editor.LineHeight * 2, B.Editor.Height);
+  B.Editor.Lines.Text := 'x = 1' + #10 + 'y = 2' + #10 + 'z = 3';
+  B.Editor.Modified := True;
+  B.Commit;
+  Pump;
+  CheckEq('the notebook has what was typed',
+    'x = 1' + #10 + 'y = 2' + #10 + 'z = 3', Doc.Notebook.CellSource(3));
+  Check('and so does the line view',
+    Pos('z = 3', Doc.Master.Lines.Text) > 0);
+  Check('which still knows that line is a cell''s source',
+    Doc.NBLineIsSource(Doc.NBSourceLineOf(3) + 2));
+  Check('and the document is modified', Doc.Modified);
+  CheckEqInt('with no cell added or lost', 5, Doc.NBCellCount);
+  Check('and the header above it still a header',
+    not Doc.NBLineIsSource(Doc.NBSourceLineOf(3) - 1));
+
+  { ---- the boxes are laid out in order, none on top of another ---- }
+  Bottom := 0;
+  for i := 0 to Pane.CellCount - 1 do
+  begin
+    Check(Format('box %d is below the one before it', [i]),
+      Pane.Box(i).Top >= Bottom);
+    Bottom := Pane.Box(i).Top + Pane.Box(i).Height;
+    CheckGt(Format('box %d has a height', [i]), 0, Pane.Box(i).Height);
+  end;
+
+  DeleteFile(Path);
 end;
 
 { The end of the file.
@@ -10400,6 +10648,7 @@ begin
   TestNotebookColouring(F);
   TestNotebookRunning(F);
   TestNotebookBounds(F);
+  TestNotebookPane(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;

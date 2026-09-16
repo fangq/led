@@ -294,6 +294,14 @@ type
     { How many cells, and the line a cell's source starts on. }
     function NBCellCount: Integer;
     function NBSourceLineOf(ACell: Integer): Integer;
+    { Replaces one cell's source, in the notebook and in the buffer at once.
+
+      What the notebook pane calls when a cell is typed into: the pane edits
+      a cell, and the line view has to say the same thing a moment later.
+      The other direction needs nothing -- the buffer is read back into the
+      notebook by NBSyncFromBuffer before anything that matters. }
+    procedure NBSetCellSource(ACell: Integer; const AText: string);
+
     { Copies what the buffer holds back into the notebook, cell by cell.
       Called before saving and before running: the buffer is what the reader
       has been typing into, so it is the truth about the source. }
@@ -1314,6 +1322,62 @@ begin
   finally
     FMaster.EndUpdate;
   end;
+end;
+
+procedure TLedDocument.NBSetCellSource(ACell: Integer; const AText: string);
+var
+  Head, Stop, i: Integer;
+  Lines: TStringList;
+begin
+  if not FIsNotebook then Exit;
+  if (ACell < 0) or (ACell >= FNotebook.CellCount) then Exit;
+  if FNotebook.CellSource(ACell) = AText then Exit;
+
+  FNotebook.SetCellSource(ACell, AText);
+  FNBDirty := True;
+
+  { And the same text into the buffer, between this cell's header and
+    whatever follows it.  The tags go back on as the lines are written: the
+    ones being replaced take their tags with them. }
+  Head := -1;
+  for i := 0 to FMaster.Lines.Count - 1 do
+    if (NBTagOf(i) <> 0) and ((-NBTagOf(i)) mod NBTagKinds = NBTagHeader) and
+       ((-NBTagOf(i)) div NBTagKinds = ACell) then
+    begin
+      Head := i;
+      Break;
+    end;
+  if Head < 0 then Exit;
+
+  Stop := Head + 1;
+  while (Stop < FMaster.Lines.Count) and (NBTagOf(Stop) = 0) do Inc(Stop);
+
+  Lines := TStringList.Create;
+  FMaster.BeginUpdate;
+  try
+    Lines.TextLineBreakStyle := tlbsLF;
+    if AText = '' then
+      Lines.Add('')
+    else
+    begin
+      Lines.Text := AText;
+      if (Lines.Count > 1) and (Lines[Lines.Count - 1] = '') and
+         (AText[Length(AText)] <> #10) then
+        Lines.Delete(Lines.Count - 1);
+    end;
+
+    for i := Stop - 1 downto Head + 1 do FMaster.Lines.Delete(i);
+    for i := 0 to Lines.Count - 1 do
+    begin
+      FMaster.Lines.Insert(Head + 1 + i, Lines[i]);
+      NBTag(Head + 1 + i, 0, 0);
+    end;
+  finally
+    FMaster.EndUpdate;
+    Lines.Free;
+  end;
+
+  if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
 procedure TLedDocument.NBSyncFromBuffer;
