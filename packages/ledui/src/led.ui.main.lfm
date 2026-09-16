@@ -77,6 +77,29 @@ object LedMainForm: TLedMainForm
       ShortCut = 113
       OnExecute = actEditValueExecute
     end
+    object actRunCell: TAction
+      Caption = '&Run Cell'
+      ShortCut = 16397
+      OnExecute = actRunCellExecute
+    end
+    object actRunAdvance: TAction
+      Caption = 'Run Cell and &Advance'
+      ShortCut = 8205
+      OnExecute = actRunAdvanceExecute
+    end
+    object actRunAll: TAction
+      Caption = 'Run &All Cells'
+      ShortCut = 24589
+      OnExecute = actRunAllExecute
+    end
+    object actInterruptKernel: TAction
+      Caption = '&Interrupt Kernel'
+      OnExecute = actInterruptKernelExecute
+    end
+    object actRestartKernel: TAction
+      Caption = 'Res&tart Kernel'
+      OnExecute = actRestartKernelExecute
+    end
     object actReload: TAction
       Caption = '&Reload from Disk'
       ShortCut = 116
@@ -778,6 +801,30 @@ object LedMainForm: TLedMainForm
       end
       object mi_EditBookmarks: TMenuItem
         Action = actEditBookmarks
+      end
+      object miSepNB: TMenuItem
+        Caption = '-'
+      end
+      object miNotebook: TMenuItem
+        Caption = '&Notebook'
+        object mi_RunCell: TMenuItem
+          Action = actRunCell
+        end
+        object mi_RunAdvance: TMenuItem
+          Action = actRunAdvance
+        end
+        object mi_RunAll: TMenuItem
+          Action = actRunAll
+        end
+        object miSepNB2: TMenuItem
+          Caption = '-'
+        end
+        object mi_InterruptKernel: TMenuItem
+          Action = actInterruptKernel
+        end
+        object mi_RestartKernel: TMenuItem
+          Action = actRestartKernel
+        end
       end
     end
     object mnuTools: TMenuItem

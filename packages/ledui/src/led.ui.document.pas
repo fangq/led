@@ -18,10 +18,12 @@ unit Led.UI.Document;
 interface
 
 uses
-  Classes, SysUtils, Math, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
+  Classes, SysUtils, Math, Contnrs, Graphics, ExtCtrls, LazFileUtils, SynEdit,
+  SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter, SynEditKeyCmds,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
-  Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView,
+  Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView, Led.Core.Kernel,
+  fpjson,
   Led.Syn.BJData, Led.Syn.Notebook,
   Led.Core.Encodings,
   Led.Core.Config,
@@ -109,6 +111,21 @@ type
     FIsNotebook: Boolean;
     FNotebook: TLedNotebook;
     FNBError: string;           // why a .ipynb would not open as one
+    { The kernel this notebook's cells run in, and the runs in flight.
+
+      A kernel belongs to the document rather than to the window: what it
+      holds is this notebook's variables, and two windows onto the same
+      notebook are two views of one session, not two sessions. }
+    FKernel: TLedKernel;
+    FKernelTimer: TTimer;
+    { Output and execution counts live in the notebook rather than in the
+      buffer, and SynEdit's Modified only knows about the buffer -- so a cell
+      that has just run leaves the document changed in a way that has to be
+      recorded here.  The hex view keeps its own flag for the same reason. }
+    FNBDirty: Boolean;
+    FRuns: array of record Id, Cell: Integer; end;
+    FDirtyCells: array of Integer;   // cells whose output has just changed
+    FOnKernel: TLedDocumentEvent;
     FForceText: Boolean;        // the user asked for the text editor anyway
     { The bytes themselves, when the document is a dump.  This is the file;
       the buffer the views show is a rendering of it, rebuilt a row at a time
@@ -144,6 +161,11 @@ type
     function NBCellLanguage(ACell, AHeaderLine: Integer): string;
     function NBLineText(ALine: Integer): string;
     procedure NBTheme;
+    procedure NBKernelEvent(Sender: TObject; const AEvent: TLedKernelEvent);
+    procedure NBKernelTick(Sender: TObject);
+    function NBCellOfRun(AId: Integer): Integer;
+    procedure NBMarkDirty(ACell: Integer);
+    procedure NBFlushDirty;
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -279,6 +301,26 @@ type
     { Re-renders one cell's header and outputs from the notebook, leaving its
       source lines alone -- what running a cell needs. }
     procedure NBRefreshCell(ACell: Integer);
+
+    { The kernel.  Starting one takes a second or two, so Start only says
+      whether the helper went up: readiness arrives later and OnKernelChanged
+      is fired for it, along with every other change of state. }
+    function NBKernelStart(out AWhy: string): Boolean;
+    function NBKernelState: TLedKernelState;
+    { One line for the status bar: what the kernel is and what it is doing. }
+    function NBKernelStatus: string;
+    procedure NBKernelInterrupt;
+    procedure NBKernelRestart;
+    procedure NBKernelStop;
+    { Sends a cell to the kernel, starting one if none is running.  False
+      with a reason when it cannot: no kernel, or the row is not a code cell.
+      The cell's own source is taken from the buffer, so what runs is what
+      the reader can see. }
+    function NBRunCell(ACell: Integer; out AWhy: string): Boolean;
+    { Every code cell, in order.  The kernel runs them in the order they
+      arrive, which is the order they are on the page. }
+    function NBRunAll(out AWhy: string): Boolean;
+    property OnKernelChanged: TLedDocumentEvent read FOnKernel write FOnKernel;
 
     { Asked before opening something large; nil means do not ask.  The
       document does not put dialogs on the screen -- the window supplies
@@ -425,6 +467,9 @@ begin
     rows and nothing else's. }
   FBJHigh.Free;
   FNBHigh.Free;
+  { Before the notebook: shutting a kernel down writes to it. }
+  FKernelTimer.Free;
+  FKernel.Free;
   FNotebook.Free;
   inherited Destroy;
 end;
@@ -690,6 +735,9 @@ begin
   { A dump's buffer is rewritten row by row rather than typed into, so
     FMaster.Modified says nothing about it -- the bytes are what changed. }
   if FIsBinary then Exit(FHexDirty);
+  { A notebook is modified by typing into a cell -- which SynEdit sees -- and
+    by running one, which it does not. }
+  if FIsNotebook then Exit(FMaster.Modified or FNBDirty);
   Result := FMaster.Modified;
 end;
 
@@ -1463,6 +1511,258 @@ begin
       LedApplyThemeToHighlighter(LedCurrentTheme, FNBHigh.Inner(i));
 end;
 
+{ ---- running cells ---- }
+
+function TLedDocument.NBKernelState: TLedKernelState;
+begin
+  if FKernel = nil then Result := lksOff else Result := FKernel.State;
+end;
+
+function TLedDocument.NBKernelStatus: string;
+begin
+  Result := '';
+  if not FIsNotebook then Exit;
+  if FKernel = nil then Exit('No kernel');
+  case FKernel.State of
+    lksStarting: Result := Format('Starting %s', [FKernel.KernelName]);
+    lksIdle:     Result := Format('%s: idle', [FKernel.KernelName]);
+    lksBusy:     Result := Format('%s: running', [FKernel.KernelName]);
+    lksFailed:   Result := Format('Kernel failed: %s', [FKernel.LastError]);
+  else
+    Result := 'No kernel';
+  end;
+end;
+
+function TLedDocument.NBKernelStart(out AWhy: string): Boolean;
+var
+  Name_: string;
+begin
+  AWhy := '';
+  Result := False;
+  if not FIsNotebook then
+  begin
+    AWhy := 'this document is not a notebook';
+    Exit;
+  end;
+
+  if (FKernel <> nil) and FKernel.Running and
+     (FKernel.State <> lksFailed) then Exit(True);
+
+  { The kernel the notebook was written against, and Python if it does not
+    say: a notebook with no kernelspec is almost always one somebody wrote
+    by hand or converted, and python3 is the kernel they meant. }
+  Name_ := FNotebook.KernelName;
+  if Name_ = '' then Name_ := 'python3';
+
+  if FKernel = nil then
+  begin
+    FKernel := TLedKernel.Create;
+    FKernel.OnEvent := @NBKernelEvent;
+  end;
+  Result := FKernel.Start(Name_, AWhy);
+
+  if Result then
+  begin
+    if FKernelTimer = nil then
+    begin
+      FKernelTimer := TTimer.Create(Self);
+      { Often enough that output appears as it is printed, seldom enough that
+        a cell printing thousands of lines re-renders a few times a second
+        rather than a few thousand. }
+      FKernelTimer.Interval := 60;
+      FKernelTimer.OnTimer := @NBKernelTick;
+    end;
+    FKernelTimer.Enabled := True;
+  end;
+  if Assigned(FOnKernel) then FOnKernel(Self);
+end;
+
+procedure TLedDocument.NBKernelStop;
+begin
+  if FKernelTimer <> nil then FKernelTimer.Enabled := False;
+  if FKernel <> nil then FKernel.Shutdown;
+  SetLength(FRuns, 0);
+  if Assigned(FOnKernel) then FOnKernel(Self);
+end;
+
+procedure TLedDocument.NBKernelInterrupt;
+begin
+  if FKernel <> nil then FKernel.Interrupt;
+end;
+
+procedure TLedDocument.NBKernelRestart;
+begin
+  if FKernel = nil then Exit;
+  { The runs in flight belong to the session that is going away. }
+  SetLength(FRuns, 0);
+  FKernel.Restart;
+  if Assigned(FOnKernel) then FOnKernel(Self);
+end;
+
+procedure TLedDocument.NBKernelTick(Sender: TObject);
+begin
+  if FKernel = nil then Exit;
+  FKernel.Poll;
+  { The re-render happens here rather than as each output arrives: a cell
+    printing a thousand lines would otherwise rebuild its block a thousand
+    times. }
+  NBFlushDirty;
+  if (FKernel.State in [lksOff, lksFailed]) and (Length(FRuns) = 0) and
+     (FKernelTimer <> nil) then
+    FKernelTimer.Enabled := FKernel.Running;
+end;
+
+function TLedDocument.NBCellOfRun(AId: Integer): Integer;
+var
+  i: Integer;
+begin
+  Result := -1;
+  for i := 0 to High(FRuns) do
+    if FRuns[i].Id = AId then Exit(FRuns[i].Cell);
+end;
+
+procedure TLedDocument.NBMarkDirty(ACell: Integer);
+var
+  i: Integer;
+begin
+  for i := 0 to High(FDirtyCells) do
+    if FDirtyCells[i] = ACell then Exit;
+  SetLength(FDirtyCells, Length(FDirtyCells) + 1);
+  FDirtyCells[High(FDirtyCells)] := ACell;
+end;
+
+procedure TLedDocument.NBFlushDirty;
+var
+  i: Integer;
+begin
+  if Length(FDirtyCells) = 0 then Exit;
+  for i := 0 to High(FDirtyCells) do
+    NBRefreshCell(FDirtyCells[i]);
+  SetLength(FDirtyCells, 0);
+end;
+
+procedure TLedDocument.NBKernelEvent(Sender: TObject;
+  const AEvent: TLedKernelEvent);
+var
+  Cell, i, j: Integer;
+begin
+  case AEvent.Kind of
+    lkeReady, lkeFailed, lkeStatus:
+      if Assigned(FOnKernel) then FOnKernel(Self);
+
+    lkeOutput:
+      begin
+        Cell := NBCellOfRun(AEvent.Id);
+        if Cell < 0 then Exit;
+        { Cloned: the event's output belongs to the poll that read it and is
+          freed when the poll moves on, while the notebook keeps what it is
+          given until the file is saved. }
+        FNotebook.AddCellOutput(Cell, TJSONObject(AEvent.Output.Clone));
+        FNBDirty := True;
+        NBMarkDirty(Cell);
+      end;
+
+    lkeDone:
+      begin
+        Cell := NBCellOfRun(AEvent.Id);
+        for i := 0 to High(FRuns) do
+          if FRuns[i].Id = AEvent.Id then
+          begin
+            for j := i to High(FRuns) - 1 do FRuns[j] := FRuns[j + 1];
+            SetLength(FRuns, Length(FRuns) - 1);
+            Break;
+          end;
+        if Cell >= 0 then
+        begin
+          if AEvent.Count >= 0 then
+          begin
+            FNotebook.SetCellExecutionCount(Cell, AEvent.Count);
+            FNBDirty := True;
+          end;
+          NBMarkDirty(Cell);
+          NBFlushDirty;
+        end;
+        if Assigned(FOnKernel) then FOnKernel(Self);
+      end;
+  end;
+end;
+
+function TLedDocument.NBRunCell(ACell: Integer; out AWhy: string): Boolean;
+var
+  Id: Integer;
+  Source: string;
+begin
+  Result := False;
+  AWhy := '';
+  if not FIsNotebook then
+  begin
+    AWhy := 'this document is not a notebook';
+    Exit;
+  end;
+  if (ACell < 0) or (ACell >= FNotebook.CellCount) then
+  begin
+    AWhy := 'the caret is not in a cell';
+    Exit;
+  end;
+  if FNotebook.CellKind(ACell) <> nbkCode then
+  begin
+    { Running a markdown cell is Jupyter's word for rendering it, and there
+      is nothing here to render it into: the buffer shows its text, which is
+      what a reader of a notebook in an editor wants anyway. }
+    AWhy := 'only a code cell can be run';
+    Exit;
+  end;
+
+  if not NBKernelStart(AWhy) then Exit;
+
+  { What runs is what is on the page, not what was last saved. }
+  NBSyncFromBuffer;
+  Source := FNotebook.CellSource(ACell);
+
+  Id := FKernel.Run(Source);
+  if Id < 0 then
+  begin
+    AWhy := 'the kernel is not listening';
+    Exit;
+  end;
+
+  SetLength(FRuns, Length(FRuns) + 1);
+  FRuns[High(FRuns)].Id := Id;
+  FRuns[High(FRuns)].Cell := ACell;
+
+  { Cleared the moment it is sent, the way Jupyter does: what is on screen
+    under a running cell should be that run's output and not the last one's. }
+  FNotebook.ClearCellOutputs(ACell);
+  FNotebook.SetCellExecutionCount(ACell, -1);
+  FNBDirty := True;
+  NBRefreshCell(ACell);
+
+  if Assigned(FOnKernel) then FOnKernel(Self);
+  Result := True;
+end;
+
+function TLedDocument.NBRunAll(out AWhy: string): Boolean;
+var
+  i: Integer;
+  Ran: Boolean;
+begin
+  Result := False;
+  AWhy := '';
+  if not FIsNotebook then
+  begin
+    AWhy := 'this document is not a notebook';
+    Exit;
+  end;
+  Ran := False;
+  for i := 0 to FNotebook.CellCount - 1 do
+    if FNotebook.CellKind(i) = nbkCode then
+      { Sent one after another without waiting: the kernel runs them in the
+        order they arrive, which is the order they are on the page. }
+      if NBRunCell(i, AWhy) then Ran := True;
+  Result := Ran;
+  if Ran then AWhy := '';
+end;
+
 function TLedDocument.TakeNotebookError: string;
 begin
   Result := FNBError;
@@ -1626,6 +1926,7 @@ begin
     is not pretending to understand it. }
   FIsNotebook := False;
   FNBError := '';
+  FNBDirty := False;
   FreeAndNil(FNotebook);
   if Detecting and LedNBIsNotebookName(AFileName) and
      (not Binary) and (not BJData) then
@@ -1936,6 +2237,7 @@ begin
       LedPrefs.GetBool(LedPrefMakeBackups, False));
     FFileName := AFileName;
     FMaster.Modified := False;
+    FNBDirty := False;
     NoteDiskState;
     if Assigned(FOnChanged) then FOnChanged(Self);
     Exit;

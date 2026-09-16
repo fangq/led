@@ -17,7 +17,7 @@ uses
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
-  Led.Core.BJDView, Led.Core.BJDEdit,
+  Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
@@ -43,6 +43,11 @@ type
     actSaveAs: TAction;
     actOpenAsText: TAction;
     actEditValue: TAction;
+    actRunCell: TAction;
+    actRunAdvance: TAction;
+    actRunAll: TAction;
+    actInterruptKernel: TAction;
+    actRestartKernel: TAction;
     actReload: TAction;
     actCloseTab: TAction;
     actPrint: TAction;
@@ -298,6 +303,8 @@ type
     PopupEditor: TPopupMenu;
     miSpelling: TMenuItem;
     mcSpellSep: TMenuItem;
+    miNotebook: TMenuItem;
+    miSepNB: TMenuItem;
     mcEditValue: TMenuItem;
     mcEditValueSep: TMenuItem;
     mcUndo: TMenuItem;
@@ -398,6 +405,11 @@ type
     function HexUndo(ATab: TLedTab): Boolean;
     procedure actOpenAsTextExecute(Sender: TObject);
     procedure actEditValueExecute(Sender: TObject);
+    procedure actRunCellExecute(Sender: TObject);
+    procedure actRunAdvanceExecute(Sender: TObject);
+    procedure actRunAllExecute(Sender: TObject);
+    procedure actInterruptKernelExecute(Sender: TObject);
+    procedure actRestartKernelExecute(Sender: TObject);
     procedure actReloadExecute(Sender: TObject);
     procedure FormActivate(Sender: TObject);
     procedure FormDropFiles(Sender: TObject; const FileNames: array of string);
@@ -514,6 +526,9 @@ type
     FBJPopup: TLedBJValuePopup;
     FBJPopupDoc: TLedDocument;   // what it was opened on, and on which line
     FBJPopupRow: Integer;
+    { The last kernel failure reported, so that a kernel which fails and
+      then says so again on every poll is reported once. }
+    FLastKernelReport: string;
     FThemeButton: TToolButton;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
@@ -711,6 +726,11 @@ type
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
     function ConfirmBJExpand(ACount: Int64): Boolean;
+    { The cell the caret is in, and the one thing every Run action needs.
+      -1 when the document is not a notebook or the caret is between cells. }
+    function CellAtCaret: Integer;
+    procedure KernelChanged(ADoc: TLedDocument);
+
     { Public so a check can press Return on a record and then drive the
       panel that opens, which is what a reader does. }
     procedure BJEditRequested(Sender: TObject; ATextIdx: Integer);
@@ -4231,6 +4251,113 @@ begin
   BJEditRequested(V, V.CaretY - 1);
 end;
 
+{ The cell the caret is in.  Not the cell the caret's line renders -- a
+  caret on an output line is in that cell too, and running from there is
+  what a reader who has just read the output will do. }
+function TLedMainForm.CellAtCaret: Integer;
+var
+  Tab: TLedTab;
+begin
+  Result := -1;
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  if Tab.ActiveView = nil then Exit;
+  Result := Tab.Document.NBCellOfLine(Tab.ActiveView.CaretY - 1);
+end;
+
+{ The kernel said something.  The status bar carries what it is doing, and a
+  failure is worth a dialog: a kernel that will not start is usually a
+  missing library and the reader can do something about it. }
+procedure TLedMainForm.KernelChanged(ADoc: TLedDocument);
+begin
+  UpdateStatusBar;
+  if (ADoc <> nil) and (ADoc.NBKernelState = lksFailed) and
+     (ADoc.NBKernelStatus <> FLastKernelReport) then
+  begin
+    FLastKernelReport := ADoc.NBKernelStatus;
+    ReportError(ADoc.NBKernelStatus);
+  end
+  else if (ADoc <> nil) and (ADoc.NBKernelState <> lksFailed) then
+    FLastKernelReport := '';
+end;
+
+procedure TLedMainForm.actRunCellExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Why: string;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  if not Tab.Document.NBRunCell(CellAtCaret, Why) then
+    ReportError(Why);
+  UpdateStatusBar;
+end;
+
+{ Run and move on, which is the gesture people use to walk a notebook.  The
+  caret goes to the next code cell's first line; at the last cell it stays
+  where it is rather than wrapping round to the top. }
+procedure TLedMainForm.actRunAdvanceExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Cell, Line, i: Integer;
+  Why: string;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  Cell := CellAtCaret;
+  if not Tab.Document.NBRunCell(Cell, Why) then
+  begin
+    ReportError(Why);
+    Exit;
+  end;
+  for i := Cell + 1 to Tab.Document.NBCellCount - 1 do
+  begin
+    Line := Tab.Document.NBSourceLineOf(i);
+    if Line >= 0 then
+    begin
+      Tab.ActiveView.CaretXY := Point(1, Line + 1);
+      Tab.ActiveView.EnsureCursorPosVisible;
+      Break;
+    end;
+  end;
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actRunAllExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Why: string;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  if not Tab.Document.NBRunAll(Why) then ReportError(Why);
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actInterruptKernelExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  Tab.Document.NBKernelInterrupt;
+  UpdateStatusBar;
+end;
+
+procedure TLedMainForm.actRestartKernelExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  { Asked about, because restarting throws away every variable the notebook
+    has built up and there is no getting them back. }
+  if not Confirm('Restart the kernel?  Everything it holds is lost.', False)
+    then Exit;
+  Tab.Document.NBKernelRestart;
+  UpdateStatusBar;
+end;
+
 procedure TLedMainForm.actOpenAsTextExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -4301,6 +4428,7 @@ begin
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
   Result.ViewBJEdit := @BJEditRequested;
+  ADoc.OnKernelChanged := @KernelChanged;
   Result.ViewHoverExpression := @DebugHover;
   { A window setting, so a tab opened later gets what the window is already
     showing rather than the default. }
@@ -4507,7 +4635,11 @@ begin
   begin
     StatusBar1.Panels[1].Text := D.Info.Encoding;
     StatusBar1.Panels[2].Text := LedLineEndName(D.Info.LineEnd);
-    if D.LangInfo <> nil then
+    if D.IsNotebook then
+      { The language is in every cell header; what the column has room to
+        say that the page does not is what the kernel is doing. }
+      StatusBar1.Panels[3].Text := 'Notebook - ' + D.NBKernelStatus
+    else if D.LangInfo <> nil then
       StatusBar1.Panels[3].Text := D.LangInfo.Name
     else
       StatusBar1.Panels[3].Text := 'Plain text';
@@ -4746,6 +4878,21 @@ begin
     actUndo.Enabled := Tab.Document.CanUndoHex or Tab.Document.CanUndoBJEdit;
     actRedo.Enabled := False;
   end;
+  { The Run actions, offered only over a notebook, and only where there is
+    something to run. }
+  { The whole submenu goes away for a document that is not a notebook: five
+    items that could never do anything is worse than no items. }
+  miNotebook.Visible := HasDoc and Tab.Document.IsNotebook;
+  miSepNB.Visible := miNotebook.Visible;
+  actRunCell.Enabled := HasDoc and Tab.Document.IsNotebook and
+    (CellAtCaret >= 0);
+  actRunAdvance.Enabled := actRunCell.Enabled;
+  actRunAll.Enabled := HasDoc and Tab.Document.IsNotebook;
+  actInterruptKernel.Enabled := HasDoc and Tab.Document.IsNotebook and
+    (Tab.Document.NBKernelState = lksBusy);
+  actRestartKernel.Enabled := HasDoc and Tab.Document.IsNotebook and
+    (Tab.Document.NBKernelState in [lksStarting, lksIdle, lksBusy]);
+
   { A value panel is about one record of one document; when the window has
     moved to another, it is about nothing.  Asked here because this is the
     pass that already knows which document the window is on. }

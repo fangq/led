@@ -99,6 +99,11 @@ type
   extension, and guessing from content would open every JSON file as one. }
 function LedNBIsNotebookName(const AFileName: string): Boolean;
 
+{ One string as a JSON string: quoted, with the escapes Python uses and no
+  others.  Public because the kernel protocol is JSON too, and a command that
+  carries a cell of Python has to escape it by exactly these rules. }
+function LedNBJSONString(const AText: string): string;
+
 { One JSON value, written the way Python's json.dumps writes it with
   indent=1, sort_keys=True and ensure_ascii=False -- which is what nbformat
   calls, and therefore what every notebook on disk already looks like.
@@ -320,6 +325,11 @@ end;
 function LedNBWriteJSON(AValue: TJSONData): string;
 begin
   Result := WriteValue(AValue, 0);
+end;
+
+function LedNBJSONString(const AText: string): string;
+begin
+  Result := JSONText(AText);
 end;
 
 { ---- reading ---- }

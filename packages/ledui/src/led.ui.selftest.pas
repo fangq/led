@@ -28,7 +28,7 @@ uses
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
-  Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook,
+  Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5425,6 +5425,220 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ Running cells.
+
+  The whole point of driving a real kernel is that it is a real kernel, so
+  this runs one: the checks below start python3, send it a cell and wait for
+  the answer to come back into the buffer.  Where the machine has no kernel
+  installed they do nothing, which is the bargain the gdb checks already
+  make with a missing toolchain -- a check that quietly passes is better than
+  a suite that cannot run anywhere but one desk.
+
+  What is asserted is the round trip through everything: the action finds the
+  cell, the document sends the source the buffer holds, the helper runs it,
+  the output arrives as nbformat, the cell keeps it, and the page shows it. }
+procedure TestNotebookRunning(F: TLedMainForm);
+var
+  Path, Why: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Deadline: TDateTime;
+  Have: Boolean;
+  P: TProcess;
+  Handled: Boolean;
+  Line: Integer;
+
+  function Fixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": null,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "print(6 * 7)"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "markdown",' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "source": [' + #10 +
+    '    "# Notes"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": null,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "x = 41\n",' + #10 +
+    '    "x + 101"' + #10 +
+    '   ]' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+  function LineOfText(const AWhat: string): Integer;
+  var
+    i: Integer;
+  begin
+    Result := -1;
+    for i := 0 to Doc.Master.Lines.Count - 1 do
+      if Pos(AWhat, Doc.Master.Lines[i]) > 0 then Exit(i);
+  end;
+
+  { Pumps the message loop until AWhat is on the page, or until time is up.
+    The document polls its kernel from a timer, so this is the self-test
+    standing in for the reader sitting and waiting. }
+  function WaitFor(const AWhat: string; ASeconds: Integer): Boolean;
+  begin
+    Deadline := Now + ASeconds / 86400.0;
+    while Now < Deadline do
+    begin
+      Pump;
+      if LineOfText(AWhat) >= 0 then Exit(True);
+      Sleep(20);
+    end;
+    Result := LineOfText(AWhat) >= 0;
+  end;
+
+begin
+  Say('Jupyter notebook running');
+
+  { Is there a kernel to run?  Asked of the Python the document would use. }
+  Have := FileExists(LedKernelHelper);
+  if Have then
+  begin
+    P := TProcess.Create(nil);
+    try
+      P.Executable := LedKernelPython;
+      P.Parameters.Add('-c');
+      P.Parameters.Add('import jupyter_client, ipykernel');
+      P.Options := [poWaitOnExit, poUsePipes, poNoConsole];
+      try
+        P.Execute;
+        Have := P.ExitStatus = 0;
+      except
+        Have := False;
+      end;
+    finally
+      P.Free;
+    end;
+  end;
+
+  Path := TempName('nbrun.ipynb');
+  WriteBytes(Path, Fixture);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  V := Tab.ActiveView;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('the notebook opened', Doc.IsNotebook);
+
+  { The wiring, which is checked whether or not there is a kernel. }
+  Handled := False;
+  V.CaretXY := Point(1, 2);
+  Pump;
+  F.ActionList1Update(F.actRunCell, Handled);
+  Check('Run Cell is offered on a code cell', F.actRunCell.Enabled);
+  CheckEqInt('and it knows which cell the caret is in', 0, F.CellAtCaret);
+  Check('the notebook menu is showing', F.miNotebook.Visible);
+  Check('nothing is running yet',
+    Doc.NBKernelState = lksOff);
+  CheckEq('which the status bar says', 'No kernel', Doc.NBKernelStatus);
+
+  Line := LineOfText('# Notes');
+  V.CaretXY := Point(1, Line + 1);
+  Pump;
+  Check('running a markdown cell is refused',
+    not Doc.NBRunCell(F.CellAtCaret, Why));
+  Check('with a reason: ' + Why, Pos('code cell', Why) > 0);
+
+  if not Have then
+  begin
+    Say('  (no kernel on this machine; the rest of this needs one)');
+    DeleteFile(Path);
+    Exit;
+  end;
+
+  { ---- and now for real ---- }
+
+  V.CaretXY := Point(1, 2);
+  Pump;
+  F.actRunCell.Execute;
+  Pump;
+  Check('the kernel is starting or already up',
+    Doc.NBKernelState in [lksStarting, lksIdle, lksBusy]);
+
+  Check('what the cell printed arrives on the page',
+    WaitFor('42', 90));
+  Check('the output is in the cell, not just on the screen',
+    (Doc.Notebook.CellOutputs(0) <> nil) and
+    (Doc.Notebook.CellOutputs(0).Count > 0));
+  CheckEqInt('and the cell knows it has run once',
+    1, Doc.Notebook.CellExecutionCount(0));
+  Check('which the header shows: ' + Doc.Master.Lines[0],
+    Pos('[1]', Doc.Master.Lines[0]) = 1);
+  Check('the document is modified, because the file has new output in it',
+    Doc.Modified);
+  Check('and the output line cannot be typed into',
+    not Doc.NBLineIsSource(LineOfText('42')));
+
+  { A second cell, in the same session: it can see what the first one left
+    behind, which is the whole reason a kernel is a session and not a
+    subprocess per cell. }
+  Line := Doc.NBSourceLineOf(2);
+  CheckGt('the third cell is on the page', 0, Line);
+  V.CaretXY := Point(1, Line + 1);
+  Pump;
+  CheckEqInt('the caret is in it', 2, F.CellAtCaret);
+  F.actRunCell.Execute;
+  { A value the first cell did not print.  Waiting for 42 here passed while
+    the second run had not finished at all: the 42 on the page was the first
+    cell's output, and the check was reading that. }
+  Check('its result comes back', WaitFor('142', 90));
+  CheckEqInt('as the second thing run in this session',
+    2, Doc.Notebook.CellExecutionCount(2));
+  Check('so the two cells ran in one session, sharing what the first left '
+    + 'behind', LineOfText('142') > 0);
+
+  { Saving writes the outputs the kernel produced. }
+  Doc.Save;
+  Pump;
+  Check('saving leaves it unmodified', not Doc.Modified);
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('and the output is in the file on disk', LineOfText('42') > 0);
+  CheckEqInt('with the execution count', 1,
+    Doc.Notebook.CellExecutionCount(0));
+
+  Doc.NBKernelStop;
+  Pump;
+  DeleteFile(Path);
+end;
+
 { Colouring a notebook.
 
   Two claims are worth checking and they are different claims.  The lines LED
@@ -10047,6 +10261,7 @@ begin
   TestBJDataEditing(F);
   TestNotebookEditing(F);
   TestNotebookColouring(F);
+  TestNotebookRunning(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;
