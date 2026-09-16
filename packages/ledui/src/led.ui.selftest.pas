@@ -28,7 +28,7 @@ uses
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
-  Led.Core.NBFormat, Led.Core.NBView, fpjson,
+  Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5425,6 +5425,281 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ Colouring a notebook.
+
+  Two claims are worth checking and they are different claims.  The lines LED
+  writes -- the header, the output -- are coloured from what the document
+  knows about them, so they must differ from each other and from the code.
+  And a source line must be coloured by the real highlighter for the cell's
+  language: not something notebook-shaped that approximates Python, but the
+  same tokens the same Python file would get, which is what the last check
+  compares against.
+
+  Asked of SynEdit rather than of the highlighter: what is wanted is the
+  attribute the editor would paint with at a place on the page. }
+procedure TestNotebookColouring(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Line: Integer;
+  Was: string;
+
+  function Fixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 1,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "name": "stdout",' + #10 +
+    '     "output_type": "stream",' + #10 +
+    '     "text": [' + #10 +
+    '      "3\n"' + #10 +
+    '     ]' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "import numpy as np\n",' + #10 +
+    '    "def f(x):\n",' + #10 +
+    '    "    \"\"\"a docstring\n",' + #10 +
+    '    "    over two lines\"\"\"\n",' + #10 +
+    '    "    return x\n",' + #10 +
+    '    "print(3)"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "markdown",' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "source": [' + #10 +
+    '    "# A heading\n",' + #10 +
+    '    "\n",' + #10 +
+    '    "some prose"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 2,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "ename": "ZeroDivisionError",' + #10 +
+    '     "evalue": "division by zero",' + #10 +
+    '     "output_type": "error",' + #10 +
+    '     "traceback": [' + #10 +
+    '      "ZeroDivisionError: division by zero"' + #10 +
+    '     ]' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "1/0"' + #10 +
+    '   ]' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+  function MagicFixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 1,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "x = [1, 2]\n",' + #10 +
+    '    "disp(x)"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 2,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "%%octave\n",' + #10 +
+    '    "A = [1 2; 3 4];\n",' + #10 +
+    '    "disp(A)"' + #10 +
+    '   ]' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+  function LineOfText(const AWhat: string): Integer;
+  var
+    i: Integer;
+  begin
+    Result := -1;
+    for i := 0 to Doc.Master.Lines.Count - 1 do
+      if Pos(AWhat, Doc.Master.Lines[i]) > 0 then Exit(i);
+  end;
+
+  { The attribute SynEdit would paint at a 1-based row and column, by name.
+    The name is the theme scope the highlighter asked for, which is what says
+    whether the right thing was decided. }
+  function ScopeAt(ARow, ACol: Integer): string;
+  var
+    Token: string;
+    Attr: TSynHighlighterAttributes;
+  begin
+    Result := '';
+    Attr := nil;
+    if V.GetHighlighterAttriAtRowCol(Point(ACol, ARow), Token, Attr) and
+       (Attr <> nil) then
+      Result := Attr.StoredName;
+  end;
+
+  function ColourAt(ARow, ACol: Integer): TColor;
+  var
+    Token: string;
+    Attr: TSynHighlighterAttributes;
+  begin
+    Result := clNone;
+    Attr := nil;
+    if V.GetHighlighterAttriAtRowCol(Point(ACol, ARow), Token, Attr) and
+       (Attr <> nil) then
+      Result := Attr.Foreground;
+  end;
+
+begin
+  Say('Jupyter notebook colouring');
+
+  Path := TempName('nbcolour.ipynb');
+  WriteBytes(Path, Fixture);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  V := Tab.ActiveView;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('the notebook opened', Doc.IsNotebook);
+  Check('and has a highlighter of its own',
+    V.Highlighter is TLedNBHighlighter);
+
+  { The lines LED writes. }
+  CheckEq('a header is coloured as a declaration', 'def.type',
+    ScopeAt(1, 2));
+  Line := LineOfText('out ');
+  CheckGt('there is an output block', 0, Line);
+  CheckEq('its label is a remark', 'def.comment', ScopeAt(Line + 1, 2));
+  CheckEq('and the output under it is not', 'def.doc-comment',
+    ScopeAt(Line + 2, 3));
+
+  { A traceback is an error, and every theme has a colour for that. }
+  Line := LineOfText('ZeroDivisionError');
+  CheckGt('the traceback is on the page', 0, Line);
+  CheckEq('and is coloured as an error', 'def.error', ScopeAt(Line + 1, 4));
+
+  { And the code.  What says a real language highlighter ran is that the
+    parts of a line of Python are told apart: "import" and the module name
+    beside it come back as different scopes, and neither is one of the
+    notebook's own.  Which scope Python's grammar gives a keyword is its
+    business -- it calls "import" a preprocessor, as it happens -- so the
+    check is the distinction rather than a name guessed from outside. }
+  Line := LineOfText('import numpy');
+  CheckGt('the code is on the page', 0, Line);
+  Check('the keyword and the name after it are coloured differently: ' +
+    ScopeAt(Line + 1, 2) + ' vs ' + ScopeAt(Line + 1, 9),
+    (ScopeAt(Line + 1, 2) <> '') and
+    (ScopeAt(Line + 1, 2) <> ScopeAt(Line + 1, 9)));
+  Check('and the code is not coloured as one of LED''s own lines',
+    (ScopeAt(Line + 1, 2) <> 'def.type') and
+    (ScopeAt(Line + 1, 2) <> 'def.comment') and
+    (ScopeAt(Line + 1, 2) <> 'def.doc-comment'));
+
+  { A docstring runs over three lines.  The second and third are only inside
+    it if the highlighter was told where the first left off, which is the
+    state this view has to carry from line to line inside a cell. }
+  Line := LineOfText('"""a docstring');
+  CheckGt('the docstring is on the page', 0, Line);
+  Check('its first line is a string: ' + ScopeAt(Line + 1, 5),
+    Pos('string', ScopeAt(Line + 1, 5)) > 0);
+  Check('and so is its second, which only holds if the state carried: ' +
+    ScopeAt(Line + 2, 5),
+    Pos('string', ScopeAt(Line + 2, 5)) > 0);
+  Check('while the line after the docstring is not',
+    Pos('string', ScopeAt(Line + 4, 5)) = 0);
+
+  { Markdown cells go to the markdown highlighter, not the Python one. }
+  Line := LineOfText('# A heading');
+  CheckGt('the markdown cell is on the page', 0, Line);
+  Check('and its heading is not coloured as Python: ' + ScopeAt(Line + 1, 3),
+    Pos('keyword', ScopeAt(Line + 1, 3)) = 0);
+
+  { Folding: a cell is a block, and its output is a block inside it. }
+  Line := LineOfText('import numpy');
+  CheckGt('the cell body is inside one fold level', 0,
+    TLedNBHighlighter(V.Highlighter).FoldBlockEndLevel(Line - 1));
+  CheckGt('and the output is a block inside it',
+    TLedNBHighlighter(V.Highlighter).FoldBlockEndLevel(Line - 1),
+    TLedNBHighlighter(V.Highlighter).FoldBlockEndLevel(LineOfText('out ') + 1));
+
+
+  { A cell magic names the language for its own cell, whatever the notebook
+    says.  These notebooks run MATLAB code in %%octave cells inside a Python
+    notebook, so colouring every cell as Python would colour half the file
+    as the wrong language. }
+  Path := TempName('nbmagic.ipynb');
+  WriteBytes(Path, MagicFixture);
+  Doc.LoadFromFile(Path);
+  Pump;
+  Line := LineOfText('disp(x)');
+  CheckGt('the Python cell is on the page', 0, Line);
+  Was := ScopeAt(Line + 1, 1);
+  Line := LineOfText('%%octave');
+  CheckGt('and so is the octave cell', 0, Line);
+  Check('the magic line itself is not treated as a header',
+    Doc.NBLineIsSource(Line));
+  { "disp" is a function in both languages but the two grammars are
+    different files with different scope names, so what is checked is that
+    the same word in the two cells is not coloured the same way. }
+  Check('a %%octave cell is coloured as Octave, not as Python: ' +
+    Was + ' vs ' + ScopeAt(Line + 3, 1),
+    (ScopeAt(Line + 3, 1) <> '') and (ScopeAt(Line + 3, 1) <> Was));
+  Check('and a matrix literal is not plain text',
+    ScopeAt(Line + 2, 6) <> '');
+
+  DeleteFile(Path);
+end;
+
 { Editing a Jupyter notebook.
 
   The buffer is a rendering of the file -- headers, source and output -- and
@@ -9771,6 +10046,7 @@ begin
   TestBJDataFolding(F);
   TestBJDataEditing(F);
   TestNotebookEditing(F);
+  TestNotebookColouring(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;

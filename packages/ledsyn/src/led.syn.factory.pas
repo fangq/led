@@ -40,6 +40,15 @@ uses
   folds and always speaks the same scope vocabulary as the themes. }
 function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
 
+{ The same, but a fresh instance that the caller owns and must free.
+
+  For the one case where sharing is not safe: the notebook view runs a
+  language highlighter over the source lines inside each cell and has to
+  carry its state from one line of a cell to the next, so it keeps a note of
+  where that state got to.  A shared instance would have that note
+  invalidated by any other document tokenising in between. }
+function LedCreateHighlighter(const ALangId: string): TSynCustomHighlighter;
+
 { True when LED can highlight this language today. }
 function LedHasHighlighter(const ALangId: string): Boolean;
 
@@ -323,19 +332,14 @@ begin
   Result := FCache;
 end;
 
-function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
+function LedCreateHighlighter(const ALangId: string): TSynCustomHighlighter;
 var
   Cls: TSynCustomHighlighterClass;
-  i: Integer;
   Grammar: string;
   TM: TSynTextMateSyn;
 begin
   Result := nil;
   if ALangId = '' then Exit;
-
-  i := Cache.IndexOf(ALangId);
-  if i >= 0 then
-    Exit(TSynCustomHighlighter(Cache.Objects[i]));
 
   Grammar := LedGrammarFile(ALangId);
   Cls := ClassFor(ALangId);
@@ -344,11 +348,7 @@ begin
     converted grammar to fall back on. }
   if (Cls <> nil) and
      (Cls.InheritsFrom(TSynCustomFoldHighlighter) or not FileExists(Grammar)) then
-  begin
-    Result := Cls.Create(nil);
-    Cache.AddObject(ALangId, Result);
-    Exit;
-  end;
+    Exit(Cls.Create(nil));
 
   if not FileExists(Grammar) then Exit;
 
@@ -370,7 +370,18 @@ begin
     Exit;
   end;
   Result := TM;
-  Cache.AddObject(ALangId, Result);
+end;
+
+function LedHighlighterFor(const ALangId: string): TSynCustomHighlighter;
+var
+  i: Integer;
+begin
+  Result := nil;
+  if ALangId = '' then Exit;
+  i := Cache.IndexOf(ALangId);
+  if i >= 0 then Exit(TSynCustomHighlighter(Cache.Objects[i]));
+  Result := LedCreateHighlighter(ALangId);
+  if Result <> nil then Cache.AddObject(ALangId, Result);
 end;
 
 function ScopeForAttribute(const AStoredName: string): string;

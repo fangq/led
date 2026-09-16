@@ -22,7 +22,7 @@ uses
   SynEditMiscClasses, SynEditHighlighter, SynEditKeyCmds,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
   Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView,
-  Led.Syn.BJData,
+  Led.Syn.BJData, Led.Syn.Notebook,
   Led.Core.Encodings,
   Led.Core.Config,
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
@@ -93,6 +93,9 @@ type
       one and owned by the document: it carries that document's rows, so it
       cannot be shared the way the language ones in Led.Syn.Factory are. }
     FBJHigh: TLedBJHighlighter;
+    { A notebook's own highlighter, for the same reason: it carries this
+      document's cell map and its own language highlighters. }
+    FNBHigh: TLedNBHighlighter;
     { A Jupyter notebook.  Not a binary and not read-only: the buffer is
       editable text, and what the document protects is the handful of lines
       in it that are a rendering of the file rather than the file's own
@@ -136,6 +139,11 @@ type
     function NBHeaderAbove(ALine: Integer; out ACell: Integer): Integer;
     procedure NBRender;
     function NBGuard(Sender: TObject; ACommand: TSynEditorCommand): Boolean;
+    function NBLineKind(ALine: Integer; out ACell: Integer;
+      out ALang: string): TLedNBLine;
+    function NBCellLanguage(ACell, AHeaderLine: Integer): string;
+    function NBLineText(ALine: Integer): string;
+    procedure NBTheme;
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -416,6 +424,7 @@ begin
   { Owned here rather than by a component, because it carries this document's
     rows and nothing else's. }
   FBJHigh.Free;
+  FNBHigh.Free;
   FNotebook.Free;
   inherited Destroy;
 end;
@@ -591,6 +600,7 @@ begin
     found it. }
   if FBJHigh <> nil then
     LedApplyThemeToHighlighter(LedCurrentTheme, FBJHigh);
+  NBTheme;
   for i := 0 to FViews.Count - 1 do
     ApplyConfigToView(TLedEdit(FViews[i]));
 end;
@@ -637,6 +647,20 @@ begin
     FBJHigh.SetRows(FBJRows);
     LedApplyThemeToHighlighter(LedCurrentTheme, FBJHigh);
     HL := FBJHigh;
+  end
+  { A notebook is coloured from what the document knows about each line and,
+    inside a cell, by the real highlighter for that cell's language: the same
+    Python colouring a .py file gets, because it is the same highlighter. }
+  else if FIsNotebook then
+  begin
+    if FNBHigh = nil then
+    begin
+      FNBHigh := TLedNBHighlighter.Create(nil);
+      FNBHigh.OnLineKind := @NBLineKind;
+      FNBHigh.OnLineText := @NBLineText;
+    end;
+    NBTheme;
+    HL := FNBHigh;
   end
   else
     HL := LedHighlighterFor(FConfig.GetStr(LedSetLang));
@@ -1021,8 +1045,10 @@ end;
   cell moves every header below it without the document being told. }
 const
   NBTagHeader = 1;
-  NBTagOut    = 2;      // the output label and the output lines
-  NBTagGap    = 3;      // the blank line between two cells
+  NBTagOut    = 2;      // the output label and ordinary output lines
+  NBTagErr    = 3;      // an output line that came from a traceback
+  NBTagGap    = 4;      // the blank line between two cells
+  NBTagKinds  = 8;      // room for those, and a power of two to divide by
 
 function TLedDocument.NBTagOf(ALine: Integer): PtrInt;
 begin
@@ -1037,7 +1063,7 @@ begin
   if AKind = 0 then
     FMaster.Lines.Objects[ALine] := nil
   else
-    FMaster.Lines.Objects[ALine] := TObject(PtrInt(-(ACell * 4 + AKind)));
+    FMaster.Lines.Objects[ALine] := TObject(PtrInt(-(ACell * NBTagKinds + AKind)));
 end;
 
 { The header line at or above ALine, and which cell it opens.  -1 when there
@@ -1057,9 +1083,9 @@ begin
     T := NBTagOf(i);
     if T <> 0 then
     begin
-      if (-T) mod 4 = NBTagHeader then
+      if (-T) mod NBTagKinds = NBTagHeader then
       begin
-        ACell := (-T) div 4;
+        ACell := (-T) div NBTagKinds;
         Exit(i);
       end;
       Exit(-1);
@@ -1078,8 +1104,8 @@ begin
   T := NBTagOf(ATextIdx);
   if T <> 0 then
   begin
-    if (-T) mod 4 = NBTagGap then Exit(-1);
-    Exit((-T) div 4);
+    if (-T) mod NBTagKinds = NBTagGap then Exit(-1);
+    Exit((-T) div NBTagKinds);
   end;
   NBHeaderAbove(ATextIdx, Cell);
   Result := Cell;
@@ -1108,9 +1134,9 @@ begin
   for i := 0 to FMaster.Lines.Count - 1 do
   begin
     T := NBTagOf(i);
-    if (T <> 0) and ((-T) mod 4 = NBTagHeader) then
+    if (T <> 0) and ((-T) mod NBTagKinds = NBTagHeader) then
     begin
-      Cell := (-T) div 4;
+      Cell := (-T) div NBTagKinds;
       if Cell = ACell then
       begin
         { The line after the header, which always exists: a cell with no
@@ -1212,8 +1238,11 @@ begin
       if i >= FMaster.Lines.Count then Break;
       case Rows[i].Kind of
         nbrHeader:   NBTag(i, NBTagHeader, Rows[i].Cell);
-        nbrOutLabel,
-        nbrOutput:   NBTag(i, NBTagOut, Rows[i].Cell);
+        nbrOutLabel: NBTag(i, NBTagOut, Rows[i].Cell);
+        nbrOutput:   if Rows[i].IsError then
+                       NBTag(i, NBTagErr, Rows[i].Cell)
+                     else
+                       NBTag(i, NBTagOut, Rows[i].Cell);
         nbrBlank:    NBTag(i, NBTagGap, 0);
       else
         NBTag(i, 0, 0);
@@ -1271,8 +1300,8 @@ begin
   for i := 0 to FMaster.Lines.Count - 1 do
   begin
     T := NBTagOf(i);
-    if (T <> 0) and ((-T) mod 4 = NBTagHeader) and
-       ((-T) div 4 = ACell) then
+    if (T <> 0) and ((-T) mod NBTagKinds = NBTagHeader) and
+       ((-T) div NBTagKinds = ACell) then
     begin
       Head := i;
       Break;
@@ -1301,8 +1330,10 @@ begin
     begin
       T := NBTagOf(i);
       if T = 0 then Break;
-      Cell := (-T) div 4;
-      if ((-T) mod 4 <> NBTagOut) or (Cell <> ACell) then Break;
+      Cell := (-T) div NBTagKinds;
+      if ((-T) mod NBTagKinds <> NBTagOut) and
+         ((-T) mod NBTagKinds <> NBTagErr) then Break;
+      if Cell <> ACell then Break;
       FMaster.Lines.Delete(i);
     end;
 
@@ -1315,7 +1346,10 @@ begin
       begin
         FMaster.Lines.Insert(Stop + 1 + i,
           StringOfChar(' ', LedNBOutIndent) + Outs[i]);
-        NBTag(Stop + 1 + i, NBTagOut, ACell);
+        if (i <= High(Errors)) and Errors[i] then
+          NBTag(Stop + 1 + i, NBTagErr, ACell)
+        else
+          NBTag(Stop + 1 + i, NBTagOut, ACell);
       end;
     end;
 
@@ -1335,6 +1369,98 @@ begin
   end;
 
   if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+{ What a line is, for the highlighter.  From the tags, which is to say from
+  what was rendered rather than from what the line looks like: a markdown
+  cell whose text happens to read like a header is still text. }
+{ Which language a cell's source is in.
+
+  The notebook's own, unless the cell opens with a cell magic that names
+  another.  A %%octave cell in a Python notebook is Octave, and these
+  notebooks are full of them -- the whole point of the magic is that one
+  file runs two languages.  A magic that is not a language -- %%timeit,
+  %%capture -- names nothing LED can colour, and the test for that is simply
+  whether LED has a highlighter for the word. }
+function TLedDocument.NBCellLanguage(ACell, AHeaderLine: Integer): string;
+var
+  First, Word_: string;
+  i: Integer;
+begin
+  Result := '';
+  if (ACell < 0) or (ACell >= FNotebook.CellCount) then Exit;
+  if FNotebook.CellKind(ACell) = nbkMarkdown then Exit('markdown');
+  Result := FNotebook.LanguageName;
+
+  { The cell's first line is the one after its header. }
+  if (AHeaderLine < 0) or (AHeaderLine + 1 >= FMaster.Lines.Count) then Exit;
+  First := TrimLeft(FMaster.Lines[AHeaderLine + 1]);
+  if Pos('%%', First) <> 1 then Exit;
+
+  Word_ := '';
+  for i := 3 to Length(First) do
+    if First[i] in ['a'..'z', 'A'..'Z', '0'..'9', '_', '+', '-'] then
+      Word_ := Word_ + First[i]
+    else
+      Break;
+  if (Word_ <> '') and LedHasHighlighter(LowerCase(Word_)) then
+    Result := LowerCase(Word_);
+end;
+
+function TLedDocument.NBLineKind(ALine: Integer; out ACell: Integer;
+  out ALang: string): TLedNBLine;
+var
+  T: PtrInt;
+  Head: Integer;
+begin
+  ACell := -1;
+  ALang := '';
+  Result := nblGap;
+  if not FIsNotebook then Exit;
+
+  T := NBTagOf(ALine);
+  if T = 0 then
+  begin
+    Head := NBHeaderAbove(ALine, ACell);
+    if Head < 0 then Exit;
+    Result := nblSource;
+    ALang := NBCellLanguage(ACell, Head);
+  end
+  else
+    case (-T) mod NBTagKinds of
+      NBTagHeader: begin ACell := (-T) div NBTagKinds; Result := nblHeader; end;
+      NBTagOut:    begin ACell := (-T) div NBTagKinds; Result := nblOutput; end;
+      NBTagErr:    begin ACell := (-T) div NBTagKinds; Result := nblError; end;
+    else
+      Exit;
+    end;
+
+  { The label line and the output lines share a tag; the label is the one
+    that starts with the word. }
+  if (Result = nblOutput) and (ALine < FMaster.Lines.Count) and
+     (Pos('out ', FMaster.Lines[ALine]) = 1) then
+    Result := nblOutLabel;
+end;
+
+function TLedDocument.NBLineText(ALine: Integer): string;
+begin
+  Result := '';
+  if (ALine >= 0) and (ALine < FMaster.Lines.Count) then
+    Result := FMaster.Lines[ALine];
+end;
+
+{ The notebook highlighter and both of the language ones inside it.  Its own
+  instances, so LedRetheme -- which re-themes the shared ones -- does not
+  reach them. }
+procedure TLedDocument.NBTheme;
+var
+  i: Integer;
+begin
+  if FNBHigh = nil then Exit;
+  LedApplyThemeToHighlighter(LedCurrentTheme, FNBHigh);
+  for i := 0 to FNBHigh.InnerCount - 1 do
+    if FNBHigh.Inner(i) <> nil then
+      LedApplyThemeToHighlighter(LedCurrentTheme, FNBHigh.Inner(i));
 end;
 
 function TLedDocument.TakeNotebookError: string;
