@@ -1125,6 +1125,19 @@ var
 begin
   ACell := -1;
   Result := -1;
+  { A line outside the buffer has no header above it, and saying otherwise is
+    not a rounding error.  Something scanning down a cell asks about the line
+    after the last one to find out where the cell ends; while a line past the
+    end answered "the last cell's source" -- which it did, because walking up
+    from beyond the end reaches that cell's header -- the scan never found an
+    end, and every step of it walked the file again.  Measured on a 1000-line
+    notebook: eight thousand million steps and climbing, which is what "led
+    froze when opening this file" was.
+
+    The guard is here rather than in each caller because this is the one
+    place all three of them go through, and the first attempt put it in only
+    one of the three. }
+  if (ALine < 0) or (ALine >= FMaster.Lines.Count) then Exit;
   i := ALine;
   while i >= 0 do
   begin

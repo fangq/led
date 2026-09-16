@@ -17,13 +17,22 @@
 
   The state that has to be carried is what makes this more than a lookup.  A
   docstring runs over several lines, and a highlighter knows that only
-  because it is told where the previous line left off.  The inner ones cannot
-  be handed SynEdit's stored range, because that range belongs to this
-  highlighter and holds the fold state; so instead the inner is rewound to
-  the start of the cell and run forward when the line asked about is not the
-  one after the line last asked about.  Line after line down a cell -- which
-  is how SynEdit paints -- that costs nothing, and the correctness does not
-  depend on the order the questions arrive in.
+  because it is told where the previous line left off.
+
+  The way to give it that is to give it a document.  A highlighter keeps its
+  per-line state in a range list belonging to the text it is attached to --
+  a grammar-driven one also keeps a side table there, and reads it by line
+  number -- so one driven by hand with no text behind it reads whatever
+  happens to be at that index.  On a real notebook that came out as an
+  assertion inside the grammar engine, over and over, because its pattern
+  state had a parent chain from nowhere.
+ 
+  So a cell is copied into a little document of its own and the language
+  highlighter is attached to that.  Then everything is as the highlighter
+  expects: it scans the cell, keeps its state per line of it, and this unit
+  asks it for the tokens of one line.  The copy is rebuilt when the cell
+  changes, which the buffer says by way of a change handler rather than by
+  being compared line against line.
 
   Which line is which comes from the document, live, through OnLineKind.  It
   cannot be a table here: the reader is typing, and lines move. }
@@ -36,7 +45,7 @@ interface
 
 uses
   Classes, SysUtils, Graphics, SynEditHighlighter, SynEditHighlighterFoldBase,
-  SynEditTypes,
+  SynEditTypes, SynEditTextBuffer,
   Led.Syn.Factory;
 
 type
@@ -80,18 +89,20 @@ type
     FInner: TSynCustomHighlighter;   // nil for a line LED answers for itself
     FDone: Boolean;                  // decoration: one token, then the end
 
-    { Where the inner highlighter's state got to, so that a cell is rewound
-      only when the questions do not arrive in order. }
-    FScanCell: Integer;
-    FScanLine: Integer;
-    FScanInner: TSynCustomHighlighter;
+    { The cell being coloured, as a document of its own, and which cell and
+      which highlighter are in it.  FCellFirst is the line of the real buffer
+      its first line came from, which is what maps one to the other. }
+    FCellBuf: TSynEditStringList;
+    FCellNo: Integer;
+    FCellFirst: Integer;
+    FCellHigh: TSynCustomHighlighter;
 
     FAttrs: array[TLedNBLine] of TSynHighlighterAttributes;
     function LineKind(ALine: Integer; out ACell: Integer;
       out ALang: string): TLedNBLine;
     function InnerFor(const ALang: string): TSynCustomHighlighter;
+    function EnsureCell(ACell, ALine: Integer): Integer;
     function DepthOf(ALine: Integer): Integer;
-    procedure PrepareInner;
   protected
     function GetDefaultAttribute(Index: Integer): TSynHighlighterAttributes;
       override;
@@ -170,13 +181,17 @@ begin
   end;
   FInners := TStringList.Create;
   FInners.OwnsObjects := True;
-  FScanCell := -1;
-  FScanLine := -1;
+  FCellBuf := TSynEditStringList.Create;
+  FCellNo := -1;
+  FCellFirst := -1;
 end;
 
 destructor TLedNBHighlighter.Destroy;
 begin
+  if (FCellHigh <> nil) and (FCellBuf <> nil) then
+    FCellHigh.DetachFromLines(FCellBuf);
   FInners.Free;
+  FCellBuf.Free;
   inherited Destroy;
 end;
 
@@ -254,56 +269,97 @@ begin
   Result := DepthOf(ALineIndex);
 end;
 
-{ Puts the inner highlighter in the state the previous line left it in.
+{ Makes sure the little document holds the cell that ALine is in, with the
+  right language highlighter attached to it, and answers which of its lines
+  ALine is.  -1 when there is nothing to colour with.
 
-  In order -- line after line down a cell, which is how a paint goes -- this
-  is one call to the inner per line and nothing else.  Out of order, the cell
-  is rewound to its first line and run forward, which is what makes the
-  answer independent of the order the questions come in. }
-procedure TLedNBHighlighter.PrepareInner;
+  Rebuilt only when what it holds is not what is wanted, so painting down a
+  cell costs one copy for the cell and a string comparison per line. }
+function TLedNBHighlighter.EnsureCell(ACell, ALine: Integer): Integer;
 var
-  First, i, Cell: Integer;
+  First, Last, i, Cell, Stop: Integer;
   Lang: string;
   Kind: TLedNBLine;
 begin
-  if FInner = nil then Exit;
+  Result := -1;
+  if (FInner = nil) or (not Assigned(FOnLineText)) then Exit;
 
-  if (FInner = FScanInner) and (FScanCell = FCell) and
-     (FScanLine = FLineNumber - 1) then
+  { The copy is reused while it is still the same cell, the same language and
+    still says what the buffer says on the line being asked about.
+
+    That last test is what notices an edit.  It is enough because SynEdit
+    re-tokenises a changed line before it re-tokenises the lines after it:
+    whichever line was typed into is the first one to arrive here with text
+    that the copy disagrees with, and the copy is taken again then -- for
+    that line and for every line below it. }
+  if (FCellNo = ACell) and (FCellHigh = FInner) and (FCellFirst >= 0) then
   begin
-    { The state is already where it needs to be. }
-    FScanLine := FLineNumber;
-    Exit;
+    Result := ALine - FCellFirst;
+    if (Result >= 0) and (Result < FCellBuf.Count) and
+       (FCellBuf[Result] = FOnLineText(ALine)) then Exit;
+    Result := -1;
   end;
 
-  { The first source line of this cell. }
-  First := FLineNumber;
-  i := FLineNumber - 1;
+  { How far the cell's own lines run, either side of the line asked about. }
+  First := ALine;
+  i := ALine - 1;
   while i >= 0 do
   begin
     Kind := LineKind(i, Cell, Lang);
-    if (Kind <> nblSource) or (Cell <> FCell) then Break;
+    if (Kind <> nblSource) or (Cell <> ACell) then Break;
     First := i;
     Dec(i);
   end;
+  { Bounded by the text as well as by the answers.  Asking past the end of
+    the buffer is how this loop ran away once already, and a scan that trusts
+    only what it is told has no way to stop if it is told wrongly. }
+  Stop := MaxInt;
+  if CurrentLines <> nil then Stop := CurrentLines.Count;
+  Last := ALine;
+  i := ALine + 1;
+  while i < Stop do
+  begin
+    Kind := LineKind(i, Cell, Lang);
+    if (Kind <> nblSource) or (Cell <> ACell) then Break;
+    Last := i;
+    Inc(i);
+  end;
 
-  FInner.ResetRange;
-  if Assigned(FOnLineText) then
-    for i := First to FLineNumber - 1 do
-    begin
-      FInner.SetLine(FOnLineText(i), i);
-      while not FInner.GetEol do FInner.Next;
-    end;
+  { The highlighter is attached to the little document rather than to the
+    notebook: this is the text it is being asked about, and a highlighter
+    keeps its state per line of the text it is attached to. }
+  if FCellHigh <> FInner then
+  begin
+    if FCellHigh <> nil then FCellHigh.DetachFromLines(FCellBuf);
+    FCellHigh := FInner;
+    FCellHigh.AttachToLines(FCellBuf);
+  end;
 
-  FScanInner := FInner;
-  FScanCell := FCell;
-  FScanLine := FLineNumber;
+  FCellBuf.BeginUpdate;
+  try
+    FCellBuf.Clear;
+    for i := First to Last do
+      FCellBuf.Add(FOnLineText(i));
+  finally
+    FCellBuf.EndUpdate;
+  end;
+
+  FCellNo := ACell;
+  FCellFirst := First;
+
+  { Scanned in one go, which is what carries a docstring from its first line
+    to its last. }
+  FInner.CurrentLines := FCellBuf;
+  FInner.ScanAllRanges;
+
+  Result := ALine - First;
+  if (Result < 0) or (Result >= FCellBuf.Count) then Result := -1;
 end;
 
 procedure TLedNBHighlighter.SetLine(const NewValue: string;
   LineNumber: Integer);
 var
-  Here, Next_: Integer;
+  Here, Next_, Mapped: Integer;
   Lang: string;
 begin
   inherited SetLine(NewValue, LineNumber);
@@ -318,8 +374,17 @@ begin
     FInner := InnerFor(Lang);
     if FInner <> nil then
     begin
-      PrepareInner;
-      FInner.SetLine(NewValue, LineNumber);
+      Mapped := EnsureCell(FCell, LineNumber);
+      if Mapped < 0 then
+        FInner := nil
+      else
+      begin
+        FInner.CurrentLines := FCellBuf;
+        { Positioned through SynEdit's own entry point, which sets the range
+          from the line before it in the little document -- the thing that
+          could not be done while the highlighter had no document. }
+        FInner.StartAtLineIndex(Mapped);
+      end;
     end;
   end;
 

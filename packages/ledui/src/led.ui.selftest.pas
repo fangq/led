@@ -5425,6 +5425,143 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ The end of the file.
+
+  A notebook whose last line is a cell's own source -- which is any notebook
+  whose last cell has not been run -- is the shape that makes something ask
+  about the line after the last one.  Answering that question wrongly is what
+  made LED appear to hang on a real notebook: for a line past the end the
+  document said "the last cell's source", so the scan looking for where that
+  cell ends never found an end, and each step of it walked the file again.
+  Eight thousand million steps, measured, and climbing.
+
+  So the checks here are about the edges rather than the middle: what the
+  document says about a line that does not exist, what the highlighter makes
+  of the end of the file, and that walking the whole of a small notebook
+  takes the time a small notebook should take. }
+procedure TestNotebookBounds(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  V: TLedEdit;
+  i, Last, Spent: Integer;
+  T0: TDateTime;
+
+  function Fixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "markdown",' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "source": [' + #10 +
+    '    "## A heading\n",' + #10 +
+    '    "\n",' + #10 +
+    '    "```c\n",' + #10 +
+    '    "void main(void) {\n",' + #10 +
+    '    "  int i = 0;\n",' + #10 +
+    '    "}\n",' + #10 +
+    '    "```"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 1,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "name": "stdout",' + #10 +
+    '     "output_type": "stream",' + #10 +
+    '     "text": [' + #10 +
+    '      "hi\n"' + #10 +
+    '     ]' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "print(''hi'')"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": null,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "def f(x):\n",' + #10 +
+    '    "    return x + 1\n",' + #10 +
+    '    "f(41)"' + #10 +
+    '   ]' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+begin
+  Say('Jupyter notebook edges');
+
+  Path := TempName('nbedge.ipynb');
+  WriteBytes(Path, Fixture);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  V := Tab.ActiveView;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('it opened', Doc.IsNotebook);
+
+  Last := Doc.Master.Lines.Count - 1;
+  Check('the last line of the file is a cell''s own source, which is the '
+    + 'shape that asks past the end', Doc.NBLineIsSource(Last));
+
+  { The answers that must be "nothing". }
+  Check('the line after the last is not source',
+    not Doc.NBLineIsSource(Last + 1));
+  CheckEqInt('and belongs to no cell', -1, Doc.NBCellOfLine(Last + 1));
+  Check('nor is one far past the end',
+    not Doc.NBLineIsSource(Last + 5000));
+  CheckEqInt('which also belongs to no cell', -1,
+    Doc.NBCellOfLine(Last + 5000));
+  Check('nor is a negative line', not Doc.NBLineIsSource(-1));
+  CheckEqInt('and that belongs to no cell either', -1, Doc.NBCellOfLine(-2));
+
+  { And the fold consequence: nothing is left open past the end of the file. }
+  CheckEqInt('no fold block is open past the last line', 0,
+    TLedNBHighlighter(V.Highlighter).FoldBlockEndLevel(Last + 1));
+
+  { The whole file walked, which is what a paint and the fold scan do.  The
+    bound is loose on purpose -- what it catches is not a slow machine but a
+    scan that does not terminate. }
+  T0 := Now;
+  for i := 0 to Last do
+  begin
+    V.CaretXY := Point(1, i + 1);
+    TLedNBHighlighter(V.Highlighter).FoldBlockEndLevel(i);
+  end;
+  Pump;
+  Spent := Round((Now - T0) * 86400000);
+  CheckGt(Format('walking a %d-line notebook takes a moment, not minutes '
+    + '(%d ms)', [Last + 1, Spent]), Spent, 5000);
+
+  DeleteFile(Path);
+end;
+
 { Running cells.
 
   The whole point of driving a real kernel is that it is a real kernel, so
@@ -10262,6 +10399,7 @@ begin
   TestNotebookEditing(F);
   TestNotebookColouring(F);
   TestNotebookRunning(F);
+  TestNotebookBounds(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;
