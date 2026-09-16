@@ -30,7 +30,7 @@ type
     { An object of one key holding AValue's bytes, walked and ready to edit. }
     procedure Given(const AKey: string; const AValue: array of Byte);
     function Edit(ARow: Integer; const AText: string;
-      out AWhy: string): TLedBJEditKind;
+      out AWhy: string; AAs: AnsiChar = #0): TLedBJEditKind;
     function Reparse: TBJData;
     function ValueOf(const AKey: string): TBJData;
   published
@@ -52,6 +52,20 @@ type
     procedure TheSameValueIsNotAnEdit;
     procedure NothingIsWrittenWhenRefused;
     procedure ValueTextIsWhatOneWouldType;
+    { The file's own type, in the two places it used to be thrown away. }
+    procedure AHighPrecisionNumberStaysHighPrecision;
+    procedure AHighPrecisionNumberRefusesWords;
+    procedure AByteKeepsItsMarker;
+    procedure AByteTooBigForItIsWidened;
+    procedure AUInt64PastInt64IsStillANumber;
+    { The type list the editor offers, and writing one of them. }
+    procedure TheTypeListOffersWhatHoldsTheValue;
+    procedure TheTypeListLeavesOutWhatWouldLoseIt;
+    procedure TheFilesOwnTypeIsOfferedEvenWhenItLoses;
+    procedure ChoosingATypeWritesThatType;
+    procedure ChoosingATypeThatCannotHoldItIsRefused;
+    procedure ChoosingStringTurnsANumberIntoOne;
+    procedure ChangingOnlyTheTypeIsStillAnEdit;
   end;
 
 implementation
@@ -82,12 +96,12 @@ begin
 end;
 
 function TTestBJDEdit.Edit(ARow: Integer; const AText: string;
-  out AWhy: string): TLedBJEditKind;
+  out AWhy: string; AAs: AnsiChar): TLedBJEditKind;
 var
   Err: string;
   ErrAt: PtrUInt;
 begin
-  Result := LedBJEditValue(FBytes, FRows[ARow], AText, AWhy);
+  Result := LedBJEditValue(FBytes, FRows[ARow], AText, AWhy, AAs);
   { A caller re-walks after an edit, and so does this: the rows hold cursors
     into the bytes that were just replaced. }
   if Result in [bjePatched, bjeSpliced] then
@@ -372,6 +386,225 @@ begin
 
   Given('a', [$5A]);
   AssertEquals('and so is null', 'null', LedBJValueText(FRows[1]));
+end;
+
+{ ---- the file's own type ---- }
+
+{ An H is a number written out in full, not a string.  Where the new text
+  needed a wider length marker the encoder used to fall back to the library,
+  which writes an S -- so one edit turned a high-precision number into text.
+
+  The fixture's length marker is an int8, so 200 digits do not fit it and the
+  fallback is the path taken. }
+procedure TTestBJDEdit.AHighPrecisionNumberStaysHighPrecision;
+var
+  Why, Long: string;
+  V: TBJData;
+  i: Integer;
+begin
+  { H i 3 "1.5" }
+  Given('a', [$48, $69, $03, $31, $2E, $35]);
+  Long := '1.';
+  for i := 1 to 200 do Long := Long + '5';
+
+  AssertEquals('spliced', Ord(bjeSpliced), Ord(Edit(1, Long, Why)));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is still high precision', 'H', V.Marker);
+    AssertEquals('and holds the digits typed', Long, V.AsString);
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TTestBJDEdit.AHighPrecisionNumberRefusesWords;
+var
+  Why, Was: string;
+begin
+  Given('a', [$48, $69, $03, $31, $2E, $35]);
+  Was := FBytes;
+  AssertEquals('refused', Ord(bjeRefused), Ord(Edit(1, 'orange', Why)));
+  AssertEquals('the file is untouched', Was, FBytes);
+  AssertTrue('and it says why: ' + Why, Pos('number', Why) > 0);
+end;
+
+{ B is BJData's byte type.  The library's BJIsIntMarker leaves it out because
+  UBJSON has no such type, and going through that predicate meant a number
+  typed into a byte field came back as an int8: the same size, so it read as
+  a patch, with the type quietly changed underneath. }
+procedure TTestBJDEdit.AByteKeepsItsMarker;
+var
+  Why: string;
+  V: TBJData;
+begin
+  Given('a', [$42, $07]);                  // B 7
+  AssertEquals('patched', Ord(bjePatched), Ord(Edit(1, '200', Why)));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is still a byte', 'B', V.Marker);
+    AssertEquals('holding the new number', 200, V.AsInt64);
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TTestBJDEdit.AByteTooBigForItIsWidened;
+var
+  Why: string;
+  V: TBJData;
+begin
+  Given('a', [$42, $07]);
+  AssertEquals('spliced', Ord(bjeSpliced), Ord(Edit(1, '300', Why)));
+  V := ValueOf('a');
+  try
+    AssertEquals('and holds it', 300, V.AsInt64);
+  finally
+    V.Free;
+  end;
+end;
+
+{ Past Int64 there is one type left that can hold the number.  Parsing the
+  text as a signed integer fails there, and falling through to the float
+  branch turned a uint64 into a double. }
+procedure TTestBJDEdit.AUInt64PastInt64IsStillANumber;
+var
+  Why: string;
+  V: TBJData;
+begin
+  { M 9223372036854775807 -- the largest signed value, in a uint64 field }
+  Given('a', [$4D, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $7F]);
+  AssertEquals('patched', Ord(bjePatched),
+    Ord(Edit(1, '18446744073709551610', Why)));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is still a uint64', 'M', V.Marker);
+    AssertTrue('holding a number past Int64',
+      V.AsQWord = QWord(18446744073709551610));
+  finally
+    V.Free;
+  end;
+end;
+
+{ ---- the type list ---- }
+
+procedure TTestBJDEdit.TheTypeListOffersWhatHoldsTheValue;
+var
+  Types: string;
+begin
+  Types := LedBJTypesFor('42', 'l');
+  AssertTrue('an int8 holds 42: ' + Types, Pos('i', Types) > 0);
+  AssertTrue('so does the file''s own int32', Pos('l', Types) > 0);
+  AssertTrue('and a float64', Pos('D', Types) > 0);
+  AssertTrue('and a string of it', Pos('S', Types) > 0);
+  AssertTrue('null does not', Pos('Z', Types) = 0);
+  AssertTrue('nor does a boolean', Pos('T', Types) = 0);
+  AssertTrue('nor a char, which is one byte', Pos('C', Types) = 0);
+
+  Types := LedBJTypesFor('true', 'T');
+  AssertTrue('a boolean is offered for true: ' + Types, Pos('T', Types) > 0);
+  AssertTrue('and a string of it', Pos('S', Types) > 0);
+  AssertTrue('but no number', Pos('l', Types) = 0);
+end;
+
+procedure TTestBJDEdit.TheTypeListLeavesOutWhatWouldLoseIt;
+var
+  Types: string;
+begin
+  { 300 does not fit a byte or a uint8, and 0.1 is not a float32 or a
+    float16 -- the list is built by writing the value and reading it back,
+    so neither has to be tabulated. }
+  Types := LedBJTypesFor('300', 'I');
+  AssertTrue('a uint8 cannot hold 300: ' + Types, Pos('U', Types) = 0);
+  AssertTrue('nor can a byte', Pos('B', Types) = 0);
+  AssertTrue('an int16 can', Pos('I', Types) > 0);
+
+  Types := LedBJTypesFor('0.1', 'D');
+  AssertTrue('a float32 cannot hold 0.1 exactly: ' + Types, Pos('d', Types) = 0);
+  AssertTrue('nor can a float16', Pos('h', Types) = 0);
+  AssertTrue('a float64 can', Pos('D', Types) > 0);
+end;
+
+{ A float32 field holding 0.1 never could hold it exactly.  Leaving the
+  file's own type off the list would mean every edit of such a field changed
+  its type, which is the opposite of what keeping the marker is for. }
+procedure TTestBJDEdit.TheFilesOwnTypeIsOfferedEvenWhenItLoses;
+var
+  Types: string;
+begin
+  Types := LedBJTypesFor('0.1', 'd');
+  AssertTrue('the field''s own float32 is offered: ' + Types,
+    Pos('d', Types) > 0);
+  AssertTrue('and a float64 beside it', Pos('D', Types) > 0);
+end;
+
+procedure TTestBJDEdit.ChoosingATypeWritesThatType;
+var
+  Why: string;
+  V: TBJData;
+begin
+  Given('a', [$6C, $2A, $00, $00, $00]);   // l 42
+  AssertEquals('spliced', Ord(bjeSpliced), Ord(Edit(1, '42', Why, 'D')));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is a float64 now', 'D', V.Marker);
+    AssertEquals('holding the same number', 42.0, V.AsDouble, 0.0);
+  finally
+    V.Free;
+  end;
+end;
+
+procedure TTestBJDEdit.ChoosingATypeThatCannotHoldItIsRefused;
+var
+  Why, Was: string;
+begin
+  Given('a', [$6C, $2A, $00, $00, $00]);
+  Was := FBytes;
+  AssertEquals('refused', Ord(bjeRefused), Ord(Edit(1, '300', Why, 'i')));
+  AssertEquals('the file is untouched', Was, FBytes);
+  AssertTrue('and it names the type: ' + Why, Pos('int8', Why) > 0);
+end;
+
+{ Typing into a number field cannot turn it into a string -- digits typed
+  there are a number.  Choosing the type is how one says otherwise. }
+procedure TTestBJDEdit.ChoosingStringTurnsANumberIntoOne;
+var
+  Why: string;
+  V: TBJData;
+begin
+  Given('a', [$6C, $2A, $00, $00, $00]);
+  { Patched, not spliced: an int32 and a two-character string are both five
+    bytes.  Which of the two an edit is has nothing to do with whether the
+    type changed -- only with how many bytes it came to. }
+  AssertEquals('patched', Ord(bjePatched), Ord(Edit(1, '42', Why, 'S')));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is a string now', Ord(bjkString), Ord(V.Kind));
+    AssertEquals('of the digits typed', '42', V.AsString);
+  finally
+    V.Free;
+  end;
+end;
+
+{ The same value in a narrower type is a change to the file even though
+  nothing about what it says has changed, so it must not be reported as
+  nothing having happened. }
+procedure TTestBJDEdit.ChangingOnlyTheTypeIsStillAnEdit;
+var
+  Why: string;
+  V: TBJData;
+begin
+  Given('a', [$6C, $07, $00, $00, $00]);   // l 7
+  AssertEquals('spliced', Ord(bjeSpliced), Ord(Edit(1, '7', Why, 'i')));
+  V := ValueOf('a');
+  try
+    AssertEquals('it is an int8 now', 'i', V.Marker);
+    AssertEquals('saying what it said before', 7, V.AsInt64);
+  finally
+    V.Free;
+  end;
+
+  { And retyping the same value in the same type is still not an edit. }
+  AssertEquals('unchanged', Ord(bjeUnchanged), Ord(Edit(1, '7', Why, 'i')));
 end;
 
 initialization

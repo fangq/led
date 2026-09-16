@@ -28,6 +28,7 @@ uses
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
+  Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -2916,6 +2917,21 @@ begin
   TLedKeyPoke(AView).KeyDown(AKey, AShift);
 end;
 
+{ The same, for the value panel: its Return and Escape are a form's KeyDown,
+  which KeyPreview brings there from whichever control has the focus. }
+type
+  TLedPanelPoke = class(TLedBJValuePopup)
+  public
+    class procedure Press(AForm: TLedBJValuePopup; var AKey: Word;
+      AShift: TShiftState);
+  end;
+
+class procedure TLedPanelPoke.Press(AForm: TLedBJValuePopup; var AKey: Word;
+  AShift: TShiftState);
+begin
+  TLedPanelPoke(AForm).KeyDown(AKey, AShift);
+end;
+
 class procedure TLedKeyPoke.Double(AView: TLedEdit);
 begin
   TLedKeyPoke(AView).DblClick;
@@ -5583,28 +5599,136 @@ begin
   F.ActionList1Update(F.actEditValue, Handled);
   Check('the action is offered on a record', F.actEditValue.Enabled);
 
-  F.SilentValueChoice := '77';
+  { ---- the panel the gestures open ---- }
+
   F.actEditValue.Execute;
   Pump;
+  Check('the action opens the value panel',
+    (F.BJValuePopup <> nil) and F.BJValuePopup.Visible);
+  CheckEq('with the value in the box',
+    Doc.BJRowValueText(1), F.BJValuePopup.ValueBox.Text);
+  CheckEq('and the file''s own type selected', 'int32',
+    F.BJValuePopup.TypeList.Text);
+
+  { The type list is what this text could be stored as, not a menu of
+    everything BJData has: 1000 does not fit a byte and is not a boolean. }
+  Check('a type that holds it is offered',
+    F.BJValuePopup.TypeList.Items.IndexOf('int16') >= 0);
+  Check('one that cannot is not',
+    F.BJValuePopup.TypeList.Items.IndexOf('byte') < 0);
+  Check('and neither is a type this is not',
+    F.BJValuePopup.TypeList.Items.IndexOf('boolean') < 0);
+
+  { Typing rebuilds it.  0.1 is not a float32, and nothing whole holds it. }
+  F.BJValuePopup.ValueBox.Text := '0.1';
+  Pump;
+  Check('typing rebuilds the list',
+    F.BJValuePopup.TypeList.Items.IndexOf('float64') >= 0);
+  Check('and drops what has stopped fitting',
+    F.BJValuePopup.TypeList.Items.IndexOf('int32') < 0);
+
+  { And picks it back up when the text allows it again.  The panel chose
+    float64 a moment ago because nothing else could hold 0.1; that is the
+    panel's choice, not the reader's, so it does not outlive the text that
+    caused it. }
+  F.BJValuePopup.ValueBox.Text := '77';
+  Pump;
+  CheckEq('a type the panel chose follows the text back', 'int32',
+    F.BJValuePopup.TypeList.Text);
+  F.BJValuePopup.OkButton.Click;
+  Pump;
+  Check('accepting closes the panel', not F.BJValuePopup.Visible);
   CheckEq('and edits the record the caret is on',
     '77', Doc.BJRowValueText(1));
+  CheckEq('keeping the type the file had', 'l',
+    Doc.BJDataRows[1].Value.Marker);
 
-  F.SilentValueChoice := '42';
+  { Choosing a type writes that type, which is the whole reason the list is
+    there: the same number, stored as something else. }
   Key := VK_RETURN;
   TLedKeyPoke.Press(Tab.ActiveView, Key, []);
   Pump;
   CheckEqInt('Return over a record is taken by the view', 0, Key);
-  CheckEq('and edits it', '42', Doc.BJRowValueText(1));
+  Check('and opens the panel too', F.BJValuePopup.Visible);
+  Check('a float64 is on offer for a whole number',
+    F.BJValuePopup.SelectType('D'));
+  F.BJValuePopup.OkButton.Click;
+  Pump;
+  CheckEq('the value is the one that was there', '77',
+    Doc.BJRowValueText(1));
+  CheckEq('stored as the type that was chosen', 'D',
+    Doc.BJDataRows[1].Value.Marker);
 
-  F.SilentValueChoice := '43';
+  { Escape leaves the file alone. }
   TLedKeyPoke.Double(Tab.ActiveView);
   Pump;
-  CheckEq('a double click does the same', '43', Doc.BJRowValueText(1));
+  Check('a double click opens it as well', F.BJValuePopup.Visible);
+  F.BJValuePopup.ValueBox.Text := '999';
+  Pump;
+  Key := VK_ESCAPE;
+  TLedPanelPoke.Press(F.BJValuePopup, Key, []);
+  Pump;
+  Check('Escape closes the panel', not F.BJValuePopup.Visible);
+  CheckEq('and changes nothing', '77', Doc.BJRowValueText(1));
+
+  { Cancel is the same answer by another route. }
+  F.actEditValue.Execute;
+  Pump;
+  F.BJValuePopup.ValueBox.Text := '123';
+  Pump;
+  F.BJValuePopup.CancelButton.Click;
+  Pump;
+  CheckEq('and so does Cancel', '77', Doc.BJRowValueText(1));
+
+  { A word typed into a number field.  There is one type that can hold it --
+    a string -- and it is offered, but nothing is selected: turning a number
+    into text is a real thing to want and not a thing to fall into by
+    pressing Return over a typo. }
+  F.actEditValue.Execute;
+  Pump;
+  F.BJValuePopup.ValueBox.Text := 'orange';
+  Pump;
+  CheckEqInt('a word can only be a string', 1,
+    F.BJValuePopup.TypeList.Items.Count);
+  CheckEqInt('and no type is picked for it', -1,
+    F.BJValuePopup.TypeList.ItemIndex);
+  Check('so it cannot be accepted', not F.BJValuePopup.OkButton.Enabled);
+
+  { Asked for by name, it goes through. }
+  Check('a string is on offer', F.BJValuePopup.SelectType('S'));
+  Pump;
+  Check('and then it can be accepted', F.BJValuePopup.OkButton.Enabled);
+  F.BJValuePopup.OkButton.Click;
+  Pump;
+  CheckEq('the number is text now', 'orange', Doc.BJRowValueText(1));
+  CheckEq('stored as a string', 'S', Doc.BJDataRows[1].Value.Marker);
+  CheckEqInt('and undo puts the number back', 1, Doc.UndoBJEdit);
+  CheckEq('as the number it was', '77', Doc.BJRowValueText(1));
+
+  { Put the number back, so the rows below read as they did. }
+  Doc.EditBJRow(1, '1000', Why, 'l');
+  Pump;
+
+  { A panel is about one record of one document.  When the window moves to
+    another tab it is about nothing, and a small window left floating over a
+    file it no longer describes is worse than one that closes. }
+  F.actEditValue.Execute;
+  Pump;
+  Check('the panel is up', F.BJValuePopup.Visible);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Handled := False;
+  F.ActionList1Update(F.actEditValue, Handled);
+  Check('and closes when the window moves to another document',
+    not F.BJValuePopup.Visible);
+  F.CloseActiveTab(False);
+  Pump;
+  CheckEq('with the record it was about untouched',
+    '1000', Doc.BJRowValueText(1));
 
   { The same two gestures over a container the walk held back open it
     instead, which is the reason the view decides which of the two a line
     wants rather than the window. }
-  F.SilentValueChoice := '';
   Bad := Doc.Master.Lines.Count;
   Tab.ActiveView.CaretXY := Point(Tab.ActiveView.CaretX, 7);
   Pump;
@@ -5618,9 +5742,8 @@ begin
   CheckEqInt('Return there is taken too', 0, Key);
   CheckGt('and opens the container rather than editing it',
     Bad, Doc.Master.Lines.Count);
+  Check('with no panel in the way', not F.BJValuePopup.Visible);
 
-  { Put the window back the way the rest of the run expects it. }
-  F.SilentValueChoice := '';
   DeleteFile(Path);
 end;
 

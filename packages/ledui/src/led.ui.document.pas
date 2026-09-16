@@ -219,7 +219,7 @@ type
 
       bjeRefused changes nothing and AWhy says what stopped it. }
     function EditBJRow(ATextIdx: Integer; const ANewText: string;
-      out AWhy: string): TLedBJEditKind;
+      out AWhy: string; AAsMarker: AnsiChar = #0): TLedBJEditKind;
     { Puts back the last value that changed, and returns the line it is on so
       the caller can show it.  -1 when there was nothing to take back.
 
@@ -873,7 +873,7 @@ begin
 end;
 
 function TLedDocument.EditBJRow(ATextIdx: Integer; const ANewText: string;
-  out AWhy: string): TLedBJEditKind;
+  out AWhy: string; AAsMarker: AnsiChar): TLedBJEditKind;
 var
   Row: TLedBJRow;
   Keep: string;
@@ -891,7 +891,7 @@ begin
   Start := Row.Offset;
   Size := Row.Value.Size;
 
-  Result := LedBJEditValue(FBytes, Row, ANewText, AWhy);
+  Result := LedBJEditValue(FBytes, Row, ANewText, AWhy, AAsMarker);
   if not (Result in [bjePatched, bjeSpliced]) then Exit;
 
   if not BJRewalk(ATextIdx, Result = bjePatched) then

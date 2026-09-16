@@ -27,7 +27,7 @@ uses
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
-  Led.UI.Splitter, LCLProc, LazFileUtils;
+  Led.UI.Splitter, Led.UI.BJEdit, LCLProc, LazFileUtils;
 
 { Every open window, in creation order.  Needed so that opening a file which
   is already on screen somewhere can raise that window rather than making a
@@ -509,6 +509,11 @@ type
     FDebugPane: TLedDebugPane;
     FBreakPane: TLedBreakPane;
     FThemeMenu: TPopupMenu;
+    { The value editor for structure views, made when one is first wanted and
+      then kept: one panel per window, not one per edit. }
+    FBJPopup: TLedBJValuePopup;
+    FBJPopupDoc: TLedDocument;   // what it was opened on, and on which line
+    FBJPopupRow: Integer;
     FThemeButton: TToolButton;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
@@ -664,10 +669,6 @@ type
     Silent: Boolean;
     { Answered instead of asking, when Silent; '' means "give up". }
     SilentEncodingChoice: string;
-    { Typed instead of asked, when Silent: the new value for a BJData record.
-      '' means the reader cancelled, which is why a check cannot set a string
-      to empty this way. }
-    SilentValueChoice: string;
     procedure ReportError(const AMessage: string);
     { Offers the user a list of encodings after a decode has failed.  Returns
       '' when they decline, which means the file is simply not opened. }
@@ -710,8 +711,11 @@ type
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
     function ConfirmBJExpand(ACount: Int64): Boolean;
-    { Public so a check can press Return on a record without a dialog. }
+    { Public so a check can press Return on a record and then drive the
+      panel that opens, which is what a reader does. }
     procedure BJEditRequested(Sender: TObject; ATextIdx: Integer);
+    procedure BJValueChosen(Sender: TObject; AAccepted: Boolean);
+    property BJValuePopup: TLedBJValuePopup read FBJPopup;
     function RevealDocument(ADoc: TLedDocument): Boolean;
     procedure PopulateBookmarkMenu;
     procedure PopulateToolMenu;
@@ -4152,12 +4156,15 @@ procedure TLedMainForm.BJEditRequested(Sender: TObject; ATextIdx: Integer);
 var
   Tab: TLedTab;
   Doc: TLedDocument;
-  Prompt, Typed, Why: string;
-  Kind: TLedBJEditKind;
+  View: TLedEdit;
+  Why, Key: string;
+  At: TPoint;
 begin
   Tab := ActiveTab;
   if (Tab = nil) or (not Tab.Document.IsBJData) then Exit;
   Doc := Tab.Document;
+  View := Tab.ActiveView;
+  if View = nil then Exit;
 
   if not Doc.BJRowCanEdit(ATextIdx, Why) then
   begin
@@ -4167,21 +4174,43 @@ begin
     Exit;
   end;
 
-  Prompt := 'New value:';
-  if (ATextIdx >= 0) and (ATextIdx <= High(Doc.BJDataRows)) and
-     (Doc.BJDataRows[ATextIdx].Key <> '') then
-    Prompt := Format('New value for "%s":', [Doc.BJDataRows[ATextIdx].Key]);
+  Key := '';
+  if (ATextIdx >= 0) and (ATextIdx <= High(Doc.BJDataRows)) then
+    Key := Doc.BJDataRows[ATextIdx].Key;
 
-  Typed := Doc.BJRowValueText(ATextIdx);
-  if Silent then
+  if FBJPopup = nil then
   begin
-    if SilentValueChoice = '' then Exit;
-    Typed := SilentValueChoice;
-  end
-  else if not InputQuery('Edit Value', Prompt, Typed) then
-    Exit;
+    FBJPopup := TLedBJValuePopup.Create(Self);
+    FBJPopup.OnDone := @BJValueChosen;
+  end;
+  FBJPopupDoc := Doc;
+  FBJPopupRow := ATextIdx;
 
-  Kind := Doc.EditBJRow(ATextIdx, Typed, Why);
+  { Under the row it is editing, at the left margin of the text: the panel
+    is about that line, and a dialog in the middle of the screen would leave
+    the reader looking for which one it came from. }
+  At := View.ClientToScreen(Point(0,
+    (ATextIdx - View.TopLine + 2) * View.LineHeight));
+  FBJPopup.ShowFor(At.x, At.y, Key, Doc.BJRowValueText(ATextIdx),
+    Doc.BJDataRows[ATextIdx].Value.Marker);
+end;
+
+{ The panel is done with.  The document it was opened on is checked rather
+  than assumed: the panel does not hold the window still, so a tab can have
+  been closed or switched while it was up. }
+procedure TLedMainForm.BJValueChosen(Sender: TObject; AAccepted: Boolean);
+var
+  Tab: TLedTab;
+  Why: string;
+  Kind: TLedBJEditKind;
+begin
+  if not AAccepted then Exit;
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.Document <> FBJPopupDoc) then Exit;
+  if FBJPopup.ChosenMarker = #0 then Exit;
+
+  Kind := FBJPopupDoc.EditBJRow(FBJPopupRow, FBJPopup.ValueText, Why,
+    FBJPopup.ChosenMarker);
   if Kind = bjeRefused then
   begin
     ReportError(Why);
@@ -4190,6 +4219,7 @@ begin
 
   RefreshTabCaption(Tab);
   UpdateStatusBar;
+  LedTryFocus(Tab.ActiveView);
 end;
 
 procedure TLedMainForm.actEditValueExecute(Sender: TObject);
@@ -4716,6 +4746,13 @@ begin
     actUndo.Enabled := Tab.Document.CanUndoHex or Tab.Document.CanUndoBJEdit;
     actRedo.Enabled := False;
   end;
+  { A value panel is about one record of one document; when the window has
+    moved to another, it is about nothing.  Asked here because this is the
+    pass that already knows which document the window is on. }
+  if (FBJPopup <> nil) and FBJPopup.Visible and
+     ((Tab = nil) or (Tab.Document <> FBJPopupDoc)) then
+    FBJPopup.Finish(False);
+
   { Only where there is a record to type over.  The caret is on one or it is
     not, so this is answered per line rather than per document. }
   actEditValue.Enabled := HasDoc and Tab.Document.IsBJData and
