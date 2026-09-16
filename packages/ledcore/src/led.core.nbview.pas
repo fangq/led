@@ -90,6 +90,10 @@ function LedNBRowsText(const ARows: TLedNBRows): string;
 { The header line for a cell: its execution count, what it is, and a rule. }
 function LedNBHeaderText(ANotebook: TLedNotebook; ACell: Integer): string;
 
+{ The line that introduces a cell's output.  Public because re-rendering one
+  cell after it has run writes this line without walking the whole file. }
+function LedNBOutLabelText: string;
+
 { Every line a cell's outputs render to, in order.  AIsError comes back with
   one flag per line.  Empty for a cell with no outputs. }
 procedure LedNBOutputLines(ANotebook: TLedNotebook; ACell: Integer;
@@ -159,6 +163,11 @@ begin
   n := LedNBRuleWidth - Length(AText) - 1;
   if n < 3 then n := 3;
   Result := AText + ' ' + StringOfChar('-', n);
+end;
+
+function LedNBOutLabelText: string;
+begin
+  Result := RuleAfter('out');
 end;
 
 function LedNBHeaderText(ANotebook: TLedNotebook; ACell: Integer): string;
@@ -387,7 +396,7 @@ begin
       LedNBOutputLines(ANotebook, Cell, Outs, Errors);
       if Outs.Count > 0 then
       begin
-        Add(nbrOutLabel, Cell, RuleAfter('out'));
+        Add(nbrOutLabel, Cell, LedNBOutLabelText);
         for i := 0 to Outs.Count - 1 do
           Add(nbrOutput, Cell, StringOfChar(' ', LedNBOutIndent) + Outs[i],
             -1, (i <= High(Errors)) and Errors[i]);

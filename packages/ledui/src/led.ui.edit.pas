@@ -88,6 +88,13 @@ type
   TLedHexKeyEvent = procedure(Sender: TObject; AOffset: Integer;
     ANibble: Integer; const AChar: string; var AHandled: Boolean) of object;
 
+  { Asked before an editing command runs over a notebook: False stops it.
+    The view knows a command is about to change text and where the caret is;
+    which lines of a notebook may be changed is the document's business, so
+    it is asked. }
+  TLedNBGuardEvent = function(Sender: TObject;
+    ACommand: TSynEditorCommand): Boolean of object;
+
   TLedEdit = class(TSynEdit)
   private
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
@@ -103,6 +110,8 @@ type
     FOnHexKey: TLedHexKeyEvent;
     FOnBJOpen: TLedBJOpenEvent;
     FOnBJEdit: TLedBJOpenEvent;
+    FNotebookMode: Boolean;
+    FOnNBGuard: TLedNBGuardEvent;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FWrapOn: Boolean;
     FCompletion: TSynCompletion;
@@ -137,7 +146,6 @@ type
       for it -- LED stopped shading past the line end -- so treating it as a
       selection meant a click that suppressed the current-line rules and put
       nothing in their place. }
-    function SelectionIsReal: Boolean;
     procedure ApplyDebugGutterWidth;
     procedure ColumnCommand(Sender: TObject;
       var Command: TSynEditorCommand; var AChar: TUTF8Char; Data: Pointer);
@@ -182,6 +190,13 @@ type
       afterwards in StatusChanged: that is SynEdit's own notification, and a
       caret moved from inside it does not take. }
     procedure SetCaretXY(Value: TPoint); override;
+    { Where a notebook's read-only lines are kept read-only.  Every command
+      that changes text is in one numbered range -- SynEdit says so itself --
+      so this is one question asked in one place rather than a guess per
+      keystroke, and a paste, a backspace and a block indent are all caught
+      by the same net. }
+    procedure DoOnProcessCommand(var Command: TSynEditorCommand;
+      var AChar: TUTF8Char; Data: pointer); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -235,6 +250,16 @@ type
       the way it owns OnBJOpen: asking the reader what the value should be
       takes a dialog, and dialogs belong to the window. }
     property OnBJEdit: TLedBJOpenEvent read FOnBJEdit write FOnBJEdit;
+    { True when the buffer is a notebook.  Unlike the hex and structure
+      views this one is editable: what it protects is the few lines that are
+      a rendering rather than the file's own text. }
+    { Whether there is a selection with something in it.  SynEdit's SelAvail
+      is true of an empty one too, and code that asks the wrong question of
+      it takes the selection path for a caret that is not selecting
+      anything. }
+    function SelectionIsReal: Boolean;
+    property NotebookMode: Boolean read FNotebookMode write FNotebookMode;
+    property OnNBGuard: TLedNBGuardEvent read FOnNBGuard write FOnNBGuard;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
     { SynEdit tracks the physical row/column of the last mouse click here,
@@ -1511,6 +1536,19 @@ begin
     BJOpenClicked(Idx)
   else if Assigned(FOnBJEdit) then
     FOnBJEdit(Self, Idx);
+end;
+
+procedure TLedEdit.DoOnProcessCommand(var Command: TSynEditorCommand;
+  var AChar: TUTF8Char; Data: pointer);
+begin
+  if FNotebookMode and Assigned(FOnNBGuard) and
+     (Command >= ecEditCommandFirst) and (Command <= ecEditCommandLast) and
+     (not FOnNBGuard(Self, Command)) then
+  begin
+    Command := ecNone;
+    Exit;
+  end;
+  inherited DoOnProcessCommand(Command, AChar, Data);
 end;
 
 procedure TLedEdit.KeyDown(var Key: Word; Shift: TShiftState);

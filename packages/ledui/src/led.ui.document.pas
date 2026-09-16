@@ -19,9 +19,9 @@ interface
 
 uses
   Classes, SysUtils, Math, Contnrs, Graphics, LazFileUtils, SynEdit, SynEditTypes,
-  SynEditMiscClasses, SynEditHighlighter,
+  SynEditMiscClasses, SynEditHighlighter, SynEditKeyCmds,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
-  Led.Core.BJDEdit,
+  Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView,
   Led.Syn.BJData,
   Led.Core.Encodings,
   Led.Core.Config,
@@ -93,6 +93,19 @@ type
       one and owned by the document: it carries that document's rows, so it
       cannot be shared the way the language ones in Led.Syn.Factory are. }
     FBJHigh: TLedBJHighlighter;
+    { A Jupyter notebook.  Not a binary and not read-only: the buffer is
+      editable text, and what the document protects is the handful of lines
+      in it that are a rendering of the file rather than the file's own
+      text -- the headers, the output labels and the outputs.
+
+      Which lines those are is not worked out by looking at them.  Every
+      rendered line carries a tag in the buffer's own per-line Objects,
+      which SynEdit moves with its line when lines are inserted or deleted
+      above it, so the map stays true through any amount of typing without
+      the document having to follow the edits. }
+    FIsNotebook: Boolean;
+    FNotebook: TLedNotebook;
+    FNBError: string;           // why a .ipynb would not open as one
     FForceText: Boolean;        // the user asked for the text editor anyway
     { The bytes themselves, when the document is a dump.  This is the file;
       the buffer the views show is a rendering of it, rebuilt a row at a time
@@ -118,6 +131,11 @@ type
     function BJLineForOffset(AOffset: PtrUInt): Integer;
     function BJRow(ATextIdx: Integer; out ARow: TLedBJRow): Boolean;
     function BJRewalk(ATextIdx: Integer; APatched: Boolean): Boolean;
+    function NBTagOf(ALine: Integer): PtrInt;
+    procedure NBTag(ALine: Integer; AKind, ACell: Integer);
+    function NBHeaderAbove(ALine: Integer; out ACell: Integer): Integer;
+    procedure NBRender;
+    function NBGuard(Sender: TObject; ACommand: TSynEditorCommand): Boolean;
     procedure ReadModelines;
     procedure DetectLanguage;
     procedure ApplyLanguage;
@@ -227,6 +245,32 @@ type
       marker on the way in would not come back through the same door. }
     function CanUndoBJEdit: Boolean;
     function UndoBJEdit: Integer;
+
+    { True when the buffer is a rendering of a Jupyter notebook. }
+    property IsNotebook: Boolean read FIsNotebook;
+    { The notebook itself, for the kernel and for anything that needs the
+      file rather than the rendering.  nil unless IsNotebook. }
+    property Notebook: TLedNotebook read FNotebook;
+    { Why a .ipynb opened as plain text instead.  Read and cleared, like the
+      BJData one, so a reload reports again and a redraw does not. }
+    function TakeNotebookError: string;
+
+    { The cell a buffer line belongs to, or -1.  Lines in the gap between
+      cells belong to none. }
+    function NBCellOfLine(ATextIdx: Integer): Integer;
+    { Whether a line is one the reader may type into: the cell's own source,
+      as opposed to a header or an output. }
+    function NBLineIsSource(ATextIdx: Integer): Boolean;
+    { How many cells, and the line a cell's source starts on. }
+    function NBCellCount: Integer;
+    function NBSourceLineOf(ACell: Integer): Integer;
+    { Copies what the buffer holds back into the notebook, cell by cell.
+      Called before saving and before running: the buffer is what the reader
+      has been typing into, so it is the truth about the source. }
+    procedure NBSyncFromBuffer;
+    { Re-renders one cell's header and outputs from the notebook, leaving its
+      source lines alone -- what running a cell needs. }
+    procedure NBRefreshCell(ACell: Integer);
 
     { Asked before opening something large; nil means do not ask.  The
       document does not put dialogs on the screen -- the window supplies
@@ -372,6 +416,7 @@ begin
   { Owned here rather than by a component, because it carries this document's
     rows and nothing else's. }
   FBJHigh.Free;
+  FNotebook.Free;
   inherited Destroy;
 end;
 
@@ -432,6 +477,11 @@ begin
   { And the structure view says so too, which is what colours its offset
     column and keeps the caret out of it. }
   AView.BJDataMode := FIsBJData;
+  AView.NotebookMode := FIsNotebook;
+  if FIsNotebook then
+    AView.OnNBGuard := @NBGuard
+  else
+    AView.OnNBGuard := nil;
   if IsHexDump then
     AView.OnHexKey := @HexKey
   else
@@ -958,6 +1008,341 @@ begin
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
+{ ---- notebooks ---- }
+
+{ The tag on a rendered line, or 0 for a line of a cell's own source.
+
+  Source lines are deliberately untagged.  Everything else -- the header, the
+  output label, each output line, the gap between cells -- carries one, and a
+  source line is then "an untagged line under a header".  That way the map
+  depends only on lines the reader cannot edit, and the ones they can edit
+  need no bookkeeping at all: SynEdit carries each tag along with its line
+  when lines are inserted or deleted above it, so typing twenty lines into a
+  cell moves every header below it without the document being told. }
+const
+  NBTagHeader = 1;
+  NBTagOut    = 2;      // the output label and the output lines
+  NBTagGap    = 3;      // the blank line between two cells
+
+function TLedDocument.NBTagOf(ALine: Integer): PtrInt;
+begin
+  Result := 0;
+  if (ALine < 0) or (ALine >= FMaster.Lines.Count) then Exit;
+  Result := PtrInt(FMaster.Lines.Objects[ALine]);
+end;
+
+procedure TLedDocument.NBTag(ALine: Integer; AKind, ACell: Integer);
+begin
+  if (ALine < 0) or (ALine >= FMaster.Lines.Count) then Exit;
+  if AKind = 0 then
+    FMaster.Lines.Objects[ALine] := nil
+  else
+    FMaster.Lines.Objects[ALine] := TObject(PtrInt(-(ACell * 4 + AKind)));
+end;
+
+{ The header line at or above ALine, and which cell it opens.  -1 when there
+  is none above it, or when what is above is not a header -- an output line,
+  say, which means ALine is not inside any cell's source. }
+function TLedDocument.NBHeaderAbove(ALine: Integer;
+  out ACell: Integer): Integer;
+var
+  i: Integer;
+  T: PtrInt;
+begin
+  ACell := -1;
+  Result := -1;
+  i := ALine;
+  while i >= 0 do
+  begin
+    T := NBTagOf(i);
+    if T <> 0 then
+    begin
+      if (-T) mod 4 = NBTagHeader then
+      begin
+        ACell := (-T) div 4;
+        Exit(i);
+      end;
+      Exit(-1);
+    end;
+    Dec(i);
+  end;
+end;
+
+function TLedDocument.NBCellOfLine(ATextIdx: Integer): Integer;
+var
+  T: PtrInt;
+  Cell: Integer;
+begin
+  Result := -1;
+  if not FIsNotebook then Exit;
+  T := NBTagOf(ATextIdx);
+  if T <> 0 then
+  begin
+    if (-T) mod 4 = NBTagGap then Exit(-1);
+    Exit((-T) div 4);
+  end;
+  NBHeaderAbove(ATextIdx, Cell);
+  Result := Cell;
+end;
+
+function TLedDocument.NBLineIsSource(ATextIdx: Integer): Boolean;
+var
+  Cell: Integer;
+begin
+  Result := FIsNotebook and (NBTagOf(ATextIdx) = 0) and
+            (NBHeaderAbove(ATextIdx, Cell) >= 0);
+end;
+
+function TLedDocument.NBCellCount: Integer;
+begin
+  if FIsNotebook then Result := FNotebook.CellCount else Result := 0;
+end;
+
+function TLedDocument.NBSourceLineOf(ACell: Integer): Integer;
+var
+  i, Cell: Integer;
+  T: PtrInt;
+begin
+  Result := -1;
+  if not FIsNotebook then Exit;
+  for i := 0 to FMaster.Lines.Count - 1 do
+  begin
+    T := NBTagOf(i);
+    if (T <> 0) and ((-T) mod 4 = NBTagHeader) then
+    begin
+      Cell := (-T) div 4;
+      if Cell = ACell then
+      begin
+        { The line after the header, which always exists: a cell with no
+          source is rendered with one empty line to type on. }
+        if i + 1 < FMaster.Lines.Count then Result := i + 1;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+{ Whether an editing command may run.
+
+  A command is refused when it would change a line that is a rendering
+  rather than the file's own text.  The edges matter as much as the middle:
+  a backspace at the start of a cell's first line would pull it into the
+  header, and a delete at the end of its last line would swallow the output
+  label, so both are refused even though the caret is on a line that is
+  otherwise editable. }
+function TLedDocument.NBGuard(Sender: TObject;
+  ACommand: TSynEditorCommand): Boolean;
+var
+  View: TLedEdit;
+  i, Y, Cell, OtherCell: Integer;
+  B, E: TPoint;
+begin
+  Result := True;
+  if not FIsNotebook then Exit;
+  View := TLedEdit(Sender);
+
+  { A real selection, not SynEdit's SelAvail: that is true of an empty
+    selection as well, and an empty one took this branch and let the checks
+    on the edges below be skipped -- which is how a backspace at the start of
+    a cell came to pull the cell into its header. }
+  if View.SelectionIsReal then
+  begin
+    B := View.BlockBegin;
+    E := View.BlockEnd;
+    { A selection that ends at the very start of a line does not include
+      that line, and refusing on it would make a whole-line selection
+      undeletable. }
+    if (E.X = 1) and (E.Y > B.Y) then Dec(E.Y);
+    Cell := NBCellOfLine(B.Y - 1);
+    for i := B.Y - 1 to E.Y - 1 do
+      if (not NBLineIsSource(i)) or (NBCellOfLine(i) <> Cell) then
+        Exit(False);
+    Exit;
+  end;
+
+  Y := View.CaretY - 1;
+  if not NBLineIsSource(Y) then Exit(False);
+  Cell := NBCellOfLine(Y);
+
+  { Backspace at the left margin, and the two ways of deleting backwards
+    over a line break.
+
+    Spelled out rather than tested against a set: SynEdit numbers its editing
+    commands from 501, a Pascal set holds 0..255, and "ACommand in [...]"
+    compiled with a range-check warning and then matched nothing -- so a
+    backspace at the start of a cell pulled the cell into its header until
+    the compiler's own warning was read. }
+  if ((ACommand = ecDeleteLastChar) or (ACommand = ecDeleteLastWord)) and
+     (View.CaretX = 1) then
+  begin
+    if not NBLineIsSource(Y - 1) then Exit(False);
+    OtherCell := NBCellOfLine(Y - 1);
+    if OtherCell <> Cell then Exit(False);
+  end;
+
+  if ((ACommand = ecDeleteChar) or (ACommand = ecDeleteWord)) and
+     (View.CaretX > Length(FMaster.Lines[Y])) then
+  begin
+    if not NBLineIsSource(Y + 1) then Exit(False);
+    OtherCell := NBCellOfLine(Y + 1);
+    if OtherCell <> Cell then Exit(False);
+  end;
+end;
+
+{ The whole notebook into the buffer, with every rendered line tagged.  Used
+  when a file is opened and when the structure changes; one cell's outputs
+  changing goes through NBRefreshCell instead, which leaves the rest of the
+  page and the undo history alone. }
+procedure TLedDocument.NBRender;
+var
+  Rows: TLedNBRows;
+  Text: string;
+  i: Integer;
+begin
+  if not FIsNotebook then Exit;
+  Text := LedNBRender(FNotebook, Rows);
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := Text;
+    { Lines.Text on an empty document leaves one line; a notebook always
+      renders at least a header, so a mismatch here would mean the render
+      and the buffer disagree, and the tags would go on the wrong lines. }
+    for i := 0 to High(Rows) do
+    begin
+      if i >= FMaster.Lines.Count then Break;
+      case Rows[i].Kind of
+        nbrHeader:   NBTag(i, NBTagHeader, Rows[i].Cell);
+        nbrOutLabel,
+        nbrOutput:   NBTag(i, NBTagOut, Rows[i].Cell);
+        nbrBlank:    NBTag(i, NBTagGap, 0);
+      else
+        NBTag(i, 0, 0);
+      end;
+    end;
+    FMaster.ClearUndo;
+    FMaster.Modified := False;
+  finally
+    FMaster.EndUpdate;
+  end;
+end;
+
+procedure TLedDocument.NBSyncFromBuffer;
+var
+  i, Cell, Line: Integer;
+  Source: string;
+  First: Boolean;
+begin
+  if not FIsNotebook then Exit;
+  for Cell := 0 to FNotebook.CellCount - 1 do
+  begin
+    Line := NBSourceLineOf(Cell);
+    if Line < 0 then Continue;
+    Source := '';
+    First := True;
+    i := Line;
+    while (i < FMaster.Lines.Count) and (NBTagOf(i) = 0) do
+    begin
+      if not First then Source := Source + #10;
+      Source := Source + FMaster.Lines[i];
+      First := False;
+      Inc(i);
+    end;
+    { Only when it differs, so that a notebook opened and saved again is the
+      same bytes: rewriting a cell's source splits it into lines afresh, and
+      a file that stored its source as one string would come back as a list. }
+    if Source <> FNotebook.CellSource(Cell) then
+      FNotebook.SetCellSource(Cell, Source);
+  end;
+end;
+
+procedure TLedDocument.NBRefreshCell(ACell: Integer);
+var
+  Head, i, Cell, Stop: Integer;
+  T: PtrInt;
+  Outs: TStringList;
+  Errors: TLedNBFlags;
+  Carets: array of TPoint;
+  V: TLedEdit;
+begin
+  if not FIsNotebook then Exit;
+
+  { Where the cell is now. }
+  Head := -1;
+  for i := 0 to FMaster.Lines.Count - 1 do
+  begin
+    T := NBTagOf(i);
+    if (T <> 0) and ((-T) mod 4 = NBTagHeader) and
+       ((-T) div 4 = ACell) then
+    begin
+      Head := i;
+      Break;
+    end;
+  end;
+  if Head < 0 then Exit;
+
+  { Its source lines end where the next tagged line begins. }
+  Stop := Head + 1;
+  while (Stop < FMaster.Lines.Count) and (NBTagOf(Stop) = 0) do Inc(Stop);
+
+  SetLength(Carets, FViews.Count);
+  for i := 0 to FViews.Count - 1 do
+    Carets[i] := TLedEdit(FViews[i]).CaretXY;
+
+  Outs := TStringList.Create;
+  FMaster.BeginUpdate;
+  try
+    Outs.TextLineBreakStyle := tlbsLF;
+    LedNBOutputLines(FNotebook, ACell, Outs, Errors);
+
+    { Out with the old output block: every tagged output line of this cell
+      that follows the source. }
+    i := Stop;
+    while i < FMaster.Lines.Count do
+    begin
+      T := NBTagOf(i);
+      if T = 0 then Break;
+      Cell := (-T) div 4;
+      if ((-T) mod 4 <> NBTagOut) or (Cell <> ACell) then Break;
+      FMaster.Lines.Delete(i);
+    end;
+
+    { And in with the new. }
+    if Outs.Count > 0 then
+    begin
+      FMaster.Lines.Insert(Stop, LedNBOutLabelText);
+      NBTag(Stop, NBTagOut, ACell);
+      for i := 0 to Outs.Count - 1 do
+      begin
+        FMaster.Lines.Insert(Stop + 1 + i,
+          StringOfChar(' ', LedNBOutIndent) + Outs[i]);
+        NBTag(Stop + 1 + i, NBTagOut, ACell);
+      end;
+    end;
+
+    { The header carries the execution count, which is what just changed. }
+    FMaster.Lines[Head] := LedNBHeaderText(FNotebook, ACell);
+    NBTag(Head, NBTagHeader, ACell);
+  finally
+    FMaster.EndUpdate;
+    Outs.Free;
+  end;
+
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    Carets[i].y := Min(Carets[i].y, FMaster.Lines.Count);
+    V.CaretXY := Carets[i];
+  end;
+
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+function TLedDocument.TakeNotebookError: string;
+begin
+  Result := FNBError;
+  FNBError := '';
+end;
+
 { The line a record is on now, or -1.  Linear: this runs once per click. }
 function TLedDocument.BJLineForOffset(AOffset: PtrUInt): Integer;
 var
@@ -1013,6 +1398,7 @@ var
   Encodings: TStringList;
   Err: TLedFileError;
   Binary, BJData, Detecting: Boolean;
+  NBErr: string;
   BJRows: TLedBJRows;
   BJErr: string;
   BJOffset: PtrUInt;
@@ -1104,6 +1490,30 @@ begin
     end;
   end;
 
+  { A notebook, if the name says so and the contents agree.  Asked after the
+    decode because a notebook is a text file: it is read as text like any
+    other, and what makes it a notebook is that the text parses.
+
+    A .ipynb that does not parse opens as plain text with the reason on
+    offer -- the same bargain the structure view makes with a BJData file
+    that will not decode.  The reader can still see the file, and the editor
+    is not pretending to understand it. }
+  FIsNotebook := False;
+  FNBError := '';
+  FreeAndNil(FNotebook);
+  if Detecting and LedNBIsNotebookName(AFileName) and
+     (not Binary) and (not BJData) then
+  begin
+    FNotebook := TLedNotebook.Create;
+    if FNotebook.LoadFromText(Text, NBErr) then
+      FIsNotebook := True
+    else
+    begin
+      FNBError := NBErr;
+      FreeAndNil(FNotebook);
+    end;
+  end;
+
   { Past every raise: the document may be changed now. }
   FIsBinary := Binary or BJData;
   FIsBJData := BJData;
@@ -1126,6 +1536,11 @@ begin
     FMaster.EndUpdate;
   end;
 
+  { The buffer a notebook shows is its cells, not its JSON.  Done after the
+    plain text has gone in, so that a render which fails leaves the file
+    readable rather than leaving the buffer empty. }
+  if FIsNotebook then NBRender;
+
   FFileName := AFileName;
   NoteDiskState;
 
@@ -1138,7 +1553,11 @@ begin
   FConfig.SetStr(LedSetLineEnd, LedLineEndName(FInfo.LineEnd), lcsAuto);
   { A dump has no modeline and no language: what it looks like is decided
     here, not by anything in the file. }
-  if not FIsBinary then
+  if FIsNotebook then
+    { Not JSON, whatever the extension says: the buffer holds the cells, and
+      each of them is coloured in its own language rather than the file's. }
+    FConfig.SetStr(LedSetLang, '', lcsAuto)
+  else if not FIsBinary then
   begin
     ReadModelines;
     DetectLanguage;
@@ -1380,6 +1799,22 @@ begin
     if Assigned(FOnChanged) then FOnChanged(Self);
     Exit;
   end;
+  { A notebook saves the notebook.  The buffer is a rendering of it -- with
+    headers and outputs in it that are not in the file -- so writing the
+    buffer would write those lines into somebody's JSON.  What the reader
+    typed is in the cells' source lines, and that is copied back first. }
+  if FIsNotebook then
+  begin
+    NBSyncFromBuffer;
+    LedSaveTextFile(AFileName, FNotebook.SaveToText, FInfo,
+      LedPrefs.GetBool(LedPrefMakeBackups, False));
+    FFileName := AFileName;
+    FMaster.Modified := False;
+    NoteDiskState;
+    if Assigned(FOnChanged) then FOnChanged(Self);
+    Exit;
+  end;
+
   Renamed := not SameText(AFileName, FFileName);
   LedSaveTextFile(AFileName, PreparedText, FInfo,
     LedPrefs.GetBool(LedPrefMakeBackups, False));

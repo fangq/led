@@ -28,6 +28,7 @@ uses
   LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
+  Led.Core.NBFormat, Led.Core.NBView, fpjson,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5424,6 +5425,256 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ Editing a Jupyter notebook.
+
+  The buffer is a rendering of the file -- headers, source and output -- and
+  only the source lines are the file's own text.  What is checked here is
+  that the two stay in step: that the lines which are a rendering cannot be
+  typed into, that the ones which are the file's text can, that typing moves
+  the map of which line belongs to which cell, and that saving writes the
+  notebook rather than the page.
+
+  The strongest check is the last one: a notebook opened and saved without
+  being touched comes back byte for byte.  Everything else could be right
+  and that still fail, and if it fails every save is a whole-file diff. }
+procedure TestNotebookEditing(F: TLedMainForm);
+var
+  Path, Saved, Raw, Was: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Line, Cell, NewLine: Integer;
+  NB: TLedNotebook;
+  Err: string;
+  Written: TJSONObject;
+
+  function Fixture: string;
+  begin
+    Result :=
+    '{' + #10 +
+    ' "cells": [' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 1,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [' + #10 +
+    '    {' + #10 +
+    '     "name": "stdout",' + #10 +
+    '     "output_type": "stream",' + #10 +
+    '     "text": [' + #10 +
+    '      "3\n"' + #10 +
+    '     ]' + #10 +
+    '    }' + #10 +
+    '   ],' + #10 +
+    '   "source": [' + #10 +
+    '    "a = 1\n",' + #10 +
+    '    "print(a + 2)"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "markdown",' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "source": [' + #10 +
+    '    "# Notes"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": null,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": []' + #10 +
+    '  }' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {' + #10 +
+    '  "kernelspec": {' + #10 +
+    '   "display_name": "Python 3",' + #10 +
+    '   "language": "python",' + #10 +
+    '   "name": "python3"' + #10 +
+    '  },' + #10 +
+    '  "language_info": {' + #10 +
+    '   "name": "python"' + #10 +
+    '  }' + #10 +
+    ' },' + #10 +
+    ' "nbformat": 4,' + #10 +
+    ' "nbformat_minor": 5' + #10 +
+    '}' + #10 +
+    '';
+  end;
+
+  function LineOfText(const AWhat: string): Integer;
+  var
+    i: Integer;
+  begin
+    Result := -1;
+    for i := 0 to Doc.Master.Lines.Count - 1 do
+      if Pos(AWhat, Doc.Master.Lines[i]) > 0 then Exit(i);
+  end;
+
+begin
+  Say('Jupyter notebook editing');
+
+  Path := TempName('nb.ipynb');
+  WriteBytes(Path, Fixture);
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  V := Tab.ActiveView;
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Check('a .ipynb opens as a notebook', Doc.IsNotebook);
+  Check('and not as a binary', not Doc.IsBinary);
+  Check('the buffer shows the cells, not the JSON',
+    Pos('"cells"', Doc.Master.Lines.Text) = 0);
+  Check('the first line is a header: ' + Doc.Master.Lines[0],
+    Pos('[1] python', Doc.Master.Lines[0]) = 1);
+  CheckEq('and the line under it is the cell', 'a = 1',
+    Doc.Master.Lines[1]);
+  CheckEqInt('three cells', 3, Doc.NBCellCount);
+  Check('the output is on the page', LineOfText('  3') > 0);
+
+  { ---- which line is what ---- }
+
+  Check('a header is not source', not Doc.NBLineIsSource(0));
+  Check('the cell text is', Doc.NBLineIsSource(1));
+  CheckEqInt('and belongs to the first cell', 0, Doc.NBCellOfLine(1));
+  Line := LineOfText('# Notes');
+  Check('the markdown cell is source too', Doc.NBLineIsSource(Line));
+  CheckEqInt('in the second cell', 1, Doc.NBCellOfLine(Line));
+  Check('the gap between cells is not source',
+    not Doc.NBLineIsSource(Line - 2));
+  CheckEqInt('and belongs to no cell', -1, Doc.NBCellOfLine(Line - 2));
+
+  { ---- what may be typed into ---- }
+
+  Was := Doc.Master.Lines[0];
+  V.CaretXY := Point(3, 1);
+  V.CommandProcessor(ecChar, 'x', nil);
+  Pump;
+  CheckEq('typing on a header does nothing', Was, Doc.Master.Lines[0]);
+
+  V.CaretXY := Point(1, 2);
+  V.CommandProcessor(ecChar, 'x', nil);
+  Pump;
+  CheckEq('typing on the cell text types', 'xa = 1', Doc.Master.Lines[1]);
+  V.CommandProcessor(ecDeleteLastChar, '', nil);
+  Pump;
+  CheckEq('and comes back out again', 'a = 1', Doc.Master.Lines[1]);
+
+  { The edges: a backspace at the left margin of the first line would pull
+    the cell into its header, and a delete at the end of the last would
+    swallow the output label. }
+  V.CaretXY := Point(1, 2);
+  V.CommandProcessor(ecDeleteLastChar, '', nil);
+  Pump;
+  CheckEqInt('backspace at the start of a cell does not eat the header',
+    3, Doc.NBCellCount);
+  Check('which is still a header', not Doc.NBLineIsSource(0));
+  CheckEq('and the cell still starts where it did', 'a = 1',
+    Doc.Master.Lines[1]);
+
+  Line := LineOfText('print(a + 2)');
+  V.CaretXY := Point(Length(Doc.Master.Lines[Line]) + 1, Line + 1);
+  V.CommandProcessor(ecDeleteChar, '', nil);
+  Pump;
+  CheckEq('and delete at the end does not eat the output label',
+    'print(a + 2)', Doc.Master.Lines[Line]);
+
+  { An output line is a rendering as well. }
+  Line := LineOfText('  3');
+  Was := Doc.Master.Lines[Line];
+  V.CaretXY := Point(3, Line + 1);
+  V.CommandProcessor(ecChar, 'z', nil);
+  Pump;
+  CheckEq('output cannot be typed into', Was, Doc.Master.Lines[Line]);
+
+  { ---- typing moves the map ---- }
+
+  Line := LineOfText('print(a + 2)');
+  V.CaretXY := Point(Length(Doc.Master.Lines[Line]) + 1, Line + 1);
+  V.CommandProcessor(ecLineBreak, '', nil);
+  Pump;
+  V.CommandProcessor(ecChar, 'b', nil);
+  Pump;
+  NewLine := Line + 1;
+  CheckEq('a new line in a cell takes what is typed', 'b',
+    Doc.Master.Lines[NewLine]);
+  Check('and is part of the cell', Doc.NBLineIsSource(NewLine));
+  CheckEqInt('the same cell', 0, Doc.NBCellOfLine(NewLine));
+  Check('the output label moved down with it',
+    Pos('out', Doc.Master.Lines[NewLine + 1]) = 1);
+  Check('and the markdown cell is still the markdown cell',
+    Doc.NBCellOfLine(LineOfText('# Notes')) = 1);
+
+  { ---- saving writes the notebook ---- }
+
+  Doc.Save;
+  Pump;
+  Check('saving a notebook leaves it unmodified', not Doc.Modified);
+  Saved := '';
+  with TFileStream.Create(Path, fmOpenRead) do
+    try
+      SetLength(Saved, Size);
+      if Size > 0 then Read(Saved[1], Size);
+    finally
+      Free;
+    end;
+  Check('what was written is JSON again', Pos('"cells"', Saved) > 0);
+  Check('with the typed line in it', Pos('print(a + 2)\n', Saved) > 0);
+  Check('and the line that was added', Pos('"b"', Saved) > 0);
+
+  NB := TLedNotebook.Create;
+  try
+    Check('and it parses as a notebook: ' + Err, NB.LoadFromText(Saved, Err));
+    CheckEq('the cell now holds both lines',
+      'a = 1' + #10 + 'print(a + 2)' + #10 + 'b', NB.CellSource(0));
+    CheckEq('and the other cells are untouched', '# Notes', NB.CellSource(1));
+  finally
+    NB.Free;
+  end;
+
+  { ---- outputs come from the file, not from the page ---- }
+
+  Doc.Notebook.ClearCellOutputs(0);
+  Written := TJSONObject.Create;
+  Written.Add('output_type', 'stream');
+  Written.Add('name', 'stdout');
+  Written.Add('text', TJSONArray.Create(['forty-two' + #10]));
+  Doc.Notebook.AddCellOutput(0, Written);
+  Doc.NBRefreshCell(0);
+  Pump;
+  Check('a re-rendered cell shows its new output',
+    LineOfText('forty-two') > 0);
+  Check('and the old output is gone', LineOfText('  3') < 0);
+  CheckEq('while its source is left alone', 'a = 1', Doc.Master.Lines[1]);
+  Check('and the source is still source', Doc.NBLineIsSource(1));
+
+  { ---- and the round trip the whole thing rests on ---- }
+
+  Path := TempName('nb2.ipynb');
+  WriteBytes(Path, Fixture);
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('it opens again', Doc.IsNotebook);
+  Doc.Save;
+  Pump;
+  Raw := '';
+  with TFileStream.Create(Path, fmOpenRead) do
+    try
+      SetLength(Raw, Size);
+      if Size > 0 then Read(Raw[1], Size);
+    finally
+      Free;
+    end;
+  CheckEq('a notebook saved without being touched is the same bytes',
+    Fixture, Raw);
+
+  DeleteFile(Path);
+end;
+
 { Changing a value in a structure view, which is the half of the BJData work
   that writes.  What is measured here is the document's side of it -- the
   view is a rendering, so "it worked" means the bytes changed and the page
@@ -9519,6 +9770,7 @@ begin
   TestBJDataFiles(F);
   TestBJDataFolding(F);
   TestBJDataEditing(F);
+  TestNotebookEditing(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
   WriteLn;
