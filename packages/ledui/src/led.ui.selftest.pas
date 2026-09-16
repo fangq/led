@@ -5447,8 +5447,10 @@ var
   Tab: TLedTab;
   Pane: TLedNotebookPane;
   B: TLedNBCellBox;
-  i, Bottom: Integer;
+  i, Bottom, Was, WasImage: Integer;
   Img: TImage;
+  Host: TForm;
+  Loose: TLedNotebookPane;
 
   function Fixture: string;
   begin
@@ -5596,6 +5598,26 @@ begin
     (B <> nil) and (B.Rendered <> nil) and B.Rendered.Visible);
   Check('and has no Run button, because there is nothing to run',
     B.RunButton = nil);
+
+  { Prose is rendered, so it needs a way in.  A button, because a click on
+    the rendered text goes to the renderer first and may not come back. }
+  Check('a prose cell offers a way to edit it', B.EditButton <> nil);
+  B.EditButton.Click;
+  Pump;
+  Check('which shows the cell as text', B.Editing and (B.Editor <> nil)
+    and B.Editor.Visible);
+  Check('the Markdown itself, not the rendering',
+    Pos('## A heading', B.Editor.Lines.Text) = 1);
+  B.Editor.Lines.Text := '## A heading' + #10 + #10 + 'edited prose';
+  B.Editor.Modified := True;
+  B.EditButton.Click;
+  Pump;
+  Check('and pressing it again puts it back to rendered',
+    (not B.Editing) and B.Rendered.Visible);
+  CheckEq('keeping what was typed', '## A heading' + #10 + #10 +
+    'edited prose', Doc.Notebook.CellSource(0));
+  Check('which the line view has too',
+    Pos('edited prose', Doc.Master.Lines.Text) > 0);
   { Every prose cell was forty pixels high and showed its first line until
     the rendered height was measured instead of assumed. }
   CheckGt('a prose cell is as tall as its prose',
@@ -5659,6 +5681,66 @@ begin
   CheckEqInt('with no cell added or lost', 5, Doc.NBCellCount);
   Check('and the header above it still a header',
     not Doc.NBLineIsSource(Doc.NBSourceLineOf(3) - 1));
+
+  { ---- resizing ---- }
+
+  { The pane was built at one width and its boxes kept it: dragging the
+    splitter left every cell the width it had been opened at, with its text
+    wrapped for a pane that was no longer there.
+
+    Checked on a pane of its own rather than on the docked one.  Setting the
+    width of a docked control does nothing -- the dock owns that -- so a
+    check that tried it was measuring the dock's opinion and not this
+    pane's layout. }
+  Host := TForm.CreateNew(nil);
+  try
+    Host.SetBounds(0, 0, 700, 500);
+    Loose := TLedNotebookPane.Create(Host);
+    Loose.Parent := Host;
+    { Its own bounds rather than alClient: a form that has never been shown
+      does not hand out the client area it was asked for, and the first
+      version of this check was measuring a pane 150 pixels wide however wide
+      the form was told to be. }
+    Loose.Align := alNone;
+    Loose.SetBounds(0, 0, 700, 460);
+    Loose.ShowDocument(Doc);
+    Pump;
+
+    CheckEqInt('every box is the width of the pane it is in',
+      Loose.ClientWidth - 4, Loose.Box(1).Width);
+    Was := Loose.Box(1).Width;
+    WasImage := 0;
+    if ImageIn(Loose.Box(4)) <> nil then
+      WasImage := ImageIn(Loose.Box(4)).Width;
+
+    Loose.Width := 1000;
+    Pump;
+    { Coalesced, so that dragging a splitter does not re-wrap every cell per
+      pixel; the check asks for the settled layout rather than waiting. }
+    Loose.Relayout;
+    Pump;
+
+    CheckGt('a box widens with the pane', Was, Loose.Box(1).Width);
+    CheckEqInt('to exactly the pane''s width',
+      Loose.ClientWidth - 4, Loose.Box(1).Width);
+    if WasImage > 0 then
+      CheckGt('and a scaled picture is drawn bigger in the wider pane',
+        WasImage, ImageIn(Loose.Box(4)).Width);
+
+    Loose.Width := 380;
+    Pump;
+    Loose.Relayout;
+    Pump;
+    Check('and narrows again', Loose.Box(1).Width < Was);
+    for i := 0 to Loose.CellCount - 1 do
+      Check(Format('box %d is inside the narrowed pane', [i]),
+        Loose.Box(i).Width <= Loose.ClientWidth);
+    if WasImage > 0 then
+      Check('and the picture is scaled down with it',
+        ImageIn(Loose.Box(4)).Width <= Loose.Box(4).Width);
+  finally
+    Host.Free;
+  end;
 
   { ---- the boxes are laid out in order, none on top of another ---- }
   Bottom := 0;

@@ -46,6 +46,11 @@ type
     FCell: Integer;
     FHead: TLabel;
     FRun: TSpeedButton;
+    { Prose is shown rendered, so it needs a way to be got at.  A button
+      rather than only a click on the text: the renderer may keep a click
+      for itself -- it has links to think about -- and a way in that depends
+      on that is a way in that sometimes is not there. }
+    FEditBtn: TSpeedButton;
     FEdit: TLedEdit;
     FRender: TIpHtmlPanel;
     FProvider: TIpFileDataProvider;
@@ -54,19 +59,25 @@ type
     FEditing: Boolean;         // a markdown cell being typed into
     procedure RunClicked(Sender: TObject);
     procedure RenderClicked(Sender: TObject);
+    procedure EditClicked(Sender: TObject);
     procedure EditExited(Sender: TObject);
     procedure MakeEditor;
     procedure MakeRender;
     procedure ProvideImage(Sender: TIpHtmlNode; const URL: string;
       var Picture: TPicture);
-    procedure BuildOutputs(var AY: Integer);
+    procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
 
   public
     constructor Create(AOwner: TComponent; ADoc: TLedDocument;
       ACell: Integer); reintroduce;
-    { Lays the cell out for its current contents and answers how tall it is. }
-    function Rebuild: Integer;
+    { Lays the cell out for AWidth and answers how tall it came to.
+
+      The width is given rather than read back from the box: laying the pane
+      out happens with autosizing held off, so a box that has just been told
+      its new width still reports the old one, and a picture scaled to that
+      came out a tenth of the size it should have been. }
+    function Rebuild(AWidth: Integer): Integer;
     { How tall this cell's editor has to be for the text in it. }
     function EditorHeight: Integer;
     { Takes what is in the editor and gives it to the document, which puts it
@@ -81,6 +92,12 @@ type
     property Editor: TLedEdit read FEdit;
     property Rendered: TIpHtmlPanel read FRender;
     property RunButton: TSpeedButton read FRun;
+    { The button that turns rendered prose into text and back.  nil on a code
+      cell, which is text already. }
+    property EditButton: TSpeedButton read FEditBtn;
+    { Whether this cell is showing its source rather than its rendering. }
+    property Editing: Boolean read FEditing;
+    procedure SetEditing(AValue: Boolean);
     property OnRunCell: TLedNBCellEvent read FOnRun write FOnRun;
     property OnEdited: TLedNBCellEvent read FOnEdited write FOnEdited;
   end;
@@ -91,11 +108,25 @@ type
     FBoxes: TFPList;           // of TLedNBCellBox
     FNote: TLabel;
     FOnRun: TLedNBCellEvent;
+    { Resizing is coalesced.  Dragging the splitter fires a resize per pixel,
+      and every one of them would re-wrap every cell and re-measure every
+      piece of prose; the pane waits until the dragging stops.  The preview
+      pane does the same, for the same reason. }
+    FResizeTimer: TTimer;
+    FLaidOutFor: Integer;      // the width the boxes were laid out for
     procedure CellRun(Sender: TObject; ACell: Integer);
     procedure CellEdited(Sender: TObject; ACell: Integer);
+    procedure ResizeSettled(Sender: TObject);
+  protected
+    procedure Resize; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+
+    { Lays the boxes out again for the pane's current width: the wrapped
+      height of a cell and the size a wide picture is scaled to both depend
+      on it. }
+    procedure Relayout;
 
     { Shows a document's cells, or a note saying why there are none.  Called
       when the pane is shown and when the tab changes. }
@@ -170,7 +201,35 @@ begin
     FRun.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
       LedScale96(20), LedScale96(20));
     FRun.OnClick := @RunClicked;
+  end
+  else
+  begin
+    FEditBtn := TSpeedButton.Create(Self);
+    FEditBtn.Parent := Self;
+    FEditBtn.Caption := '...';
+    FEditBtn.Hint := 'Edit this cell as text';
+    FEditBtn.ShowHint := True;
+    FEditBtn.Flat := True;
+    FEditBtn.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
+      LedScale96(20), LedScale96(20));
+    FEditBtn.OnClick := @EditClicked;
   end;
+end;
+
+{ Rendered prose to text and back.  Leaving it puts the typing away first,
+  which is what Commit does. }
+procedure TLedNBCellBox.SetEditing(AValue: Boolean);
+begin
+  if FEditing = AValue then Exit;
+  if not AValue then Commit;
+  FEditing := AValue;
+  Rebuild(Width);
+  if FEditing and (FEdit <> nil) and FEdit.CanFocus then FEdit.SetFocus;
+end;
+
+procedure TLedNBCellBox.EditClicked(Sender: TObject);
+begin
+  SetEditing(not FEditing);
 end;
 
 procedure TLedNBCellBox.RunClicked(Sender: TObject);
@@ -182,7 +241,7 @@ end;
 
 procedure TLedNBCellBox.Commit;
 begin
-  if (FEdit = nil) or (FDoc = nil) then Exit;
+  if (FEdit = nil) or (not LedDocumentIsOpen(FDoc)) then Exit;
   if not FEdit.Modified then Exit;
   FDoc.NBSetCellSource(FCell, FEdit.Lines.Text);
   FEdit.Modified := False;
@@ -193,9 +252,7 @@ end;
   Markdown, which is what every notebook front end does. }
 procedure TLedNBCellBox.RenderClicked(Sender: TObject);
 begin
-  FEditing := True;
-  Rebuild;
-  if FEdit <> nil then FEdit.SetFocus;
+  SetEditing(True);
 end;
 
 procedure TLedNBCellBox.EditExited(Sender: TObject);
@@ -204,7 +261,7 @@ begin
   if FEditing then
   begin
     FEditing := False;
-    Rebuild;
+    Rebuild(Width);
   end;
 end;
 
@@ -364,14 +421,14 @@ begin
 end;
 
 { The pictures and the text a cell produced, as widgets under it. }
-procedure TLedNBCellBox.BuildOutputs(var AY: Integer);
+procedure TLedNBCellBox.BuildOutputs(var AY: Integer; AWidth: Integer);
 var
   Outs: TStringList;
   Flags: TLedNBFlags;
   i, Index_, Count: Integer;
   Bytes, Mime: string;
   Img: TImage;
-  Room: Integer;
+  Room, W, H: Integer;
   Note: TLabel;
   Stream: TStringStream;
 begin
@@ -387,9 +444,11 @@ begin
     begin
       Img := TImage.Create(Self);
       Img.Parent := Self;
-      Img.AutoSize := True;
+      { Sized here rather than by AutoSize.  Laying the pane out holds
+        autosizing off, so an AutoSize image keeps the 90 by 90 the LCL gives
+        a fresh control -- which is what a 900-pixel plot came out as. }
+      Img.AutoSize := False;
       Img.Proportional := True;
-      Img.Stretch := False;
       Stream := TStringStream.Create(Bytes);
       try
         try
@@ -404,24 +463,28 @@ begin
       end;
       if Img <> nil then
       begin
-        Room := Width - LedScale96(LabelWidth + Pad * 2);
+        Room := AWidth - LedScale96(LabelWidth + Pad * 2);
         if Room < LedScale96(40) then Room := LedScale96(40);
-        Img.Left := LedScale96(LabelWidth + Pad);
-        Img.Top := AY;
         { A plot is saved at the size the plotting library chose, which is
           usually wider than a side pane.  Shown at its own size it is cut
           off at the edge with no sign that there is more of it, so one that
-          does not fit is scaled down whole. }
-        if Img.Picture.Width > Room then
+          does not fit is scaled down whole; one that fits is drawn as it
+          is. }
+        if (Img.Picture.Width > Room) and (Img.Picture.Width > 0) then
         begin
-          Img.AutoSize := False;
           Img.Stretch := True;
-          Img.Proportional := True;
-          Img.Width := Room;
-          Img.Height :=
-            Round(Img.Picture.Height * (Room / Img.Picture.Width));
+          W := Room;
+          H := Round(Img.Picture.Height * (Room / Img.Picture.Width));
+          if H < 1 then H := 1;
+        end
+        else
+        begin
+          Img.Stretch := False;
+          W := Img.Picture.Width;
+          H := Img.Picture.Height;
         end;
-        Inc(AY, Img.Height + LedScale96(4));
+        Img.SetBounds(LedScale96(LabelWidth + Pad), AY, W, H);
+        Inc(AY, H + LedScale96(4));
       end;
     end;
 
@@ -441,7 +504,7 @@ begin
       if (i <= High(Flags)) and Flags[i] then Note.Font.Color := clRed;
       Note.Caption := Outs[i];
       Note.SetBounds(LedScale96(LabelWidth + Pad), AY,
-        Width - LedScale96(LabelWidth + Pad * 2), FEdit.LineHeight);
+        AWidth - LedScale96(LabelWidth + Pad * 2), FEdit.LineHeight);
       Inc(AY, FEdit.LineHeight);
     end;
   finally
@@ -449,12 +512,13 @@ begin
   end;
 end;
 
-function TLedNBCellBox.Rebuild: Integer;
+function TLedNBCellBox.Rebuild(AWidth: Integer): Integer;
 var
   Y, Count, i, Room: Integer;
   Source, Page: string;
   Prose: Boolean;
 begin
+  Width := AWidth;
   { Everything below the head is made afresh: the outputs change shape, and
     a cell that has just run has different ones. }
   for i := ComponentCount - 1 downto 0 do
@@ -476,6 +540,17 @@ begin
 
   Source := FDoc.Notebook.CellSource(FCell);
   Prose := (FDoc.Notebook.CellKind(FCell) = nbkMarkdown) and (not FEditing);
+  if FEditBtn <> nil then
+    if FEditing then
+    begin
+      FEditBtn.Caption := 'ok';
+      FEditBtn.Hint := 'Show this cell rendered';
+    end
+    else
+    begin
+      FEditBtn.Caption := '...';
+      FEditBtn.Hint := 'Edit this cell as text';
+    end;
 
   Y := LedScale96(Pad);
   if Prose then
@@ -485,7 +560,7 @@ begin
     FRender.Visible := True;
     Page := '<html><body style="margin:0">' +
       LedMarkdownToHTML(Source) + '</body></html>';
-    Room := Width - LedScale96(LabelWidth + Pad * 2);
+    Room := AWidth - LedScale96(LabelWidth + Pad * 2);
     if Room < LedScale96(80) then Room := LedScale96(80);
     { How tall the prose comes out at that width, asked of a throwaway
       document of its own.  Without this every prose cell was given forty
@@ -510,7 +585,7 @@ begin
     { In two steps, because the second answer depends on the first: how tall
       the box has to be is how many rows the text wraps into, and that is not
       known until it has been given its width. }
-    Room := Width - LedScale96(LabelWidth + Pad * 2);
+    Room := AWidth - LedScale96(LabelWidth + Pad * 2);
     if Room < LedScale96(80) then Room := LedScale96(80);
     FEdit.SetBounds(LedScale96(LabelWidth + Pad), Y, Room,
       FEdit.LineHeight * 2);
@@ -518,7 +593,7 @@ begin
     Inc(Y, FEdit.Height + LedScale96(4));
   end;
 
-  BuildOutputs(Y);
+  BuildOutputs(Y, AWidth);
   Result := Y + LedScale96(Pad);
   Height := Result;
 end;
@@ -537,6 +612,67 @@ begin
   FNote.Align := alTop;
   FNote.BorderSpacing.Around := LedScale96(8);
   FNote.Visible := False;
+
+  FResizeTimer := TTimer.Create(Self);
+  FResizeTimer.Interval := 150;
+  FResizeTimer.Enabled := False;
+  FResizeTimer.OnTimer := @ResizeSettled;
+  FLaidOutFor := -1;
+end;
+
+procedure TLedNotebookPane.Resize;
+begin
+  inherited Resize;
+  if FBoxes = nil then Exit;
+  if FBoxes.Count = 0 then Exit;
+  if ClientWidth = FLaidOutFor then Exit;
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Enabled := True;
+end;
+
+procedure TLedNotebookPane.ResizeSettled(Sender: TObject);
+begin
+  FResizeTimer.Enabled := False;
+  Relayout;
+end;
+
+{ Every box to the pane's width, and every height worked out again for it.
+
+  Not a Reload: that would build the boxes afresh and take the caret out of
+  whichever one is being typed into.  Rebuild keeps the editor and its text
+  and only redoes what depends on the width -- the wrapped height, the
+  rendered prose, the scale a picture is drawn at. }
+procedure TLedNotebookPane.Relayout;
+var
+  i, Y, W: Integer;
+begin
+  if (FBoxes = nil) or (FBoxes.Count = 0) then Exit;
+  { The document may have closed since the boxes were built -- this runs from
+    a timer, and a tab can be shut between the resize and the settling.  The
+    cells are of a document that is gone, so they go too.  Without this the
+    docking checks, which resize every pane, walked into a freed document. }
+  if not LedDocumentIsOpen(FDoc) then
+  begin
+    FDoc := nil;
+    Reload;
+    Exit;
+  end;
+  W := ClientWidth - LedScale96(4);
+  if W < LedScale96(120) then W := LedScale96(120);
+
+  DisableAutoSizing;
+  try
+    Y := 0;
+    for i := 0 to FBoxes.Count - 1 do
+    begin
+      TLedNBCellBox(FBoxes[i]).SetBounds(0, Y, W,
+        TLedNBCellBox(FBoxes[i]).Height);
+      Inc(Y, TLedNBCellBox(FBoxes[i]).Rebuild(W) + LedScale96(4));
+    end;
+    FLaidOutFor := ClientWidth;
+  finally
+    EnableAutoSizing;
+  end;
 end;
 
 destructor TLedNotebookPane.Destroy;
@@ -579,6 +715,8 @@ var
   i, Y: Integer;
   B: TLedNBCellBox;
 begin
+  { Same reason as in Relayout, and this is the other way in. }
+  if (FDoc <> nil) and (not LedDocumentIsOpen(FDoc)) then FDoc := nil;
   DisableAutoSizing;
   try
     for i := 0 to FBoxes.Count - 1 do
@@ -601,9 +739,10 @@ begin
       B.OnRunCell := @CellRun;
       B.OnEdited := @CellEdited;
       B.SetBounds(0, Y, ClientWidth - LedScale96(4), LedScale96(40));
-      Inc(Y, B.Rebuild + LedScale96(4));
+      Inc(Y, B.Rebuild(ClientWidth - LedScale96(4)) + LedScale96(4));
       FBoxes.Add(B);
     end;
+    FLaidOutFor := ClientWidth;
   finally
     EnableAutoSizing;
   end;
@@ -614,9 +753,10 @@ var
   i, Y: Integer;
   B: TLedNBCellBox;
 begin
+  if not LedDocumentIsOpen(FDoc) then Exit;
   B := BoxOf(ACell);
   if B = nil then Exit;
-  B.Rebuild;
+  B.Rebuild(B.Width);
   { Everything under it moves: a cell that has just produced a plot is
     taller than it was. }
   Y := 0;

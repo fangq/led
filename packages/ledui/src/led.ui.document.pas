@@ -372,6 +372,14 @@ type
   each was watching the disk against its own last-known timestamp. }
 function LedDocuments: TLedDocuments;
 
+{ Whether a document is still open.
+
+  For anything that holds a document across time -- a pane with a timer, say.
+  A closed document is freed, and a pointer to one is not something that can
+  be asked whether it is still valid, so what is asked instead is whether the
+  collection still has it. }
+function LedDocumentIsOpen(ADoc: TLedDocument): Boolean;
+
 { The user's preferences expressed as a config, and the parent of every
   document's config.  Rebuilt whenever preferences change. }
 function LedUserConfig: TLedDocConfig;
@@ -2528,6 +2536,16 @@ begin
   if FDocuments = nil then
     FDocuments := TLedDocuments.Create(nil);
   Result := FDocuments;
+end;
+
+function LedDocumentIsOpen(ADoc: TLedDocument): Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  if (ADoc = nil) or (FDocuments = nil) then Exit;
+  for i := 0 to FDocuments.Count - 1 do
+    if FDocuments[i] = ADoc then Exit(True);
 end;
 
 finalization
