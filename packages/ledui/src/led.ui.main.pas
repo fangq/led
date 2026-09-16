@@ -2858,6 +2858,9 @@ begin
   finally
     Tabs.Free;
   end;
+  { And the notebook pane, whose every colour is the theme's: the page it
+    draws on, the shade behind a code cell, the prose it renders. }
+  if (FNBPane <> nil) and FDock.PaneVisible('notebook') then FNBPane.Reload;
 end;
 
 { --- session -------------------------------------------------------------- }

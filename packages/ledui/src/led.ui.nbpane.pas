@@ -28,8 +28,8 @@ unit Led.UI.NBPane;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  LazUTF8,
+  Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
+  Graphics, Forms, LazUTF8,
   IpHtml, Ipfilebroker,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.Markdown,
   Led.Syn.Factory, Led.Syn.Theme,
@@ -37,6 +37,11 @@ uses
 
 type
   TLedNBCellEvent = procedure(Sender: TObject; ACell: Integer) of object;
+
+  { The colours the pane draws with; see LedNBColours. }
+  TLedNBColourSet = record
+    Page, Text, Muted, CodeBg, Border, Link: TColor;
+  end;
 
   { One cell: its label, its Run button, its source, and whatever it
     produced. }
@@ -67,6 +72,7 @@ type
       var Picture: TPicture);
     procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
+    function ProsePage(const ASource: string): string;
 
   public
     constructor Create(AOwner: TComponent; ADoc: TLedDocument;
@@ -102,6 +108,10 @@ type
     property OnEdited: TLedNBCellEvent read FOnEdited write FOnEdited;
   end;
 
+{ The colours the pane and its cells draw with, from the current theme. }
+function LedNBColours: TLedNBColourSet;
+
+type
   TLedNotebookPane = class(TScrollBox)
   private
     FDoc: TLedDocument;
@@ -154,6 +164,66 @@ implementation
 const
   Pad = 6;
   LabelWidth = 76;
+  { The prose face and size.  Proportional and a size bigger than the code,
+    which is what a notebook front end does: prose is read and code is
+    scanned. }
+  ProseFace = 'Sans';
+  ProseSize = 10;
+  { Prose runs nearly the full width, the way it does in a notebook front
+    end: a paragraph is read across the page, and the column a code cell
+    needs for its execution count is room a paragraph should not give up.
+    The gutter that is left is for the button that turns it into text. }
+  ProseGutter = 30;
+
+{ The colours a notebook page needs, all of them derived from the theme so
+  that the pane belongs to the window it is in rather than being a white
+  sheet beside a dark editor.
+
+  Only two are read: the page and the text.  The rest are mixed from those,
+  which is what makes this work for a scheme nobody has seen -- a code block
+  a few per cent away from the page is a code block on a light theme and on
+  a dark one, where a fixed grey is right on one and wrong on the other. }
+function LedNBColours: TLedNBColourSet;
+var
+  Style: TLedStyle;
+begin
+  Result.Page := clWindow;
+  Result.Text := clWindowText;
+  if LedCurrentTheme <> nil then
+  begin
+    if LedCurrentTheme.Find(LedStyleText, Style) then
+    begin
+      if lsfBackground in Style.Flags then
+        Result.Page := LedColourToTColor(Style.Background);
+      if lsfForeground in Style.Flags then
+        Result.Text := LedColourToTColor(Style.Foreground);
+    end;
+  end;
+  if Result.Page = clNone then Result.Page := clWindow;
+  if Result.Text = clNone then Result.Text := clWindowText;
+
+  { A code cell sits on a block a little away from the page, the way it does
+    in a notebook front end; the label beside it recedes.
+
+    LedMixColours takes the percentage of its *first* colour, so "mostly the
+    page" is a high number.  Getting that backwards put the code block at 93
+    per cent of the text colour -- a near-white slab on a dark theme -- which
+    is what the check against two themes caught. }
+  Result.CodeBg := LedMixColours(Result.Page, Result.Text, 93);
+  Result.Border := LedMixColours(Result.Page, Result.Text, 78);
+  Result.Muted := LedEnsureReadable(
+    LedMixColours(Result.Text, Result.Page, 62), Result.Page, 3.0);
+  { Links have to be readable on the page as well as look like links. }
+  Result.Link := LedEnsureReadable($00D08040, Result.Page, 4.0);
+end;
+
+{ A colour as HTML says it.  TColor is $00BBGGRR and HTML wants RRGGBB, so
+  this is not a hex dump of the number. }
+function HtmlColour(AColour: TColor): string;
+begin
+  Result := Format('#%.2x%.2x%.2x',
+    [AColour and $FF, (AColour shr 8) and $FF, (AColour shr 16) and $FF]);
+end;
 
 { How tall a page wants to be is worked out by TIpHtml.GetPageRect, which is
   protected -- so it is reached the way LED reaches SynEdit's protected parts
@@ -177,15 +247,24 @@ end;
 
 constructor TLedNBCellBox.Create(AOwner: TComponent; ADoc: TLedDocument;
   ACell: Integer);
+var
+  Colours: TLedNBColourSet;
 begin
   inherited Create(AOwner);
   FDoc := ADoc;
   FCell := ACell;
   BevelOuter := bvNone;
-  ParentColor := True;
+  ParentColor := False;
+  Colours := LedNBColours;
+  Color := Colours.Page;
 
   FHead := TLabel.Create(Self);
   FHead.Parent := Self;
+  FHead.Transparent := True;
+  FHead.Font.Color := Colours.Muted;
+  { Monospaced, like the execution count in a notebook front end, so that
+    [1] and [12] do not shift the code beside them. }
+  FHead.Font.Name := FDoc.Master.Font.Name;
   FHead.SetBounds(LedScale96(Pad), LedScale96(Pad), LedScale96(LabelWidth),
     LedScale96(16));
 
@@ -324,6 +403,9 @@ begin
   FEdit.WrapEnabled := True;
   FEdit.Font.Assign(FDoc.Master.Font);
   LedApplyThemeToEditor(LedCurrentTheme, FEdit);
+  { On the code block's shade rather than the page's, which is what makes a
+    cell read as a cell.  After the theme, so it is not overwritten by it. }
+  FEdit.Color := LedNBColours.CodeBg;
 
   { Coloured by the language of this cell: prose as Markdown, code as
     whatever the notebook says, and a cell magic naming its own language is
@@ -341,6 +423,8 @@ begin
 end;
 
 procedure TLedNBCellBox.MakeRender;
+var
+  C: TLedNBColourSet;
 begin
   if FRender <> nil then Exit;
   FProvider := TIpFileDataProvider.Create(Self);
@@ -353,6 +437,19 @@ begin
   FRender.Parent := Self;
   FRender.DataProvider := FProvider;
   FRender.OnClick := @RenderClicked;
+  { Said out loud rather than left to the default, because the same face and
+    size have to be given to the throwaway document that measures how tall a
+    page comes out: a measurement taken in one font and drawn in another is
+    how a paragraph of prose came to be given a single line of room. }
+  FRender.DefaultTypeFace := ProseFace;
+  FRender.DefaultFontSize := ProseSize;
+  FRender.FixedTypeface := FDoc.Master.Font.Name;
+  C := LedNBColours;
+  FRender.BgColor := C.Page;
+  FRender.TextColor := C.Text;
+  FRender.LinkColor := C.Link;
+  FRender.VLinkColor := C.Link;
+  FRender.ALinkColor := C.Link;
 end;
 
 { A picture named by a Markdown cell: beside the notebook, or nothing.
@@ -364,10 +461,34 @@ end;
 procedure TLedNBCellBox.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
 var
-  FN: string;
+  FN, Bytes, Mime: string;
+  Stream: TStringStream;
 begin
   Picture := nil;
-  if (URL = '') or (Pos('://', URL) > 0) then Exit;
+  if URL = '' then Exit;
+
+  { A picture that is in the notebook: a data: URI, or an attachment pasted
+    into the cell.  Decoded rather than fetched, and nothing is written to a
+    temporary file on the way. }
+  if LedNBEmbeddedImage(FDoc.Notebook, FCell, URL, Bytes, Mime) then
+  begin
+    Picture := TPicture.Create;
+    Stream := TStringStream.Create(Bytes);
+    try
+      try
+        Picture.LoadFromStreamWithFileExt(Stream, LedNBImageExt(Mime));
+      except
+        FreeAndNil(Picture);
+      end;
+    finally
+      Stream.Free;
+    end;
+    Exit;
+  end;
+
+  { Anything with a scheme is on the web, and RewriteImages has already
+    taken those out of the page -- so this is a file beside the notebook. }
+  if Pos('://', URL) > 0 then Exit;
 
   if (URL[1] = '/') or ((Length(URL) > 1) and (URL[2] = ':')) then
     FN := URL
@@ -383,6 +504,37 @@ begin
   end;
 end;
 
+{ One prose cell as a page, in the theme's colours.
+
+  The style is a notebook front end's: the prose in a proportional face at
+  reading size, code on a block a little away from the page, links that look
+  like links and are still readable against whatever the page is.  The
+  colours are set as attributes as well as in the style sheet, because IPro
+  reads rather little CSS and the attributes it does read are the ones that
+  decide the background. }
+function TLedNBCellBox.ProsePage(const ASource: string): string;
+var
+  C: TLedNBColourSet;
+  Html: string;
+begin
+  C := LedNBColours;
+  Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource));
+  Result :=
+    '<html><head><style>' +
+    'body { margin: 0; font-family: sans-serif; color: ' +
+      HtmlColour(C.Text) + '; }' +
+    'h1, h2, h3, h4 { margin: 6px 0 4px 0; }' +
+    'p { margin: 4px 0 8px 0; }' +
+    'pre, code { background: ' + HtmlColour(C.CodeBg) + '; }' +
+    'blockquote { border-left: 3px solid ' + HtmlColour(C.Border) +
+      '; padding-left: 8px; }' +
+    'a { color: ' + HtmlColour(C.Link) + '; }' +
+    '</style></head>' +
+    '<body bgcolor="' + HtmlColour(C.Page) + '" text="' +
+      HtmlColour(C.Text) + '" link="' + HtmlColour(C.Link) + '" vlink="' +
+      HtmlColour(C.Link) + '">' + Html + '</body></html>';
+end;
+
 { How tall a page of HTML comes out at a given width.
 
   Laid out by a document of its own and thrown away: the panel will lay the
@@ -396,17 +548,31 @@ var
   Doc: TIpHtmlMeasure;
   Stream: TStringStream;
   H: Integer;
+  Surface: TCanvas;
 begin
   Result := LedScale96(40);
+  { The panel's own canvas where there is one: the measurement is of how tall
+    this page is in the font that panel draws with, and a canvas carries the
+    font. }
+  Surface := Canvas;
+  if (FRender <> nil) and (FRender.Canvas <> nil) then Surface := FRender.Canvas;
+
   Doc := TIpHtmlMeasure.Create;
   Stream := TStringStream.Create(APage);
   try
     try
+      { The same face and size the panel was given, for the same reason. }
+      Doc.DefaultTypeFace := ProseFace;
+      Doc.DefaultFontSize := ProseSize;
       Doc.LoadFromStream(Stream);
       { A height of nothing lays nothing out: the page is measured with as
         much room as it could want and comes back with what it used. }
-      H := Doc.PageHeightAt(Canvas, AWidth);
-      if H > 0 then Result := H + LedScale96(4);
+      H := Doc.PageHeightAt(Surface, AWidth);
+      { A line of slack.  The two layouts agree to a pixel or two and not
+        always exactly, and the costs are not symmetrical: a little too much
+        room is a little white space, while a little too little folds the
+        cell into a box with a scrollbar, which is the thing this is for. }
+      if H > 0 then Result := H + ProseSize * 2;
     except
       { A page that will not lay out gets the default height rather than
         taking the cell down with it. }
@@ -415,9 +581,11 @@ begin
     Stream.Free;
     Doc.Free;
   end;
-  { A cell of prose can be long, but a single cell taller than a few screens
-    is a cell nobody scrolls through on purpose. }
-  if Result > LedScale96(2000) then Result := LedScale96(2000);
+  { No cap on how tall prose may be -- a cell shows all of itself, which is
+    the whole point -- but not past what a widget can be: gtk2 measures a
+    control in a signed 16-bit number, and a box bigger than that does not
+    come back as a taller box, it comes back wrong. }
+  if Result > 30000 then Result := 30000;
 end;
 
 { The pictures and the text a cell produced, as widgets under it. }
@@ -493,15 +661,23 @@ begin
   Outs := TStringList.Create;
   try
     Outs.TextLineBreakStyle := tlbsLF;
-    LedNBOutputLines(FDoc.Notebook, FCell, Outs, Flags);
+    { The pictures are drawn above; what is wanted here is everything else.
+      Otherwise a plot arrives twice -- once as itself and once as the line
+      of text the file carries beside it. }
+    LedNBOutputLines(FDoc.Notebook, FCell, Outs, Flags, True);
     if Outs.Count = 0 then Exit;
     for i := 0 to Outs.Count - 1 do
     begin
       Note := TLabel.Create(Self);
       Note.Parent := Self;
+      Note.Transparent := True;
       Note.Font.Name := FEdit.Font.Name;
       Note.Font.Size := FEdit.Font.Size;
-      if (i <= High(Flags)) and Flags[i] then Note.Font.Color := clRed;
+      Note.Font.Color := LedNBColours.Text;
+      { An error keeps its own colour, which every theme has one of and
+        which is the one thing in an output worth shouting. }
+      if (i <= High(Flags)) and Flags[i] then
+        Note.Font.Color := LedEnsureReadable(clRed, LedNBColours.Page, 3.5);
       Note.Caption := Outs[i];
       Note.SetBounds(LedScale96(LabelWidth + Pad), AY,
         AWidth - LedScale96(LabelWidth + Pad * 2), FEdit.LineHeight);
@@ -533,7 +709,9 @@ begin
         FHead.Caption := Format('In [%d]:', [Count])
       else
         FHead.Caption := 'In [ ]:';
-    nbkMarkdown: FHead.Caption := 'Markdown';
+    { A prose cell needs no label: what it is is plain from the fact that it
+      is prose, and the space is better given to the prose. }
+    nbkMarkdown: FHead.Caption := '';
   else
     FHead.Caption := 'Raw';
   end;
@@ -558,16 +736,17 @@ begin
     MakeRender;
     if FEdit <> nil then FEdit.Visible := False;
     FRender.Visible := True;
-    Page := '<html><body style="margin:0">' +
-      LedMarkdownToHTML(Source) + '</body></html>';
-    Room := AWidth - LedScale96(LabelWidth + Pad * 2);
+    Page := ProsePage(Source);
+    Room := AWidth - LedScale96(ProseGutter + Pad);
     if Room < LedScale96(80) then Room := LedScale96(80);
-    { How tall the prose comes out at that width, asked of a throwaway
-      document of its own.  Without this every prose cell was given forty
-      pixels and showed its first line -- the renderer has no idea what
+    { The panel is made as tall as the prose is, so the cell shows all of it
+      and never scrolls inside itself.  A cell of prose folded into a box
+      with its own scrollbar is the one thing a reader cannot skim.
+
+      How tall that is has to be measured: the renderer does not know what
       height it wants until it has laid the page out, and the panel cannot be
-      asked before it has one. }
-    FRender.SetBounds(LedScale96(LabelWidth + Pad), Y, Room,
+      asked before it has a page in it. }
+    FRender.SetBounds(LedScale96(ProseGutter), Y, Room,
       RenderedHeight(Page, Room));
     FRender.SetHtmlFromStr(Page);
     Inc(Y, FRender.Height + LedScale96(4));
@@ -607,9 +786,14 @@ begin
   VertScrollBar.Tracking := True;
   HorzScrollBar.Visible := False;
 
+  Color := LedNBColours.Page;
+  ParentColor := False;
+
   FNote := TLabel.Create(Self);
   FNote.Parent := Self;
   FNote.Align := alTop;
+  FNote.Transparent := True;
+  FNote.Font.Color := LedNBColours.Muted;
   FNote.BorderSpacing.Around := LedScale96(8);
   FNote.Visible := False;
 
@@ -717,6 +901,10 @@ var
 begin
   { Same reason as in Relayout, and this is the other way in. }
   if (FDoc <> nil) and (not LedDocumentIsOpen(FDoc)) then FDoc := nil;
+  { The theme may have changed since the cells were built, and every colour
+    in here comes from it. }
+  Color := LedNBColours.Page;
+  FNote.Font.Color := LedNBColours.Muted;
   DisableAutoSizing;
   try
     for i := 0 to FBoxes.Count - 1 do

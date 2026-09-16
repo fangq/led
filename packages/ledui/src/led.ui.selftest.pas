@@ -5451,6 +5451,7 @@ var
   Img: TImage;
   Host: TForm;
   Loose: TLedNotebookPane;
+  Dark, Light: TLedNBColourSet;
 
   function Fixture: string;
   begin
@@ -5637,6 +5638,11 @@ begin
   B := Pane.Box(2);
   Img := ImageIn(B);
   Check('the plot is drawn as a picture', Img <> nil);
+  { And only as a picture.  The file carries a text form beside it -- what
+    the line view has to fall back on -- and a pane that shows both puts
+    "<Figure>" under every plot. }
+  Check('and not also as the text beside it: ' + LabelsIn(B),
+    Pos('<Figure>', LabelsIn(B)) = 0);
   if Img <> nil then
   begin
     CheckEqInt('at the width it was stored at', 24, Img.Picture.Width);
@@ -5741,6 +5747,63 @@ begin
   finally
     Host.Free;
   end;
+
+  { ---- the colours are the theme's ---- }
+
+  { The pane sat on a white sheet beside a dark editor until it was told to
+    take its colours from the theme.  Two themes are used rather than one,
+    because a check against a single scheme cannot tell a colour that was
+    taken from the theme from a colour that happens to match it. }
+  LedSetCurrentTheme('oblivion');
+  Pane.Reload;
+  Pump;
+  Dark := LedNBColours;
+  CheckEqInt('the pane is the theme''s page colour',
+    Dark.Page, Pane.Color);
+  CheckEqInt('and so is a cell', Dark.Page, Pane.Box(0).Color);
+  Check('a code cell sits on a shade of its own',
+    Pane.Box(1).Editor.Color <> Dark.Page);
+  Check('which is close to the page rather than a colour of its own',
+    Abs(LedColourLuma(Pane.Box(1).Editor.Color) -
+        LedColourLuma(Dark.Page)) < 40);
+  Check('a dark theme gives a dark page',
+    LedColourLuma(Dark.Page) < 128);
+
+  LedSetCurrentTheme('solarized-light');
+  Pane.Reload;
+  Pump;
+  Light := LedNBColours;
+  Check('a light theme gives a light page', LedColourLuma(Light.Page) > 128);
+  CheckEqInt('and the pane followed it', Light.Page, Pane.Color);
+  Check('the cells followed too', Pane.Box(0).Color = Light.Page);
+  Check('and the code shade is still near the page',
+    Abs(LedColourLuma(Pane.Box(1).Editor.Color) -
+        LedColourLuma(Light.Page)) < 40);
+  { The label beside a cell recedes but stays legible, which is the same
+    floor every other colour in LED has to clear. }
+  Check(Format('the label is readable against the page (%.1f:1)',
+    [LedContrastRatio(Light.Muted, Light.Page)]),
+    LedContrastRatio(Light.Muted, Light.Page) > 2.5);
+  LedSetCurrentTheme('medit');
+  Pane.Reload;
+  Pump;
+
+  { ---- prose is shown whole ---- }
+
+  { A prose cell was given forty pixels and a scrollbar, and the reader saw
+    its first line.  Measured against the lines in it: the fixture's first
+    cell is a heading and three paragraphs, so a panel that shows all of it
+    is several lines tall however the renderer lays it out. }
+  B := Pane.Box(0);
+  Check('the prose cell renders', B.Rendered <> nil);
+  { Forty pixels was the bug -- one line and a scrollbar -- so the floor is
+    set well above that and well below what a heading and three paragraphs
+    come to in any font the renderer might choose. }
+  CheckGt('and is tall enough for a heading and three paragraphs', 70,
+    B.Rendered.Height);
+  Check('the prose runs nearly the width of the pane, as it does in a '
+    + 'notebook',
+    B.Rendered.Width > Pane.Box(1).Editor.Width);
 
   { ---- the boxes are laid out in order, none on top of another ---- }
   Bottom := 0;

@@ -80,6 +80,10 @@ type
     { The cell's outputs, as they are in the file.  Code cells have them;
       anything else has none and this is nil. }
     function CellOutputs(AIndex: Integer): TJSONArray;
+    { A markdown cell's attachments: pictures pasted into the cell rather
+      than produced by running it, keyed by the name the text refers to them
+      by.  nil when the cell has none, which is most cells. }
+    function CellAttachments(AIndex: Integer): TJSONObject;
     procedure ClearCellOutputs(AIndex: Integer);
     { Takes ownership of AOutput. }
     procedure AddCellOutput(AIndex: Integer; AOutput: TJSONObject);
@@ -988,6 +992,18 @@ begin
   if Cell = nil then Exit;
   Outs := Cell.Find(KeyOutputs);
   if (Outs <> nil) and (Outs.JSONType = jtArray) then Result := TJSONArray(Outs);
+end;
+
+function TLedNotebook.CellAttachments(AIndex: Integer): TJSONObject;
+var
+  Cell: TJSONObject;
+  Att: TJSONData;
+begin
+  Result := nil;
+  Cell := CellAt(AIndex);
+  if Cell = nil then Exit;
+  Att := Cell.Find('attachments');
+  if (Att <> nil) and (Att.JSONType = jtObject) then Result := TJSONObject(Att);
 end;
 
 procedure TLedNotebook.ClearCellOutputs(AIndex: Integer);

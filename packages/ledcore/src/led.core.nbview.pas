@@ -95,9 +95,16 @@ function LedNBHeaderText(ANotebook: TLedNotebook; ACell: Integer): string;
 function LedNBOutLabelText: string;
 
 { Every line a cell's outputs render to, in order.  AIsError comes back with
-  one flag per line.  Empty for a cell with no outputs. }
+  one flag per line.  Empty for a cell with no outputs.
+
+  ASkipPictures leaves out every output that is a picture, for a caller that
+  is showing the picture itself: a plot rendered as a plot does not also want
+  "<IPython.core.display.Image object>" underneath it, which is the text form
+  the file carries beside it.  The line view, which can only show text, takes
+  the default and gets the description. }
 procedure LedNBOutputLines(ANotebook: TLedNotebook; ACell: Integer;
-  AInto: TStrings; out AIsError: TLedNBFlags);
+  AInto: TStrings; out AIsError: TLedNBFlags;
+  ASkipPictures: Boolean = False);
 
 { Terminal colour escapes, taken out.  Tracebacks are full of them: ipykernel
   colours its own output, and a buffer that showed the escapes would be
@@ -326,8 +333,22 @@ begin
   end;
 end;
 
+{ Whether an output is a picture, which is to say whether a caller that can
+  draw one would rather draw it than read about it. }
+function OutputIsPicture(AOutput: TJSONObject): Boolean;
+var
+  Data: TJSONData;
+  i: Integer;
+begin
+  Result := False;
+  Data := AOutput.Find('data');
+  if (Data = nil) or (Data.JSONType <> jtObject) then Exit;
+  for i := 0 to TJSONObject(Data).Count - 1 do
+    if Pos('image/', TJSONObject(Data).Names[i]) = 1 then Exit(True);
+end;
+
 procedure LedNBOutputLines(ANotebook: TLedNotebook; ACell: Integer;
-  AInto: TStrings; out AIsError: TLedNBFlags);
+  AInto: TStrings; out AIsError: TLedNBFlags; ASkipPictures: Boolean);
 var
   Outs: TJSONArray;
   i: Integer;
@@ -337,7 +358,11 @@ begin
   if Outs = nil then Exit;
   for i := 0 to Outs.Count - 1 do
     if Outs.Items[i].JSONType = jtObject then
+    begin
+      if ASkipPictures and OutputIsPicture(TJSONObject(Outs.Items[i])) then
+        Continue;
       RenderOutput(TJSONObject(Outs.Items[i]), AInto, AIsError);
+    end;
 end;
 
 function LedNBRender(ANotebook: TLedNotebook; out ARows: TLedNBRows): string;

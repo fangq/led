@@ -20,12 +20,19 @@ type
   TTestNBImage = class(TTestCase)
   private
     function Notebook(const AData: string): TLedNotebook;
+    function MarkdownCell(const ASource, AAttachments: string): TLedNotebook;
   published
     procedure APictureStoredAsOneStringDecodes;
     procedure APictureSplitAcrossLinesDecodes;
     procedure TheMimeTypeComesBackAsAFileExtension;
     procedure AnOutputWithNoPictureSaysSo;
     procedure TextIsNotAPicture;
+    { the pictures a prose cell points at }
+    procedure ADataURIIsAPicture;
+    procedure AnAttachmentIsAPicture;
+    procedure SomethingElseIsNotEmbedded;
+    procedure APictureOnTheWebIsNotFetched;
+    procedure APictureInTheFileIsLeftInThePage;
   end;
 
 implementation
@@ -123,6 +130,137 @@ begin
   finally
     NB.Free;
   end;
+end;
+
+{ ---- the pictures a prose cell points at ---- }
+
+const
+  { A 12 by 7 PNG, so a decode can be checked against a size and a length
+    rather than against "something came back". }
+  TinyPNG = 'iVBORw0KGgoAAAANSUhEUgAAAAwAAAAHCAIAAACz0DtzAAAAEUlEQVR4nGPgOhFFEDEMa0UAtUpicQeGsj0AAAAASUVORK5CYII=';
+  TinyBytes = 74;
+
+{ A notebook of one markdown cell whose source is ASource and whose
+  attachments are AAttachments, both as JSON. }
+function TTestNBImage.MarkdownCell(const ASource,
+  AAttachments: string): TLedNotebook;
+var
+  Err, Att: string;
+begin
+  Att := '';
+  if AAttachments <> '' then Att := ',"attachments":' + AAttachments;
+  Result := TLedNotebook.Create;
+  AssertTrue('the fixture is a notebook: ' + Err, Result.LoadFromText(
+    '{"cells":[{"cell_type":"markdown","metadata":{}' + Att +
+    ',"source":["' + ASource + '"]}],' +
+    '"metadata":{},"nbformat":4,"nbformat_minor":5}', Err));
+end;
+
+procedure TTestNBImage.ADataURIIsAPicture;
+var
+  NB: TLedNotebook;
+  Bytes, Mime: string;
+begin
+  { The form a picture takes when it is written into the text itself. }
+  NB := MarkdownCell('see this', '');
+  try
+    AssertTrue('it decodes', LedNBEmbeddedImage(NB, 0,
+      'data:image/png;base64,' + TinyPNG, Bytes, Mime));
+    AssertEquals('every byte of it', TinyBytes, Length(Bytes));
+    AssertEquals('image/png', Mime);
+    AssertEquals('and it is a PNG', #$89 + 'PNG', Copy(Bytes, 1, 4));
+
+    AssertFalse('a data URI that is not a picture is not one',
+      LedNBEmbeddedImage(NB, 0, 'data:text/plain;base64,aGk=', Bytes, Mime));
+    AssertFalse('nor is one with no comma',
+      LedNBEmbeddedImage(NB, 0, 'data:image/png;base64', Bytes, Mime));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBImage.AnAttachmentIsAPicture;
+var
+  NB: TLedNotebook;
+  Bytes, Mime: string;
+begin
+  { A picture pasted into a cell: the text says attachment:name and the
+    cell's own attachments hold it. }
+  NB := MarkdownCell('![a picture](attachment:shot.png)',
+    '{"shot.png":{"image/png":"' + TinyPNG + '"}}');
+  try
+    AssertTrue('it decodes', LedNBEmbeddedImage(NB, 0,
+      'attachment:shot.png', Bytes, Mime));
+    AssertEquals(TinyBytes, Length(Bytes));
+    AssertEquals('image/png', Mime);
+    { The name on its own, which is how some writers refer to one. }
+    AssertTrue('and the bare name finds it too',
+      LedNBEmbeddedImage(NB, 0, 'shot.png', Bytes, Mime));
+    AssertFalse('a name the cell does not carry is not found',
+      LedNBEmbeddedImage(NB, 0, 'attachment:other.png', Bytes, Mime));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBImage.SomethingElseIsNotEmbedded;
+var
+  NB: TLedNotebook;
+  Bytes, Mime: string;
+begin
+  NB := MarkdownCell('nothing here', '');
+  try
+    AssertFalse('a file beside the notebook is not embedded',
+      LedNBEmbeddedImage(NB, 0, 'plot.png', Bytes, Mime));
+    AssertFalse('nor is something on the web',
+      LedNBEmbeddedImage(NB, 0, 'https://example.com/a.png', Bytes, Mime));
+    AssertFalse('nor is nothing at all',
+      LedNBEmbeddedImage(NB, 0, '', Bytes, Mime));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBImage.APictureOnTheWebIsNotFetched;
+var
+  Page: string;
+begin
+  { Opening a notebook must not make the editor call on other people's
+    servers, so the tag comes out and a line saying what is missing goes in.
+    The host is named, because "an image is missing" is less use than which
+    one. }
+  Page := LedNBHideRemoteImages(
+    '<p>before <img src="https://img.example.com/cat.png" alt="a cat"> after</p>');
+  AssertTrue('the tag is gone: ' + Page, Pos('<img', Page) = 0);
+  AssertTrue('the host is named', Pos('img.example.com', Page) > 0);
+  AssertTrue('and the prose around it is untouched',
+    (Pos('before', Page) > 0) and (Pos('after', Page) > 0));
+
+  { Two of them, which is where a rewrite that walks the string wrongly
+    loops for ever or eats the text between. }
+  Page := LedNBHideRemoteImages(
+    '<img src="http://a.example/1.png"> middle <img src="http://b.example/2.png">');
+  AssertTrue('both are gone', Pos('<img', Page) = 0);
+  AssertTrue('the first host is named', Pos('a.example', Page) > 0);
+  AssertTrue('and the second', Pos('b.example', Page) > 0);
+  AssertTrue('and what was between them is still there',
+    Pos('middle', Page) > 0);
+end;
+
+procedure TTestNBImage.APictureInTheFileIsLeftInThePage;
+var
+  Page: string;
+begin
+  { These the renderer may ask about, because answering them tells nobody
+    anything: the picture is in the file or beside it. }
+  Page := LedNBHideRemoteImages('<img src="data:image/png;base64,AAAA">');
+  AssertTrue('a data URI stays: ' + Page, Pos('<img', Page) > 0);
+  Page := LedNBHideRemoteImages('<img src="attachment:shot.png">');
+  AssertTrue('so does an attachment', Pos('<img', Page) > 0);
+  Page := LedNBHideRemoteImages('<img src="plot.png">');
+  AssertTrue('and so does a file beside the notebook', Pos('<img', Page) > 0);
+  AssertEquals('a page with no pictures is returned as it was',
+    '<p>hello</p>', LedNBHideRemoteImages('<p>hello</p>'));
 end;
 
 initialization
