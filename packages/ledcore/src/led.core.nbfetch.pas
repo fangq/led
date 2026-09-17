@@ -11,6 +11,21 @@
 // here, the fetch happens behind it, and the cell is drawn again when the
 // bytes arrive.
 //
+// One thread, with a queue, and not one thread per picture.  A page of a
+// teaching notebook names a dozen pictures and the first version started a
+// dozen fetches at once, which failed: the TLS library is initialised on
+// first use and initialising it from several threads at the same time does
+// not work.  Measured on ten pictures over https, seven came back "Could
+// not initialize OpenSSL library" and the three that were left were the
+// ones that happened to start after it had finished.  Worse, a failure is
+// remembered for the session, so those seven were never asked for again --
+// a notebook of missing pictures from one bad moment at the start.
+//
+// With one thread the library is loaded once, before the first fetch, and
+// every picture arrives.  It is also kinder to the server: a dozen
+// simultaneous requests from one reader looks like something it should
+// refuse.
+//
 // Everything fetched is kept for the life of the session, because the pane
 // rebuilds cells as the reader scrolls and a cache is the difference between
 // fetching a picture once and fetching it on every wheel notch.
@@ -28,7 +43,7 @@ unit Led.Core.NBFetch;
 interface
 
 uses
-  Classes, SysUtils, syncobjs, fphttpclient, opensslsockets,
+  Classes, SysUtils, syncobjs, fphttpclient, opensslsockets, openssl,
   Led.Core.Prefs;
 
 const
@@ -54,10 +69,25 @@ type
       arrived, went in, and Lookup said no, because IndexOf was comparing a
       URL against a whole 'url=<420 kB of PNG>' entry. }
     FDone: TStringList;
-    FBusy: TStringList;        // the fetches in flight
+    FWant: TStringList;        // asked for, not started
+    FBusy: TStringList;        // the one being fetched
     FNews: TStringList;        // arrived, and not yet told to anybody
+    FWorker: TThread;          // nil when there is nothing to fetch
+    FRunning: Integer;         // the threads that exist, which is 0 or 1
+    FSSLTried: Boolean;        // the TLS library has been loaded, or tried
+    FSSLWhy: string;           // and why it could not be, if it could not
     function Entry(const AURL: string): TObject;
     procedure Arrived(const AURL, ABytes, AWhy: string);
+    { The next thing to fetch, or '' when the queue is empty -- in which case
+      the worker is forgotten and the thread ends.
+
+      One step under one lock, deliberately: forgetting the worker and
+      finding the queue empty have to be the same instant, or a picture asked
+      for in between would be queued with nobody left to fetch it. }
+    function TakeWanted: string;
+    { Loads the TLS library, once.  Called with the lock held, from the one
+      fetching thread, which is what makes "once" true. }
+    function SSLReady(out AWhy: string): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -83,8 +113,17 @@ type
       answer that too, but only where something is calling CheckSynchronize
       -- which is a fact about the caller, not about this. }
     function TakeArrived(out AURL: string): Boolean;
-    { How many fetches are in flight, so a caller can stop asking. }
+    { How many fetches are waiting or in flight, so a caller can stop asking. }
     function Pending: Integer;
+    { How many fetching threads exist: one while there is anything to fetch
+      and none otherwise.  Published because "one at a time" is the whole of
+      what keeps the TLS library working, and a check can watch it.
+
+      A count of the threads themselves rather than of the field that gates
+      them -- the first version returned "one" whenever the field was set,
+      which is what it says whether there is one thread or twenty, and the
+      mutation that started a thread per picture passed it. }
+    function Workers: Integer;
   end;
 
 { The session's own cache. }
@@ -96,6 +135,13 @@ function LedNBImages: TLedNBImages;
   and the bytes do not. }
 function LedNBSniffImage(const ABytes: string): string;
 
+{ What something that is not a drawable picture actually is, in words, for
+  the line that stands in for it: a WebP or an SVG -- both common in
+  notebooks and neither drawable by the LCL -- or a web page, which is what
+  a server that refuses the request sends instead of the picture.  '' when
+  the bytes say nothing recognisable. }
+function LedNBWhatItIs(const ABytes: string): string;
+
 implementation
 
 type
@@ -106,18 +152,17 @@ type
     Why: string;
   end;
 
-  { One fetch.  It touches nothing but its own copy of the URL until it is
-    finished, and hands the result over through the cache's own lock. }
+  { The one fetching thread.  It takes the next URL from the queue, fetches
+    it, hands the result over through the cache's own lock, and goes back for
+    the next one; when the queue is empty it ends. }
   TLedNBFetch = class(TThread)
   private
-    FURL: string;
-    FBytes: string;
-    FWhy: string;
     FOwner: TLedNBImages;
+    procedure FetchOne(const AURL: string);
   protected
     procedure Execute; override;
   public
-    constructor Create(AOwner: TLedNBImages; const AURL: string);
+    constructor Create(AOwner: TLedNBImages);
   end;
 
 var
@@ -144,6 +189,21 @@ begin
     Exit('');
 end;
 
+function LedNBWhatItIs(const ABytes: string): string;
+var
+  Head: string;
+begin
+  Result := '';
+  if (Copy(ABytes, 1, 4) = 'RIFF') and (Copy(ABytes, 9, 4) = 'WEBP') then
+    Exit('a WebP picture, which cannot be drawn here');
+  Head := LowerCase(Copy(ABytes, 1, 400));
+  { An SVG may open with the XML declaration, a comment, or the tag. }
+  if (Pos('<svg', Head) > 0) and (Pos('<html', Head) = 0) then
+    Exit('an SVG drawing, which cannot be drawn here');
+  if (Pos('<!doctype html', Head) > 0) or (Pos('<html', Head) > 0) then
+    Exit('a web page, not a picture: the server sent this instead');
+end;
+
 { ---- the cache ---- }
 
 constructor TLedNBImages.Create;
@@ -155,6 +215,7 @@ begin
   FDone.Sorted := True;
   FBusy := TStringList.Create;
   FBusy.Sorted := True;
+  FWant := TStringList.Create;
   FNews := TStringList.Create;
 end;
 
@@ -162,6 +223,7 @@ destructor TLedNBImages.Destroy;
 begin
   FLock.Free;
   FDone.Free;
+  FWant.Free;
   FBusy.Free;
   FNews.Free;
   inherited Destroy;
@@ -224,22 +286,75 @@ end;
 function TLedNBImages.Want(const AURL: string): Boolean;
 var
   Bytes: string;
-  Start: Boolean;
+  Queue: Boolean;
+  Fresh: TThread;
 begin
   Result := Lookup(AURL, Bytes);
   if Result then Exit;
   if not Enabled then Exit;
 
+  Fresh := nil;
   FLock.Acquire;
   try
     { Not twice, and not again after it failed: a page that is laid out on
       every scroll would otherwise ask for the same missing picture for ever. }
-    Start := (FBusy.IndexOf(AURL) < 0) and (Entry(AURL) = nil);
-    if Start then FBusy.Add(AURL);
+    Queue := (FWant.IndexOf(AURL) < 0) and (FBusy.IndexOf(AURL) < 0) and
+             (Entry(AURL) = nil);
+    if Queue then FWant.Add(AURL);
+    { One thread, made when there is something for it and forgotten when
+      there is not.  Decided under the same lock the thread clears it under,
+      so there is never a second one. }
+    if (FWant.Count > 0) and (FWorker = nil) then
+    begin
+      Fresh := TLedNBFetch.Create(Self);
+      FWorker := Fresh;
+      Inc(FRunning);
+    end;
   finally
     FLock.Release;
   end;
-  if Start then TLedNBFetch.Create(Self, AURL);
+  { Started outside the lock, and through the local rather than the field:
+    the thread frees itself when it ends, and by then the field may be nil. }
+  if Fresh <> nil then Fresh.Start;
+end;
+
+function TLedNBImages.TakeWanted: string;
+begin
+  Result := '';
+  FLock.Acquire;
+  try
+    if FWant.Count = 0 then
+    begin
+      { Nothing left: the thread is about to end, so the next Want makes a
+        new one. }
+      FWorker := nil;
+      Dec(FRunning);
+      Exit;
+    end;
+    Result := FWant[0];
+    FWant.Delete(0);
+    FBusy.Add(Result);
+  finally
+    FLock.Release;
+  end;
+end;
+
+function TLedNBImages.SSLReady(out AWhy: string): Boolean;
+begin
+  AWhy := '';
+  if not FSSLTried then
+  begin
+    FSSLTried := True;
+    { Loaded here, on the one fetching thread, before the first connection.
+      Left to the socket layer it happens on whichever thread gets there
+      first, and from more than one at once it fails -- see the unit
+      comment. }
+    if not IsSSLloaded then
+      if not InitSSLInterface then
+        FSSLWhy := 'no TLS library on this machine';
+  end;
+  AWhy := FSSLWhy;
+  Result := AWhy = '';
 end;
 
 { A fetch has finished.  Called on the fetching thread, so it touches nothing
@@ -290,7 +405,17 @@ function TLedNBImages.Pending: Integer;
 begin
   FLock.Acquire;
   try
-    Result := FBusy.Count;
+    Result := FWant.Count + FBusy.Count;
+  finally
+    FLock.Release;
+  end;
+end;
+
+function TLedNBImages.Workers: Integer;
+begin
+  FLock.Acquire;
+  try
+    Result := FRunning;
   finally
     FLock.Release;
   end;
@@ -298,22 +423,45 @@ end;
 
 { ---- one fetch ---- }
 
-constructor TLedNBFetch.Create(AOwner: TLedNBImages; const AURL: string);
+constructor TLedNBFetch.Create(AOwner: TLedNBImages);
 begin
   FOwner := AOwner;
-  FURL := AURL;
   FreeOnTerminate := True;
-  inherited Create(False);
+  { Suspended, and started by the caller after the lock is released: the
+    thread's first act is to take the lock itself. }
+  inherited Create(True);
 end;
 
+{ The queue, until it is empty.  The thread ends then, and the next picture
+  asked for makes a new one. }
 procedure TLedNBFetch.Execute;
+var
+  URL: string;
+begin
+  repeat
+    URL := FOwner.TakeWanted;
+    if URL = '' then Break;
+    FetchOne(URL);
+  until Terminated;
+end;
+
+procedure TLedNBFetch.FetchOne(const AURL: string);
 var
   Client: TFPHTTPClient;
   Stream: TMemoryStream;
-  Kind: string;
+  Kind, Why, Bytes: string;
 begin
-  FBytes := '';
-  FWhy := '';
+  { No connection is attempted at all without the library to make it with,
+    and the reason is the one the reader is shown. }
+  if not FOwner.SSLReady(Why) then
+    if Pos('https:', LowerCase(AURL)) = 1 then
+    begin
+      FOwner.Arrived(AURL, '', Why);
+      Exit;
+    end;
+
+  Bytes := '';
+  Why := '';
   Client := TFPHTTPClient.Create(nil);
   Stream := TMemoryStream.Create;
   try
@@ -326,29 +474,32 @@ begin
       Client.AllowRedirect := True;
       { Named honestly.  A server that turns LED away may do so knowingly. }
       Client.AddHeader('User-Agent', 'led notebook preview');
-      Client.Get(FURL, Stream);
+      Client.Get(AURL, Stream);
 
       if Stream.Size > LedNBMaxImageBytes then
-        FWhy := 'too large'
+        Why := 'too large'
       else
       begin
-        SetLength(FBytes, Stream.Size);
+        SetLength(Bytes, Stream.Size);
         if Stream.Size > 0 then
-          Move(Stream.Memory^, FBytes[1], Stream.Size);
-        Kind := LedNBSniffImage(FBytes);
+          Move(Stream.Memory^, Bytes[1], Stream.Size);
+        Kind := LedNBSniffImage(Bytes);
         if Kind = '' then
         begin
           { Fetched and useless: webp and svg both turn up in notebooks and
-            neither is something the LCL can draw. }
-          FBytes := '';
-          FWhy := 'not a picture this can draw';
+            neither is something the LCL can draw.  Named where it can be
+            named, because "not a picture" leaves the reader wondering
+            whether it was the fetch or the format that failed. }
+          Why := LedNBWhatItIs(Bytes);
+          if Why = '' then Why := 'not a picture this can draw';
+          Bytes := '';
         end;
       end;
     except
       on E: Exception do
       begin
-        FBytes := '';
-        FWhy := E.Message;
+        Bytes := '';
+        Why := E.Message;
       end;
     end;
   finally
@@ -357,7 +508,7 @@ begin
   end;
   { Handed over here rather than through Synchronize: the cache takes its own
     lock, and nothing on the other side of it touches a control. }
-  FOwner.Arrived(FURL, FBytes, FWhy);
+  FOwner.Arrived(AURL, Bytes, Why);
 end;
 
 finalization

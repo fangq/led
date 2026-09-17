@@ -69,6 +69,9 @@ type
     procedure ALinkThatIsNotThereFailsAndStaysFailed;
     procedure SomethingThatIsNotAPictureIsRefusedAfterFetching;
     procedure NothingIsFetchedWhenTheReaderHasSaidNot;
+    procedure APageOfPicturesIsFetchedOneAtATime;
+    procedure AWebpSaysWhatItIs;
+    procedure AWebPageInsteadOfAPictureSaysSo;
   end;
 
 implementation
@@ -163,7 +166,8 @@ begin
     how a picture arrives with its signature rewritten -- which is what made
     the first version of these tests report a picture that could not be
     drawn. }
-  if (ARequest.URI = '/one.png') or (ARequest.URI = '/two.png') then
+  if (ARequest.URI = '/one.png') or (ARequest.URI = '/two.png') or
+     (Pos('/many/', ARequest.URI) = 1) then
   begin
     AResponse.ContentType := 'image/png';
     AResponse.ContentStream := TStringStream.Create(PngBytes);
@@ -402,6 +406,72 @@ begin
   AssertTrue('the reason says what was wrong with it: ' +
     LedNBImages.Failure(URL),
     Pos('picture', LedNBImages.Failure(URL)) > 0);
+end;
+
+{ A page of a notebook names a dozen pictures and asks for them all in the
+  same layout, which is how this went wrong: a thread each, all starting at
+  once, and the TLS library cannot be brought up from several threads at the
+  same time.  Measured over https, seven of ten came back "Could not
+  initialize OpenSSL library" -- and a failure is remembered, so those seven
+  were never asked for again.
+
+  The loopback server here speaks plain HTTP and so cannot reproduce that
+  failure; what it can check is the property that prevents it, which is that
+  there is one fetching thread however many pictures are asked for, and that
+  every one of them still arrives. }
+procedure TTestNBFetch.APageOfPicturesIsFetchedOneAtATime;
+const
+  Count = 12;
+var
+  i, Most, Waited: Integer;
+  URLs: array[0..Count - 1] of string;
+  Bytes: string;
+begin
+  for i := 0 to Count - 1 do
+  begin
+    URLs[i] := Base + '/many/' + IntToStr(i) + '.png';
+    AssertFalse('nothing is here yet', LedNBImages.Want(URLs[i]));
+  end;
+  AssertEquals('all of them are waiting', Count, LedNBImages.Pending);
+
+  Most := 0;
+  Waited := 0;
+  while (LedNBImages.Pending > 0) and (Waited < 400) do
+  begin
+    if LedNBImages.Workers > Most then Most := LedNBImages.Workers;
+    Drain;
+    Sleep(25);
+    Inc(Waited);
+  end;
+  Drain;
+
+  AssertEquals('one thread fetched the lot', 1, Most);
+  for i := 0 to Count - 1 do
+    AssertTrue('picture ' + IntToStr(i) + ' arrived: ' +
+      LedNBImages.Failure(URLs[i]), LedNBImages.Lookup(URLs[i], Bytes));
+  AssertEquals('and the thread was let go at the end', 0, LedNBImages.Workers);
+end;
+
+{ ---- what the line in a picture's place says ---- }
+
+procedure TTestNBFetch.AWebpSaysWhatItIs;
+begin
+  { WebP and SVG are both common in notebooks and the LCL draws neither, so
+    the reader is told which it was rather than "not a picture", which reads
+    like the fetch failed. }
+  AssertTrue('a webp is named: ' + LedNBWhatItIs('RIFF' + #0#0#0#0 + 'WEBPVP8 '),
+    Pos('WebP', LedNBWhatItIs('RIFF' + #0#0#0#0 + 'WEBPVP8 ')) > 0);
+  AssertTrue('and an svg',
+    Pos('SVG', LedNBWhatItIs('<?xml version="1.0"?><svg width="1"></svg>')) > 0);
+end;
+
+procedure TTestNBFetch.AWebPageInsteadOfAPictureSaysSo;
+begin
+  { What a server that refuses the request sends in the picture's place. }
+  AssertTrue('an error page is named as one',
+    Pos('web page', LedNBWhatItIs('<!DOCTYPE html><html><body>no</body>')) > 0);
+  AssertEquals('and rubbish is not named at all', '',
+    LedNBWhatItIs('just some bytes'));
 end;
 
 procedure TTestNBFetch.NothingIsFetchedWhenTheReaderHasSaidNot;
