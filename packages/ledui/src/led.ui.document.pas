@@ -22,7 +22,8 @@ uses
   SynEditTypes,
   SynEditMiscClasses, SynEditHighlighter, SynEditKeyCmds,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
-  Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView, Led.Core.Kernel,
+  Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic,
+  Led.Core.Kernel,
   fpjson,
   Led.Syn.BJData, Led.Syn.Notebook,
   Led.Core.Encodings,
@@ -1529,27 +1530,21 @@ end;
   whether LED has a highlighter for the word. }
 function TLedDocument.NBCellLanguage(ACell, AHeaderLine: Integer): string;
 var
-  First, Word_: string;
-  i: Integer;
+  First: string;
 begin
   Result := '';
   if (ACell < 0) or (ACell >= FNotebook.CellCount) then Exit;
   if FNotebook.CellKind(ACell) = nbkMarkdown then Exit('markdown');
-  Result := FNotebook.LanguageName;
 
-  { The cell's first line is the one after its header. }
-  if (AHeaderLine < 0) or (AHeaderLine + 1 >= FMaster.Lines.Count) then Exit;
-  First := TrimLeft(FMaster.Lines[AHeaderLine + 1]);
-  if Pos('%%', First) <> 1 then Exit;
-
-  Word_ := '';
-  for i := 3 to Length(First) do
-    if First[i] in ['a'..'z', 'A'..'Z', '0'..'9', '_', '+', '-'] then
-      Word_ := Word_ + First[i]
-    else
-      Break;
-  if (Word_ <> '') and LedHasHighlighter(LowerCase(Word_)) then
-    Result := LowerCase(Word_);
+  { The cell's first line is the one after its header, and it is read from
+    the buffer rather than from the notebook: the reader may have just typed
+    the magic, and the colouring follows as they type. }
+  First := '';
+  if (AHeaderLine >= 0) and (AHeaderLine + 1 < FMaster.Lines.Count) then
+    First := FMaster.Lines[AHeaderLine + 1];
+  { Which name goes with which highlighter is Led.Core.NBMagic's business,
+    including the fall back to Python for a notebook that names nothing. }
+  Result := LedNBCellLanguage(First, FNotebook.LanguageName);
 end;
 
 function TLedDocument.NBLineKind(ALine: Integer; out ACell: Integer;
@@ -1570,6 +1565,15 @@ begin
     if Head < 0 then Exit;
     Result := nblSource;
     ALang := NBCellLanguage(ACell, Head);
+    { A magic is Jupyter's word, not the language's: %%shell says what the
+      cell is, %load_ext and !pip are instructions to the front end, and none
+      of the three is code the highlighter should try to read.  They are
+      drawn the way a comment is drawn, which is how a notebook front end
+      draws them and what they are. }
+    if (ALine < FMaster.Lines.Count) and
+       LedNBIsMagicLine(FMaster.Lines[ALine], ALine = Head + 1,
+         LedNBCellMagic(NBLineText(Head + 1)) = '') then
+      Result := nblMagic;
   end
   else
     case (-T) mod NBTagKinds of

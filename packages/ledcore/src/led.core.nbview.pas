@@ -40,7 +40,7 @@ unit Led.Core.NBView;
 interface
 
 uses
-  Classes, SysUtils, fpjson, Led.Core.NBFormat;
+  Classes, SysUtils, fpjson, Led.Core.NBFormat, Led.Core.NBMagic;
 
 const
   { How wide the rule after a header is drawn.  Fixed rather than the width
@@ -193,8 +193,12 @@ begin
             thing, and the reader is owed the distinction: a cell with no
             count has not contributed to what the kernel currently holds. }
           Left := '[ ]';
-        Left := Left + ' ' + ANotebook.LanguageName;
-        if ANotebook.LanguageName = '' then Left := Left + 'code';
+        { The cell's own language, which is the notebook's unless a cell
+          magic says otherwise: a reader looking at a %%octave cell is owed
+          the word "octave" rather than the word "python", and it is also
+          how they can see that LED read the magic at all. }
+        Left := Left + ' ' + LedNBCellLanguage(ANotebook.CellSource(ACell),
+          ANotebook.LanguageName);
       end;
     nbkMarkdown: Left := '[ ] markdown';
   else

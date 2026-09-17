@@ -31,9 +31,11 @@ uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
   Graphics, Forms, ImgList, LazUTF8,
   IpHtml, Ipfilebroker,
+  SynEditHighlighter,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
-  Led.Core.Markdown,
-  Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons, Led.UI.PageStyle,
+  Led.Core.NBMagic, Led.Core.Markdown,
+  Led.Syn.Factory, Led.Syn.Notebook, Led.Syn.Theme, Led.UI.Icons,
+  Led.UI.PageStyle,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
 type
@@ -112,6 +114,16 @@ type
     FOnRun: TLedNBCellEvent;
     FOnEdited: TLedNBCellEvent;
     FEditing: Boolean;         // a markdown cell being typed into
+    { The editor's own notebook highlighter, and what it is told about the
+      cell: the language to colour it in, and whether a line beginning % or !
+      is one of IPython's magics -- which it is not in a cell that %%bash has
+      handed to another language. }
+    FHigh: TLedNBHighlighter;
+    FEditLang: string;
+    FEditIPython: Boolean;
+    function EditLineKind(ALine: Integer; out ACell: Integer;
+      out ALang: string): TLedNBLine;
+    function EditLineText(ALine: Integer): string;
     procedure RunClicked(Sender: TObject);
     procedure RenderClicked(Sender: TObject);
     procedure EditClicked(Sender: TObject);
@@ -585,8 +597,6 @@ end;
   document.  A cell is its own little document here, the same arrangement the
   notebook highlighter makes for the language highlighter it drives. }
 procedure TLedNBCellBox.MakeEditor;
-var
-  Lang: string;
 begin
   if FEdit <> nil then Exit;
   FEdit := TLedNBCellEdit.Create(Self);
@@ -608,17 +618,22 @@ begin
     cell read as a cell.  After the theme, so it is not overwritten by it. }
   FEdit.Color := LedNBColours.CodeBg;
 
-  { Coloured by the language of this cell: prose as Markdown, code as
-    whatever the notebook says, and a cell magic naming its own language is
-    not handled here -- the line view does that, and a box a reader is typing
-    into can be told when they ask for it. }
-  if FDoc.Notebook.CellKind(FCell) = nbkMarkdown then
-    Lang := 'markdown'
-  else
-    Lang := FDoc.Notebook.LanguageName;
-  FEdit.Highlighter := LedHighlighterFor(Lang);
-  if FEdit.Highlighter <> nil then
-    LedApplyThemeToHighlighter(LedCurrentTheme, FEdit.Highlighter);
+  { Coloured by the language of this cell: prose as Markdown, code as what
+    the cell's own magic says and only then as what the notebook says -- a
+    %%octave cell is Octave however the file describes itself.
+
+    Through the notebook highlighter rather than the language's own, so that
+    the magic line itself is drawn the way a comment is drawn: %%shell says
+    what the cell is, %load_ext and !pip are instructions to the front end,
+    and none of the three is code the language should be asked to read.  One
+    cell wide, so its folding is off -- the nesting it would report is the
+    buffer's, and here there is no header above and no output below. }
+  FHigh := TLedNBHighlighter.Create(Self);
+  FHigh.Folding := False;
+  FHigh.OnLineKind := @EditLineKind;
+  FHigh.OnLineText := @EditLineText;
+  LedApplyThemeToHighlighter(LedCurrentTheme, FHigh);
+  FEdit.Highlighter := FHigh;
 
   FEdit.OnExit := @EditExited;
   FEdit.OnWheelPassedUp := @ChildWheel;
@@ -682,6 +697,28 @@ procedure TLedNBCellBox.HookRenderChildren;
 
 begin
   if FRender <> nil then Hook(FRender);
+end;
+
+{ What the notebook highlighter is told about the box's own editor: one
+  cell, every line of it the cell's own, and a magic line answered as a
+  magic.  The buffer's version of this is TLedDocument.NBLineKind, which has
+  headers and output to account for; here there is only the cell. }
+function TLedNBCellBox.EditLineKind(ALine: Integer; out ACell: Integer;
+  out ALang: string): TLedNBLine;
+begin
+  ACell := 0;
+  ALang := FEditLang;
+  Result := nblSource;
+  if (FEdit <> nil) and (ALine >= 0) and (ALine < FEdit.Lines.Count) and
+     LedNBIsMagicLine(FEdit.Lines[ALine], ALine = 0, FEditIPython) then
+    Result := nblMagic;
+end;
+
+function TLedNBCellBox.EditLineText(ALine: Integer): string;
+begin
+  Result := '';
+  if (FEdit <> nil) and (ALine >= 0) and (ALine < FEdit.Lines.Count) then
+    Result := FEdit.Lines[ALine];
 end;
 
 procedure TLedNBCellBox.ChildDblClick(Sender: TObject);
@@ -951,6 +988,7 @@ var
   Y, Count, i, Room: Integer;
   Source, Page: string;
   Prose: Boolean;
+  Inner: TSynCustomHighlighter;
 begin
   Width := AWidth;
   { Everything below the head is made afresh: the outputs change shape, and
@@ -1014,7 +1052,25 @@ begin
   end
   else
   begin
+    { Which language to colour the cell in, and whether a line beginning %
+      or ! is one of IPython's magics.  Worked out on every rebuild rather
+      than once when the editor was made: a reader who types %%octave into a
+      cell has changed its language, and the query the highlighter calls
+      reads these as it paints.
+
+      An inner made during a paint has nobody to theme it and comes out in
+      SynEdit's own colours rather than the reader's, so it is made here. }
+    FEditLang := LedNBCellLanguage(Source, FDoc.Notebook.LanguageName);
+    if FDoc.Notebook.CellKind(FCell) = nbkMarkdown then
+      FEditLang := 'markdown';
+    FEditIPython := LedNBCellMagic(Source) = '';
     MakeEditor;
+    if FHigh <> nil then
+    begin
+      Inner := FHigh.EnsureInner(FEditLang);
+      if Inner <> nil then
+        LedApplyThemeToHighlighter(LedCurrentTheme, Inner);
+    end;
     if FRender <> nil then FRender.Visible := False;
     FEdit.Visible := True;
     if FEdit.Lines.Text <> Source then

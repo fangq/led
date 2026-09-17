@@ -5699,6 +5699,35 @@ var
     Result := FaceOfNode(APanel.MasterFrame.Html.HtmlNode, AClass);
   end;
 
+  { The theme scope the box's own editor would paint at a 1-based row and
+    column.  The cell's colouring is a property of the box, not of the
+    document, so it has to be asked of the box. }
+  function BoxScope(ABox: TLedNBCellBox; ARow, ACol: Integer): string;
+  var
+    HL: TSynCustomHighlighter;
+    Tok: PChar;
+    TokLen, TokPos: Integer;
+    Attr: TSynHighlighterAttributes;
+  begin
+    Result := '';
+    if (ABox = nil) or (ABox.Editor = nil) then Exit;
+    HL := ABox.Editor.Highlighter;
+    if (HL = nil) or (ARow < 1) or (ARow > ABox.Editor.Lines.Count) then Exit;
+    HL.StartAtLineIndex(ARow - 1);
+    while not HL.GetEol do
+    begin
+      HL.GetTokenEx(Tok, TokLen);
+      TokPos := HL.GetTokenPos;
+      if (ACol > TokPos) and (ACol <= TokPos + TokLen) then
+      begin
+        Attr := HL.GetTokenAttribute;
+        if Attr <> nil then Result := Attr.StoredName;
+        Exit;
+      end;
+      HL.Next;
+    end;
+  end;
+
   { Every word of a rendered page, in the order it was laid out and decoded
     the way it is drawn.  Asked of the page rather than of the markup, so an
     escape that was written once and read twice shows up here. }
@@ -5949,6 +5978,31 @@ begin
     (CellBox(Pane, 1).RunButton.Images <> nil) and
     (CellBox(Pane, 1).RunButton.ImageIndex >= 0));
 
+  { ---- the box's own colouring follows the cell's magic ---- }
+
+  { The pane used to colour every code cell as the notebook's language, so a
+    %%octave cell was Python in the box and Octave in the line view -- the
+    same cell, two answers.  A per cent sign tells them apart: it opens a
+    remark in Octave and is an operator in Python. }
+  Doc.NBSetCellSource(1, '%%octave' + #10 + '% a remark' + #10 +
+    'A = [1 2];' + #10);
+  Pane.RefreshCell(1);
+  Pump;
+  B := CellBox(Pane, 1);
+  Check('the cell is coloured as Octave, where a per cent is a remark: ' +
+    BoxScope(B, 2, 3), Pos('comment', BoxScope(B, 2, 3)) > 0);
+
+  { And the magic line is drawn as a comment -- asked of a shell cell, where
+    nothing else would make it one. }
+  Doc.NBSetCellSource(1, '%%shell' + #10 + 'echo hello' + #10);
+  Pane.RefreshCell(1);
+  Pump;
+  B := CellBox(Pane, 1);
+  Check('the magic line in the box is drawn as a comment: ' +
+    BoxScope(B, 1, 3), Pos('comment', BoxScope(B, 1, 3)) > 0);
+  Check('and the command under it is not: ' + BoxScope(B, 2, 2),
+    Pos('comment', BoxScope(B, 2, 2)) = 0);
+
   { The code in a cell is set a size up from the editor's own: the pane is a
     reading view, and at the editor's size the code came out smaller than the
     prose around it. }
@@ -5990,6 +6044,21 @@ begin
     Pump;
     Check('a notch on the renderer''s own control is taken', Handled);
 
+    { The notch scrolled the pane, and the pane is windowed: whether the
+      cell that was clicked still has a box depends on how tall the cells
+      happen to be.  So both are fetched again rather than reused -- holding
+      the old ones and calling a handler on them was a jump into freed
+      memory, and it only showed up when a change to the prose changed the
+      heights. }
+    B := CellBox(Pane, 0);
+    Inner := nil;
+    if (B <> nil) and (B.Rendered <> nil) and (B.Rendered.ControlCount > 0) then
+      Inner := B.Rendered.Controls[0];
+    Check('the cell is back on screen with its renderer', Inner <> nil);
+  end;
+
+  if Inner <> nil then
+  begin
     Check('prose is not being edited before the double click', not B.Editing);
     TControlEvents(Inner).OnDblClick(Inner);
     Pump;
@@ -6477,6 +6546,22 @@ var
     Result := LineOfText(AWhat) >= 0;
   end;
 
+  { The kernel says a cell has finished in a message of its own, after the
+    output of it: waiting for what the cell printed is not waiting for the
+    run to be over, and reading the count straight afterwards was a race
+    this lost whenever the editor was busy in between. }
+  function WaitForCount(ACell, ACount, ASeconds: Integer): Boolean;
+  begin
+    Deadline := Now + ASeconds / 86400.0;
+    while Now < Deadline do
+    begin
+      Pump;
+      if Doc.Notebook.CellExecutionCount(ACell) = ACount then Exit(True);
+      Sleep(20);
+    end;
+    Result := Doc.Notebook.CellExecutionCount(ACell) = ACount;
+  end;
+
 begin
   Say('Jupyter notebook running');
 
@@ -6553,8 +6638,7 @@ begin
   Check('the output is in the cell, not just on the screen',
     (Doc.Notebook.CellOutputs(0) <> nil) and
     (Doc.Notebook.CellOutputs(0).Count > 0));
-  CheckEqInt('and the cell knows it has run once',
-    1, Doc.Notebook.CellExecutionCount(0));
+  Check('and the cell knows it has run once', WaitForCount(0, 1, 30));
   Check('which the header shows: ' + Doc.Master.Lines[0],
     Pos('[1]', Doc.Master.Lines[0]) = 1);
   Check('the document is modified, because the file has new output in it',
@@ -6698,6 +6782,8 @@ var
     '   "metadata": {},' + #10 +
     '   "outputs": [],' + #10 +
     '   "source": [' + #10 +
+    '    "%load_ext autoreload\n",' + #10 +
+    '    "!pip install numpy\n",' + #10 +
     '    "x = [1, 2]\n",' + #10 +
     '    "disp(x)"' + #10 +
     '   ]' + #10 +
@@ -6710,7 +6796,18 @@ var
     '   "source": [' + #10 +
     '    "%%octave\n",' + #10 +
     '    "A = [1 2; 3 4];\n",' + #10 +
+    '    "!x = 1\n",' + #10 +
     '    "disp(A)"' + #10 +
+    '   ]' + #10 +
+    '  },' + #10 +
+    '  {' + #10 +
+    '   "cell_type": "code",' + #10 +
+    '   "execution_count": 3,' + #10 +
+    '   "metadata": {},' + #10 +
+    '   "outputs": [],' + #10 +
+    '   "source": [' + #10 +
+    '    "%%shell\n",' + #10 +
+    '    "echo hello"' + #10 +
     '   ]' + #10 +
     '  }' + #10 +
     ' ],' + #10 +
@@ -6866,6 +6963,57 @@ begin
     (ScopeAt(Line + 3, 1) <> '') and (ScopeAt(Line + 3, 1) <> Was));
   Check('and a matrix literal is not plain text',
     ScopeAt(Line + 2, 6) <> '');
+
+  { ---- a magic is drawn the way a comment is drawn ---- }
+
+  { It is Jupyter's word and not the language's: no highlighter can read
+    "%%octave" or "!pip install numpy" as code, and every one of them called
+    it an error or an operator.  A front end draws them as what they are, an
+    instruction to itself, which is what a comment looks like. }
+  { Asked of the %%shell cell and not of the %%octave one: a per cent opens
+    a remark in Octave, so that cell's magic line was drawn as a comment
+    whether or not this worked -- the check passed with the whole thing
+    switched off.  Nothing in a shell script makes "%%shell" a comment. }
+  Line := LineOfText('%%shell');
+  CheckGt('the shell cell is on the page', 0, Line);
+  Check('the cell magic line is drawn as a comment: ' + ScopeAt(Line + 1, 3),
+    Pos('comment', ScopeAt(Line + 1, 3)) > 0);
+  Check('and the shell command under it is not: ' + ScopeAt(Line + 2, 2),
+    Pos('comment', ScopeAt(Line + 2, 2)) = 0);
+  Line := LineOfText('%load_ext');
+  CheckGt('the line magic is on the page', 0, Line);
+  Check('and a line magic is too: ' + ScopeAt(Line + 1, 3),
+    Pos('comment', ScopeAt(Line + 1, 3)) > 0);
+  Line := LineOfText('!pip install');
+  CheckGt('the shell escape is on the page', 0, Line);
+  Check('and a shell escape with it: ' + ScopeAt(Line + 1, 3),
+    Pos('comment', ScopeAt(Line + 1, 3)) > 0);
+
+  { But only where they mean anything.  Inside a cell %%octave has handed to
+    another language a '!' is that language's own -- Octave's not-equals --
+    and drawing it as a comment would be a lie about the code. }
+  Line := LineOfText('!x = 1');
+  CheckGt('the bang inside the octave cell is on the page', 0, Line);
+  Check('and is left to Octave rather than taken for a magic: ' +
+    ScopeAt(Line + 1, 1),
+    Pos('comment', ScopeAt(Line + 1, 1)) = 0);
+
+  { The header says which language the cell turned out to be, so a reader can
+    see that the magic was read rather than having to infer it from the
+    colours. }
+  Line := LineOfText('%%octave');
+  Check('the header above a magic cell names the cell''s language: ' +
+    Doc.Master.Lines[Line - 1],
+    Pos('] octave', Doc.Master.Lines[Line - 1]) > 0);
+  Line := LineOfText('x = [1, 2]');
+  Check('and a cell with no magic still names the notebook''s: ' +
+    Doc.Master.Lines[Line - 3],
+    Pos('] python', Doc.Master.Lines[Line - 3]) > 0);
+
+  { And the code either side of a magic is still code. }
+  Line := LineOfText('x = [1, 2]');
+  Check('the code below a magic is coloured as code: ' + ScopeAt(Line + 1, 1),
+    ScopeAt(Line + 1, 1) <> '');
 
   DeleteFile(Path);
 end;

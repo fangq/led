@@ -56,7 +56,8 @@ type
     nblOutLabel,   // out ------
     nblOutput,     // a line of output
     nblError,      // a line of output that came from a traceback
-    nblSource);    // a line of a cell's own text
+    nblSource,     // a line of a cell's own text
+    nblMagic);     // %%shell, %load_ext, !pip: Jupyter's, not the language's
 
   { Asked about every line as it is painted.  ACell comes back as the cell
     the line belongs to and ALang as the language to colour it in: the
@@ -98,6 +99,7 @@ type
     FCellHigh: TSynCustomHighlighter;
 
     FAttrs: array[TLedNBLine] of TSynHighlighterAttributes;
+    FFolding: Boolean;
     function LineKind(ALine: Integer; out ACell: Integer;
       out ALang: string): TLedNBLine;
     function InnerFor(const ALang: string): TSynCustomHighlighter;
@@ -127,11 +129,24 @@ type
     { Asked for the text of a line, so that a cell can be rewound and run
       forward without the buffer being copied in here. }
     property OnLineText: TLedNBTextQuery read FOnLineText write FOnLineText;
+    { Whether the nesting of a notebook is reported as fold blocks.  On for
+      the buffer, where a cell folds shut under its header; off where the
+      text is one cell and nothing else, as it is in the pane's own editor,
+      which would otherwise open a block at its first line and never close
+      it. }
+    property Folding: Boolean read FFolding write FFolding;
 
     { The language highlighters in use, so that the theme reaches them: they
       are this document's own instances, so nothing else re-themes them. }
     function InnerCount: Integer;
     function Inner(AIndex: Integer): TSynCustomHighlighter;
+    { The highlighter for a language, made now rather than on the first line
+      that needs it.  For a caller that knows what language is coming and
+      wants to colour it before it is painted: an inner made during a paint
+      has nobody to theme it until the next time the views are configured,
+      and until then it draws in SynEdit's own colours rather than the
+      reader's. }
+    function EnsureInner(const ALang: string): TSynCustomHighlighter;
 
     class function GetLanguageName: string; override;
   end;
@@ -152,7 +167,8 @@ const
     'def.comment',           { nblOutLabel }
     'def.doc-comment',       { nblOutput   }
     'def.error',             { nblError    }
-    'def.comment');          { nblSource -- never used: the inner answers }
+    'def.comment',           { nblSource -- never used: the inner answers }
+    'def.comment');          { nblMagic    }
 
 constructor TLedNBHighlighter.Create(AOwner: TComponent);
 var
@@ -184,6 +200,7 @@ begin
   FCellBuf := TSynEditStringList.Create;
   FCellNo := -1;
   FCellFirst := -1;
+  FFolding := True;
 end;
 
 destructor TLedNBHighlighter.Destroy;
@@ -209,6 +226,11 @@ begin
   if i >= 0 then Exit(TSynCustomHighlighter(FInners.Objects[i]));
   Result := LedCreateHighlighter(ALang);
   FInners.AddObject(ALang, Result);
+end;
+
+function TLedNBHighlighter.EnsureInner(const ALang: string): TSynCustomHighlighter;
+begin
+  Result := InnerFor(ALang);
 end;
 
 function TLedNBHighlighter.InnerCount: Integer;
@@ -249,9 +271,11 @@ var
   Cell: Integer;
   Lang: string;
 begin
+  if not FFolding then Exit(0);
   case LineKind(ALine, Cell, Lang) of
     nblHeader:   Result := 0;
-    nblSource:   Result := 1;
+    nblSource,
+    nblMagic:    Result := 1;
     nblOutLabel: Result := 1;
     nblOutput,
     nblError:    Result := 2;
