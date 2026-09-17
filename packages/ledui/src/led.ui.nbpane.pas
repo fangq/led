@@ -138,13 +138,32 @@ type
 function LedNBColours: TLedNBColourSet;
 
 type
-  TLedNotebookPane = class(TScrollBox)
+  { The page of cells.
+
+    Only the cells on screen are built.  That is not an optimisation, it is
+    what makes the pane work at all: a control's position in the LCL is a
+    signed 16-bit number, and stacking a hundred cells of full-height prose
+    runs past 32767 pixels -- at which point the coordinates wrap and the
+    editor comes down.  The report that found it was a notebook laying a cell
+    out at Top = 33133.
+
+    So the pane does its own scrolling.  The scrollbar counts the notebook's
+    whole height, which is a 32-bit number and may be as large as it likes;
+    the boxes are positioned against the top of the viewport, where nothing
+    is ever more than a screen from zero.  A cell's height is remembered once
+    it has been built and estimated until then, so the bar is roughly right
+    immediately and exactly right for everything the reader has seen. }
+  TLedNotebookPane = class(TPanel)
   private
     FDoc: TLedDocument;
-    FBoxes: TFPList;           // of TLedNBCellBox
+    FBoxes: TFPList;           // of TLedNBCellBox: the cells on screen
+    FFirst: Integer;           // the first cell built, or -1
+    FHeights: array of Integer;   // per cell; -1 until it has been built
+    FBar: TScrollBar;
     FNote: TLabel;
     FImages: TCustomImageList;
     FOnRun: TLedNBCellEvent;
+    FBuilding: Boolean;        // BuildWindow is not re-entrant
     { Resizing is coalesced.  Dragging the splitter fires a resize per pixel,
       and every one of them would re-wrap every cell and re-measure every
       piece of prose; the pane waits until the dragging stops.  The preview
@@ -154,15 +173,39 @@ type
     procedure CellRun(Sender: TObject; ACell: Integer);
     procedure CellEdited(Sender: TObject; ACell: Integer);
     procedure ResizeSettled(Sender: TObject);
+    procedure BarScrolled(Sender: TObject);
+    { The height a cell takes, measured if it has ever been built and
+      estimated from its neighbours if not. }
+    function HeightOf(ACell: Integer): Integer;
+    function Estimate: Integer;
+    { Where a cell starts, and how tall the whole notebook is, in the
+      scrollbar's own coordinates. }
+    function VirtualTop(ACell: Integer): Integer;
+    function VirtualHeight: Integer;
+    procedure SyncBar;
+    { Builds the cells the viewport covers and releases the rest. }
+    procedure BuildWindow;
+    procedure ReleaseBoxes;
+    procedure LayoutBelow(ACell: Integer);
+    { Whether the document these cells are of is still open, forgetting it
+      when it is not.  Every path that touches the notebook asks first: the
+      pane outlives the tab it was showing, and a resize arriving after a
+      close would otherwise read a freed document.  The docking checks, which
+      show and hide every pane, found exactly that. }
+    function LiveDoc: Boolean;
+    function GetScrollPos: Integer;
+    procedure SetScrollPos(AValue: Integer);
   protected
     procedure Resize; override;
+    function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+      AMousePos: TPoint): Boolean; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
-    { Lays the boxes out again for the pane's current width: the wrapped
+    { Lays the cells out again for the pane's current width: the wrapped
       height of a cell and the size a wide picture is scaled to both depend
-      on it. }
+      on it, so every remembered height is forgotten and taken again. }
     procedure Relayout;
 
     { Shows a document's cells, or a note saying why there are none.  Called
@@ -172,13 +215,25 @@ type
       line view has been typed into. }
     procedure Reload;
     { One cell again, which is what a run needs: its label, its output and
-      its height. }
+      its height.  Does nothing for a cell that is not on screen: there is no
+      box to redraw, and its height is taken again when it is next built. }
     procedure RefreshCell(ACell: Integer);
 
+    { Puts a cell at the top of the viewport, building it if it was not on
+      screen. }
+    procedure ScrollToCell(ACell: Integer);
+
+    { How many cells the notebook has, and how many of them are built.  The
+      second is a property of the window on screen and not of the file. }
     function CellCount: Integer;
+    function BuiltCount: Integer;
+    { The AIndex-th box on screen, or nil. }
     function Box(AIndex: Integer): TLedNBCellBox;
-    { The box for a cell, or nil. }
+    { The box showing a given cell, or nil when that cell is not on screen. }
     function BoxOf(ACell: Integer): TLedNBCellBox;
+
+    { Where the page is scrolled to, in pixels down the whole notebook. }
+    property ScrollPos: Integer read GetScrollPos write SetScrollPos;
 
     property Document: TLedDocument read FDoc;
     { Where the cells take their button icons from.  The window's own list,
@@ -389,16 +444,15 @@ end;
 procedure TLedNBCellBox.ChildWheel(Sender: TObject; AShift: TShiftState;
   AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
 var
-  Box: TScrollBox;
+  Page: TLedNotebookPane;
   Notches: Integer;
 begin
-  if not (Parent is TScrollBox) then Exit;
-  Box := TScrollBox(Parent);
+  if not (Parent is TLedNotebookPane) then Exit;
+  Page := TLedNotebookPane(Parent);
   Notches := AWheelDelta div 120;
   if Notches = 0 then
     if AWheelDelta > 0 then Notches := 1 else Notches := -1;
-  Box.VertScrollBar.Position :=
-    Box.VertScrollBar.Position - Notches * LedScale96(48);
+  Page.ScrollPos := Page.ScrollPos - Notches * LedScale96(48);
   AHandled := True;
 end;
 
@@ -877,12 +931,23 @@ end;
 constructor TLedNotebookPane.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
+  BevelOuter := bvNone;
   FBoxes := TFPList.Create;
-  VertScrollBar.Tracking := True;
-  HorzScrollBar.Visible := False;
-
+  FFirst := -1;
   Color := LedNBColours.Page;
   ParentColor := False;
+
+  { The pane's own scrollbar rather than a scroll box's.  A scroll box scrolls
+    by moving its children, and a child cannot be positioned past 32767; this
+    one carries the whole notebook's height as an ordinary integer and the
+    cells are drawn where the viewport is. }
+  FBar := TScrollBar.Create(Self);
+  FBar.Parent := Self;
+  FBar.Kind := sbVertical;
+  FBar.Align := alRight;
+  FBar.OnChange := @BarScrolled;
+  FBar.Min := 0;
+  FBar.Max := 0;
 
   FNote := TLabel.Create(Self);
   FNote.Parent := Self;
@@ -899,68 +964,37 @@ begin
   FLaidOutFor := -1;
 end;
 
-procedure TLedNotebookPane.Resize;
-begin
-  inherited Resize;
-  if FBoxes = nil then Exit;
-  if FBoxes.Count = 0 then Exit;
-  if ClientWidth = FLaidOutFor then Exit;
-  FResizeTimer.Enabled := False;
-  FResizeTimer.Enabled := True;
-end;
-
-procedure TLedNotebookPane.ResizeSettled(Sender: TObject);
-begin
-  FResizeTimer.Enabled := False;
-  Relayout;
-end;
-
-{ Every box to the pane's width, and every height worked out again for it.
-
-  Not a Reload: that would build the boxes afresh and take the caret out of
-  whichever one is being typed into.  Rebuild keeps the editor and its text
-  and only redoes what depends on the width -- the wrapped height, the
-  rendered prose, the scale a picture is drawn at. }
-procedure TLedNotebookPane.Relayout;
-var
-  i, Y, W: Integer;
-begin
-  if (FBoxes = nil) or (FBoxes.Count = 0) then Exit;
-  { The document may have closed since the boxes were built -- this runs from
-    a timer, and a tab can be shut between the resize and the settling.  The
-    cells are of a document that is gone, so they go too.  Without this the
-    docking checks, which resize every pane, walked into a freed document. }
-  if not LedDocumentIsOpen(FDoc) then
-  begin
-    FDoc := nil;
-    Reload;
-    Exit;
-  end;
-  W := ClientWidth - LedScale96(4);
-  if W < LedScale96(120) then W := LedScale96(120);
-
-  DisableAutoSizing;
-  try
-    Y := 0;
-    for i := 0 to FBoxes.Count - 1 do
-    begin
-      TLedNBCellBox(FBoxes[i]).SetBounds(0, Y, W,
-        TLedNBCellBox(FBoxes[i]).Height);
-      Inc(Y, TLedNBCellBox(FBoxes[i]).Rebuild(W) + LedScale96(4));
-    end;
-    FLaidOutFor := ClientWidth;
-  finally
-    EnableAutoSizing;
-  end;
-end;
-
 destructor TLedNotebookPane.Destroy;
 begin
   FBoxes.Free;
   inherited Destroy;
 end;
 
+function TLedNotebookPane.GetScrollPos: Integer;
+begin
+  Result := FBar.Position;
+end;
+
+procedure TLedNotebookPane.SetScrollPos(AValue: Integer);
+begin
+  if AValue < 0 then AValue := 0;
+  if AValue > FBar.Max then AValue := FBar.Max;
+  if FBar.Position = AValue then Exit;
+  FBar.Position := AValue;      { fires BarScrolled }
+end;
+
+function TLedNotebookPane.LiveDoc: Boolean;
+begin
+  if (FDoc <> nil) and (not LedDocumentIsOpen(FDoc)) then FDoc := nil;
+  Result := FDoc <> nil;
+end;
+
 function TLedNotebookPane.CellCount: Integer;
+begin
+  if not LiveDoc then Result := 0 else Result := FDoc.Notebook.CellCount;
+end;
+
+function TLedNotebookPane.BuiltCount: Integer;
 begin
   Result := FBoxes.Count;
 end;
@@ -982,6 +1016,206 @@ begin
       Exit(TLedNBCellBox(FBoxes[i]));
 end;
 
+{ How tall a cell nobody has built yet should be assumed to be.
+
+  The average of the ones that have been built, which is a better guess the
+  more of the notebook has been looked at, and a plain default before any of
+  it has.  It only moves the scrollbar's thumb: every cell is laid out from
+  its own contents when it is built. }
+function TLedNotebookPane.Estimate: Integer;
+var
+  i, Known, Total: Integer;
+begin
+  Known := 0;
+  Total := 0;
+  for i := 0 to High(FHeights) do
+    if FHeights[i] > 0 then
+    begin
+      Inc(Known);
+      Inc(Total, FHeights[i]);
+    end;
+  if Known = 0 then Exit(LedScale96(120));
+  Result := Total div Known;
+end;
+
+function TLedNotebookPane.HeightOf(ACell: Integer): Integer;
+begin
+  if (ACell >= 0) and (ACell <= High(FHeights)) and (FHeights[ACell] > 0) then
+    Result := FHeights[ACell]
+  else
+    Result := Estimate;
+  Inc(Result, LedScale96(4));      { the gap between cells }
+end;
+
+function TLedNotebookPane.VirtualTop(ACell: Integer): Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  for i := 0 to ACell - 1 do
+    Inc(Result, HeightOf(i));
+end;
+
+function TLedNotebookPane.VirtualHeight: Integer;
+begin
+  Result := VirtualTop(CellCount);
+end;
+
+procedure TLedNotebookPane.SyncBar;
+var
+  Room: Integer;
+begin
+  Room := VirtualHeight - ClientHeight;
+  if Room < 0 then Room := 0;
+  FBar.PageSize := ClientHeight;
+  FBar.LargeChange := ClientHeight;
+  FBar.SmallChange := LedScale96(24);
+  FBar.Max := Room + FBar.PageSize;
+  FBar.Visible := Room > 0;
+end;
+
+procedure TLedNotebookPane.ReleaseBoxes;
+var
+  i: Integer;
+begin
+  { Released rather than freed: a box holds the controls a reader clicks, and
+    freeing one the LCL still has in hand is "Destroy with LCLRefCount>0" and
+    an editor standing on freed memory. }
+  for i := 0 to FBoxes.Count - 1 do
+  begin
+    TLedNBCellBox(FBoxes[i]).Visible := False;
+    Application.ReleaseComponent(TLedNBCellBox(FBoxes[i]));
+  end;
+  FBoxes.Clear;
+  FFirst := -1;
+end;
+
+{ Builds the cells the viewport covers, and only those.
+
+  Every box is positioned against the top of the pane, so no coordinate is
+  ever more than a screen away from zero however long the notebook is.  A
+  cell's real height is learnt here and remembered, which is why the
+  scrollbar settles as the reader moves through the file. }
+procedure TLedNotebookPane.BuildWindow;
+var
+  Cell, Y, W, Offset, Grown: Integer;
+  B: TLedNBCellBox;
+  Keep: TFPList;
+begin
+  if FBuilding then Exit;
+  if not LiveDoc then
+  begin
+    ReleaseBoxes;
+    Exit;
+  end;
+  FBuilding := True;
+  Keep := TFPList.Create;
+  DisableAutoSizing;
+  try
+    W := ClientWidth - LedScale96(4);
+    if FBar.Visible then Dec(W, FBar.Width);
+    if W < LedScale96(120) then W := LedScale96(120);
+
+    Offset := FBar.Position;
+    { Which cell the top of the viewport is in, and how far into it. }
+    Cell := 0;
+    while (Cell < CellCount - 1) and
+          (VirtualTop(Cell) + HeightOf(Cell) <= Offset) do
+      Inc(Cell);
+    FFirst := Cell;
+    Y := VirtualTop(Cell) - Offset;
+
+    while (Cell < CellCount) and (Y < ClientHeight) do
+    begin
+      { A cell already on screen is kept rather than built again.  Building
+        one measures a page of prose, and rebuilding the lot on every wheel
+        notch would make scrolling cost what opening the pane costs. }
+      B := BoxOf(Cell);
+      if B = nil then
+      begin
+        B := TLedNBCellBox.Create(Self, FDoc, Cell, FImages);
+        B.Parent := Self;
+        B.OnRunCell := @CellRun;
+        B.OnEdited := @CellEdited;
+        B.SetBounds(0, Y, W, LedScale96(40));
+        Grown := B.Rebuild(W);
+      end
+      else if B.Width <> W then
+        Grown := B.Rebuild(W)
+      else
+        Grown := B.Height;
+
+      B.Left := 0;
+      B.Top := Y;
+      Keep.Add(B);
+      if Cell <= High(FHeights) then FHeights[Cell] := Grown;
+      Inc(Y, Grown + LedScale96(4));
+      Inc(Cell);
+    end;
+
+    { Whatever scrolled out of sight goes away -- released, not freed. }
+    for Cell := 0 to FBoxes.Count - 1 do
+      if Keep.IndexOf(FBoxes[Cell]) < 0 then
+      begin
+        TLedNBCellBox(FBoxes[Cell]).Visible := False;
+        Application.ReleaseComponent(TLedNBCellBox(FBoxes[Cell]));
+      end;
+    FBoxes.Clear;
+    for Cell := 0 to Keep.Count - 1 do FBoxes.Add(Keep[Cell]);
+  finally
+    Keep.Free;
+    EnableAutoSizing;
+    FBuilding := False;
+  end;
+  { The heights just learnt may have changed how tall the notebook is. }
+  SyncBar;
+end;
+
+procedure TLedNotebookPane.BarScrolled(Sender: TObject);
+begin
+  BuildWindow;
+end;
+
+function TLedNotebookPane.DoMouseWheel(AShift: TShiftState;
+  AWheelDelta: Integer; AMousePos: TPoint): Boolean;
+var
+  Notches: Integer;
+begin
+  Notches := AWheelDelta div 120;
+  if Notches = 0 then
+    if AWheelDelta > 0 then Notches := 1 else Notches := -1;
+  ScrollPos := ScrollPos - Notches * LedScale96(48);
+  Result := True;
+end;
+
+procedure TLedNotebookPane.Resize;
+begin
+  inherited Resize;
+  if FBoxes = nil then Exit;
+  if ClientWidth = FLaidOutFor then Exit;
+  FResizeTimer.Enabled := False;
+  FResizeTimer.Enabled := True;
+end;
+
+procedure TLedNotebookPane.ResizeSettled(Sender: TObject);
+begin
+  FResizeTimer.Enabled := False;
+  Relayout;
+end;
+
+procedure TLedNotebookPane.Relayout;
+var
+  i: Integer;
+begin
+  if not LiveDoc then Exit;
+  { Every height was measured at the old width and none of them is worth
+    keeping: a cell's wrapped text and a scaled picture both depend on it. }
+  for i := 0 to High(FHeights) do FHeights[i] := -1;
+  FLaidOutFor := ClientWidth;
+  SyncBar;
+  BuildWindow;
+end;
+
 procedure TLedNotebookPane.ShowDocument(ADoc: TLedDocument);
 begin
   if (ADoc <> nil) and (not ADoc.IsNotebook) then ADoc := nil;
@@ -991,73 +1225,65 @@ end;
 
 procedure TLedNotebookPane.Reload;
 var
-  i, Y: Integer;
-  B: TLedNBCellBox;
+  i: Integer;
 begin
-  { Same reason as in Relayout, and this is the other way in. }
-  if (FDoc <> nil) and (not LedDocumentIsOpen(FDoc)) then FDoc := nil;
+  LiveDoc;
   { The theme may have changed since the cells were built, and every colour
     in here comes from it. }
   Color := LedNBColours.Page;
   FNote.Font.Color := LedNBColours.Muted;
-  DisableAutoSizing;
-  try
-    { Released rather than freed.  A cell box holds the controls a reader
-      clicks, and freeing one while the LCL still has it in hand is what
-      "TLedNBCellBox.Destroy with LCLRefCount>0.  Maybe the component is
-      processing an event?" means -- after which the editor is standing on
-      freed memory.  Nothing should rebuild the pane from inside a cell's own
-      event any more, and this is the guard for the paths nobody thought of:
-      the box goes away once the event that was using it has finished. }
-    for i := 0 to FBoxes.Count - 1 do
-    begin
-      TLedNBCellBox(FBoxes[i]).Visible := False;
-      Application.ReleaseComponent(TLedNBCellBox(FBoxes[i]));
-    end;
-    FBoxes.Clear;
 
-    if FDoc = nil then
-    begin
-      FNote.Caption := 'This is not a Jupyter notebook.';
-      FNote.Visible := True;
-      Exit;
-    end;
-    FNote.Visible := False;
-
-    Y := 0;
-    for i := 0 to FDoc.Notebook.CellCount - 1 do
-    begin
-      B := TLedNBCellBox.Create(Self, FDoc, i, FImages);
-      B.Parent := Self;
-      B.OnRunCell := @CellRun;
-      B.OnEdited := @CellEdited;
-      B.SetBounds(0, Y, ClientWidth - LedScale96(4), LedScale96(40));
-      Inc(Y, B.Rebuild(ClientWidth - LedScale96(4)) + LedScale96(4));
-      FBoxes.Add(B);
-    end;
-    FLaidOutFor := ClientWidth;
-  finally
-    EnableAutoSizing;
+  ReleaseBoxes;
+  if FDoc = nil then
+  begin
+    SetLength(FHeights, 0);
+    FBar.Visible := False;
+    FNote.Caption := 'This is not a Jupyter notebook.';
+    FNote.Visible := True;
+    Exit;
   end;
+  FNote.Visible := False;
+
+  SetLength(FHeights, CellCount);
+  for i := 0 to High(FHeights) do FHeights[i] := -1;
+  FLaidOutFor := ClientWidth;
+  FBar.Position := 0;
+  SyncBar;
+  BuildWindow;
 end;
 
 procedure TLedNotebookPane.RefreshCell(ACell: Integer);
 var
-  i, Y: Integer;
   B: TLedNBCellBox;
 begin
-  if not LedDocumentIsOpen(FDoc) then Exit;
+  if not LiveDoc then Exit;
   B := BoxOf(ACell);
-  if B = nil then Exit;
-  B.Rebuild(B.Width);
-  { Everything under it moves: a cell that has just produced a plot is
-    taller than it was. }
-  Y := 0;
-  for i := 0 to FBoxes.Count - 1 do
+  { Not on screen: there is nothing to redraw, and the height it will be
+    built at is taken from the cell itself next time. }
+  if B = nil then
   begin
-    TLedNBCellBox(FBoxes[i]).Top := Y;
-    Inc(Y, TLedNBCellBox(FBoxes[i]).Height + LedScale96(4));
+    if (ACell >= 0) and (ACell <= High(FHeights)) then FHeights[ACell] := -1;
+    Exit;
   end;
+  { A cell that has just run is a different height -- it has output now --
+    so what is under it moves.  The box itself is kept: this is called from a
+    kernel event and from the Run button's own click, and releasing the box
+    then is what destroyed the control that was processing the event. }
+  if (ACell >= 0) and (ACell <= High(FHeights)) then
+    FHeights[ACell] := B.Rebuild(B.Width)
+  else
+    B.Rebuild(B.Width);
+  LayoutBelow(ACell);
+end;
+
+procedure TLedNotebookPane.ScrollToCell(ACell: Integer);
+begin
+  if not LiveDoc then Exit;
+  if ACell < 0 then ACell := 0;
+  if ACell >= CellCount then ACell := CellCount - 1;
+  ScrollPos := VirtualTop(ACell);
+  { When the position was already there, nothing was rebuilt by the setter. }
+  if BoxOf(ACell) = nil then BuildWindow;
 end;
 
 procedure TLedNotebookPane.CellRun(Sender: TObject; ACell: Integer);
@@ -1068,23 +1294,40 @@ end;
 procedure TLedNotebookPane.CellEdited(Sender: TObject; ACell: Integer);
 var
   B: TLedNBCellBox;
-  i, Y: Integer;
 begin
-  { A cell grows as it is typed into, so the ones below it move.  Its own
-    box is not rebuilt -- that would take the caret out of the editor the
-    reader is typing in. }
+  if not LiveDoc then Exit;
+  { A cell grows as it is typed into, so what is under it moves.  Its own box
+    is not rebuilt -- that would take the caret out of the editor being typed
+    in -- but its new height is recorded and the cells below are moved. }
   B := BoxOf(ACell);
   if B = nil then Exit;
   if B.Editor <> nil then B.Editor.Height := B.EditorHeight;
-  Y := 0;
+  B.Height := B.Editor.Top + B.Editor.Height + LedScale96(Pad);
+  if (ACell >= 0) and (ACell <= High(FHeights)) then
+    FHeights[ACell] := B.Height;
+  LayoutBelow(ACell);
+end;
+
+{ The boxes under a cell that changed height, moved by the difference.
+
+  Moved rather than rebuilt, which is the whole point: rebuilding takes the
+  caret out of a cell being typed in, and releases the box of a button being
+  clicked. }
+procedure TLedNotebookPane.LayoutBelow(ACell: Integer);
+var
+  i, Y: Integer;
+  B: TLedNBCellBox;
+begin
+  B := BoxOf(ACell);
+  if B = nil then Exit;
+  Y := B.Top + B.Height + LedScale96(4);
   for i := 0 to FBoxes.Count - 1 do
-  begin
-    TLedNBCellBox(FBoxes[i]).Top := Y;
-    if TLedNBCellBox(FBoxes[i]).Cell = ACell then
-      TLedNBCellBox(FBoxes[i]).Height :=
-        B.Editor.Top + B.Editor.Height + LedScale96(Pad);
-    Inc(Y, TLedNBCellBox(FBoxes[i]).Height + LedScale96(4));
-  end;
+    if TLedNBCellBox(FBoxes[i]).Cell > ACell then
+    begin
+      TLedNBCellBox(FBoxes[i]).Top := Y;
+      Inc(Y, TLedNBCellBox(FBoxes[i]).Height + LedScale96(4));
+    end;
+  SyncBar;
 end;
 
 end.

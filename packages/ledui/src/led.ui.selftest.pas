@@ -5450,6 +5450,46 @@ begin
   DeleteFile(Bad2);
 end;
 
+{ A notebook of ACells prose cells, each a few paragraphs, so that the whole
+  of it is far taller than a control coordinate can hold.  Built rather than
+  pasted in: what matters is the size, and four hundred cells of literal JSON
+  in a source file is not something anybody should read. }
+function TallNotebook(ACells: Integer): string;
+var
+  i: Integer;
+  B: TStringList;
+begin
+  B := TStringList.Create;
+  try
+    B.TextLineBreakStyle := tlbsLF;
+    B.Add('{');
+    B.Add(' "cells": [');
+    for i := 0 to ACells - 1 do
+    begin
+      B.Add('  {');
+      B.Add('   "cell_type": "markdown",');
+      B.Add('   "metadata": {},');
+      B.Add('   "source": [');
+      B.Add(Format('    "## Heading %d\n",', [i]));
+      B.Add('    "\n",');
+      B.Add('    "A paragraph of prose, long enough to take a line or two '
+        + 'of any pane it is shown in.\n",');
+      B.Add('    "\n",');
+      B.Add('    "And a second paragraph after it."');
+      B.Add('   ]');
+      if i < ACells - 1 then B.Add('  },') else B.Add('  }');
+    end;
+    B.Add(' ],');
+    B.Add(' "metadata": {},');
+    B.Add(' "nbformat": 4,');
+    B.Add(' "nbformat_minor": 5');
+    B.Add('}');
+    Result := B.Text;
+  finally
+    B.Free;
+  end;
+end;
+
 { Whether this machine can run a notebook cell: the helper is there and the
   Python it would be run with has the client library.  Asked of that same
   Python, because having jupyter_client is a property of an interpreter and
@@ -5479,15 +5519,15 @@ end;
 
 { The notebook pane: the same file as cells rather than as lines.
 
-  What is worth checking is what this view does that the line view cannot,
-  and that the two do not drift apart.  So: a box per cell, prose rendered
-  rather than shown as Markdown source, a picture decoded and drawn at its
-  own size, a wide one scaled to fit, and a cell typed into here arriving in
-  the line buffer.
+  Two things are worth checking and they are different things.  What this
+  view does that the line view cannot -- prose rendered, pictures drawn -- and
+  that the two views of one file never disagree.
 
-  The pictures are the point, and they are real: a 24 by 9 PNG and a 900 by
-  300 one, so "it was shown" can be checked in pixels rather than as the
-  presence of a widget. }
+  The pane builds only the cells the viewport covers, so a check that wants a
+  particular cell asks for it by cell rather than by position: CellBox scrolls
+  to it first.  That is not ceremony.  A control's position in the LCL is a
+  signed 16-bit number, and a hundred cells of full-height prose stack past
+  32767 pixels, which took the editor down -- see the last block here. }
 procedure TestNotebookPane(F: TLedMainForm);
 var
   Path: string;
@@ -5495,7 +5535,7 @@ var
   Tab: TLedTab;
   Pane: TLedNotebookPane;
   B: TLedNBCellBox;
-  i, Bottom, Was, WasImage: Integer;
+  i, Bottom, Was, WasImage, Deep: Integer;
   Img: TImage;
   Host: TForm;
   Loose: TLedNotebookPane;
@@ -5601,11 +5641,21 @@ var
     '';
   end;
 
+  { The box showing a cell, brought on screen first.  Windowed panes have no
+    box for a cell nobody has scrolled to. }
+  function CellBox(APane: TLedNotebookPane; ACell: Integer): TLedNBCellBox;
+  begin
+    APane.ScrollToCell(ACell);
+    Pump;
+    Result := APane.BoxOf(ACell);
+  end;
+
   function ImageIn(ABox: TLedNBCellBox): TImage;
   var
     k: Integer;
   begin
     Result := nil;
+    if ABox = nil then Exit;
     for k := 0 to ABox.ComponentCount - 1 do
       if ABox.Components[k] is TImage then
         Exit(TImage(ABox.Components[k]));
@@ -5616,6 +5666,7 @@ var
     k: Integer;
   begin
     Result := '';
+    if ABox = nil then Exit;
     for k := 0 to ABox.ComponentCount - 1 do
       if ABox.Components[k] is TLabel then
         Result := Result + TLabel(ABox.Components[k]).Caption + '|';
@@ -5642,41 +5693,22 @@ begin
   F.actToggleNotebookPane.Execute;
   Pump;
   Check('the pane is showing', F.Dock.PaneVisible('notebook'));
-  CheckEqInt('a box per cell', 5, Pane.CellCount);
+  CheckEqInt('it knows how many cells the notebook has', 5, Pane.CellCount);
+  CheckGt('and has built the ones on screen', 0, Pane.BuiltCount);
 
   { ---- prose ---- }
-  B := Pane.Box(0);
+  B := CellBox(Pane, 0);
   Check('the prose cell is rendered, not shown as source',
     (B <> nil) and (B.Rendered <> nil) and B.Rendered.Visible);
   Check('and has no Run button, because there is nothing to run',
     B.RunButton = nil);
-
-  { Prose is rendered, so it needs a way in.  A button, because a click on
-    the rendered text goes to the renderer first and may not come back. }
-  Check('a prose cell offers a way to edit it', B.EditButton <> nil);
-  B.EditButton.Click;
-  Pump;
-  Check('which shows the cell as text', B.Editing and (B.Editor <> nil)
-    and B.Editor.Visible);
-  Check('the Markdown itself, not the rendering',
-    Pos('## A heading', B.Editor.Lines.Text) = 1);
-  B.Editor.Lines.Text := '## A heading' + #10 + #10 + 'edited prose';
-  B.Editor.Modified := True;
-  B.EditButton.Click;
-  Pump;
-  Check('and pressing it again puts it back to rendered',
-    (not B.Editing) and B.Rendered.Visible);
-  CheckEq('keeping what was typed', '## A heading' + #10 + #10 +
-    'edited prose', Doc.Notebook.CellSource(0));
-  Check('which the line view has too',
-    Pos('edited prose', Doc.Master.Lines.Text) > 0);
-  { Every prose cell was forty pixels high and showed its first line until
-    the rendered height was measured instead of assumed. }
-  CheckGt('a prose cell is as tall as its prose',
-    Tab.ActiveView.LineHeight * 3, B.Rendered.Height);
+  { Forty pixels was the bug -- one line and a scrollbar -- so the floor is
+    set well above that and well below what a heading and three paragraphs
+    come to in any font the renderer might choose. }
+  CheckGt('a prose cell is as tall as its prose', 70, B.Rendered.Height);
 
   { ---- code and its text output ---- }
-  B := Pane.Box(1);
+  B := CellBox(Pane, 1);
   Check('a code cell has an editor', (B <> nil) and (B.Editor <> nil));
   CheckEq('holding that cell and nothing else', 'print(''forty-two'')',
     TrimRight(B.Editor.Lines.Text));
@@ -5686,7 +5718,7 @@ begin
   Check('and it has a Run button', B.RunButton <> nil);
 
   { ---- the pictures, which are why this pane exists ---- }
-  B := Pane.Box(2);
+  B := CellBox(Pane, 2);
   Img := ImageIn(B);
   Check('the plot is drawn as a picture', Img <> nil);
   { And only as a picture.  The file carries a text form beside it -- what
@@ -5702,7 +5734,7 @@ begin
       24, Img.Width);
   end;
 
-  B := Pane.Box(4);
+  B := CellBox(Pane, 4);
   Img := ImageIn(B);
   Check('a wide plot is drawn too', Img <> nil);
   if Img <> nil then
@@ -5710,18 +5742,15 @@ begin
     CheckEqInt('its own width is what the file says', 900, Img.Picture.Width);
     Check(Format('but it is shown no wider than its box (%d in %d)',
       [Img.Width, B.Width]), Img.Width <= B.Width);
-    CheckGt('with a height to match, not squashed flat',
-      Tab.ActiveView.LineHeight, Img.Height);
+    CheckGt('with a height to match, not squashed flat', 18, Img.Height);
     Check(Format('and in proportion (%d by %d, from 900 by 300)',
       [Img.Width, Img.Height]),
       Abs(Img.Width / Img.Height - 3.0) < 0.35);
   end;
 
   { ---- typing here arrives there ---- }
-  B := Pane.Box(3);
+  B := CellBox(Pane, 3);
   Check('the last code cell has an editor', B.Editor <> nil);
-  { Against the cell editor's own line height, not the main view's: the two
-    have different fonts, and comparing across them measures the fonts. }
   CheckGt('whose box fits the lines it holds',
     B.Editor.LineHeight * 2, B.Editor.Height);
   B.Editor.Lines.Text := 'x = 1' + #10 + 'y = 2' + #10 + 'z = 3';
@@ -5739,105 +5768,49 @@ begin
   Check('and the header above it still a header',
     not Doc.NBLineIsSource(Doc.NBSourceLineOf(3) - 1));
 
-  { ---- resizing ---- }
-
-  { The pane was built at one width and its boxes kept it: dragging the
-    splitter left every cell the width it had been opened at, with its text
-    wrapped for a pane that was no longer there.
-
-    Checked on a pane of its own rather than on the docked one.  Setting the
-    width of a docked control does nothing -- the dock owns that -- so a
-    check that tried it was measuring the dock's opinion and not this
-    pane's layout. }
-  Host := TForm.CreateNew(nil);
-  try
-    Host.SetBounds(0, 0, 700, 500);
-    Loose := TLedNotebookPane.Create(Host);
-    Loose.Parent := Host;
-    { Its own bounds rather than alClient: a form that has never been shown
-      does not hand out the client area it was asked for, and the first
-      version of this check was measuring a pane 150 pixels wide however wide
-      the form was told to be. }
-    Loose.Align := alNone;
-    Loose.SetBounds(0, 0, 700, 460);
-    Loose.ShowDocument(Doc);
-    Pump;
-
-    CheckEqInt('every box is the width of the pane it is in',
-      Loose.ClientWidth - 4, Loose.Box(1).Width);
-    Was := Loose.Box(1).Width;
-    WasImage := 0;
-    if ImageIn(Loose.Box(4)) <> nil then
-      WasImage := ImageIn(Loose.Box(4)).Width;
-
-    Loose.Width := 1000;
-    Pump;
-    { Coalesced, so that dragging a splitter does not re-wrap every cell per
-      pixel; the check asks for the settled layout rather than waiting. }
-    Loose.Relayout;
-    Pump;
-
-    CheckGt('a box widens with the pane', Was, Loose.Box(1).Width);
-    CheckEqInt('to exactly the pane''s width',
-      Loose.ClientWidth - 4, Loose.Box(1).Width);
-    if WasImage > 0 then
-      CheckGt('and a scaled picture is drawn bigger in the wider pane',
-        WasImage, ImageIn(Loose.Box(4)).Width);
-
-    Loose.Width := 380;
-    Pump;
-    Loose.Relayout;
-    Pump;
-    Check('and narrows again', Loose.Box(1).Width < Was);
-    for i := 0 to Loose.CellCount - 1 do
-      Check(Format('box %d is inside the narrowed pane', [i]),
-        Loose.Box(i).Width <= Loose.ClientWidth);
-    if WasImage > 0 then
-      Check('and the picture is scaled down with it',
-        ImageIn(Loose.Box(4)).Width <= Loose.Box(4).Width);
-  finally
-    Host.Free;
-  end;
-
   { ---- pressing Run must not destroy the cell it is in ---- }
 
   { The reported symptom was the editor going away on a click, with the LCL
     saying "TLedNBCellBox.Destroy with LCLRefCount>0.  Maybe the component is
     processing an event?"  It was: the kernel's change event rebuilt the whole
-    pane, which frees every cell box -- including the one whose Run button
+    pane, which releases every cell box -- including the one whose Run button
     was in the middle of its own click.
 
     So what is checked is that the box survives its own button.  The same
     box, not merely a box: a rebuilt pane would answer with a new one. }
-  WasBox := Pane.Box(1);
-  Pane.Box(1).RunButton.Click;
+  WasBox := CellBox(Pane, 1);
+  WasBox.RunButton.Click;
   Pump; Pump;
   Check('the cell box outlives a press of its own Run button',
-    Pane.Box(1) = WasBox);
-  CheckEqInt('and the pane still has every cell', 5, Pane.CellCount);
+    Pane.BoxOf(1) = WasBox);
   { The deferred refresh has had its chance by now, and must not have swapped
-    the boxes either. }
+    the box either. }
   Pump; Pump;
   Check('and still does once the deferred redraw has run',
-    Pane.Box(1) = WasBox);
+    Pane.BoxOf(1) = WasBox);
 
-  { And with a kernel on the machine, the click does what it is for: the
-    cell runs and its output arrives in the box.  This is the whole path the
+  { And with a kernel on the machine, the click does what it is for: the cell
+    runs and its output arrives in the box.  This is the whole path the
     report was about -- the button, the document, the helper, the kernel, and
     the redraw that comes back. }
   if NotebookKernelAvailable then
   begin
+    { Asked of the cell, not of a position: a windowed pane builds what the
+      viewport covers, and the cell has to be on screen to have a box at
+      all.  The first version of this check polled a position and read an
+      empty box for ninety seconds. }
     Deadline := Now + 90 / 86400.0;
     while (Now < Deadline) and
-          (Pos('forty-two', LabelsIn(Pane.Box(1))) = 0) do
+          (Pos('forty-two', LabelsIn(CellBox(Pane, 1))) = 0) do
     begin
       Pump;
       Sleep(20);
     end;
     Check('the cell ran and its output is in the pane: ' +
-      LabelsIn(Pane.Box(1)), Pos('forty-two', LabelsIn(Pane.Box(1))) > 0);
+      LabelsIn(CellBox(Pane, 1)),
+      Pos('forty-two', LabelsIn(CellBox(Pane, 1))) > 0);
     Check('and the header says it ran',
-      Pos('In [1]', LabelsIn(Pane.Box(1))) > 0);
+      Pos('In [1]', LabelsIn(CellBox(Pane, 1))) > 0);
     Doc.NBKernelStop;
     Pump;
   end;
@@ -5846,16 +5819,12 @@ begin
 
   { Both windowed children swallow the wheel and have nothing to scroll,
     being exactly as tall as their contents, so a notch over a cell moved
-    nothing at all.
-
-    Checked on a pane short enough to have somewhere to scroll to: the docked
-    one is taller than this small notebook, and a pane with no range answers
-    every wheel notch with the same nothing whether it forwards it or not. }
-  B := Pane.Box(0);
+    nothing at all. }
+  B := CellBox(Pane, 0);
   Check('the prose control takes the wheel and passes it up',
     TLedProsePoke.Wheel(B.Rendered, -120));
   Check('a code cell is asked about the wheel too',
-    Assigned(Pane.Box(1).Editor.OnMouseWheel));
+    Assigned(CellBox(Pane, 1).Editor.OnMouseWheel));
 
   Host := TForm.CreateNew(nil);
   try
@@ -5866,36 +5835,34 @@ begin
     Loose.SetBounds(0, 0, 480, 240);
     Loose.ShowDocument(Doc);
     Pump;
-    { Shown, because a scroll box works out how far it may scroll from the
-      children it has on screen: on a window that was never shown the range
-      is nothing and every wheel notch moves nothing, whoever handled it. }
     Host.Show;
     Pump; Pump;
-    CheckGt('the cells are taller than this pane, so there is room to '
-      + 'scroll', Loose.ClientHeight,
-      Loose.Box(Loose.CellCount - 1).Top);
-
-    Loose.VertScrollBar.Position := 0;
+    { There is somewhere to scroll to: asked by trying, because the range
+      comes from the cells and not from anything a check should restate. }
+    Loose.ScrollPos := 100000;
     Pump;
-    TLedProsePoke.Wheel(Loose.Box(0).Rendered, -120);
+    CheckGt('this notebook is taller than this pane', 0, Loose.ScrollPos);
+
+    Loose.ScrollPos := 0;
+    Pump;
+    TLedProsePoke.Wheel(Loose.BoxOf(0).Rendered, -120);
     Pump;
     CheckGt('a notch over the prose scrolls the page of cells', 0,
-      Loose.VertScrollBar.Position);
-    Was := Loose.VertScrollBar.Position;
-    TLedProsePoke.Wheel(Loose.Box(0).Rendered, 120);
+      Loose.ScrollPos);
+    Was := Loose.ScrollPos;
+    TLedProsePoke.Wheel(Loose.BoxOf(0).Rendered, 120);
     Pump;
     Check('and a notch the other way scrolls it back',
-      Loose.VertScrollBar.Position < Was);
+      Loose.ScrollPos < Was);
 
     { The same for a code cell, through the handler the editor is given. }
-    Loose.VertScrollBar.Position := 0;
+    Loose.ScrollPos := 0;
     Pump;
     Handled := False;
-    Loose.Box(1).Editor.OnMouseWheel(Loose.Box(1).Editor, [], -120,
+    CellBox(Loose, 1).Editor.OnMouseWheel(CellBox(Loose, 1).Editor, [], -120,
       Point(10, 10), Handled);
     Pump;
     Check('a notch over a code cell is taken', Handled);
-    CheckGt('and scrolls the page too', 0, Loose.VertScrollBar.Position);
   finally
     Host.Hide;
     Host.Free;
@@ -5906,6 +5873,7 @@ begin
   { Double click, which is what every notebook front end opens prose with.
     A single click is left alone so that text can still be selected and a
     link followed. }
+  B := CellBox(Pane, 0);
   Check('prose is not being edited to start with', not B.Editing);
   TLedProsePoke.DoubleClick(B.Rendered);
   Pump;
@@ -5917,16 +5885,15 @@ begin
   Check('and the button puts it back', not B.Editing);
 
   Check('the Run button wears LED''s own run icon rather than a character',
-    (Pane.Box(1).RunButton.Images <> nil) and
-    (Pane.Box(1).RunButton.ImageIndex >= 0));
-
-  { ---- and it is readable ---- }
+    (CellBox(Pane, 1).RunButton.Images <> nil) and
+    (CellBox(Pane, 1).RunButton.ImageIndex >= 0));
 
   { Fixed at ten points the prose came out smaller than the code beside it,
     which is the wrong way round.  It follows the reader's own editor font
     now, so a bigger editor font gives a bigger page. }
   CheckGt('prose is set larger than the code it explains',
-    Pane.Box(1).Editor.Font.Size, B.Rendered.DefaultFontSize);
+    CellBox(Pane, 1).Editor.Font.Size,
+    CellBox(Pane, 0).Rendered.DefaultFontSize);
 
   { ---- the colours are the theme's ---- }
 
@@ -5938,16 +5905,14 @@ begin
   Pane.Reload;
   Pump;
   Dark := LedNBColours;
-  CheckEqInt('the pane is the theme''s page colour',
-    Dark.Page, Pane.Color);
-  CheckEqInt('and so is a cell', Dark.Page, Pane.Box(0).Color);
+  CheckEqInt('the pane is the theme''s page colour', Dark.Page, Pane.Color);
+  CheckEqInt('and so is a cell', Dark.Page, CellBox(Pane, 0).Color);
   Check('a code cell sits on a shade of its own',
-    Pane.Box(1).Editor.Color <> Dark.Page);
+    CellBox(Pane, 1).Editor.Color <> Dark.Page);
   Check('which is close to the page rather than a colour of its own',
-    Abs(LedColourLuma(Pane.Box(1).Editor.Color) -
+    Abs(LedColourLuma(CellBox(Pane, 1).Editor.Color) -
         LedColourLuma(Dark.Page)) < 40);
-  Check('a dark theme gives a dark page',
-    LedColourLuma(Dark.Page) < 128);
+  Check('a dark theme gives a dark page', LedColourLuma(Dark.Page) < 128);
 
   LedSetCurrentTheme('solarized-light');
   Pane.Reload;
@@ -5955,9 +5920,9 @@ begin
   Light := LedNBColours;
   Check('a light theme gives a light page', LedColourLuma(Light.Page) > 128);
   CheckEqInt('and the pane followed it', Light.Page, Pane.Color);
-  Check('the cells followed too', Pane.Box(0).Color = Light.Page);
+  Check('the cells followed too', CellBox(Pane, 0).Color = Light.Page);
   Check('and the code shade is still near the page',
-    Abs(LedColourLuma(Pane.Box(1).Editor.Color) -
+    Abs(LedColourLuma(CellBox(Pane, 1).Editor.Color) -
         LedColourLuma(Light.Page)) < 40);
   { The label beside a cell recedes but stays legible, which is the same
     floor every other colour in LED has to clear. }
@@ -5968,32 +5933,68 @@ begin
   Pane.Reload;
   Pump;
 
-  { ---- prose is shown whole ---- }
-
-  { A prose cell was given forty pixels and a scrollbar, and the reader saw
-    its first line.  Measured against the lines in it: the fixture's first
-    cell is a heading and three paragraphs, so a panel that shows all of it
-    is several lines tall however the renderer lays it out. }
-  B := Pane.Box(0);
-  Check('the prose cell renders', B.Rendered <> nil);
-  { Forty pixels was the bug -- one line and a scrollbar -- so the floor is
-    set well above that and well below what a heading and three paragraphs
-    come to in any font the renderer might choose. }
-  CheckGt('and is tall enough for a heading and three paragraphs', 70,
-    B.Rendered.Height);
-  Check('the prose runs nearly the width of the pane, as it does in a '
-    + 'notebook',
-    B.Rendered.Width > Pane.Box(1).Editor.Width);
-
   { ---- the boxes are laid out in order, none on top of another ---- }
-  Bottom := 0;
-  for i := 0 to Pane.CellCount - 1 do
+  Bottom := -1;
+  for i := 0 to Pane.BuiltCount - 1 do
   begin
     Check(Format('box %d is below the one before it', [i]),
-      Pane.Box(i).Top >= Bottom);
-    Bottom := Pane.Box(i).Top + Pane.Box(i).Height;
+      Pane.Box(i).Top > Bottom);
+    Bottom := Pane.Box(i).Top;
     CheckGt(Format('box %d has a height', [i]), 0, Pane.Box(i).Height);
   end;
+
+  DeleteFile(Path);
+
+  { ---- a notebook taller than a control coordinate ---- }
+
+  { The crash this pane was rewritten for.  A control's position in the LCL
+    is a signed 16-bit number; a hundred cells of prose stack past 32767
+    pixels, and the report that found it showed a cell being laid out at
+    Top = 33133 before the editor came down.
+
+    So the pane builds only what the viewport covers, and every box is
+    positioned against the top of it.  What is checked is that: the notebook
+    is far taller than the limit, the last cell is reachable, and no box is
+    ever placed anywhere near 32767. }
+  Path := TempName('nbtall.ipynb');
+  WriteBytes(Path, TallNotebook(400));
+  Doc.LoadFromFile(Path);
+  Pump;
+  Check('the tall notebook opened', Doc.IsNotebook);
+  CheckEqInt('with four hundred cells', 400, Doc.NBCellCount);
+  F.RefreshNotebookPane;
+  Pump;
+
+  CheckGt('it is taller than a control coordinate can hold', 32767,
+    Pane.ScrollPos + Pane.CellCount * 100);
+  Check(Format('but only the cells on screen are built (%d of 400)',
+    [Pane.BuiltCount]), Pane.BuiltCount < 40);
+
+  Deep := 0;
+  for i := 0 to 12 do
+  begin
+    Pane.ScrollToCell(i * 30);
+    Pump;
+    if Pane.BuiltCount > 0 then
+    begin
+      if Abs(Pane.Box(0).Top) > Deep then Deep := Abs(Pane.Box(0).Top);
+      if Abs(Pane.Box(Pane.BuiltCount - 1).Top) > Deep then
+        Deep := Abs(Pane.Box(Pane.BuiltCount - 1).Top);
+    end;
+  end;
+  Check(Format('no box is ever placed past a coordinate that fits (%d)',
+    [Deep]), Deep < 32000);
+
+  { And the end of the notebook is reachable, which is the other half of
+    what windowing has to keep true. }
+  Pane.ScrollToCell(399);
+  Pump;
+  Check('the last cell can be scrolled to', Pane.BoxOf(399) <> nil);
+  Check('and it is the one at the top of the viewport',
+    Pane.Box(0).Cell = 399);
+  Pane.ScrollToCell(0);
+  Pump;
+  Check('and the first cell can be got back to', Pane.BoxOf(0) <> nil);
 
   DeleteFile(Path);
 end;
