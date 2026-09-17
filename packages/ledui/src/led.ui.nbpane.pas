@@ -89,6 +89,7 @@ type
   public
     property OnMouseWheel;
     property OnDblClick;
+    property OnMouseDown;
   end;
 
   { The colours the pane draws with.  The same record the Markdown and wiki
@@ -138,6 +139,14 @@ type
       neither did anything.  Its children are given the same two handlers. }
     procedure HookRenderChildren;
     procedure ChildDblClick(Sender: TObject);
+    { A click on anything in the cell that is not the editor: the head, the
+      padding round it, the rendered prose of the cell next door.  A cell
+      being typed into is left then, the way clicking off a cell leaves it in
+      a notebook front end.  The editor's own OnExit does this when the focus
+      moves, and a click on a label or on the renderer's drawing control
+      moves no focus at all, which is why this is needed. }
+    procedure ChildMouseDown(Sender: TObject; AButton: TMouseButton;
+      AShift: TShiftState; X, Y: Integer);
     { Whether a picture on the web is here to be drawn, asking for it if it
       is not.  The page is laid out with what has arrived; when the rest
       arrives the cell is drawn again. }
@@ -243,6 +252,9 @@ type
     procedure ResizeSettled(Sender: TObject);
     procedure BarScrolled(Sender: TObject);
     procedure ImageTick(Sender: TObject);
+    procedure LeaveEditDeferred(AData: PtrInt);
+    procedure PaneMouseDown(Sender: TObject; AButton: TMouseButton;
+      AShift: TShiftState; X, Y: Integer);
     { The height a cell takes, measured if it has ever been built and
       estimated from its neighbours if not. }
     function HeightOf(ACell: Integer): Integer;
@@ -287,6 +299,15 @@ type
       its height.  Does nothing for a cell that is not on screen: there is no
       box to redraw, and its height is taken again when it is next built. }
     procedure RefreshCell(ACell: Integer);
+
+    { Puts away whatever cell is being typed into, if any.
+
+      Deferred, because this is called from a mouse event on a control the
+      rebuild may well destroy -- the cell's own head label, the drawing
+      control inside the renderer -- and freeing a control while it is
+      handling its own event is how the pane came to print "Destroy with
+      LCLRefCount>0" and stop. }
+    procedure LeaveEditing;
 
     { Puts a cell at the top of the viewport, building it if it was not on
       screen. }
@@ -447,6 +468,9 @@ begin
   FHead.Font.Name := FDoc.Master.Font.Name;
   FHead.SetBounds(LedScale96(Pad), LedScale96(Pad), LedScale96(LabelWidth),
     LedScale96(16));
+  FHead.OnMouseDown := @ChildMouseDown;
+  { The box's own padding counts as outside the editor too. }
+  OnMouseDown := @ChildMouseDown;
 
   { Code cells get a Run button; prose has nothing to run. }
   if FDoc.Notebook.CellKind(FCell) = nbkCode then
@@ -467,6 +491,10 @@ begin
       FRun.Caption := '>';
     FRun.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
       LedScale96(22), LedScale96(22));
+    { A hand, because it is a button and the pane around it is a page: with
+      the arrow it read as part of the drawing rather than something to
+      press. }
+    FRun.Cursor := crHandPoint;
     FRun.OnClick := @RunClicked;
   end
   else
@@ -691,6 +719,7 @@ procedure TLedNBCellBox.HookRenderChildren;
       C := AControl.Controls[i];
       TControlEvents(C).OnMouseWheel := @ChildWheel;
       TControlEvents(C).OnDblClick := @ChildDblClick;
+      TControlEvents(C).OnMouseDown := @ChildMouseDown;
       if C is TWinControl then Hook(TWinControl(C));
     end;
   end;
@@ -724,6 +753,13 @@ end;
 procedure TLedNBCellBox.ChildDblClick(Sender: TObject);
 begin
   SetEditing(True);
+end;
+
+procedure TLedNBCellBox.ChildMouseDown(Sender: TObject;
+  AButton: TMouseButton; AShift: TShiftState; X, Y: Integer);
+begin
+  if Parent is TLedNotebookPane then
+    TLedNotebookPane(Parent).LeaveEditing;
 end;
 
 function TLedNBCellBox.HaveRemote(const AURL: string;
@@ -1137,6 +1173,9 @@ begin
   FImageTimer.Interval := 150;
   FImageTimer.Enabled := False;
   FImageTimer.OnTimer := @ImageTick;
+  { A click on the page behind the cells puts away whatever was being typed
+    into, the same as a click on a cell. }
+  OnMouseDown := @PaneMouseDown;
 end;
 
 destructor TLedNotebookPane.Destroy;
@@ -1388,6 +1427,37 @@ begin
   end;
 
   FImageTimer.Enabled := LedNBImages.Pending > 0;
+end;
+
+procedure TLedNotebookPane.LeaveEditing;
+var
+  i: Integer;
+begin
+  for i := 0 to FBoxes.Count - 1 do
+    if TLedNBCellBox(FBoxes[i]).Editing then
+    begin
+      Application.QueueAsyncCall(@LeaveEditDeferred,
+        PtrInt(TLedNBCellBox(FBoxes[i]).Cell));
+      Exit;
+    end;
+end;
+
+{ The cell is found again by number rather than held as a pointer: between
+  the click and this, the pane may have been scrolled or reloaded and the box
+  released. }
+procedure TLedNotebookPane.LeaveEditDeferred(AData: PtrInt);
+var
+  B: TLedNBCellBox;
+begin
+  if not LiveDoc then Exit;
+  B := BoxOf(Integer(AData));
+  if (B <> nil) and B.Editing then B.SetEditing(False);
+end;
+
+procedure TLedNotebookPane.PaneMouseDown(Sender: TObject;
+  AButton: TMouseButton; AShift: TShiftState; X, Y: Integer);
+begin
+  LeaveEditing;
 end;
 
 procedure TLedNotebookPane.WatchForImages;

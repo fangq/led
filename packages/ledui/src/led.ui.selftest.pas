@@ -6063,8 +6063,44 @@ begin
     TControlEvents(Inner).OnDblClick(Inner);
     Pump;
     Check('and a double click on it opens the cell for editing', B.Editing);
-    B.EditButton.Click;
+
+    { A click anywhere but the editor puts the cell away again, the way
+      clicking off a cell does in a notebook front end.  The editor's own
+      OnExit does this when the focus moves and a click on a label or on the
+      renderer's drawing control moves no focus at all, so there is a
+      mouse-down handler for it -- and this checks it is attached and that
+      it does the job. }
+    Check('the cell''s head has a mouse-down handler',
+      Assigned(TControlEvents(Inner).OnMouseDown));
+    { Guarded, so a missing hook is a failed check rather than a crashed
+      run: calling a nil handler takes the whole suite down with it. }
+    if Assigned(TControlEvents(Inner).OnMouseDown) then
+      TControlEvents(Inner).OnMouseDown(Inner, mbLeft, [], 5, 5);
     Pump;
+    Pump;
+    Check('a click outside the editor puts the cell back to being read',
+      not B.Editing);
+
+    { And from the page behind the cells, which is not a cell at all.
+
+      The control is fetched again first: going back to prose lays the page
+      out afresh and the renderer makes a new drawing control for it, so the
+      one from before the click is not there any more. }
+    B := CellBox(Pane, 0);
+    Inner := nil;
+    if (B <> nil) and (B.Rendered <> nil) and (B.Rendered.ControlCount > 0) then
+      Inner := B.Rendered.Controls[0];
+    Check('the renderer has a drawing control again', Inner <> nil);
+    if Inner = nil then Exit;
+    TControlEvents(Inner).OnDblClick(Inner);
+    Pump;
+    Check('it opens again', B.Editing);
+    if Assigned(TControlEvents(Pane).OnMouseDown) then
+      TControlEvents(Pane).OnMouseDown(Pane, mbLeft, [], 2, 2);
+    Pump;
+    Pump;
+    Check('a click on the page behind the cells does the same',
+      not B.Editing);
   end;
 
   { ---- what a prose cell makes of code and of raw HTML ---- }
