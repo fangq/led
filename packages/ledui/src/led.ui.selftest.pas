@@ -5964,22 +5964,30 @@ begin
   CheckGt('with more than one colour in it, so it is not one flat block',
     3, Deep);
 
-  { Monospaced text came out in the renderer's own idea of a fixed font, in
-    black -- on a dark theme, black on near-black. }
-  Check('code is put in the reader''s own monospaced face',
-    Pos('face="Fira Code"', Page) > 0);
-  Check('and inline code is given the page''s text colour rather than black',
-    Pos('<code><font face="fira code" color="#e0e0e0"', LowerCase(Page)) > 0);
+  { Monospaced text was in black on a dark theme -- black on near-black. }
+  Check('inline code is given the page''s text colour rather than black',
+    Pos('<code><font color="#e0e0e0">', LowerCase(Page)) > 0);
+  { And deliberately no face is named: the renderer resolves one through
+    CommaText, which splits "Fira Code" on the space, fails to find a font
+    called Fira and falls back to the menu font -- which is how every
+    monospaced stretch came out proportional.  The face comes from the
+    panel's FixedTypeface, which is taken as given. }
+  Check('and no face is named in the page, because naming one breaks it',
+    Pos('face=', LowerCase(Page)) = 0);
+  Check('the panel is told the reader''s own monospaced font instead',
+    CellBox(Pane, 0).Rendered.FixedTypeface = Doc.Master.Font.Name);
 
   { Every token of a coloured block keeps the face, not just the block: a
     nested font tag replaces the face here rather than inheriting it, so a
     coloured token came back proportional and the block stopped looking like
     code the moment it was coloured. }
+  { Counted on the colour alone, and with the length the literal actually
+    has: the first version of this compared thirteen characters against a
+    fourteen-character string and counted nothing for ever. }
   Deep := 0;
-  for i := 1 to Length(Page) - 18 do
-    if Copy(Page, i, 19) = '<font face="Fira Co' then Inc(Deep);
-  CheckGt('every coloured token carries the monospaced face, not just the '
-    + 'block around them', 3, Deep);
+  for i := 1 to Length(Page) - 7 do
+    if Copy(Page, i, 8) = 'color="#' then Inc(Deep);
+  CheckGt('every token of a block carries its own colour', 3, Deep);
 
   { A table is drawn in the renderer's own black whatever the page says, so
     on a dark theme it came out unreadable beside prose that was fine. }

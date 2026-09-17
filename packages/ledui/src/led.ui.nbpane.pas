@@ -31,7 +31,8 @@ uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
   Graphics, Forms, ImgList, LazUTF8,
   IpHtml, Ipfilebroker,
-  Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.Markdown,
+  Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
+  Led.Core.Markdown,
   SynEditHighlighter, Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
@@ -126,6 +127,10 @@ type
       neither did anything.  Its children are given the same two handlers. }
     procedure HookRenderChildren;
     procedure ChildDblClick(Sender: TObject);
+    { Whether a picture on the web is here to be drawn, asking for it if it
+      is not.  The page is laid out with what has arrived; when the rest
+      arrives the cell is drawn again. }
+    function HaveRemote(const AURL: string; out AWhy: string): Boolean;
     { The wheel, from a child that would otherwise swallow it, handed to the
       page the reader was trying to scroll. }
     procedure ChildWheel(Sender: TObject; AShift: TShiftState;
@@ -220,11 +225,13 @@ type
       piece of prose; the pane waits until the dragging stops.  The preview
       pane does the same, for the same reason. }
     FResizeTimer: TTimer;
+    FImageTimer: TTimer;
     FLaidOutFor: Integer;      // the width the boxes were laid out for
     procedure CellRun(Sender: TObject; ACell: Integer);
     procedure CellEdited(Sender: TObject; ACell: Integer);
     procedure ResizeSettled(Sender: TObject);
     procedure BarScrolled(Sender: TObject);
+    procedure ImageTick(Sender: TObject);
     { The height a cell takes, measured if it has ever been built and
       estimated from its neighbours if not. }
     function HeightOf(ACell: Integer): Integer;
@@ -273,6 +280,8 @@ type
     { Puts a cell at the top of the viewport, building it if it was not on
       screen. }
     procedure ScrollToCell(ACell: Integer);
+    { Starts looking for pictures that have been asked for. }
+    procedure WatchForImages;
 
     { How many cells the notebook has, and how many of them are built.  The
       second is a property of the window on screen and not of the file. }
@@ -441,7 +450,7 @@ end;
   coloured spans.  A language LED cannot colour comes back as plain text in
   the page's own colour, which is what a file of that language would get in
   the editor too. }
-function ColouredCode(const ACode, ALang, AFace: string;
+function ColouredCode(const ACode, ALang: string;
   ATextColour, ABackColour: TColor): string;
 var
   HL: TSynCustomHighlighter;
@@ -486,13 +495,21 @@ begin
         { Against the block's own background rather than the page's: a colour
           chosen to be read on one is not always readable on the other. }
         Colour := LedEnsureReadable(Colour, ABackColour, 3.0);
-        { The face is repeated on every token and not left to the block it
-          is in: a nested <font> replaces the face rather than inheriting it
-          here, so a coloured token inside a monospaced block came back
-          proportional -- which is what made a fenced block stop looking like
-          code the moment it was coloured. }
-        Painted := Painted + '<font face="' + AFace + '" color="' +
-          HtmlColour(Colour) + '">' + LedHtmlEscape(HL.GetToken) + '</font>';
+        { Colour only, and deliberately no face.
+
+          A face is not named here because naming one breaks it.  The
+          renderer resolves a face through FindFontName, which parses the
+          value with CommaText -- and CommaText splits on spaces, so "Fira
+          Code" is read as a font called "Fira", not found, and quietly
+          replaced by the menu font.  That is what made every monospaced
+          stretch of a page come out proportional the moment it was coloured.
+
+          A <pre> or a <code> takes FixedTypeface straight from the panel
+          with no such parsing, and a nested <font> that names no face
+          inherits it.  So the block carries the face and the tokens carry
+          the colours. }
+        Painted := Painted + '<font color="' + HtmlColour(Colour) + '">' +
+          LedHtmlEscape(HL.GetToken) + '</font>';
         HL.Next;
       end;
       Result := Result + Painted + #10;
@@ -505,7 +522,7 @@ end;
 
 { Wraps what is inside every AOpen..AClose in the page's text colour.  Used
   for table cells, which the renderer otherwise draws in black. }
-function ColourCells(const AHtml, AOpen, AClose, AFace: string;
+function ColourCells(const AHtml, AOpen, AClose: string;
   ATextColour: TColor): string;
 var
   At, Start, Stop, Close_: Integer;
@@ -569,10 +586,8 @@ begin
     end;
 
     Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
-    Replacement := Head + '<font face="' + AFixedFace + '" color="' +
-      HtmlColour(ATextColour) + '">' +
-      ColouredCode(Unescaped(Body), Lang, AFixedFace, ATextColour,
-        ABackColour) +
+    Replacement := Head + '<font color="' + HtmlColour(ATextColour) + '">' +
+      ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour) +
       '</font></pre>';
     Result := Copy(Result, 1, Start - 1) + Replacement +
       Copy(Result, Stop + Length('</pre>'), MaxInt);
@@ -584,8 +599,8 @@ begin
   { A table is drawn in the renderer's own colours -- black text -- whatever
     the page says, so on a dark theme a table came out unreadable while the
     prose around it was fine.  Each cell is given the page's text colour. }
-  Result := ColourCells(Result, '<td', '</td>', AFixedFace, ATextColour);
-  Result := ColourCells(Result, '<th', '</th>', AFixedFace, ATextColour);
+  Result := ColourCells(Result, '<td', '</td>', ATextColour);
+  Result := ColourCells(Result, '<th', '</th>', ATextColour);
 
   { ---- inline code ---- }
   At := 1;
@@ -597,8 +612,8 @@ begin
     Stop := PosEx('</code>', Lower, Start);
     if Stop = 0 then Break;
     Body := Copy(Result, Start + 6, Stop - Start - 6);
-    Replacement := '<code><font face="' + AFixedFace + '" color="' +
-      HtmlColour(ATextColour) + '">' + Body + '</font></code>';
+    Replacement := '<code><font color="' + HtmlColour(ATextColour) + '">' +
+      Body + '</font></code>';
     Result := Copy(Result, 1, Start - 1) + Replacement +
       Copy(Result, Stop + Length('</code>'), MaxInt);
     At := Start + Length(Replacement);
@@ -883,6 +898,20 @@ begin
   SetEditing(True);
 end;
 
+function TLedNBCellBox.HaveRemote(const AURL: string;
+  out AWhy: string): Boolean;
+begin
+  AWhy := '';
+  Result := LedNBImages.Want(AURL);
+  { Asking started a fetch, so the pane starts looking for the answer. }
+  if (not Result) and (Parent is TLedNotebookPane) then
+    TLedNotebookPane(Parent).WatchForImages;
+  if Result then Exit;
+  AWhy := LedNBImages.Failure(AURL);
+  if AWhy <> '' then Exit;
+  if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
+end;
+
 procedure TLedNBCellBox.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
 var
@@ -891,6 +920,27 @@ var
 begin
   Picture := nil;
   if URL = '' then Exit;
+
+  { One that came off the web and is in hand.  The kind is taken from the
+    bytes rather than from the name it was served under: servers lie about
+    content types and people name a JPEG .png. }
+  if LedNBIsRemote(URL) and LedNBImages.Lookup(URL, Bytes) then
+  begin
+    Mime := LedNBSniffImage(Bytes);
+    if Mime = '' then Exit;
+    Picture := TPicture.Create;
+    Stream := TStringStream.Create(Bytes);
+    try
+      try
+        Picture.LoadFromStreamWithFileExt(Stream, Mime);
+      except
+        FreeAndNil(Picture);
+      end;
+    finally
+      Stream.Free;
+    end;
+    Exit;
+  end;
 
   { A picture that is in the notebook: a data: URI, or an attachment pasted
     into the cell.  Decoded rather than fetched, and nothing is written to a
@@ -911,15 +961,13 @@ begin
     Exit;
   end;
 
-  { Anything with a scheme is on the web, and RewriteImages has already
-    taken those out of the page -- so this is a file beside the notebook. }
-  if Pos('://', URL) > 0 then Exit;
-
-  if (URL[1] = '/') or ((Length(URL) > 1) and (URL[2] = ':')) then
-    FN := URL
-  else
-    FN := IncludeTrailingPathDelimiter(ExtractFileDir(FDoc.FileName)) + URL;
-  if not FileExists(FN) then Exit;
+  { Anything that needed fetching and has not arrived is already out of the
+    page, so what is left names a file: beside the notebook, an absolute
+    path, or a file:// URL -- which the renderer does not resolve itself, its
+    provider dealing in paths rather than URLs. }
+  if LedNBIsRemote(URL) then Exit;
+  FN := LedNBLocalPath(URL, ExtractFileDir(FDoc.FileName));
+  if (FN = '') or (not FileExists(FN)) then Exit;
 
   Picture := TPicture.Create;
   try
@@ -943,7 +991,7 @@ var
   Html: string;
 begin
   C := LedNBColours;
-  Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource));
+  Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource), @HaveRemote);
   Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
   Result :=
     '<html><head><style>' +
@@ -1242,6 +1290,13 @@ begin
   FResizeTimer.Enabled := False;
   FResizeTimer.OnTimer := @ResizeSettled;
   FLaidOutFor := -1;
+
+  { Pictures arrive after the page they belong to has been drawn, on a
+    thread of their own, so the pane looks in rather than being called. }
+  FImageTimer := TTimer.Create(Self);
+  FImageTimer.Interval := 150;
+  FImageTimer.Enabled := False;
+  FImageTimer.OnTimer := @ImageTick;
 end;
 
 destructor TLedNotebookPane.Destroy;
@@ -1449,6 +1504,56 @@ begin
   end;
   { The heights just learnt may have changed how tall the notebook is. }
   SyncBar;
+end;
+
+{ Pictures that have arrived since the last look.
+
+  Every cell on screen whose text names one is drawn again, which is the whole
+  of what makes a fetched picture appear: the page was laid out without it and
+  is worth laying out again now.  Only the cells on screen -- one that has not
+  been built yet takes the picture out of the cache when it is.
+
+  The timer runs only while something is in flight, so a notebook with no
+  pictures on the web costs nothing. }
+procedure TLedNotebookPane.ImageTick(Sender: TObject);
+var
+  i, Cell: Integer;
+  URL: string;
+  Cells: TStringList;
+begin
+  if not LiveDoc then
+  begin
+    FImageTimer.Enabled := False;
+    Exit;
+  end;
+
+  Cells := TStringList.Create;
+  try
+    while LedNBImages.TakeArrived(URL) do
+      for i := 0 to FBoxes.Count - 1 do
+      begin
+        Cell := TLedNBCellBox(FBoxes[i]).Cell;
+        if (Cell < 0) or (Cell >= CellCount) then Continue;
+        if (Pos(URL, FDoc.Notebook.CellSource(Cell)) > 0) and
+           (Cells.IndexOf(IntToStr(Cell)) < 0) then
+          Cells.Add(IntToStr(Cell));
+      end;
+
+    { Redrawn after the whole queue has been read, so a cell with three
+      pictures in it is laid out once rather than three times. }
+    for i := 0 to Cells.Count - 1 do
+      RefreshCell(StrToIntDef(Cells[i], -1));
+  finally
+    Cells.Free;
+  end;
+
+  FImageTimer.Enabled := LedNBImages.Pending > 0;
+end;
+
+procedure TLedNotebookPane.WatchForImages;
+begin
+  if (FImageTimer <> nil) and (LedNBImages.Pending > 0) then
+    FImageTimer.Enabled := True;
 end;
 
 procedure TLedNotebookPane.BarScrolled(Sender: TObject);

@@ -27,6 +27,22 @@ function LedNBImageOf(ANotebook: TLedNotebook; ACell, AOutput: Integer;
 { Whether a mime type is a picture LED can draw. }
 function LedNBIsImageMime(const AMime: string): Boolean;
 
+{ The file a picture reference names, or '' when it does not name one.
+
+  Handles what a notebook actually carries: a plain relative name beside the
+  file, an absolute path, and a file:// URL -- which the renderer does not
+  resolve itself, its provider dealing in paths rather than URLs.  Percent
+  escapes are undone, because a file:// URL writes a space as %20 and the
+  filesystem does not.
+
+  Empty for anything on the web and for a data: URI, which are somebody
+  else's business. }
+function LedNBLocalPath(const AURL, ABaseDir: string): string;
+
+{ Whether a reference points at another machine -- which is to say, whether
+  it needs fetching.  file:// does not, despite having a scheme. }
+function LedNBIsRemote(const AURL: string): Boolean;
+
 { The bytes behind a picture a markdown cell refers to, whatever form the
   reference takes: a data: URI with the picture in it, or an attachment
   pasted into the cell.  False for a name that is neither -- a file beside
@@ -42,24 +58,90 @@ function LedNBEmbeddedImage(ANotebook: TLedNotebook; ACell: Integer;
   that way and so is every output. }
 function LedNBBase64(const ACoded: string; out ABytes: string): Boolean;
 
-{ Replaces every <img> in AHtml that points at the web with a line saying
-  what is there and where it is from, and leaves the rest alone.
+{ Sorts the <img> tags in AHtml into the ones the renderer may ask about and
+  the ones it may not.
 
-  Notebooks are full of pictures on other people's servers, and a preview
-  that fetched them would mean the editor making requests because a file was
-  opened -- which nobody asked for by opening a notebook, and which in a
-  shared notebook would report every reader of it to whoever put the picture
-  there.  So the reader is told that something is there rather than shown it.
+  A picture in the file -- a data: URI, an attachment -- or beside it on disk
+  is always left in the page.  One on the web is left in only if AHave says
+  it is already here; otherwise the tag is replaced by a line saying what is
+  there and why it is not being shown.
 
-  The pictures that are in the file -- a data: URI, an attachment -- and the
-  ones beside it on disk are left in the page for the renderer to ask about,
-  because showing those costs nothing and tells nobody. }
-function LedNBHideRemoteImages(const AHtml: string): string;
+  AHave is where fetching is decided, and it is deliberately not decided
+  here: this unit knows about pictures and nothing about connections.  Passed
+  nil, every remote picture is replaced, which is what a caller that does not
+  fetch wants. }
+type
+  TLedNBHaveImage = function(const AURL: string; out AWhy: string): Boolean
+    of object;
+
+function LedNBHideRemoteImages(const AHtml: string;
+  AHave: TLedNBHaveImage = nil): string;
 
 { The file extension a TPicture wants for a mime type: 'png', 'jpg'. }
 function LedNBImageExt(const AMime: string): string;
 
 implementation
+
+function LedNBIsRemote(const AURL: string): Boolean;
+begin
+  Result := (Pos('://', AURL) > 0) and
+            (Pos('file://', LowerCase(AURL)) <> 1);
+end;
+
+{ %20 and its friends, undone. }
+function Unpercent(const AText: string): string;
+var
+  i, V: Integer;
+begin
+  Result := '';
+  i := 1;
+  while i <= Length(AText) do
+  begin
+    if (AText[i] = '%') and (i + 2 <= Length(AText)) and
+       TryStrToInt('$' + Copy(AText, i + 1, 2), V) then
+    begin
+      Result := Result + Chr(V);
+      Inc(i, 3);
+    end
+    else
+    begin
+      Result := Result + AText[i];
+      Inc(i);
+    end;
+  end;
+end;
+
+function LedNBLocalPath(const AURL, ABaseDir: string): string;
+var
+  Path: string;
+begin
+  Result := '';
+  if AURL = '' then Exit;
+  if Pos('data:', LowerCase(AURL)) = 1 then Exit;
+  if LedNBIsRemote(AURL) then Exit;
+
+  Path := AURL;
+  if Pos('file://', LowerCase(Path)) = 1 then
+  begin
+    Path := Copy(Path, Length('file://') + 1, MaxInt);
+    { file://localhost/path and file:///path both name the same file. }
+    if Pos('localhost/', LowerCase(Path)) = 1 then
+      Path := Copy(Path, Length('localhost') + 1, MaxInt);
+    if Path = '' then Exit;
+  end;
+  Path := Unpercent(Path);
+  if Path = '' then Exit;
+
+  { A drive letter or a leading separator is already absolute; anything else
+    is beside the notebook. }
+  if (Path[1] = '/') or (Path[1] = '\\') or
+     ((Length(Path) > 1) and (Path[2] = ':')) then
+    Result := Path
+  else if ABaseDir <> '' then
+    Result := IncludeTrailingPathDelimiter(ABaseDir) + Path
+  else
+    Result := Path;
+end;
 
 function LedNBIsImageMime(const AMime: string): Boolean;
 begin
@@ -158,10 +240,11 @@ begin
   Result := LedNBBase64(Payload, ABytes);
 end;
 
-function LedNBHideRemoteImages(const AHtml: string): string;
+function LedNBHideRemoteImages(const AHtml: string;
+  AHave: TLedNBHaveImage): string;
 var
   At, Start, Stop, Quote: Integer;
-  Img, URL, Host: string;
+  Img, URL, Host, Why: string;
 begin
   Result := AHtml;
   At := 1;
@@ -182,13 +265,23 @@ begin
       if Quote > 0 then URL := Copy(URL, 1, Quote - 1);
     end;
 
-    { A scheme means somewhere else.  data: is a scheme too and is not
-      somewhere else -- the picture is right there in the text. }
-    if (URL <> '') and (Pos('://', URL) > 0) then
+    { Somewhere else, which is to say something that has to be fetched.
+      data: has a scheme and is not somewhere else -- the picture is right
+      there in the text -- and neither is file://, which is a file. }
+    if (URL <> '') and LedNBIsRemote(URL) then
     begin
+      Why := '';
+      if Assigned(AHave) and AHave(URL, Why) then
+      begin
+        { Here already: the renderer may have it. }
+        At := Stop + 1;
+        Continue;
+      end;
       Host := Copy(URL, Pos('://', URL) + 3, MaxInt);
       if Pos('/', Host) > 0 then Host := Copy(Host, 1, Pos('/', Host) - 1);
-      Img := '<i>[image from ' + LedHtmlEscape(Host) + ', not fetched]</i>';
+      if Why = '' then Why := 'not fetched';
+      Img := '<i>[image from ' + LedHtmlEscape(Host) + ', ' +
+        LedHtmlEscape(Why) + ']</i>';
       Result := Copy(Result, 1, Start - 1) + Img +
         Copy(Result, Stop + 1, MaxInt);
       At := Start + Length(Img);
