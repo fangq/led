@@ -52,6 +52,14 @@ type
     procedure AnExecutionCountOfNullReadsAsMinusOne;
     procedure TheKernelAndLanguageAreFound;
     procedure OutputsAreThereToBeClearedAndAddedTo;
+    { adding and removing cells }
+    procedure ACodeCellIsInsertedWithWhatACodeCellNeeds;
+    procedure AProseCellHasNoOutputsOrCount;
+    procedure InsertingPushesTheRestDown;
+    procedure PastTheEndIsAnAppend;
+    procedure ACellCanBeTakenOut;
+    procedure TheLastCellCannotBeTakenOut;
+    procedure AnAddedCellSurvivesTheRoundTrip;
   end;
 
 implementation
@@ -475,6 +483,161 @@ begin
       Pos('"hello\n"', NB.SaveToText) > 0);
   finally
     NB.Free;
+  end;
+end;
+
+{ ---- adding and removing cells ----
+
+  What the hover bar in the pane does, and what nbformat asks of the result:
+  a code cell has outputs and an execution count of null, a prose cell has
+  neither, and both have metadata -- a cell without it is not a valid
+  notebook, however cheerfully most tools read one. }
+
+procedure TTestNBFormat.ACodeCellIsInsertedWithWhatACodeCellNeeds;
+var
+  NB: TLedNotebook;
+  Err, Text: string;
+  Cells: Integer;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    Cells := NB.CellCount;
+    AssertEquals('it goes where it was asked to', 1, NB.InsertCell(1, nbkCode));
+    AssertEquals('and the notebook has one more', Cells + 1, NB.CellCount);
+    AssertTrue('it is a code cell', NB.CellKind(1) = nbkCode);
+    AssertEquals('with nothing in it', '', NB.CellSource(1));
+    AssertEquals('and no execution count', -1, NB.CellExecutionCount(1));
+    AssertTrue('but a list to put outputs in', NB.CellOutputs(1) <> nil);
+    AssertEquals('which is empty', 0, NB.CellOutputs(1).Count);
+
+    Text := NB.SaveToText;
+    AssertTrue('the file says it is code: ' + Copy(Text, 1, 200),
+      Pos('"cell_type": "code"', Text) > 0);
+    AssertTrue('and gives it metadata, which nbformat requires',
+      Pos('"metadata": {}', Text) > 0);
+    AssertTrue('and a null count, not a zero',
+      Pos('"execution_count": null', Text) > 0);
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.AProseCellHasNoOutputsOrCount;
+var
+  NB: TLedNotebook;
+  Err: string;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    NB.InsertCell(0, nbkMarkdown);
+    AssertTrue('it is a prose cell', NB.CellKind(0) = nbkMarkdown);
+    AssertTrue('with no outputs', NB.CellOutputs(0) = nil);
+    AssertEquals('and no count', -1, NB.CellExecutionCount(0));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.InsertingPushesTheRestDown;
+var
+  NB: TLedNotebook;
+  Err, Was: string;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    Was := NB.CellSource(1);
+    NB.InsertCell(1, nbkCode);
+    AssertEquals('what was there is one further down', Was, NB.CellSource(2));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.PastTheEndIsAnAppend;
+var
+  NB: TLedNotebook;
+  Err: string;
+  n: Integer;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    n := NB.CellCount;
+    { Which is how "add a cell at the bottom" asks for one. }
+    AssertEquals('it lands at the end', n, NB.InsertCell(999, nbkCode));
+    AssertEquals('and there is one more', n + 1, NB.CellCount);
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.ACellCanBeTakenOut;
+var
+  NB: TLedNotebook;
+  Err, Second: string;
+  Cells: Integer;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    Cells := NB.CellCount;
+    Second := NB.CellSource(1);
+    AssertTrue('taken out', NB.DeleteCell(0));
+    AssertEquals('one fewer', Cells - 1, NB.CellCount);
+    AssertEquals('and the one below has moved up', Second, NB.CellSource(0));
+    AssertFalse('a cell that is not there cannot be taken out',
+      NB.DeleteCell(7));
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.TheLastCellCannotBeTakenOut;
+var
+  NB: TLedNotebook;
+  Err: string;
+begin
+  NB := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    while NB.CellCount > 1 do
+      AssertTrue('each one goes', NB.DeleteCell(0));
+    { A notebook with an empty cell list opens as a page with nothing to
+      type into, and getting back from there means editing the JSON. }
+    AssertFalse('and the last one stays', NB.DeleteCell(0));
+    AssertEquals('so there is always something there', 1, NB.CellCount);
+  finally
+    NB.Free;
+  end;
+end;
+
+procedure TTestNBFormat.AnAddedCellSurvivesTheRoundTrip;
+var
+  NB, Again: TLedNotebook;
+  Err, Text: string;
+  Cells: Integer;
+begin
+  NB := TLedNotebook.Create;
+  Again := TLedNotebook.Create;
+  try
+    AssertTrue(NB.LoadFromText(Fixture, Err));
+    Cells := NB.CellCount;
+    NB.InsertCell(1, nbkMarkdown);
+    NB.SetCellSource(1, 'Some prose.');
+    Text := NB.SaveToText;
+
+    AssertTrue('the file it wrote is a notebook: ' + Err,
+      Again.LoadFromText(Text, Err));
+    AssertEquals('with the cell in it', Cells + 1, Again.CellCount);
+    AssertTrue('of the kind it was made', Again.CellKind(1) = nbkMarkdown);
+    AssertEquals('and the text that was typed into it', 'Some prose.',
+      Again.CellSource(1));
+  finally
+    NB.Free;
+    Again.Free;
   end;
 end;
 

@@ -17,7 +17,8 @@ uses
   SynEditKeyCmds, LConvEncoding,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
-  Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel,
+  Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
+  fpjson,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
@@ -732,6 +733,9 @@ type
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
     procedure NBPaneRun(Sender: TObject; ACell: Integer);
+    procedure NBPaneInsert(Sender: TObject; ACell: Integer;
+      AKind: TLedNBCellKind);
+    procedure NBPaneDelete(Sender: TObject; ACell: Integer);
     procedure NBCellChanged(ADoc: TLedDocument; ACell: Integer);
     procedure NBCellDeferred(AData: PtrInt);
     property SymbolPane: TLedSymbolPane read FSymbols;
@@ -1084,6 +1088,8 @@ begin
   FNBPane := TLedNotebookPane.Create(Self);
   FNBPane.OnRunCell := @NBPaneRun;
   FNBPane.OnScrolled := @NBPaneScrolled;
+  FNBPane.OnInsertCell := @NBPaneInsert;
+  FNBPane.OnDeleteCell := @NBPaneDelete;
   FNBPane.OnCellPicked := @NBCellPicked;
   FNBPane.Images := ImageList1;
   FDock.AddPane(ledRight, 'notebook', 'Notebook', FNBPane, 'doc');
@@ -1442,6 +1448,71 @@ begin
     ReportError(Why);
     Exit;
   end;
+  UpdateStatusBar;
+end;
+
+{ A cell added from the pane's own buttons.  The pane asks and the window
+  does it, the same division the Run button has: the document is the
+  window's to change and the reporting is the window's to do. }
+procedure TLedMainForm.NBPaneInsert(Sender: TObject; ACell: Integer;
+  AKind: TLedNBCellKind);
+var
+  Doc: TLedDocument;
+  Made: Integer;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if not Doc.IsNotebook then Exit;
+  Made := Doc.NBInsertCell(ACell, AKind);
+  if Made < 0 then
+  begin
+    ReportError('the cell could not be added');
+    Exit;
+  end;
+  { The whole pane, because every cell below the new one has moved. }
+  RefreshNotebookPane;
+  if FNBPane <> nil then
+  begin
+    FNBPane.ScrollToCell(Made);
+    { The bar goes back under the cell that was just made, so a reader
+      adding three cells in a row does not have to find the boundary again
+      each time. }
+    FNBPane.ShowAddBarUnder(Made);
+  end;
+  UpdateStatusBar;
+end;
+
+{ And one taken out.  Asked about first unless it is empty: rendering the
+  notebook again is what puts the change in the buffer, and a re-render
+  cannot carry an undo history -- so this is the one edit in LED that Ctrl+Z
+  will not take back, and it should not be one keystroke away from losing a
+  page of somebody's lecture. }
+procedure TLedMainForm.NBPaneDelete(Sender: TObject; ACell: Integer);
+var
+  Doc: TLedDocument;
+  Outs: TJSONArray;
+  Empty: Boolean;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if not Doc.IsNotebook then Exit;
+  if (ACell < 0) or (ACell >= Doc.NBCellCount) then Exit;
+
+  Outs := Doc.Notebook.CellOutputs(ACell);
+  Empty := (Trim(Doc.Notebook.CellSource(ACell)) = '') and
+           ((Outs = nil) or (Outs.Count = 0));
+  if not Empty then
+    if not Confirm(Format('Delete cell %d?  This cannot be undone.',
+      [ACell + 1]), False) then Exit;
+
+  if not Doc.NBDeleteCell(ACell) then
+  begin
+    { The only reason it can refuse: a notebook has to have a cell in it. }
+    ReportError('a notebook must have at least one cell');
+    Exit;
+  end;
+  RefreshNotebookPane;
+  if FNBPane <> nil then FNBPane.ScrollToCell(ACell);
   UpdateStatusBar;
 end;
 

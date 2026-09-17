@@ -88,6 +88,20 @@ type
     { Takes ownership of AOutput. }
     procedure AddCellOutput(AIndex: Integer; AOutput: TJSONObject);
 
+    { Puts an empty cell of AKind at AIndex, pushing whatever was there
+      down, and answers where it went.  AIndex past the end appends, which
+      is what "add a cell at the bottom" asks for.
+
+      Built with the fields nbformat requires of that kind and nothing else:
+      a code cell has outputs and an execution count of null, a prose cell
+      has neither, and both have metadata, because a cell without it is not
+      a valid notebook however cheerfully most tools read one. }
+    function InsertCell(AIndex: Integer; AKind: TLedNBCellKind): Integer;
+    { Takes the cell at AIndex out.  False when there is no such cell, or
+      when it is the only one: a notebook with no cells at all is a file
+      nothing can show and nobody asked for. }
+    function DeleteCell(AIndex: Integer): Boolean;
+
     { Which kernel the notebook was written against, from its metadata:
       'python3', 'octave'.  Empty when the file does not say, which is not an
       error -- a notebook that has never been run may have no kernelspec. }
@@ -871,6 +885,56 @@ end;
 function TLedNotebook.CellCount: Integer;
 begin
   Result := FCells.Count;
+end;
+
+function TLedNotebook.InsertCell(AIndex: Integer;
+  AKind: TLedNBCellKind): Integer;
+var
+  Cell: TJSONObject;
+  Name_: string;
+begin
+  Result := -1;
+  if FCells = nil then Exit;
+  if AIndex < 0 then AIndex := 0;
+  if AIndex > FCells.Count then AIndex := FCells.Count;
+
+  case AKind of
+    nbkCode: Name_ := 'code';
+    nbkMarkdown: Name_ := 'markdown';
+  else
+    Name_ := 'raw';
+  end;
+
+  Cell := TJSONObject.Create;
+  Cell.Add(KeyType, Name_);
+  Cell.Add(KeyMetadata, TJSONObject.Create);
+  Cell.Add(KeySource, TJSONArray.Create);
+  if AKind = nbkCode then
+  begin
+    { Null, not zero: a cell that has never run has no count, and zero is a
+      cell that ran first. }
+    Cell.Add(KeyExecCount, TJSONNull.Create);
+    Cell.Add(KeyOutputs, TJSONArray.Create);
+  end;
+
+  if AIndex = FCells.Count then
+    FCells.Add(Cell)
+  else
+    FCells.Insert(AIndex, Cell);
+  Result := AIndex;
+end;
+
+function TLedNotebook.DeleteCell(AIndex: Integer): Boolean;
+begin
+  Result := False;
+  if FCells = nil then Exit;
+  if (AIndex < 0) or (AIndex >= FCells.Count) then Exit;
+  { Never the last one.  A notebook with an empty cell list opens as an
+    empty page with nothing to type into, and getting back from there means
+    editing the JSON by hand. }
+  if FCells.Count <= 1 then Exit;
+  FCells.Delete(AIndex);
+  Result := True;
 end;
 
 function TLedNotebook.CellKind(AIndex: Integer): TLedNBCellKind;

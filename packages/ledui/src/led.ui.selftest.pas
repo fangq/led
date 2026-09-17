@@ -5907,6 +5907,70 @@ begin
       Abs(Img.Width / Img.Height - 3.0) < 0.35);
   end;
 
+  { ---- the buttons at a cell boundary ----
+
+    Hovering near the foot of a cell offers "+ Code", "+ Text" and "Delete
+    Above" -- a notebook front end's own gesture, and the only way to add a
+    cell from the pane at all.  A scripted run has no pointer, so the bar is
+    asked for by name and its buttons are pressed. }
+  Was := Doc.NBCellCount;
+  Shown := Doc.Notebook.CellSource(1);
+  { On screen first: a windowed pane has no box for a cell nobody has
+    scrolled to, and no box means no boundary to put the bar at. }
+  B := CellBox(Pane, 1);
+  Pane.ShowAddBarUnder(1);
+  Pump;
+  Check('the bar appears at the boundary it was asked for',
+    Pane.AddBar.Visible);
+  CheckEqInt('and knows which cell it is under', 1, Pane.AddBar.Cell);
+  Check(Format('it sits at the foot of that cell (%d against %d)',
+    [Pane.AddBar.Top, B.Top + B.Height]),
+    Abs(Pane.AddBar.Top - (B.Top + B.Height)) <= LedScale96(12));
+
+  Pane.AddBar.AddCode.Click;
+  Pump; Pump;
+  CheckEqInt('+ Code adds a cell', Was + 1, Doc.NBCellCount);
+  Check('a code cell', Doc.Notebook.CellKind(2) = nbkCode);
+  Check('and an empty one', Doc.Notebook.CellSource(2) = '');
+  { Below the cell the bar was under and not above it: the cell it was under
+    still holds what it held, and the new one is the next along. }
+  CheckEq('the cell the bar was under is untouched', Shown,
+    Doc.Notebook.CellSource(1));
+  Check('the document is modified, because the file has a cell more',
+    Doc.Modified);
+  Check('the buffer has a header for it',
+    Doc.NBSourceLineOf(2) > 0);
+
+  CellBox(Pane, 2);
+  Pane.ShowAddBarUnder(2);
+  Pump;
+  CheckEqInt('the bar is under the cell just added', 2, Pane.AddBar.Cell);
+  Pane.AddBar.AddText.Click;
+  Pump; Pump;
+  CheckEqInt('+ Text adds one too', Was + 2, Doc.NBCellCount);
+  Check('a prose cell this time', Doc.Notebook.CellKind(3) = nbkMarkdown);
+  Check('with no outputs, which prose does not have',
+    Doc.Notebook.CellOutputs(3) = nil);
+
+  { Delete Above takes out the cell the bar is under.  Both of the cells
+    just added are empty, so nothing is asked: the window only asks before
+    losing something. }
+  CellBox(Pane, 3);
+  Pane.ShowAddBarUnder(3);
+  Pump;
+  Pane.AddBar.DeleteAbove.Click;
+  Pump; Pump;
+  CheckEqInt('Delete Above takes one out', Was + 1, Doc.NBCellCount);
+  Check('and it was the one the bar was under: the prose cell has gone',
+    Doc.Notebook.CellKind(2) = nbkCode);
+
+  CellBox(Pane, 2);
+  Pane.ShowAddBarUnder(2);
+  Pump;
+  Pane.AddBar.DeleteAbove.Click;
+  Pump; Pump;
+  CheckEqInt('and again', Was, Doc.NBCellCount);
+
   { ---- typing here arrives there ---- }
   B := CellBox(Pane, 3);
   Check('the last code cell has an editor', B.Editor <> nil);

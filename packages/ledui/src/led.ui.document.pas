@@ -309,6 +309,21 @@ type
       notebook by NBSyncFromBuffer before anything that matters. }
     procedure NBSetCellSource(ACell: Integer; const AText: string);
 
+    { Puts a new empty cell of AKind after ACell and answers where it went.
+      ACell of -1 puts it first; ACell past the end appends.
+
+      The buffer is rewritten afterwards rather than patched: a cell is
+      header, source and output lines and every tag below it shifts by the
+      cell number, so the honest way to add one is to render the notebook
+      again.  The cost of that is the undo history, which a re-render
+      cannot carry -- so this is a change the reader cannot take back with
+      Ctrl+Z, and the window asks before it deletes anything that is not
+      empty. }
+    function NBInsertCell(ACell: Integer; AKind: TLedNBCellKind): Integer;
+    { Takes a cell out.  False when there is no such cell or it is the only
+      one -- a notebook with no cells is a page with nothing to type into. }
+    function NBDeleteCell(ACell: Integer): Boolean;
+
     { Copies what the buffer holds back into the notebook, cell by cell.
       Called before saving and before running: the buffer is what the reader
       has been typing into, so it is the truth about the source. }
@@ -1427,6 +1442,37 @@ begin
     if Source <> FNotebook.CellSource(Cell) then
       FNotebook.SetCellSource(Cell, Source);
   end;
+end;
+
+{ ---- adding and removing cells ---- }
+
+function TLedDocument.NBInsertCell(ACell: Integer;
+  AKind: TLedNBCellKind): Integer;
+begin
+  Result := -1;
+  if not FIsNotebook then Exit;
+  { Whatever the reader has typed goes into the notebook first: the buffer is
+    about to be written from it. }
+  NBSyncFromBuffer;
+  Result := FNotebook.InsertCell(ACell + 1, AKind);
+  if Result < 0 then Exit;
+  NBRender;
+  FNBDirty := True;
+  FMaster.Modified := True;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+function TLedDocument.NBDeleteCell(ACell: Integer): Boolean;
+begin
+  Result := False;
+  if not FIsNotebook then Exit;
+  NBSyncFromBuffer;
+  Result := FNotebook.DeleteCell(ACell);
+  if not Result then Exit;
+  NBRender;
+  FNBDirty := True;
+  FMaster.Modified := True;
+  if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
 procedure TLedDocument.NBRefreshCell(ACell: Integer);

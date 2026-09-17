@@ -40,6 +40,10 @@ uses
 
 type
   TLedNBCellEvent = procedure(Sender: TObject; ACell: Integer) of object;
+  { A cell to be added after ACell -- so -1 means "before the first" -- of
+    the kind the reader asked for. }
+  TLedNBInsertEvent = procedure(Sender: TObject; ACell: Integer;
+    AKind: TLedNBCellKind) of object;
 
   { A cell's code editor.
 
@@ -90,6 +94,38 @@ type
     property OnMouseWheel;
     property OnDblClick;
     property OnMouseDown;
+  end;
+
+  { The three buttons that appear at the boundary between two cells: add a
+    code cell, add a prose cell, delete the cell above.
+
+    One bar, moved to whichever boundary the pointer is near, rather than a
+    set per cell: a notebook has hundreds of boundaries and the reader is
+    never at two of them.  It is a notebook front end's own gesture -- Colab
+    puts the same two buttons in the same place -- and it is the only way to
+    add a cell at all from the pane.
+
+    Which boundary the pointer is near is polled rather than watched.  A cell
+    is a panel with an editor, a rendered page, labels and pictures in it,
+    and every one of those takes the mouse for itself: LED has already had
+    the wheel and the double click go missing inside the renderer's own
+    drawing control, and hooking mouse-move onto every child of every cell
+    would be the same bet made a third time.  A timer that asks where the
+    pointer is costs nothing measurable and cannot be intercepted. }
+  TLedNBAddBar = class(TPanel)
+  private
+    FCode: TSpeedButton;
+    FText: TSpeedButton;
+    FDrop: TSpeedButton;
+    FCell: Integer;
+  public
+    constructor Create(AOwner: TComponent); reintroduce;
+    { Which cell the bar is under: a new cell goes after it, and Delete
+      Above takes it out. }
+    property Cell: Integer read FCell write FCell;
+    property AddCode: TSpeedButton read FCode;
+    property AddText: TSpeedButton read FText;
+    property DeleteAbove: TSpeedButton read FDrop;
   end;
 
   { Pictures already decoded, kept so that a cell scrolled back into view is
@@ -307,6 +343,10 @@ type
     FDoc: TLedDocument;
     FBoxes: TFPList;           // of TLedNBCellBox: the cells on screen
     FPics: TLedNBPictures;     // the pictures they have already decoded
+    FAddBar: TLedNBAddBar;     // the buttons at whichever boundary is near
+    FHoverTimer: TTimer;       // asks where the pointer is; see TLedNBAddBar
+    FOnInsert: TLedNBInsertEvent;
+    FOnDelete: TLedNBCellEvent;
     FFirst: Integer;           // the first cell built, or -1
     FHeights: array of Integer;   // per cell; -1 until it has been built
     FBar: TScrollBar;
@@ -335,6 +375,11 @@ type
     procedure BarScrolled(Sender: TObject);
     procedure ReportTop;
     procedure CellPicked(ACell: Integer);
+    procedure HoverTick(Sender: TObject);
+    procedure PlaceAddBar(ABox: TLedNBCellBox);
+    procedure AddCodeClicked(Sender: TObject);
+    procedure AddTextClicked(Sender: TObject);
+    procedure DeleteAboveClicked(Sender: TObject);
     procedure ImageTick(Sender: TObject);
     procedure LeaveEditDeferred(AData: PtrInt);
     procedure PaneMouseDown(Sender: TObject; AButton: TMouseButton;
@@ -443,6 +488,17 @@ type
       move the caret there: the two views then look at the same cell, and Run
       Cell runs the one under the pointer. }
     property OnCellPicked: TLedNBCellEvent read FOnPicked write FOnPicked;
+
+    { The buttons at a cell boundary.  Public so a check can press them:
+      they appear on a hover, and a scripted run has no pointer. }
+    property AddBar: TLedNBAddBar read FAddBar;
+    { Shows the bar under ACell, as hovering near that boundary does. }
+    procedure ShowAddBarUnder(ACell: Integer);
+    { Fired when one of them is pressed.  The window does the work: it owns
+      the asking-before-deleting and the reporting, the same division the
+      Run button has. }
+    property OnInsertCell: TLedNBInsertEvent read FOnInsert write FOnInsert;
+    property OnDeleteCell: TLedNBCellEvent read FOnDelete write FOnDelete;
   end;
 
 implementation
@@ -450,6 +506,13 @@ implementation
 const
   Pad = 6;
   LabelWidth = 76;
+  { The space between one cell and the next.  Wide enough for the buttons
+    that appear there on a hover: at four pixels -- which is all a reader
+    needs to see where one cell ends -- the bar had to be drawn over the
+    last line of one cell or the first line of the next, and both of those
+    are lines somebody clicks.  A notebook front end leaves the same room
+    for the same reason. }
+  CellGap = 24;
   { The prose face.  Proportional, and at a size taken from the reader's own
     editor font rather than fixed -- see ProseSize. }
   ProseFace = 'Sans';
@@ -553,6 +616,63 @@ begin
   Result := LedPageColourCode(AHtml, ATextColour, ABackColour);
 end;
 
+
+{ ---- the buttons at a cell boundary ---- }
+
+constructor TLedNBAddBar.Create(AOwner: TComponent);
+var
+  C: TLedNBColourSet;
+  X: Integer;
+  Ruler: TBitmap;
+
+  { Each button as wide as its own caption.  Measured rather than guessed:
+    the first version gave "Delete Above" eighty pixels, which is what it
+    needs at some font sizes and not at the reader's. }
+  function Button(const ACaption, AHint: string): TSpeedButton;
+  var
+    W: Integer;
+  begin
+    W := Ruler.Canvas.TextWidth(ACaption) + LedScale96(12);
+    Result := TSpeedButton.Create(Self);
+    Result.Parent := Self;
+    Result.Caption := ACaption;
+    Result.Hint := AHint;
+    Result.ShowHint := True;
+    Result.Flat := True;
+    Result.Cursor := crHandPoint;
+    Result.SetBounds(X, LedScale96(2), W, LedScale96(18));
+    Inc(X, W);
+  end;
+
+begin
+  inherited Create(AOwner);
+  FCell := -1;
+  BevelOuter := bvNone;
+  { A thin frame, so that three words floating over a page read as something
+    to press rather than as part of the cell under them. }
+  BorderStyle := bsSingle;
+  ParentColor := False;
+  C := LedNBColours;
+  { On the shade a code cell sits on, so the bar belongs to the page it is
+    over. }
+  Color := LedMixColours(C.Page, C.Text, 90);
+  Font.Color := C.Muted;
+  Visible := False;
+
+  Ruler := TBitmap.Create;
+  try
+    { A canvas of its own to measure with: the panel has no handle yet, and
+      a font with no canvas cannot say how wide a word is. }
+    Ruler.Canvas.Font.Assign(Font);
+    X := LedScale96(2);
+    FCode := Button('+ Code', 'Add a code cell below this one');
+    FText := Button('+ Text', 'Add a text cell below this one');
+    FDrop := Button('Delete Above', 'Delete the cell above');
+  finally
+    Ruler.Free;
+  end;
+  SetBounds(0, 0, X + LedScale96(2), LedScale96(22));
+end;
 
 { ---- pictures already decoded ---- }
 
@@ -1551,6 +1671,20 @@ begin
   FResizeTimer.OnTimer := @ResizeSettled;
   FLaidOutFor := -1;
 
+  { The buttons at a cell boundary, and the timer that decides which
+    boundary that is; see TLedNBAddBar for why it is asked rather than
+    told. }
+  FAddBar := TLedNBAddBar.Create(Self);
+  FAddBar.Parent := Self;
+  FAddBar.AddCode.OnClick := @AddCodeClicked;
+  FAddBar.AddText.OnClick := @AddTextClicked;
+  FAddBar.DeleteAbove.OnClick := @DeleteAboveClicked;
+
+  FHoverTimer := TTimer.Create(Self);
+  FHoverTimer.Interval := 120;
+  FHoverTimer.Enabled := True;
+  FHoverTimer.OnTimer := @HoverTick;
+
   { Pictures arrive after the page they belong to has been drawn, on a
     thread of their own, so the pane looks in rather than being called. }
   FImageTimer := TTimer.Create(Self);
@@ -1643,7 +1777,7 @@ begin
     Result := FHeights[ACell]
   else
     Result := Estimate;
-  Inc(Result, LedScale96(4));      { the gap between cells }
+  Inc(Result, LedScale96(CellGap));      { the gap between cells }
 end;
 
 function TLedNotebookPane.VirtualTop(ACell: Integer): Integer;
@@ -1748,7 +1882,7 @@ begin
       B.Top := Y;
       Keep.Add(B);
       if Cell <= High(FHeights) then FHeights[Cell] := Grown;
-      Inc(Y, Grown + LedScale96(4));
+      Inc(Y, Grown + LedScale96(CellGap));
       Inc(Cell);
     end;
 
@@ -1846,6 +1980,101 @@ begin
     not scroll the pane away from the cell just clicked. }
   FToldCell := TopCell;
   if Assigned(FOnPicked) then FOnPicked(Self, ACell);
+end;
+
+{ Where the pointer is, and whether it is near the foot of a cell.
+
+  Near, not on: the strip between two cells is a few pixels of background,
+  and a reader aiming at it with a mouse does not hit a four-pixel target.
+  The whole bottom quarter of a cell counts, up to a limit -- a very tall
+  cell should not be a bar that follows the pointer half way up it. }
+procedure TLedNotebookPane.HoverTick(Sender: TObject);
+var
+  P: TPoint;
+  i, Edge, Reach: Integer;
+  B, Near_: TLedNBCellBox;
+begin
+  if (FAddBar = nil) or (not LiveDoc) or (not Showing) then
+  begin
+    if (FAddBar <> nil) and FAddBar.Visible then FAddBar.Visible := False;
+    Exit;
+  end;
+
+  P := ScreenToClient(Mouse.CursorPos);
+  { The bar itself counts as being at its own boundary, or moving the
+    pointer onto a button would take the button away. }
+  if FAddBar.Visible and (P.x >= FAddBar.Left) and
+     (P.x < FAddBar.Left + FAddBar.Width) and (P.y >= FAddBar.Top) and
+     (P.y < FAddBar.Top + FAddBar.Height) then Exit;
+
+  Near_ := nil;
+  if (P.x >= 0) and (P.x < ClientWidth) and (P.y >= 0) and
+     (P.y < ClientHeight) then
+    for i := 0 to FBoxes.Count - 1 do
+    begin
+      B := TLedNBCellBox(FBoxes[i]);
+      Edge := B.Top + B.Height;
+      Reach := B.Height div 4;
+      if Reach > LedScale96(40) then Reach := LedScale96(40);
+      if Reach < LedScale96(12) then Reach := LedScale96(12);
+      if (P.y >= Edge - Reach) and (P.y <= Edge + LedScale96(6)) then
+      begin
+        Near_ := B;
+        Break;
+      end;
+    end;
+
+  if Near_ = nil then
+  begin
+    if FAddBar.Visible then FAddBar.Visible := False;
+    Exit;
+  end;
+  PlaceAddBar(Near_);
+end;
+
+{ The bar at the foot of a box, indented to where a cell's own text starts so
+  that it lines up with the cell it belongs to. }
+procedure TLedNotebookPane.PlaceAddBar(ABox: TLedNBCellBox);
+begin
+  FAddBar.Cell := ABox.Cell;
+  { Just below the boundary rather than across it, and indented to where a
+    cell's own text starts so that it lines up with the cells rather than
+    with the pane.
+
+    Below, because what is above the boundary is the foot of the cell's
+    editor -- the end of its last line, which is somewhere a reader clicks
+    -- and what is below it is the next cell's label, which is not.  The
+    pointer is in the cell above when the bar appears, so it appears
+    somewhere the pointer is not already. }
+  FAddBar.SetBounds(LedScale96(LabelWidth + Pad),
+    ABox.Top + ABox.Height + (LedScale96(CellGap) - FAddBar.Height) div 2,
+    FAddBar.Width, FAddBar.Height);
+  FAddBar.Visible := True;
+  FAddBar.BringToFront;
+end;
+
+procedure TLedNotebookPane.ShowAddBarUnder(ACell: Integer);
+var
+  B: TLedNBCellBox;
+begin
+  B := BoxOf(ACell);
+  if B = nil then Exit;
+  PlaceAddBar(B);
+end;
+
+procedure TLedNotebookPane.AddCodeClicked(Sender: TObject);
+begin
+  if Assigned(FOnInsert) then FOnInsert(Self, FAddBar.Cell, nbkCode);
+end;
+
+procedure TLedNotebookPane.AddTextClicked(Sender: TObject);
+begin
+  if Assigned(FOnInsert) then FOnInsert(Self, FAddBar.Cell, nbkMarkdown);
+end;
+
+procedure TLedNotebookPane.DeleteAboveClicked(Sender: TObject);
+begin
+  if Assigned(FOnDelete) then FOnDelete(Self, FAddBar.Cell);
 end;
 
 procedure TLedNotebookPane.PaneMouseDown(Sender: TObject;
@@ -2067,12 +2296,12 @@ var
 begin
   B := BoxOf(ACell);
   if B = nil then Exit;
-  Y := B.Top + B.Height + LedScale96(4);
+  Y := B.Top + B.Height + LedScale96(CellGap);
   for i := 0 to FBoxes.Count - 1 do
     if TLedNBCellBox(FBoxes[i]).Cell > ACell then
     begin
       TLedNBCellBox(FBoxes[i]).Top := Y;
-      Inc(Y, TLedNBCellBox(FBoxes[i]).Height + LedScale96(4));
+      Inc(Y, TLedNBCellBox(FBoxes[i]).Height + LedScale96(CellGap));
     end;
   SyncBar;
 end;
