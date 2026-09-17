@@ -96,6 +96,20 @@ type
     property OnMouseDown;
   end;
 
+  { One of the buttons at a cell boundary.
+
+    Drawn rather than left to the widgetset: a flat TSpeedButton on a panel
+    is three words with no edge to them, which reads as part of the page
+    rather than as something to press -- and the page it floats over is a
+    cell, so it needs to stand away from it.  So: a rounded slab, a border,
+    the theme's own text colour, and a lighter fill while the pointer is on
+    it.  All of it mixed from the theme's page and text colours, which is
+    what makes it work on a scheme nobody has seen. }
+  TLedNBBarButton = class(TSpeedButton)
+  protected
+    procedure Paint; override;
+  end;
+
   { The three buttons that appear at the boundary between two cells: add a
     code cell, add a prose cell, delete the cell above.
 
@@ -494,6 +508,11 @@ type
     property AddBar: TLedNBAddBar read FAddBar;
     { Shows the bar under ACell, as hovering near that boundary does. }
     procedure ShowAddBarUnder(ACell: Integer);
+    { Builds the cells again and leaves the reader where they were, with
+      ATopCell back at the top.  For a change in the notebook's shape -- a
+      cell added or taken out -- which needs everything rebuilt and is not a
+      request to go anywhere. }
+    procedure ReloadKeeping(ATopCell: Integer);
     { Fired when one of them is pressed.  The window does the work: it owns
       the asking-before-deleting and the reporting, the same division the
       Run button has. }
@@ -619,6 +638,52 @@ end;
 
 { ---- the buttons at a cell boundary ---- }
 
+procedure TLedNBBarButton.Paint;
+var
+  C: TLedNBColourSet;
+  Face, Edge: TColor;
+  R, Radius: Integer;
+  Box: TRect;
+  W, H: Integer;
+begin
+  C := LedNBColours;
+  { Away from the page, and further while the pointer is on it or it is
+    being pressed: three states a reader can tell apart without being told
+    what they mean. }
+  if FState in [bsDown, bsExclusive] then
+    Face := LedMixColours(C.Page, C.Text, 62)
+  else if MouseInControl then
+    Face := LedMixColours(C.Page, C.Text, 74)
+  else
+    Face := LedMixColours(C.Page, C.Text, 84);
+  Edge := LedMixColours(C.Page, C.Text, 52);
+
+  Box := Rect(0, 0, Width, Height);
+  Radius := Height div 2;
+  if Radius > LedScale96(10) then Radius := LedScale96(10);
+
+  Canvas.Brush.Style := bsSolid;
+  { The gap behind it, so the corners the round rectangle does not cover are
+    the pane's own colour rather than whatever was drawn there before. }
+  Canvas.Brush.Color := C.Page;
+  Canvas.FillRect(Box);
+  Canvas.Brush.Color := Face;
+  Canvas.Pen.Color := Edge;
+  Canvas.Pen.Style := psSolid;
+  Canvas.RoundRect(Box, Radius, Radius);
+
+  Canvas.Brush.Style := bsClear;
+  Canvas.Font.Assign(Font);
+  { The theme's text colour rather than the muted one: this is a control,
+    and a label nobody can read is not a higher-contrast anything. }
+  Canvas.Font.Color := C.Text;
+  W := Canvas.TextWidth(Caption);
+  H := Canvas.TextHeight(Caption);
+  R := (Width - W) div 2;
+  if R < 0 then R := 0;
+  Canvas.TextOut(R, (Height - H) div 2, Caption);
+end;
+
 constructor TLedNBAddBar.Create(AOwner: TComponent);
 var
   C: TLedNBColourSet;
@@ -632,31 +697,29 @@ var
   var
     W: Integer;
   begin
-    W := Ruler.Canvas.TextWidth(ACaption) + LedScale96(12);
-    Result := TSpeedButton.Create(Self);
+    W := Ruler.Canvas.TextWidth(ACaption) + LedScale96(18);
+    Result := TLedNBBarButton.Create(Self);
     Result.Parent := Self;
     Result.Caption := ACaption;
     Result.Hint := AHint;
     Result.ShowHint := True;
     Result.Flat := True;
     Result.Cursor := crHandPoint;
-    Result.SetBounds(X, LedScale96(2), W, LedScale96(18));
-    Inc(X, W);
+    Result.SetBounds(X, LedScale96(1), W, LedScale96(20));
+    Inc(X, W + LedScale96(4));
   end;
 
 begin
   inherited Create(AOwner);
   FCell := -1;
   BevelOuter := bvNone;
-  { A thin frame, so that three words floating over a page read as something
-    to press rather than as part of the cell under them. }
-  BorderStyle := bsSingle;
+  { No frame and no shade of its own: the buttons carry their own edges now,
+    and a panel behind them would be a box round a box. }
+  BorderStyle := bsNone;
   ParentColor := False;
   C := LedNBColours;
-  { On the shade a code cell sits on, so the bar belongs to the page it is
-    over. }
-  Color := LedMixColours(C.Page, C.Text, 90);
-  Font.Color := C.Muted;
+  Color := C.Page;
+  Font.Color := C.Text;
   Visible := False;
 
   Ruler := TBitmap.Create;
@@ -2053,6 +2116,29 @@ begin
   FAddBar.BringToFront;
 end;
 
+procedure TLedNotebookPane.ReloadKeeping(ATopCell: Integer);
+var
+  Tries: Integer;
+begin
+  Reload;
+  if (ATopCell < 0) or (ATopCell >= CellCount) then Exit;
+
+  { Followed, not scrolled to: nobody asked to move, so nothing is reported
+    and the text view is not dragged along behind it.
+
+    More than once, because where a cell is depends on how tall the ones
+    above it are, and a reload has just forgotten every height it knew: the
+    first attempt lands somewhere near, measures the cells it landed on, and
+    the next one lands closer.  Measured on a four-hundred-cell notebook,
+    the first attempt was five cells out. }
+  Tries := 0;
+  while (TopCell <> ATopCell) and (Tries < 4) do
+  begin
+    FollowToCell(ATopCell);
+    Inc(Tries);
+  end;
+end;
+
 procedure TLedNotebookPane.ShowAddBarUnder(ACell: Integer);
 var
   B: TLedNBCellBox;
@@ -2203,6 +2289,13 @@ procedure TLedNotebookPane.Reload;
 var
   i: Integer;
 begin
+  { Nothing in here is the reader scrolling, and the scrollbar going back to
+    zero on the way through is the loudest thing that looks like it: left to
+    report itself it said "the reader is now at cell nought", and the text
+    view dutifully went to the top of the file.  That was the jump after
+    adding a cell. }
+  FFollowing := True;
+  try
   LiveDoc;
   { The theme may have changed since the cells were built, and every colour
     in here comes from it. }
@@ -2226,6 +2319,10 @@ begin
   FBar.Position := 0;
   SyncBar;
   BuildWindow;
+  finally
+    FFollowing := False;
+  end;
+  FToldCell := TopCell;
 end;
 
 procedure TLedNotebookPane.RefreshCell(ACell: Integer);

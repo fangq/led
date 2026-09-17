@@ -34,6 +34,14 @@ uses
   Led.UI.LongLine;
 
 type
+  { Where a view is looking, in cells rather than in lines: see
+    TLedDocument.NBNotePlace. }
+  TLedNBPlace = record
+    TopCell, TopIn: Integer;
+    CaretCell, CaretIn, CaretX: Integer;
+  end;
+
+
   { One byte changed, so it can be changed back.  A hex edit never inserts or
     removes, so an undo record is a position and the value that was there --
     no ranges, no reflowing, and undoing in reverse order restores exactly
@@ -308,6 +316,11 @@ type
       The other direction needs nothing -- the buffer is read back into the
       notebook by NBSyncFromBuffer before anything that matters. }
     procedure NBSetCellSource(ACell: Integer; const AText: string);
+    procedure NBNotePlace(out APlace: TLedNBPlace);
+    procedure NBRestorePlace(const APlace: TLedNBPlace);
+
+    { The buffer line a cell's header is on, or -1. }
+    function NBHeaderLineOf(ACell: Integer): Integer;
 
     { Puts a new empty cell of AKind after ACell and answers where it went.
       ACell of -1 puts it first; ACell past the end appends.
@@ -1446,30 +1459,147 @@ end;
 
 { ---- adding and removing cells ---- }
 
+{ Where each view is looking, in cells rather than in lines.
+
+  Rendering the notebook again rewrites every line of the buffer, and a view
+  whose lines have all been replaced is a view at the top of the file with
+  its caret in cell zero -- which is not where the reader was.  Lines are no
+  use for putting it back, because a cell added above moves every line below
+  it; the cell and the offset inside it survive. }
+procedure TLedDocument.NBNotePlace(out APlace: TLedNBPlace);
+var
+  Line, Cell: Integer;
+begin
+  APlace.TopCell := -1;
+  APlace.TopIn := 0;
+  APlace.CaretCell := -1;
+  APlace.CaretIn := 0;
+  APlace.CaretX := 1;
+  if FViews.Count = 0 then Exit;
+
+  { The cell the top line is in -- which is the header's cell for a header
+    or an output line as much as for a line of source, since all of them
+    belong to the cell they are under. }
+  Line := NBHeaderAbove(TLedEdit(FViews[0]).TopLine - 1, Cell);
+  APlace.TopCell := Cell;
+  if Line >= 0 then
+    APlace.TopIn := (TLedEdit(FViews[0]).TopLine - 1) - Line;
+
+  APlace.CaretCell := NBCellOfLine(TLedEdit(FViews[0]).CaretY - 1);
+  if APlace.CaretCell >= 0 then
+    APlace.CaretIn := (TLedEdit(FViews[0]).CaretY - 1) -
+      NBHeaderLineOf(APlace.CaretCell);
+  APlace.CaretX := TLedEdit(FViews[0]).CaretX;
+end;
+
+{ And back, with the cell numbers already moved by whoever changed the
+  shape of the notebook. }
+procedure TLedDocument.NBRestorePlace(const APlace: TLedNBPlace);
+var
+  i, Head, Line: Integer;
+  V: TLedEdit;
+begin
+  for i := 0 to FViews.Count - 1 do
+  begin
+    V := TLedEdit(FViews[i]);
+    if APlace.CaretCell >= 0 then
+    begin
+      Head := NBHeaderLineOf(APlace.CaretCell);
+      if Head >= 0 then
+      begin
+        Line := Head + APlace.CaretIn;
+        if Line < 0 then Line := 0;
+        if Line >= FMaster.Lines.Count then Line := FMaster.Lines.Count - 1;
+        V.CaretXY := Point(APlace.CaretX, Line + 1);
+      end;
+    end;
+    if APlace.TopCell >= 0 then
+    begin
+      Head := NBHeaderLineOf(APlace.TopCell);
+      if Head >= 0 then
+      begin
+        Line := Head + APlace.TopIn;
+        if Line < 0 then Line := 0;
+        if Line >= FMaster.Lines.Count then Line := FMaster.Lines.Count - 1;
+        { Last, because moving the caret scrolls the view: this is the
+          reader's place and it has to be the one that sticks. }
+        V.TopLine := Line + 1;
+      end;
+    end;
+  end;
+end;
+
+{ The buffer line a cell's header is on, or -1. }
+function TLedDocument.NBHeaderLineOf(ACell: Integer): Integer;
+var
+  i: Integer;
+  T: PtrInt;
+begin
+  Result := -1;
+  if not FIsNotebook then Exit;
+  for i := 0 to FMaster.Lines.Count - 1 do
+  begin
+    T := NBTagOf(i);
+    if (T <> 0) and ((-T) mod NBTagKinds = NBTagHeader) and
+       ((-T) div NBTagKinds = ACell) then
+      Exit(i);
+  end;
+end;
+
 function TLedDocument.NBInsertCell(ACell: Integer;
   AKind: TLedNBCellKind): Integer;
+var
+  Place: TLedNBPlace;
 begin
   Result := -1;
   if not FIsNotebook then Exit;
   { Whatever the reader has typed goes into the notebook first: the buffer is
     about to be written from it. }
   NBSyncFromBuffer;
+  NBNotePlace(Place);
   Result := FNotebook.InsertCell(ACell + 1, AKind);
   if Result < 0 then Exit;
   NBRender;
+  { A cell added above where the reader was pushes them down by one. }
+  if Place.TopCell >= Result then Inc(Place.TopCell);
+  { And the caret goes into the new cell, which is what a notebook front end
+    does with one -- and is also what stops the view jumping.  A caret left
+    somewhere else is a caret off the screen, and SynEdit brings its caret
+    back into view at the first opportunity: the place was restored
+    correctly and then thrown away a moment later by that. }
+  Place.CaretCell := Result;
+  Place.CaretIn := 1;
+  Place.CaretX := 1;
+  NBRestorePlace(Place);
   FNBDirty := True;
   FMaster.Modified := True;
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
 function TLedDocument.NBDeleteCell(ACell: Integer): Boolean;
+var
+  Place: TLedNBPlace;
 begin
   Result := False;
   if not FIsNotebook then Exit;
   NBSyncFromBuffer;
+  NBNotePlace(Place);
   Result := FNotebook.DeleteCell(ACell);
   if not Result then Exit;
   NBRender;
+  { A cell taken out from above moves them up by one. }
+  if Place.TopCell > ACell then Dec(Place.TopCell);
+  if Place.TopCell >= FNotebook.CellCount then
+    Place.TopCell := FNotebook.CellCount - 1;
+  { The caret goes to whichever cell has taken the place of the one that
+    went -- the one below it, or the last one when it was the last -- for
+    the same two reasons as above. }
+  Place.CaretCell := ACell;
+  if Place.CaretCell >= FNotebook.CellCount then
+    Place.CaretCell := FNotebook.CellCount - 1;
+  Place.CaretIn := 1;
+  Place.CaretX := 1;
+  NBRestorePlace(Place);
   FNBDirty := True;
   FMaster.Modified := True;
   if Assigned(FOnChanged) then FOnChanged(Self);

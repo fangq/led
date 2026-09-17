@@ -6521,6 +6521,42 @@ begin
   CheckEqInt('a line further down the same cell moves nothing', Was,
     Pane.TopCell);
 
+  { ---- adding a cell does not move the reader ----
+
+    Rendering the notebook again rewrites every line of the buffer, which
+    both views report as a scroll -- so the first version jumped to the top
+    of the file and dragged the pane after it.  Checked here rather than on
+    the five-cell fixture for the same reason as the rest of this section:
+    there, the text view cannot scroll at all. }
+  Pane.ScrollToCell(40);
+  Pane.ReportTopNow;
+  Pump;
+  Was := Doc.NBCellCount;
+  Line := V.TopLine;
+  CheckEqInt('the reader is looking at cell 40', 40,
+    Doc.NBCellOfLine(V.TopLine - 1));
+
+  CellBox(Pane, 40);
+  Pane.ShowAddBarUnder(40);
+  Pump;
+  Pane.AddBar.AddCode.Click;
+  Pump; Pump;
+  CheckEqInt('a cell was added', Was + 1, Doc.NBCellCount);
+  CheckEqInt('and the pane is still where it was', 40, Pane.TopCell);
+  CheckEqInt(Format('and so is the buffer (line %d, was %d)',
+    [V.TopLine, Line]), 40, Doc.NBCellOfLine(V.TopLine - 1));
+
+  { And taking one out leaves them where they are too. }
+  CellBox(Pane, 41);
+  Pane.ShowAddBarUnder(41);
+  Pump;
+  Pane.AddBar.DeleteAbove.Click;
+  Pump; Pump;
+  CheckEqInt('the cell went', Was, Doc.NBCellCount);
+  CheckEqInt('the pane stayed', 40, Pane.TopCell);
+  CheckEqInt('and the buffer stayed', 40,
+    Doc.NBCellOfLine(V.TopLine - 1));
+
   { A click in a cell puts the caret in it, so that Run Cell runs the cell
     the reader is pointing at. }
   B := CellBox(Pane, 9);

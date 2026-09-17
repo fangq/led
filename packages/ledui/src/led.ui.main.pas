@@ -1458,26 +1458,38 @@ procedure TLedMainForm.NBPaneInsert(Sender: TObject; ACell: Integer;
   AKind: TLedNBCellKind);
 var
   Doc: TLedDocument;
-  Made: Integer;
+  Made, WasTop: Integer;
 begin
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
   if not Doc.IsNotebook then Exit;
-  Made := Doc.NBInsertCell(ACell, AKind);
+  { Nothing moves while this happens.  Rendering the notebook again rewrites
+    every line of the buffer, and the views report that as a scroll -- which
+    would be read as the reader asking to go somewhere and would drag the
+    pane after it.  The place is put back by the document; this only has to
+    stop the two views chasing each other in the meantime. }
+  WasTop := -1;
+  if FNBPane <> nil then WasTop := FNBPane.TopCell;
+  FNBSyncing := True;
+  try
+    Made := Doc.NBInsertCell(ACell, AKind);
+  finally
+    FNBSyncing := False;
+  end;
   if Made < 0 then
   begin
     ReportError('the cell could not be added');
     Exit;
   end;
-  { The whole pane, because every cell below the new one has moved. }
-  RefreshNotebookPane;
+  { The whole pane, because every cell below the new one has moved -- but
+    back to the same cell, not to the new one: the reader asked for a cell,
+    not for a journey. }
+  if (WasTop >= 0) and (WasTop >= Made) then Inc(WasTop);
   if FNBPane <> nil then
   begin
-    FNBPane.ScrollToCell(Made);
-    { The bar goes back under the cell that was just made, so a reader
-      adding three cells in a row does not have to find the boundary again
-      each time. }
-    FNBPane.ShowAddBarUnder(Made);
+    if ActiveTab.Document.IsNotebook then ActiveTab.Document.NBSyncFromBuffer;
+    FNBPane.ShowDocument(ActiveTab.Document);
+    FNBPane.ReloadKeeping(WasTop);
   end;
   UpdateStatusBar;
 end;
@@ -1491,7 +1503,8 @@ procedure TLedMainForm.NBPaneDelete(Sender: TObject; ACell: Integer);
 var
   Doc: TLedDocument;
   Outs: TJSONArray;
-  Empty: Boolean;
+  Empty, Gone: Boolean;
+  WasTop: Integer;
 begin
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
@@ -1505,14 +1518,29 @@ begin
     if not Confirm(Format('Delete cell %d?  This cannot be undone.',
       [ACell + 1]), False) then Exit;
 
-  if not Doc.NBDeleteCell(ACell) then
+  WasTop := -1;
+  if FNBPane <> nil then WasTop := FNBPane.TopCell;
+  FNBSyncing := True;
+  try
+    Gone := Doc.NBDeleteCell(ACell);
+  finally
+    FNBSyncing := False;
+  end;
+  if not Gone then
   begin
     { The only reason it can refuse: a notebook has to have a cell in it. }
     ReportError('a notebook must have at least one cell');
     Exit;
   end;
-  RefreshNotebookPane;
-  if FNBPane <> nil then FNBPane.ScrollToCell(ACell);
+  { The cell that went was above where the reader is looking, or was the
+    one they were looking at, in which case its neighbour has taken its
+    number. }
+  if (WasTop > ACell) then Dec(WasTop);
+  if FNBPane <> nil then
+  begin
+    FNBPane.ShowDocument(Doc);
+    FNBPane.ReloadKeeping(WasTop);
+  end;
   UpdateStatusBar;
 end;
 
