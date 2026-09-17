@@ -659,6 +659,61 @@ var
     end;
   end;
 
+  { A table row's cells.
+
+    The separator is a pipe, and a pipe written "\|" is a pipe in the text.
+    That escape has to be honoured here, before anything else looks at the
+    line, because this is where the cells are decided -- and it holds inside
+    a code span as well, which is the one place the ordinary escapes do not
+    reach.  It is how a table of operators is written at all: a row saying
+    "`expr1 \|\| expr2`  | `\|\|` for logical OR" is four cells and a
+    row of stray backslashes otherwise. }
+  function SplitCells(const ARow: string): TStringArray;
+  var
+    i, n: Integer;
+    Cur: string;
+
+    procedure Take;
+    begin
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := Cur;
+      Cur := '';
+    end;
+
+  begin
+    SetLength(Result, 0);
+    Cur := '';
+    i := 1;
+    n := Length(ARow);
+    while i <= n do
+    begin
+      if (ARow[i] = '\') and (i < n) and (ARow[i + 1] = '|') then
+      begin
+        { The pipe, without the backslash that let it through. }
+        Cur := Cur + '|';
+        Inc(i, 2);
+        Continue;
+      end;
+      { A backslash before anything else is left alone: the inline pass
+        reads those, and eating one here would turn "\*" into "*". }
+      if (ARow[i] = '\') and (i < n) then
+      begin
+        Cur := Cur + ARow[i] + ARow[i + 1];
+        Inc(i, 2);
+        Continue;
+      end;
+      if ARow[i] = '|' then
+      begin
+        Take;
+        Inc(i);
+        Continue;
+      end;
+      Cur := Cur + ARow[i];
+      Inc(i);
+    end;
+    Take;
+  end;
+
   procedure EmitTableRow(const ARow: string; AHeader: Boolean; ALine: Integer);
   var
     Cells: TStringArray;
@@ -667,9 +722,14 @@ var
   begin
     Cell := Trim(ARow);
     if (Cell <> '') and (Cell[1] = '|') then Delete(Cell, 1, 1);
-    if (Cell <> '') and (Cell[Length(Cell)] = '|') then
-      SetLength(Cell, Length(Cell) - 1);
-    Cells := Cell.Split(['|']);
+    { The pipe that closes the row, if it is one: a row may end with an
+      escaped pipe instead, and that one is text. }
+    if (Length(Cell) > 1) and (Cell[Length(Cell)] = '|') and
+       (Cell[Length(Cell) - 1] <> '\') then
+      SetLength(Cell, Length(Cell) - 1)
+    else if Cell = '|' then
+      Cell := '';
+    Cells := SplitCells(Cell);
     if AHeader then Tag := 'th' else Tag := 'td';
     Out_.Add('<tr' + Anchor(ALine) + '>');
     for c := 0 to High(Cells) do

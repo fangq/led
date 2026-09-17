@@ -30,6 +30,7 @@ type
     procedure BlockQuote;
     procedure ThematicBreak;
     procedure Table;
+    procedure AnEscapedPipeIsAPipeAndNotASeparator;
     procedure HtmlIsEscaped;
     procedure BackslashEscape;
     procedure WholePageHasAStylesheet;
@@ -187,6 +188,45 @@ begin
   AssertHas('table', H, '<table');
   AssertHas('header cell', H, '<th>a</th>');
   AssertHas('body cell', H, '<td>1</td>');
+end;
+
+{ The separator in a table is a pipe, and a pipe written "\|" is a pipe in
+  the text -- inside a code span as well, which is the one place the ordinary
+  escapes do not reach.  It is how a table of operators is written at all: a
+  row about logical OR is four cells and a row of stray backslashes
+  otherwise. }
+procedure TTestMarkdown.AnEscapedPipeIsAPipeAndNotASeparator;
+var
+  H: string;
+  Cells: Integer;
+  i: Integer;
+begin
+  H := Conv('| command | meaning |' + LineEnding +
+            '| --- | --- |' + LineEnding +
+            '| `expr1 \|\| expr2` | `\|\|` for logical OR |');
+  AssertHas('the pipes are in the cell, with no backslashes left',
+    H, '<code>expr1 || expr2</code>');
+  AssertHas('and in the one beside it', H, '<code>||</code>');
+  AssertFalse('no backslash survived: ' + H, Pos('\|', H) > 0);
+
+  { And the row still has exactly the two cells it was written with: the
+    escape must not split it, which is the whole complaint. }
+  Cells := 0;
+  for i := 1 to Length(H) - 3 do
+    if Copy(H, i, 4) = '<td>' then Inc(Cells);
+  AssertEquals('two cells, not four', 2, Cells);
+
+  { A row that ends with an escaped pipe keeps it, rather than losing it to
+    the trimming of the pipe that closes a row. }
+  H := Conv('| a | b |' + LineEnding + '| --- | --- |' + LineEnding +
+            '| one | a pipe: \|');
+  AssertHas('the escaped pipe at the end is text', H, 'a pipe: |');
+
+  { An ordinary row is unaffected. }
+  H := Conv('| a | b |' + LineEnding + '| --- | --- |' + LineEnding +
+            '| 1 | 2 |');
+  AssertHas('first cell', H, '<td>1</td>');
+  AssertHas('second cell', H, '<td>2</td>');
 end;
 
 procedure TTestMarkdown.HtmlIsEscaped;
