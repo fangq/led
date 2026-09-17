@@ -157,9 +157,13 @@ type
       AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
     procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
-    function ProsePage(const ASource: string): string;
+    function ImageSize(const AURL: string; out AW, AH: Integer): Boolean;
 
   public
+    { The page this cell's prose renders to, at a given width.  Public for
+      the sake of a check: what a picture too wide for the cell is given
+      cannot be seen from outside the rendered page otherwise. }
+    function ProsePage(const ASource: string; AWidth: Integer): string;
     constructor Create(AOwner: TComponent; ADoc: TLedDocument;
       ACell: Integer; AImages: TCustomImageList); reintroduce;
     { Lays the cell out for AWidth and answers how tall it came to.
@@ -776,6 +780,53 @@ begin
   if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
 end;
 
+{ How big the picture behind a reference is, for the page to be written with
+  a size that fits.  The same three places ProvideImage looks -- what was
+  fetched, what the notebook carries, and a file beside it -- and read from
+  the picture's own header rather than by decoding it. }
+function TLedNBCellBox.ImageSize(const AURL: string;
+  out AW, AH: Integer): Boolean;
+var
+  Bytes, Mime, FN: string;
+  F: TFileStream;
+begin
+  Result := False;
+  AW := 0;
+  AH := 0;
+  if AURL = '' then Exit;
+
+  Bytes := '';
+  if LedNBIsRemote(AURL) then
+    LedNBImages.Lookup(AURL, Bytes)
+  else if LedNBEmbeddedImage(FDoc.Notebook, FCell, AURL, Bytes, Mime) then
+    { taken as it is }
+  else
+  begin
+    FN := LedNBLocalPath(AURL, ExtractFilePath(FDoc.FileName));
+    if (FN <> '') and FileExists(FN) then
+      try
+        F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
+        try
+          { The header is all this needs, and a picture on disk may be
+            enormous. }
+          SetLength(Bytes, 4096);
+          SetLength(Bytes, F.Read(Bytes[1], 4096));
+        finally
+          F.Free;
+        end;
+      except
+        Bytes := '';
+      end;
+  end;
+  if Bytes = '' then Exit;
+  { A converted picture is measured after converting: an SVG says its size
+    in its markup, in units this does not read. }
+  Mime := '';
+  if LedNBConvertKind(Bytes) <> '' then
+    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
+  Result := LedNBPictureSize(Bytes, AW, AH);
+end;
+
 procedure TLedNBCellBox.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
 var
@@ -852,13 +903,18 @@ end;
   colours are set as attributes as well as in the style sheet, because IPro
   reads rather little CSS and the attributes it does read are the ones that
   decide the background. }
-function TLedNBCellBox.ProsePage(const ASource: string): string;
+function TLedNBCellBox.ProsePage(const ASource: string;
+  AWidth: Integer): string;
 var
   C: TLedNBColourSet;
   Html: string;
 begin
   C := LedNBColours;
   Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource), @HaveRemote);
+  { A picture wider than the cell is given a size that fits.  The renderer
+    draws one at its natural size and cannot scroll a block sideways, so a
+    700-pixel meme in a 600-pixel pane simply lost its last hundred pixels. }
+  Html := LedNBFitImages(Html, AWidth, @ImageSize);
   Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
   { The page around it is the shared one -- see Led.UI.PageStyle -- so that
     a cell and a Markdown file are drawn the same way. }
@@ -1080,9 +1136,11 @@ begin
     MakeRender;
     if FEdit <> nil then FEdit.Visible := False;
     FRender.Visible := True;
-    Page := ProsePage(Source);
     Room := AWidth - LedScale96(ProseGutter + Pad);
     if Room < LedScale96(80) then Room := LedScale96(80);
+    { The width is worked out before the page is built, because a picture
+      too wide for it is written into the page at the size that fits. }
+    Page := ProsePage(Source, Room - LedScale96(8));
     { The panel is made as tall as the prose is, so the cell shows all of it
       and never scrolls inside itself.  A cell of prose folded into a box
       with its own scrollbar is the one thing a reader cannot skim.
@@ -1096,6 +1154,10 @@ begin
     { The renderer makes its drawing control when it is given a page, so the
       handlers go on after that as well as at creation. }
     HookRenderChildren;
+    { Repainted rather than left: the same panel drew the page before the
+      pictures arrived, and what it drew for a picture it did not have was
+      still on it under the new page. }
+    FRender.Invalidate;
     Inc(Y, FRender.Height + LedScale96(4));
   end
   else

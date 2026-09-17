@@ -20,6 +20,7 @@ type
   TTestNBImage = class(TTestCase)
   private
     function Notebook(const AData: string): TLedNotebook;
+    function SizeOf_(const AURL: string; out AW, AH: Integer): Boolean;
     function MarkdownCell(const ASource, AAttachments: string): TLedNotebook;
   published
     procedure APictureStoredAsOneStringDecodes;
@@ -32,6 +33,14 @@ type
     procedure ADataURIIsAPicture;
     procedure AnAttachmentIsAPicture;
     procedure SomethingElseIsNotEmbedded;
+    { how big a picture is, and fitting one to the page }
+    procedure APngSaysHowBigItIs;
+    procedure AJpegSaysSoFromItsFrameHeader;
+    procedure AGifAndABmpToo;
+    procedure SomethingElseSaysNothing;
+    procedure APictureTooWideIsGivenASizeThatFits;
+    procedure OneThatFitsIsLeftAlone;
+    procedure ASizeTheDocumentAskedForIsLeftAlone;
     procedure APictureOnTheWebIsNotFetched;
     procedure APictureInTheFileIsLeftInThePage;
     { what a reference resolves to }
@@ -50,6 +59,22 @@ const
   PNG64 = 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAJCAIAAACnn3uRAAAAFUlEQVR4nGM4oaFBFcQwatCoQVRAAMNy7EEtcnPeAAAAAElFTkSuQmCC';
   PNGLines = '[' + '"iVBORw0KGgoAAAANSUhEUgAAABgAAAAJCAIAAACnn3uRAAAAFUlEQVR4nGM4oaFBFcQwatCoQVRA"' + ',' + '"AMNy7EEtcnPeAAAAAElFTkSuQmCC"' + ']';
   PNGBytes = 78;
+
+{ Stands in for the pane, which knows where its pictures are.  a.png is 700
+  by 1034, the meme from the reader's own notebook; anything else is
+  unmeasurable, which a page has to cope with. }
+function TTestNBImage.SizeOf_(const AURL: string;
+  out AW, AH: Integer): Boolean;
+begin
+  AW := 0;
+  AH := 0;
+  Result := AURL = 'a.png';
+  if Result then
+  begin
+    AW := 700;
+    AH := 1034;
+  end;
+end;
 
 function TTestNBImage.Notebook(const AData: string): TLedNotebook;
 var
@@ -364,6 +389,102 @@ begin
   AssertEquals('', LedNBLocalPath('', '/home/me/nb'));
   AssertEquals('', LedNBLocalPath('https://example.com/a.png', '/home/me/nb'));
   AssertEquals('', LedNBLocalPath('data:image/png;base64,AAAA', '/home/me/nb'));
+end;
+
+{ ---- how big a picture is ----
+
+  Read from the header rather than by decoding, because a page has to know
+  before it is laid out.  The bytes below are real headers with nothing
+  behind them, which is all this reads. }
+
+procedure TTestNBImage.APngSaysHowBigItIs;
+var
+  W, H: Integer;
+begin
+  { The signature, then an IHDR chunk saying 700 by 1034. }
+  AssertTrue('read', LedNBPictureSize(
+    #$89'PNG'#13#10#26#10 + #0#0#0#13 + 'IHDR' +
+    #0#0#2#188 + #0#0#4#10 + #8#6#0#0#0, W, H));
+  AssertEquals('width', 700, W);
+  AssertEquals('height', 1034, H);
+end;
+
+procedure TTestNBImage.AJpegSaysSoFromItsFrameHeader;
+var
+  W, H: Integer;
+begin
+  { A JPEG has to be walked: the size is in a start-of-frame segment, and
+    what comes before it is not fixed.  Here an APP0 of six bytes, then
+    SOF0 saying 40 by 20. }
+  AssertTrue('read', LedNBPictureSize(
+    #$FF#$D8 + #$FF#$E0 + #0#6 + 'JFIF' +
+    #$FF#$C0 + #0#17 + #8 + #0#20 + #0#40 + #3 + '123456789', W, H));
+  AssertEquals('width', 40, W);
+  AssertEquals('height', 20, H);
+end;
+
+procedure TTestNBImage.AGifAndABmpToo;
+var
+  W, H: Integer;
+begin
+  AssertTrue('gif', LedNBPictureSize('GIF89a' + #10#0 + #20#0 +
+    #0#0#0#0#0#0#0#0, W, H));
+  AssertEquals('gif width', 10, W);
+  AssertEquals('gif height', 20, H);
+
+  { A BMP counts its height upwards, and writes it negative when the rows
+    are stored the other way round. }
+  AssertTrue('bmp', LedNBPictureSize('BM' + StringOfChar(#0, 16) +
+    #30#0#0#0 + #$E2#$FF#$FF#$FF + StringOfChar(#0, 8), W, H));
+  AssertEquals('bmp width', 30, W);
+  AssertEquals('bmp height counted as a size', 30, H);
+end;
+
+procedure TTestNBImage.SomethingElseSaysNothing;
+var
+  W, H: Integer;
+begin
+  AssertFalse('nothing at all', LedNBPictureSize('', W, H));
+  AssertFalse('too short to say', LedNBPictureSize('BM' + #0#0#0, W, H));
+  AssertFalse('not a picture', LedNBPictureSize(
+    'this is a sentence, not a picture header', W, H));
+end;
+
+procedure TTestNBImage.APictureTooWideIsGivenASizeThatFits;
+var
+  Html: string;
+begin
+  { The renderer draws a picture at its natural size and cannot scroll a
+    block sideways, so a 700-pixel picture in a 600-pixel pane lost its last
+    hundred pixels.  In proportion: 700 by 1034 at 350 wide is 517 tall. }
+  Html := LedNBFitImages('<p><img src="a.png" alt="a"></p>', 350, @SizeOf_);
+  AssertTrue('a width is written in: ' + Html,
+    Pos('width="350"', Html) > 0);
+  AssertTrue('and a height in proportion: ' + Html,
+    Pos('height="517"', Html) > 0);
+  AssertTrue('the rest of the tag is kept', Pos('alt="a"', Html) > 0);
+end;
+
+procedure TTestNBImage.OneThatFitsIsLeftAlone;
+var
+  Html: string;
+begin
+  Html := '<p><img src="a.png" alt="a"></p>';
+  AssertEquals('no room needed, nothing changed',
+    Html, LedNBFitImages(Html, 900, @SizeOf_));
+  AssertEquals('and a picture that cannot be measured is left as it is',
+    '<img src="mystery.tiff">',
+    LedNBFitImages('<img src="mystery.tiff">', 100, @SizeOf_));
+end;
+
+procedure TTestNBImage.ASizeTheDocumentAskedForIsLeftAlone;
+var
+  Html: string;
+begin
+  { The document said how big it wants the picture, which is not this to
+    overrule. }
+  Html := '<img src="a.png" width="40">';
+  AssertEquals(Html, LedNBFitImages(Html, 10, @SizeOf_));
 end;
 
 initialization

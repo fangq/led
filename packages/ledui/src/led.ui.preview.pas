@@ -20,7 +20,7 @@ uses
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.Core.NBImage,
-  Led.Core.NBFetch, Led.UI.Dpi, Led.UI.PageStyle;
+  Led.Core.NBFetch, Led.Core.NBConvert, Led.UI.Dpi, Led.UI.PageStyle;
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
@@ -58,6 +58,9 @@ type
     { Whether a picture on the web is in hand, and if not, why the page should
       say so in its place.  Asking for one starts the fetch. }
     function HaveRemote(const AURL: string; out AWhy: string): Boolean;
+    { How big the picture behind a reference is, so that one too wide for
+      the pane can be written into the page at a size that fits. }
+    function ImageSize(const AURL: string; out AW, AH: Integer): Boolean;
     { Pictures that have arrived since the last look.  The page was laid out
       without them and is laid out again now -- there is no way to put one
       picture into a page IPro is already holding. }
@@ -242,6 +245,7 @@ procedure TLedPreviewPane.ProvideImage(Sender: TIpHtmlNode; const URL: string;
 var
   FN, Bytes, Kind: string;
   Stream: TStringStream;
+  F: TFileStream;
 begin
   Picture := nil;
   if URL = '' then Exit;
@@ -272,6 +276,41 @@ begin
     in paths rather than URLs. }
   FN := LedNBLocalPath(URL, FBaseDir);
   if (FN = '') or (not FileExists(FN)) then Exit;
+
+  { An SVG or a WebP beside the document is converted first, if the machine
+    has anything to convert it with.
+
+    Read as bytes and not as text: a WebP's own header carries a carriage
+    return, and handing binary to a text property rewrites it -- which is
+    how a picture once arrived with its signature broken. }
+  Bytes := '';
+  try
+    F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
+    try
+      SetLength(Bytes, F.Size);
+      if F.Size > 0 then F.Read(Bytes[1], F.Size);
+    finally
+      F.Free;
+    end;
+  except
+    Bytes := '';
+  end;
+  if LedNBConvertKind(Bytes) <> '' then
+  begin
+    if not LedNBToPng(Bytes, Bytes) then Exit;
+    Picture := TPicture.Create;
+    Stream := TStringStream.Create(Bytes);
+    try
+      try
+        Picture.LoadFromStreamWithFileExt(Stream, 'png');
+      except
+        FreeAndNil(Picture);
+      end;
+    finally
+      Stream.Free;
+    end;
+    Exit;
+  end;
 
   Picture := TPicture.Create;
   try
@@ -524,6 +563,47 @@ begin
   if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
 end;
 
+function TLedPreviewPane.ImageSize(const AURL: string;
+  out AW, AH: Integer): Boolean;
+var
+  Bytes, Mime, FN: string;
+  F: TFileStream;
+begin
+  Result := False;
+  AW := 0;
+  AH := 0;
+  if AURL = '' then Exit;
+
+  Bytes := '';
+  if LedNBIsRemote(AURL) then
+    LedNBImages.Lookup(AURL, Bytes)
+  else
+  begin
+    FN := LedNBLocalPath(AURL, FBaseDir);
+    if (FN <> '') and FileExists(FN) then
+      try
+        F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
+        try
+          { The header is all this needs, and a picture on disk may be
+            enormous. }
+          SetLength(Bytes, 4096);
+          SetLength(Bytes, F.Read(Bytes[1], 4096));
+        finally
+          F.Free;
+        end;
+      except
+        Bytes := '';
+      end;
+  end;
+  if Bytes = '' then Exit;
+  { A converted picture is measured after converting: an SVG says its size
+    in its markup, in units this does not read. }
+  Mime := '';
+  if LedNBConvertKind(Bytes) <> '' then
+    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
+  Result := LedNBPictureSize(Bytes, AW, AH);
+end;
+
 procedure TLedPreviewPane.ImageTick(Sender: TObject);
 var
   URL: string;
@@ -596,6 +676,11 @@ begin
     laid out -- see Led.Core.NBFetch -- so one that is not in hand yet is
     replaced by a line saying so, and the page is drawn again when it lands. }
   Body := LedNBHideRemoteImages(Body, @HaveRemote);
+  { A picture wider than the pane is given a size that fits: this renderer
+    draws one at its natural size and cannot scroll a block sideways, so the
+    right-hand side of a wide screenshot was simply not there. }
+  Body := LedNBFitImages(Body, FHtml.ClientWidth - LedScale96(32),
+    @ImageSize);
   Page := LedPageHead(FPendingTitle, Colours, 12) + Body + LedPageTail;
   try
     { Both adjustments are for the renderer rather than for the document:

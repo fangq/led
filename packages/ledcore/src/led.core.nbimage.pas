@@ -80,6 +80,36 @@ function LedNBHideRemoteImages(const AHtml: string;
 { The file extension a TPicture wants for a mime type: 'png', 'jpg'. }
 function LedNBImageExt(const AMime: string): string;
 
+{ How big a picture is, read from its header rather than by decoding it:
+  PNG, JPEG, GIF and BMP.  False for anything else, and for bytes too short
+  to say.
+
+  Wanted because a page has to know before it is laid out: see
+  LedNBFitImages. }
+function LedNBPictureSize(const ABytes: string; out AW, AH: Integer): Boolean;
+
+{ Asked how big the picture behind a reference is.  The caller has the
+  pictures -- fetched, embedded, or beside the file -- and this unit has the
+  page. }
+type
+  TLedNBImageSize = function(const AURL: string;
+    out AW, AH: Integer): Boolean of object;
+
+{ Gives every <img> in AHtml that is wider than AMaxWidth a width and a
+  height that fit, in proportion.
+
+  Because this renderer draws a picture at its natural size and cannot
+  scroll a block sideways: a 700-pixel meme in a 600-pixel pane is drawn
+  700 pixels wide and the last hundred of it are simply not there.  Browsers
+  answer this with max-width, which IPro does not read; the attributes it
+  does read are width and height, so the arithmetic is done here.
+
+  A tag that already carries a width is left alone -- the document asked for
+  that size -- and so is one whose picture cannot be measured, which is no
+  worse than before.  AMaxWidth <= 0 leaves everything alone. }
+function LedNBFitImages(const AHtml: string; AMaxWidth: Integer;
+  ASizeOf: TLedNBImageSize): string;
+
 implementation
 
 function LedNBIsRemote(const AURL: string): Boolean;
@@ -159,6 +189,150 @@ begin
     Result := LedNBConverterFor('svg') <> ''
   else if AMime = 'image/webp' then
     Result := LedNBConverterFor('webp') <> '';
+end;
+
+function BigEndian32(const ABytes: string; AAt: Integer): Integer;
+begin
+  Result := (Ord(ABytes[AAt]) shl 24) or (Ord(ABytes[AAt + 1]) shl 16) or
+            (Ord(ABytes[AAt + 2]) shl 8) or Ord(ABytes[AAt + 3]);
+end;
+
+function LittleEndian16(const ABytes: string; AAt: Integer): Integer;
+begin
+  Result := Ord(ABytes[AAt]) or (Ord(ABytes[AAt + 1]) shl 8);
+end;
+
+function LittleEndian32(const ABytes: string; AAt: Integer): Integer;
+begin
+  Result := Ord(ABytes[AAt]) or (Ord(ABytes[AAt + 1]) shl 8) or
+            (Ord(ABytes[AAt + 2]) shl 16) or (Ord(ABytes[AAt + 3]) shl 24);
+end;
+
+function LedNBPictureSize(const ABytes: string; out AW, AH: Integer): Boolean;
+var
+  i, n, Len: Integer;
+  Marker: Byte;
+begin
+  Result := False;
+  AW := 0;
+  AH := 0;
+  n := Length(ABytes);
+  if n < 16 then Exit;
+
+  { PNG: the IHDR chunk is always first, and its two sizes are the eight
+    bytes after the chunk's name. }
+  if Copy(ABytes, 1, 8) = #$89'PNG'#13#10#26#10 then
+  begin
+    if n < 24 then Exit;
+    AW := BigEndian32(ABytes, 17);
+    AH := BigEndian32(ABytes, 21);
+    Exit((AW > 0) and (AH > 0));
+  end;
+
+  { GIF: the screen descriptor, right after the six-byte signature. }
+  if (Copy(ABytes, 1, 6) = 'GIF87a') or (Copy(ABytes, 1, 6) = 'GIF89a') then
+  begin
+    AW := LittleEndian16(ABytes, 7);
+    AH := LittleEndian16(ABytes, 9);
+    Exit((AW > 0) and (AH > 0));
+  end;
+
+  { BMP: the info header, which counts height upwards and so may be
+    negative for a picture stored top down. }
+  if Copy(ABytes, 1, 2) = 'BM' then
+  begin
+    if n < 26 then Exit;
+    AW := LittleEndian32(ABytes, 19);
+    AH := Abs(LittleEndian32(ABytes, 23));
+    Exit((AW > 0) and (AH > 0));
+  end;
+
+  { JPEG: walked, because the size lives in a start-of-frame segment and
+    what comes before it is not fixed. }
+  if Copy(ABytes, 1, 2) = #$FF#$D8 then
+  begin
+    i := 3;
+    while i + 8 < n do
+    begin
+      if Ord(ABytes[i]) <> $FF then
+      begin
+        Inc(i);
+        Continue;
+      end;
+      Marker := Ord(ABytes[i + 1]);
+      { Padding between segments, and the two markers that carry no length. }
+      if (Marker = $FF) or (Marker = $01) or
+         ((Marker >= $D0) and (Marker <= $D9)) then
+      begin
+        Inc(i);
+        Continue;
+      end;
+      Len := (Ord(ABytes[i + 2]) shl 8) or Ord(ABytes[i + 3]);
+      { Any start-of-frame: baseline, progressive, arithmetic, lossless.
+        Not the four that are something else with a number in the range. }
+      if (((Marker >= $C0) and (Marker <= $C3)) or
+          ((Marker >= $C5) and (Marker <= $C7)) or
+          ((Marker >= $C9) and (Marker <= $CB)) or
+          ((Marker >= $CD) and (Marker <= $CF))) and (i + 8 <= n) then
+      begin
+        { After the marker and its two length bytes: one byte of sample
+          precision, then the height and then the width.  That order, and
+          that offset -- the first version read from one byte further on and
+          gave a five-figure width for a forty-pixel picture. }
+        AH := (Ord(ABytes[i + 5]) shl 8) or Ord(ABytes[i + 6]);
+        AW := (Ord(ABytes[i + 7]) shl 8) or Ord(ABytes[i + 8]);
+        Exit((AW > 0) and (AH > 0));
+      end;
+      if Len < 2 then Exit;
+      Inc(i, Len + 2);
+    end;
+  end;
+end;
+
+function LedNBFitImages(const AHtml: string; AMaxWidth: Integer;
+  ASizeOf: TLedNBImageSize): string;
+var
+  At, Start, Stop, Quote, W, H: Integer;
+  Img, URL, Lower: string;
+begin
+  Result := AHtml;
+  if (AMaxWidth <= 0) or (not Assigned(ASizeOf)) then Exit;
+  At := 1;
+  while True do
+  begin
+    Lower := LowerCase(Result);
+    Start := PosEx('<img', Lower, At);
+    if Start = 0 then Break;
+    Stop := PosEx('>', Result, Start);
+    if Stop = 0 then Break;
+    Img := Copy(Result, Start, Stop - Start + 1);
+    At := Stop + 1;
+
+    { The document's own size wins. }
+    if Pos('width=', LowerCase(Img)) > 0 then Continue;
+
+    URL := '';
+    Quote := Pos('src="', LowerCase(Img));
+    if Quote > 0 then
+    begin
+      URL := Copy(Img, Quote + 5, MaxInt);
+      Quote := Pos('"', URL);
+      if Quote > 0 then URL := Copy(URL, 1, Quote - 1);
+    end;
+    if URL = '' then Continue;
+    if not ASizeOf(URL, W, H) then Continue;
+    if (W <= 0) or (H <= 0) or (W <= AMaxWidth) then Continue;
+
+    { In proportion, and at least one pixel tall however wide the picture
+      was. }
+    H := Round(H * (AMaxWidth / W));
+    if H < 1 then H := 1;
+    Img := Copy(Img, 1, Length(Img) - 1) + ' width="' + IntToStr(AMaxWidth) +
+      '" height="' + IntToStr(H) + '">';
+    Result := Copy(Result, 1, Start - 1) + Img +
+      Copy(Result, Stop + 1, MaxInt);
+    At := Start + Length(Img);
+  end;
 end;
 
 function LedNBImageExt(const AMime: string): string;
