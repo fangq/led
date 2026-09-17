@@ -5545,6 +5545,7 @@ var
   Deadline: TDateTime;
   Page: string;
   Inner: TControl;
+  Opened: TStringList;
 
   function Fixture: string;
   begin
@@ -5890,6 +5891,12 @@ begin
     (CellBox(Pane, 1).RunButton.Images <> nil) and
     (CellBox(Pane, 1).RunButton.ImageIndex >= 0));
 
+  { The code in a cell is set a size up from the editor's own: the pane is a
+    reading view, and at the editor's size the code came out smaller than the
+    prose around it. }
+  CheckGt('the code in a cell is larger than the editor''s own font',
+    Doc.Master.Font.Size, CellBox(Pane, 1).Editor.Font.Size);
+
   { Fixed at ten points the prose came out smaller than the code beside it,
     which is the wrong way round.  It follows the reader's own editor font
     now, so a bigger editor font gives a bigger page. }
@@ -5947,10 +5954,13 @@ begin
   Check('a fenced block keeps the language it named',
     Pos('language-c', Page) > 0);
   Check('and its code is coloured a token at a time',
-    Pos('<font color="#', Page) > 0);
+    Pos('color="#', Page) > 0);
+  { Counted on the colour alone: a token carries its face as well, and a
+    check that spelled out the whole tag went quietly green when the face
+    was added in front of the colour. }
   Deep := 0;
-  for i := 1 to Length(Page) - 12 do
-    if Copy(Page, i, 13) = '<font color="' then Inc(Deep);
+  for i := 1 to Length(Page) - 7 do
+    if Copy(Page, i, 8) = 'color="#' then Inc(Deep);
   CheckGt('with more than one colour in it, so it is not one flat block',
     3, Deep);
 
@@ -5960,6 +5970,28 @@ begin
     Pos('face="Fira Code"', Page) > 0);
   Check('and inline code is given the page''s text colour rather than black',
     Pos('<code><font face="fira code" color="#e0e0e0"', LowerCase(Page)) > 0);
+
+  { Every token of a coloured block keeps the face, not just the block: a
+    nested font tag replaces the face here rather than inheriting it, so a
+    coloured token came back proportional and the block stopped looking like
+    code the moment it was coloured. }
+  Deep := 0;
+  for i := 1 to Length(Page) - 18 do
+    if Copy(Page, i, 19) = '<font face="Fira Co' then Inc(Deep);
+  CheckGt('every coloured token carries the monospaced face, not just the '
+    + 'block around them', 3, Deep);
+
+  { A table is drawn in the renderer's own black whatever the page says, so
+    on a dark theme it came out unreadable beside prose that was fine. }
+  Page := LedNBColourCode(
+    LedMarkdownToHTML('| a | b |' + #10 + '| - | - |' + #10 +
+      '| one | two |' + #10),
+    'Fira Code', $00E0E0E0, $00202020);
+  Check('a table is rendered: ' + Copy(Page, 1, 60), Pos('<table', Page) > 0);
+  Check('and its cells are given the page''s text colour',
+    Pos('<td><font color="#e0e0e0">', LowerCase(Page)) > 0);
+  Check('its heading cells too',
+    Pos('<th><font color="#e0e0e0">', LowerCase(Page)) > 0);
 
   { Raw HTML, which markdown allows and notebooks are full of: Jupyter and
     Colab both render <font color=...>, and escaping it showed the reader the
@@ -5973,6 +6005,36 @@ begin
     + #10);
   Check('but a tag that would run something is shown, not obeyed',
     (Pos('&lt;script&gt;', Page) > 0) and (Pos('<script>', Page) = 0));
+
+  { ---- the pane follows the document ---- }
+
+  { A notebook opened while the pane was showing left it on the last file:
+    the pane was filled when it was opened and when the tab changed, and
+    opening a file is neither of those if the tab it lands in was already the
+    active one.  Driven through the window's own open, which is the path a
+    reader takes. }
+  Path := TempName('nbsecond.ipynb');
+  WriteBytes(Path,
+    '{"cells":[{"cell_type":"code","execution_count":null,"metadata":{},' +
+    '"outputs":[],"source":["marker_of_the_second_file = 1"]}],' +
+    '"metadata":{},"nbformat":4,"nbformat_minor":5}' + #10);
+  Opened := TStringList.Create;
+  try
+    Opened.Add(Path);
+    F.OpenFiles(Opened);
+    Pump; Pump;
+  finally
+    Opened.Free;
+  end;
+  Check('the pane shows the notebook that was just opened',
+    (F.ActiveTab <> nil) and F.ActiveTab.Document.IsNotebook and
+    (Pane.Document = F.ActiveTab.Document));
+  CheckEqInt('which has one cell', 1, Pane.CellCount);
+  Check('and that cell is the one from the new file',
+    Pos('marker_of_the_second_file', CellBox(Pane, 0).Editor.Lines.Text) > 0);
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
 
   { ---- the colours are the theme's ---- }
 

@@ -4628,6 +4628,7 @@ begin
   { Immediately: this is a different document now, and a pane still holding
     the last one for a quarter of a second is showing the wrong file. }
   RefreshPreview(True);
+  RefreshNotebookPane;
 end;
 
 procedure TLedMainForm.ViewStatusChange(Sender: TObject;
@@ -5162,8 +5163,11 @@ begin
   { Opening a file is the moment the preview is most likely to be wanted, and
     the tab may already have been the active one -- a reload, or a file
     reopened from the recent list -- so the change notification cannot be
-    relied on to have fired. }
+    relied on to have fired.  The notebook pane is refreshed for the same
+    reason: a notebook opened while it was showing left it on the last
+    file. }
   RefreshPreview(True);
+  RefreshNotebookPane;
 end;
 
 { Opening a container the structure view held back.

@@ -441,7 +441,7 @@ end;
   coloured spans.  A language LED cannot colour comes back as plain text in
   the page's own colour, which is what a file of that language would get in
   the editor too. }
-function ColouredCode(const ACode, ALang: string;
+function ColouredCode(const ACode, ALang, AFace: string;
   ATextColour, ABackColour: TColor): string;
 var
   HL: TSynCustomHighlighter;
@@ -486,8 +486,13 @@ begin
         { Against the block's own background rather than the page's: a colour
           chosen to be read on one is not always readable on the other. }
         Colour := LedEnsureReadable(Colour, ABackColour, 3.0);
-        Painted := Painted + '<font color="' + HtmlColour(Colour) + '">' +
-          LedHtmlEscape(HL.GetToken) + '</font>';
+        { The face is repeated on every token and not left to the block it
+          is in: a nested <font> replaces the face rather than inheriting it
+          here, so a coloured token inside a monospaced block came back
+          proportional -- which is what made a fenced block stop looking like
+          code the moment it was coloured. }
+        Painted := Painted + '<font face="' + AFace + '" color="' +
+          HtmlColour(Colour) + '">' + LedHtmlEscape(HL.GetToken) + '</font>';
         HL.Next;
       end;
       Result := Result + Painted + #10;
@@ -495,6 +500,41 @@ begin
   finally
     Lines.Free;
     HL.Free;
+  end;
+end;
+
+{ Wraps what is inside every AOpen..AClose in the page's text colour.  Used
+  for table cells, which the renderer otherwise draws in black. }
+function ColourCells(const AHtml, AOpen, AClose, AFace: string;
+  ATextColour: TColor): string;
+var
+  At, Start, Stop, Close_: Integer;
+  Body, Replacement, Lower: string;
+begin
+  Result := AHtml;
+  At := 1;
+  while True do
+  begin
+    Lower := LowerCase(Result);
+    Start := PosEx(AOpen, Lower, At);
+    if Start = 0 then Break;
+    Close_ := PosEx('>', Result, Start);
+    if Close_ = 0 then Break;
+    Stop := PosEx(AClose, Lower, Close_);
+    if Stop = 0 then Break;
+
+    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
+    { Already coloured -- a cell holding code, say -- and left alone. }
+    if Pos('<font', LowerCase(Body)) = 1 then
+    begin
+      At := Stop + Length(AClose);
+      Continue;
+    end;
+    Replacement := Copy(Result, Start, Close_ - Start + 1) +
+      '<font color="' + HtmlColour(ATextColour) + '">' + Body + '</font>';
+    Result := Copy(Result, 1, Start - 1) + Replacement +
+      Copy(Result, Stop, MaxInt);
+    At := Start + Length(Replacement);
   end;
 end;
 
@@ -531,12 +571,21 @@ begin
     Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
     Replacement := Head + '<font face="' + AFixedFace + '" color="' +
       HtmlColour(ATextColour) + '">' +
-      ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour) +
+      ColouredCode(Unescaped(Body), Lang, AFixedFace, ATextColour,
+        ABackColour) +
       '</font></pre>';
     Result := Copy(Result, 1, Start - 1) + Replacement +
       Copy(Result, Stop + Length('</pre>'), MaxInt);
     At := Start + Length(Replacement);
   end;
+
+  { ---- table cells ---- }
+
+  { A table is drawn in the renderer's own colours -- black text -- whatever
+    the page says, so on a dark theme a table came out unreadable while the
+    prose around it was fine.  Each cell is given the page's text colour. }
+  Result := ColourCells(Result, '<td', '</td>', AFixedFace, ATextColour);
+  Result := ColourCells(Result, '<th', '</th>', AFixedFace, ATextColour);
 
   { ---- inline code ---- }
   At := 1;
@@ -744,6 +793,10 @@ begin
     continues.  The line view is where a long line is read unwrapped. }
   FEdit.WrapEnabled := True;
   FEdit.Font.Assign(FDoc.Master.Font);
+  { A size up from the editor's.  The pane is a reading view -- the cells are
+    looked at rather than typed in all day -- and at the editor's own size the
+    code in it came out smaller than the prose around it. }
+  if FEdit.Font.Size > 0 then FEdit.Font.Size := FEdit.Font.Size + 2;
   LedApplyThemeToEditor(LedCurrentTheme, FEdit);
   { On the code block's shade rather than the page's, which is what makes a
     cell read as a cell.  After the theme, so it is not overwritten by it. }
