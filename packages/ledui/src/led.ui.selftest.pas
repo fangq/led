@@ -29,7 +29,7 @@ uses
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
-  Led.UI.NBPane,
+  Led.UI.NBPane, Led.Core.Markdown,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5543,6 +5543,8 @@ var
   WasBox: TLedNBCellBox;
   Handled: Boolean;
   Deadline: TDateTime;
+  Page: string;
+  Inner: TControl;
 
   function Fixture: string;
   begin
@@ -5824,7 +5826,7 @@ begin
   Check('the prose control takes the wheel and passes it up',
     TLedProsePoke.Wheel(B.Rendered, -120));
   Check('a code cell is asked about the wheel too',
-    Assigned(CellBox(Pane, 1).Editor.OnMouseWheel));
+    Assigned(CellBox(Pane, 1).Editor.OnWheelPassedUp));
 
   Host := TForm.CreateNew(nil);
   try
@@ -5859,8 +5861,8 @@ begin
     Loose.ScrollPos := 0;
     Pump;
     Handled := False;
-    CellBox(Loose, 1).Editor.OnMouseWheel(CellBox(Loose, 1).Editor, [], -120,
-      Point(10, 10), Handled);
+    CellBox(Loose, 1).Editor.OnWheelPassedUp(CellBox(Loose, 1).Editor, [],
+      -120, Point(10, 10), Handled);
     Pump;
     Check('a notch over a code cell is taken', Handled);
   finally
@@ -5894,6 +5896,83 @@ begin
   CheckGt('prose is set larger than the code it explains',
     CellBox(Pane, 1).Editor.Font.Size,
     CellBox(Pane, 0).Rendered.DefaultFontSize);
+
+  { ---- the mouse reaches the page, not the renderer's own control ---- }
+
+  { The renderer draws into a control of its own inside the panel, and that
+    control is what the mouse actually lands on: a wheel notch over rendered
+    prose scrolled the renderer's own little scrollbar and a double click on
+    it did nothing at all, because neither ever reached the panel.  So the
+    handlers go on its children -- and this checks they landed on something,
+    which is the difference between writing a hook and attaching one. }
+  B := CellBox(Pane, 0);
+  CheckGt('the renderer has a control of its own inside it', 0,
+    B.Rendered.ControlCount);
+  Inner := nil;
+  if B.Rendered.ControlCount > 0 then Inner := B.Rendered.Controls[0];
+  Check('which has been given the wheel handler',
+    (Inner <> nil) and Assigned(TControlEvents(Inner).OnMouseWheel));
+  Check('and the double-click handler',
+    (Inner <> nil) and Assigned(TControlEvents(Inner).OnDblClick));
+
+  { And they do what they are for, driven the way the LCL would drive them. }
+  if Inner <> nil then
+  begin
+    Was := Pane.ScrollPos;
+    Handled := False;
+    TControlEvents(Inner).OnMouseWheel(Inner, [], -120, Point(10, 10),
+      Handled);
+    Pump;
+    Check('a notch on the renderer''s own control is taken', Handled);
+
+    Check('prose is not being edited before the double click', not B.Editing);
+    TControlEvents(Inner).OnDblClick(Inner);
+    Pump;
+    Check('and a double click on it opens the cell for editing', B.Editing);
+    B.EditButton.Click;
+    Pump;
+  end;
+
+  { ---- what a prose cell makes of code and of raw HTML ---- }
+
+  { The page a prose cell renders, asked of the same function the cell uses.
+    Four of the five complaints are answered here and each is a line of it. }
+  Page := LedNBColourCode(
+    LedMarkdownToHTML('Some `inline code` and a block:' + #10 + #10 +
+      '```c' + #10 + 'int count = 100;  /* a remark */' + #10 + '```' + #10),
+    'Fira Code', $00E0E0E0, $00202020);
+
+  { A fence that names its language is coloured by that language's own
+    highlighter -- the keyword and the remark cannot come out the same. }
+  Check('a fenced block keeps the language it named',
+    Pos('language-c', Page) > 0);
+  Check('and its code is coloured a token at a time',
+    Pos('<font color="#', Page) > 0);
+  Deep := 0;
+  for i := 1 to Length(Page) - 12 do
+    if Copy(Page, i, 13) = '<font color="' then Inc(Deep);
+  CheckGt('with more than one colour in it, so it is not one flat block',
+    3, Deep);
+
+  { Monospaced text came out in the renderer's own idea of a fixed font, in
+    black -- on a dark theme, black on near-black. }
+  Check('code is put in the reader''s own monospaced face',
+    Pos('face="Fira Code"', Page) > 0);
+  Check('and inline code is given the page''s text colour rather than black',
+    Pos('<code><font face="fira code" color="#e0e0e0"', LowerCase(Page)) > 0);
+
+  { Raw HTML, which markdown allows and notebooks are full of: Jupyter and
+    Colab both render <font color=...>, and escaping it showed the reader the
+    tag instead of the effect. }
+  Page := LedMarkdownToHTML('a <font color="red">warning</font> and '
+    + '<b>bold</b>' + #10);
+  Check('a font tag written in a cell reaches the page: ' + Page,
+    Pos('<font color="red">', Page) > 0);
+  Check('and so does the text inside it', Pos('warning', Page) > 0);
+  Page := LedMarkdownToHTML('this <script>alert(1)</script> is not markup'
+    + #10);
+  Check('but a tag that would run something is shown, not obeyed',
+    (Pos('&lt;script&gt;', Page) > 0) and (Pos('<script>', Page) = 0));
 
   { ---- the colours are the theme's ---- }
 

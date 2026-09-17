@@ -34,6 +34,7 @@ uses
 function LedMarkdownToHTML(const AText: string; ALineIds: Boolean = False): string;
 function LedMarkdownToPage(const AText, ATitle: string;
   ALineIds: Boolean = False): string;
+function LedIsLanguageWord(const AWord: string): Boolean;
 function LedHtmlEscape(const AText: string): string;
 
 { Breaks the lines inside <pre> blocks so none is wider than AColumns
@@ -340,6 +341,86 @@ end;
 
 function InlineSpans(const AText: string): string; forward;
 
+{ Whether AWord is a plausible language name for a fence: letters, digits,
+  and the few punctuation marks language names use.  Not a list of the
+  languages LED knows -- that is the renderer's business, and a fence naming
+  something it cannot colour is still a fence. }
+function LedIsLanguageWord(const AWord: string): Boolean;
+var
+  i: Integer;
+begin
+  Result := (AWord <> '') and (Length(AWord) <= 24);
+  if not Result then Exit;
+  for i := 1 to Length(AWord) do
+    if not (AWord[i] in ['a'..'z', '0'..'9', '+', '-', '#', '_', '.']) then
+      Exit(False);
+end;
+
+{ The tags a markdown cell may carry through to the page as they stand.
+
+  Markdown has always allowed inline HTML, and notebooks are full of it --
+  <font color=...> most of all, which is how people colour a word in a cell
+  that Jupyter and Colab both render.  Escaping it, which is what this used
+  to do, showed the reader the tag instead of the effect.
+
+  A list rather than everything: what is here changes how the page looks and
+  nothing else.  Anything that would load or run something -- a script, a
+  frame, an object, a form -- is escaped and shown, which is both safer and
+  more honest than pretending to support it. }
+function AllowedTag(const AName: string): Boolean;
+const
+  Tags: array[0..31] of string = (
+    'b', 'i', 'u', 's', 'em', 'strong', 'small', 'big', 'sub', 'sup',
+    'br', 'hr', 'font', 'span', 'div', 'center', 'p', 'code', 'tt', 'pre',
+    'a', 'img', 'blockquote', 'ul', 'ol', 'li', 'table', 'tr', 'td', 'th',
+    'thead', 'tbody');
+var
+  i: Integer;
+begin
+  Result := False;
+  for i := Low(Tags) to High(Tags) do
+    if SameText(AName, Tags[i]) then Exit(True);
+end;
+
+{ An HTML tag starting at AAt, if what is there is one of the tags above.
+  AStop comes back as the closing angle bracket. }
+function RawTagAt(const AText: string; AAt: Integer;
+  out AStop: Integer): Boolean;
+var
+  i, NameFrom: Integer;
+  Name_: string;
+  Quote: Char;
+begin
+  Result := False;
+  AStop := AAt;
+  i := AAt + 1;
+  if i > Length(AText) then Exit;
+  if AText[i] = '/' then Inc(i);
+  NameFrom := i;
+  while (i <= Length(AText)) and (AText[i] in ['a'..'z', 'A'..'Z', '0'..'9']) do
+    Inc(i);
+  Name_ := Copy(AText, NameFrom, i - NameFrom);
+  if not AllowedTag(Name_) then Exit;
+
+  { Past the attributes to the closing bracket, stepping over quoted values
+    so that a > inside one does not end the tag early. }
+  while i <= Length(AText) do
+  begin
+    if AText[i] = '>' then
+    begin
+      AStop := i;
+      Exit(True);
+    end;
+    if AText[i] in ['"', ''''] then
+    begin
+      Quote := AText[i];
+      Inc(i);
+      while (i <= Length(AText)) and (AText[i] <> Quote) do Inc(i);
+    end;
+    Inc(i);
+  end;
+end;
+
 { Finds the closing run of ADelim starting at AFrom, ignoring one inside a
   code span. }
 function FindClose(const S, ADelim: string; AFrom: Integer): Integer;
@@ -472,6 +553,14 @@ begin
       Continue;
     end;
 
+    { Raw HTML, which markdown allows and a notebook cell often carries. }
+    if (AText[i] = '<') and RawTagAt(AText, i, Close) then
+    begin
+      Emit(Copy(AText, i, Close - i + 1));
+      i := Close + 1;
+      Continue;
+    end;
+
     Emit(LedHtmlEscape(AText[i]));
     Inc(i);
   end;
@@ -536,7 +625,7 @@ var
   Lines: TStringList;
   Out_: TStringList;
   i, Level, Ind: Integer;
-  Line, Trimmed, Content, Fence: string;
+  Line, Trimmed, Content, Fence, Lang: string;
   InCode: Boolean;
   Para: string;
   ParaLine: Integer;           { where the paragraph being gathered began }
@@ -643,7 +732,16 @@ begin
         FlushPara;
         CloseLists(0);
         Fence := Copy(Trimmed, 1, 3);
-        Out_.Add('<pre' + Anchor(i + 1) + '>');
+        { The word after the fence is the language it is in, and it is worth
+          keeping: a renderer that can colour C can only do it if it is told
+          the block is C.  Carried the way every other tool carries it, as a
+          class on the tag, which a renderer that does not care ignores. }
+        Lang := LowerCase(Trim(Copy(Trimmed, 4, MaxInt)));
+        if Pos(' ', Lang) > 0 then Lang := Copy(Lang, 1, Pos(' ', Lang) - 1);
+        if LedIsLanguageWord(Lang) then
+          Out_.Add('<pre class="language-' + Lang + '"' + Anchor(i + 1) + '>')
+        else
+          Out_.Add('<pre' + Anchor(i + 1) + '>');
         InCode := True;
         Inc(i);
         Continue;

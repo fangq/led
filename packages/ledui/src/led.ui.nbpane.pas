@@ -32,11 +32,28 @@ uses
   Graphics, Forms, ImgList, LazUTF8,
   IpHtml, Ipfilebroker,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.Markdown,
-  Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons,
+  SynEditHighlighter, Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
 type
   TLedNBCellEvent = procedure(Sender: TObject; ACell: Integer) of object;
+
+  { A cell's code editor.
+
+    SynEdit handles the wheel through its own mouse actions, before any
+    OnMouseWheel the owner assigned, so scrolling over a code cell moved the
+    cell's own view -- which has nowhere to go, the box being exactly as tall
+    as its text -- and never the page.  Overriding the entry point is the one
+    place that beats it. }
+  TLedNBCellEdit = class(TLedEdit)
+  private
+    FOnWheel: TMouseWheelEvent;
+  protected
+    function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+      AMousePos: TPoint): Boolean; override;
+  public
+    property OnWheelPassedUp: TMouseWheelEvent read FOnWheel write FOnWheel;
+  end;
 
   { The rendered prose of one cell.
 
@@ -60,6 +77,17 @@ type
     property OnEnterEdit: TNotifyEvent read FOnEnterEdit write FOnEnterEdit;
   end;
 
+  { Both of these events are declared where a descendant may publish them and
+    a caller may not assign them, so they are reached the way the LCL expects:
+    through a descendant that says they are public.  The control itself is
+    untouched.  Public here because the renderer's own inner control is what
+    they are put on, and a check has to be able to fire them. }
+  TControlEvents = class(TControl)
+  public
+    property OnMouseWheel;
+    property OnDblClick;
+  end;
+
   { The colours the pane draws with; see LedNBColours. }
   TLedNBColourSet = record
     Page, Text, Muted, CodeBg, Border, Link: TColor;
@@ -78,7 +106,7 @@ type
       for itself -- it has links to think about -- and a way in that depends
       on that is a way in that sometimes is not there. }
     FEditBtn: TSpeedButton;
-    FEdit: TLedEdit;
+    FEdit: TLedNBCellEdit;
     FRender: TLedNBProse;
     FProvider: TIpFileDataProvider;
     FOnRun: TLedNBCellEvent;
@@ -92,6 +120,12 @@ type
     procedure MakeRender;
     procedure ProvideImage(Sender: TIpHtmlNode; const URL: string;
       var Picture: TPicture);
+    { The renderer draws into a control of its own inside the panel, and that
+      control is what the mouse reaches: a wheel notch and a double click
+      over rendered prose never touched the panel at all, which is why
+      neither did anything.  Its children are given the same two handlers. }
+    procedure HookRenderChildren;
+    procedure ChildDblClick(Sender: TObject);
     { The wheel, from a child that would otherwise swallow it, handed to the
       page the reader was trying to scroll. }
     procedure ChildWheel(Sender: TObject; AShift: TShiftState;
@@ -121,7 +155,7 @@ type
       at a time. }
     procedure Commit;
     property Cell: Integer read FCell;
-    property Editor: TLedEdit read FEdit;
+    property Editor: TLedNBCellEdit read FEdit;
     property Rendered: TLedNBProse read FRender;
     property RunButton: TSpeedButton read FRun;
     { The button that turns rendered prose into text and back.  nil on a code
@@ -136,6 +170,23 @@ type
 
 { The colours the pane and its cells draw with, from the current theme. }
 function LedNBColours: TLedNBColourSet;
+
+{ Colours the code in a rendered markdown page, and puts it in a face the
+  reader can read.
+
+  Two things were wrong with a code block in a prose cell and both are here.
+  It came out in whatever the renderer's idea of a fixed font is, in black --
+  on a dark theme, black on near-black.  And a fence that named its language
+  was not coloured at all, though the notebook says what it is and LED has
+  the highlighter for it.
+
+  So every <pre> and <code> is given the monospaced face and the page's text
+  colour outright, and the contents of a fence that named a language LED can
+  colour are run through that language's highlighter and written out a token
+  at a time.  As <font> tags rather than a style sheet, because that is what
+  this renderer reads. }
+function LedNBColourCode(const AHtml, AFixedFace: string;
+  ATextColour, ABackColour: TColor): string;
 
 type
   { The page of cells.
@@ -342,6 +393,18 @@ begin
   Result := R.Bottom - R.Top;
 end;
 
+function TLedNBCellEdit.DoMouseWheel(AShift: TShiftState;
+  AWheelDelta: Integer; AMousePos: TPoint): Boolean;
+var
+  Handled: Boolean;
+begin
+  Handled := False;
+  if Assigned(FOnWheel) then
+    FOnWheel(Self, AShift, AWheelDelta, AMousePos, Handled);
+  if Handled then Exit(True);
+  Result := inherited DoMouseWheel(AShift, AWheelDelta, AMousePos);
+end;
+
 function TLedNBProse.DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
   AMousePos: TPoint): Boolean;
 var
@@ -357,6 +420,140 @@ procedure TLedNBProse.DblClick;
 begin
   if Assigned(FOnEnterEdit) then FOnEnterEdit(Self);
   inherited DblClick;
+end;
+
+{ ---- code inside prose ---- }
+
+{ The text of an HTML-escaped run, back as it was written.  The page carries
+  code escaped, and a highlighter wants the code. }
+function Unescaped(const AText: string): string;
+begin
+  Result := StringReplace(AText, '&lt;', '<', [rfReplaceAll]);
+  Result := StringReplace(Result, '&gt;', '>', [rfReplaceAll]);
+  Result := StringReplace(Result, '&quot;', '"', [rfReplaceAll]);
+  Result := StringReplace(Result, '&#39;', '''', [rfReplaceAll]);
+  { Last, so that an escaped ampersand does not turn the text after it into
+    another escape. }
+  Result := StringReplace(Result, '&amp;', '&', [rfReplaceAll]);
+end;
+
+{ One block of code, tokenised by ALang's highlighter and written out as
+  coloured spans.  A language LED cannot colour comes back as plain text in
+  the page's own colour, which is what a file of that language would get in
+  the editor too. }
+function ColouredCode(const ACode, ALang: string;
+  ATextColour, ABackColour: TColor): string;
+var
+  HL: TSynCustomHighlighter;
+  Lines: TStringList;
+  i: Integer;
+  Attr: TSynHighlighterAttributes;
+  Colour: TColor;
+  Painted: string;
+begin
+  Result := '';
+  HL := nil;
+  if ALang <> '' then HL := LedCreateHighlighter(ALang);
+
+  Lines := TStringList.Create;
+  try
+    Lines.TextLineBreakStyle := tlbsLF;
+    Lines.Text := ACode;
+    while (Lines.Count > 0) and (Lines[Lines.Count - 1] = '') do
+      Lines.Delete(Lines.Count - 1);
+
+    if HL = nil then
+    begin
+      for i := 0 to Lines.Count - 1 do
+        Result := Result + LedHtmlEscape(Lines[i]) + #10;
+      Exit;
+    end;
+
+    LedApplyThemeToHighlighter(LedCurrentTheme, HL);
+    HL.ResetRange;
+    for i := 0 to Lines.Count - 1 do
+    begin
+      { In order and without resetting between lines: that is what carries a
+        string or a comment from one line of the block to the next. }
+      HL.SetLine(Lines[i], i);
+      Painted := '';
+      while not HL.GetEol do
+      begin
+        Attr := HL.GetTokenAttribute;
+        Colour := ATextColour;
+        if (Attr <> nil) and (Attr.Foreground <> clNone) then
+          Colour := Attr.Foreground;
+        { Against the block's own background rather than the page's: a colour
+          chosen to be read on one is not always readable on the other. }
+        Colour := LedEnsureReadable(Colour, ABackColour, 3.0);
+        Painted := Painted + '<font color="' + HtmlColour(Colour) + '">' +
+          LedHtmlEscape(HL.GetToken) + '</font>';
+        HL.Next;
+      end;
+      Result := Result + Painted + #10;
+    end;
+  finally
+    Lines.Free;
+    HL.Free;
+  end;
+end;
+
+function LedNBColourCode(const AHtml, AFixedFace: string;
+  ATextColour, ABackColour: TColor): string;
+var
+  At, Start, Stop, Close_, Quote: Integer;
+  Head, Lang, Body, Replacement, Lower: string;
+begin
+  Result := AHtml;
+
+  { ---- fenced blocks ---- }
+  At := 1;
+  while True do
+  begin
+    Lower := LowerCase(Result);
+    Start := PosEx('<pre', Lower, At);
+    if Start = 0 then Break;
+    Close_ := PosEx('>', Result, Start);
+    if Close_ = 0 then Break;
+    Stop := PosEx('</pre>', Lower, Close_);
+    if Stop = 0 then Break;
+
+    Head := Copy(Result, Start, Close_ - Start + 1);
+    Lang := '';
+    Quote := Pos('class="language-', LowerCase(Head));
+    if Quote > 0 then
+    begin
+      Lang := Copy(Head, Quote + Length('class="language-'), MaxInt);
+      Quote := Pos('"', Lang);
+      if Quote > 0 then Lang := Copy(Lang, 1, Quote - 1);
+    end;
+
+    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
+    Replacement := Head + '<font face="' + AFixedFace + '" color="' +
+      HtmlColour(ATextColour) + '">' +
+      ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour) +
+      '</font></pre>';
+    Result := Copy(Result, 1, Start - 1) + Replacement +
+      Copy(Result, Stop + Length('</pre>'), MaxInt);
+    At := Start + Length(Replacement);
+  end;
+
+  { ---- inline code ---- }
+  At := 1;
+  while True do
+  begin
+    Lower := LowerCase(Result);
+    Start := PosEx('<code>', Lower, At);
+    if Start = 0 then Break;
+    Stop := PosEx('</code>', Lower, Start);
+    if Stop = 0 then Break;
+    Body := Copy(Result, Start + 6, Stop - Start - 6);
+    Replacement := '<code><font face="' + AFixedFace + '" color="' +
+      HtmlColour(ATextColour) + '">' + Body + '</font></code>';
+    Result := Copy(Result, 1, Start - 1) + Replacement +
+      Copy(Result, Stop + Length('</code>'), MaxInt);
+    At := Start + Length(Replacement);
+  end;
 end;
 
 { ---- one cell ---- }
@@ -537,7 +734,7 @@ var
   Lang: string;
 begin
   if FEdit <> nil then Exit;
-  FEdit := TLedEdit.Create(Self);
+  FEdit := TLedNBCellEdit.Create(Self);
   FEdit.Parent := Self;
   FEdit.Gutter.Visible := False;
   FEdit.RightEdge := 0;
@@ -565,7 +762,7 @@ begin
     LedApplyThemeToHighlighter(LedCurrentTheme, FEdit.Highlighter);
 
   FEdit.OnExit := @EditExited;
-  FEdit.OnMouseWheel := @ChildWheel;
+  FEdit.OnWheelPassedUp := @ChildWheel;
 end;
 
 procedure TLedNBCellBox.MakeRender;
@@ -586,6 +783,7 @@ begin
     still be selected and a link followed. }
   FRender.OnEnterEdit := @RenderClicked;
   FRender.OnWheelPassedUp := @ChildWheel;
+  HookRenderChildren;
   { Said out loud rather than left to the default, because the same face and
     size have to be given to the throwaway document that measures how tall a
     page comes out: a measurement taken in one font and drawn in another is
@@ -607,6 +805,31 @@ end;
   internet while somebody reads their own file is not what they asked for --
   and a name that is not there is simply not drawn.  Neither is an error: a
   cell whose picture is missing still has its prose. }
+procedure TLedNBCellBox.HookRenderChildren;
+
+  procedure Hook(AControl: TWinControl);
+  var
+    i: Integer;
+    C: TControl;
+  begin
+    for i := 0 to AControl.ControlCount - 1 do
+    begin
+      C := AControl.Controls[i];
+      TControlEvents(C).OnMouseWheel := @ChildWheel;
+      TControlEvents(C).OnDblClick := @ChildDblClick;
+      if C is TWinControl then Hook(TWinControl(C));
+    end;
+  end;
+
+begin
+  if FRender <> nil then Hook(FRender);
+end;
+
+procedure TLedNBCellBox.ChildDblClick(Sender: TObject);
+begin
+  SetEditing(True);
+end;
+
 procedure TLedNBCellBox.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
 var
@@ -668,6 +891,7 @@ var
 begin
   C := LedNBColours;
   Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource));
+  Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
   Result :=
     '<html><head><style>' +
     'body { margin: 0; font-family: sans-serif; color: ' +
@@ -898,6 +1122,9 @@ begin
     FRender.SetBounds(LedScale96(ProseGutter), Y, Room,
       RenderedHeight(Page, Room));
     FRender.SetHtmlFromStr(Page);
+    { The renderer makes its drawing control when it is given a page, so the
+      handlers go on after that as well as at creation. }
+    HookRenderChildren;
     Inc(Y, FRender.Height + LedScale96(4));
   end
   else
