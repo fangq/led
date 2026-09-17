@@ -33,6 +33,14 @@ type
     procedure SomethingElseIsNotEmbedded;
     procedure APictureOnTheWebIsNotFetched;
     procedure APictureInTheFileIsLeftInThePage;
+    { what a reference resolves to }
+    procedure AWebAddressIsRemote;
+    procedure AFileURLIsNot;
+    procedure ARelativeNameIsResolvedAgainstTheDocument;
+    procedure AnAbsolutePathIsLeftAlone;
+    procedure AFileURLBecomesAPath;
+    procedure APercentEscapeIsUndone;
+    procedure SomethingWithNoFileBehindItResolvesToNothing;
   end;
 
 implementation
@@ -261,6 +269,64 @@ begin
   AssertTrue('and so does a file beside the notebook', Pos('<img', Page) > 0);
   AssertEquals('a page with no pictures is returned as it was',
     '<p>hello</p>', LedNBHideRemoteImages('<p>hello</p>'));
+end;
+
+{ ---- what a reference resolves to ----
+
+  The renderer resolves nothing itself: it hands over the text of the src
+  attribute and expects a picture back, so every form a notebook writes one
+  in has to be understood here.  file:// is the one that reads like a URL and
+  is not: nothing is fetched for it, the file is simply opened. }
+
+procedure TTestNBImage.AWebAddressIsRemote;
+begin
+  AssertTrue('http', LedNBIsRemote('http://example.com/a.png'));
+  AssertTrue('https', LedNBIsRemote('https://example.com/a.png'));
+end;
+
+procedure TTestNBImage.AFileURLIsNot;
+begin
+  AssertFalse('file://', LedNBIsRemote('file:///tmp/a.png'));
+  AssertFalse('a bare name', LedNBIsRemote('a.png'));
+  AssertFalse('a path', LedNBIsRemote('/tmp/a.png'));
+end;
+
+procedure TTestNBImage.ARelativeNameIsResolvedAgainstTheDocument;
+begin
+  { Against the notebook's own folder and not the working directory, which
+    is where a picture beside a notebook opened from elsewhere went missing. }
+  AssertEquals('/home/me/nb/fig.png',
+    LedNBLocalPath('fig.png', '/home/me/nb'));
+  AssertEquals('/home/me/nb/img/fig.png',
+    LedNBLocalPath('img/fig.png', '/home/me/nb/'));
+end;
+
+procedure TTestNBImage.AnAbsolutePathIsLeftAlone;
+begin
+  AssertEquals('/tmp/fig.png', LedNBLocalPath('/tmp/fig.png', '/home/me/nb'));
+end;
+
+procedure TTestNBImage.AFileURLBecomesAPath;
+begin
+  AssertEquals('/tmp/fig.png', LedNBLocalPath('file:///tmp/fig.png', ''));
+  { file://localhost/path names the same file as file:///path. }
+  AssertEquals('/tmp/fig.png',
+    LedNBLocalPath('file://localhost/tmp/fig.png', ''));
+end;
+
+procedure TTestNBImage.APercentEscapeIsUndone;
+begin
+  AssertEquals('/tmp/my fig.png',
+    LedNBLocalPath('file:///tmp/my%20fig.png', ''));
+  AssertEquals('/home/me/nb/my fig.png',
+    LedNBLocalPath('my%20fig.png', '/home/me/nb'));
+end;
+
+procedure TTestNBImage.SomethingWithNoFileBehindItResolvesToNothing;
+begin
+  AssertEquals('', LedNBLocalPath('', '/home/me/nb'));
+  AssertEquals('', LedNBLocalPath('https://example.com/a.png', '/home/me/nb'));
+  AssertEquals('', LedNBLocalPath('data:image/png;base64,AAAA', '/home/me/nb'));
 end;
 
 initialization
