@@ -35,6 +35,10 @@ type
     procedure ALineMagicAndAShellEscapeAre;
     procedure ButNotInACellHandedToAnotherLanguage;
     procedure OrdinaryCodeIsNot;
+    { what is sent to a kernel }
+    procedure ColabsShellMagicBecomesBash;
+    procedure ArgumentsAfterItGoWithIt;
+    procedure NothingElseIsTouched;
   end;
 
 implementation
@@ -156,6 +160,43 @@ begin
   AssertFalse('nothing', LedNBIsMagicLine('', True, True));
   AssertFalse('a remainder, which is not at the start of the line',
     LedNBIsMagicLine('x = a % b', False, True));
+end;
+
+{ ---- what is sent to a kernel ----
+
+  %%shell is Colab's and no other front end has it.  An ordinary IPython
+  kernel answers "UsageError: Cell magic `%%shell` not found" -- on stderr,
+  with the run reported as a success, so a notebook of twenty such cells
+  looks as though every one of them did nothing.  IPython's %%bash means the
+  same thing. }
+
+procedure TTestNBMagic.ColabsShellMagicBecomesBash;
+begin
+  AssertEquals('%%bash' + #10 + 'echo hi' + #10,
+    LedNBRunnableSource('%%shell' + #10 + 'echo hi' + #10));
+  { Carriage returns kept: the line ending is the reader's. }
+  AssertEquals('%%bash'#13#10'echo hi'#13#10,
+    LedNBRunnableSource('%%shell'#13#10'echo hi'#13#10));
+end;
+
+procedure TTestNBMagic.ArgumentsAfterItGoWithIt;
+begin
+  AssertEquals('%%bash -s 3' + #10 + 'echo $1',
+    LedNBRunnableSource('%%shell -s 3' + #10 + 'echo $1'));
+end;
+
+procedure TTestNBMagic.NothingElseIsTouched;
+begin
+  { Another magic, a shell escape, plain code, and a %%shell that is not the
+    first line and so is not a cell magic at all. }
+  AssertEquals('%%bash' + #10 + 'ls',
+    LedNBRunnableSource('%%bash' + #10 + 'ls'));
+  AssertEquals('!pip install numpy',
+    LedNBRunnableSource('!pip install numpy'));
+  AssertEquals('print(1)', LedNBRunnableSource('print(1)'));
+  AssertEquals('x = 1' + #10 + '%%shell',
+    LedNBRunnableSource('x = 1' + #10 + '%%shell'));
+  AssertEquals('', LedNBRunnableSource(''));
 end;
 
 initialization

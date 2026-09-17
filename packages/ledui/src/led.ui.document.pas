@@ -1816,9 +1816,11 @@ begin
 
   if not NBKernelStart(AWhy) then Exit;
 
-  { What runs is what is on the page, not what was last saved. }
+  { What runs is what is on the page, not what was last saved -- and with
+    Colab's own magics turned into the ones a kernel here understands; see
+    LedNBRunnableSource.  The cell in the file is not changed. }
   NBSyncFromBuffer;
-  Source := FNotebook.CellSource(ACell);
+  Source := LedNBRunnableSource(FNotebook.CellSource(ACell));
 
   Id := FKernel.Run(Source);
   if Id < 0 then

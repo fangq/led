@@ -46,6 +46,21 @@ function LedNBLanguageId(const AName: string): string;
   the notebook says, else Python. }
 function LedNBCellLanguage(const ASource, ANotebookLanguage: string): string;
 
+{ A cell's source as a kernel here can run it.
+
+  Colab has magics of its own that no other front end has, and a notebook
+  written there is full of them.  %%shell is the one that matters: it runs
+  the whole cell in a shell, and a teaching notebook may have twenty of
+  them.  Sent to an ordinary IPython kernel it answers "UsageError: Cell
+  magic `%%shell` not found" -- on stderr, with the run reported as a
+  success, so the cell appears to have done nothing at all.  IPython's own
+  %%bash means the same thing, so that is what is sent.
+
+  Only the magic line is touched, and only when it is the first line, which
+  is the only place a cell magic may be.  Everything else about the cell
+  goes to the kernel exactly as the reader wrote it. }
+function LedNBRunnableSource(const ASource: string): string;
+
 { Whether a line of a code cell is a magic rather than code.
 
   AFirstLine says whether this is the cell's opening line, because a cell
@@ -191,6 +206,26 @@ begin
     grammar under that very name -- and only then is it a guess. }
   if ANotebookLanguage <> '' then Exit(LowerCase(ANotebookLanguage));
   Result := LedNBDefaultLanguage;
+end;
+
+function LedNBRunnableSource(const ASource: string): string;
+var
+  Stop: Integer;
+  First: string;
+begin
+  Result := ASource;
+  if LedNBCellMagic(ASource) <> 'shell' then Exit;
+
+  { The first line, and whatever follows it untouched -- including the line
+    ending, which is the reader's own. }
+  Stop := 1;
+  while (Stop <= Length(ASource)) and not (ASource[Stop] in [#10, #13]) do
+    Inc(Stop);
+  First := Copy(ASource, 1, Stop - 1);
+  { The arguments, if the cell wrote any, go with it: they are the shell's,
+    not Colab's. }
+  First := '%%bash' + Copy(First, Length('%%shell') + 1, MaxInt);
+  Result := First + Copy(ASource, Stop, MaxInt);
 end;
 
 function LedNBIsMagicLine(const ALine: string;

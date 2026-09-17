@@ -40,7 +40,10 @@ appends what it is given to the cell.
 """
 
 import json
+import os
+import shutil
 import sys
+import tempfile
 import threading
 import queue
 
@@ -107,6 +110,47 @@ def output_from(msg):
     return None
 
 
+def sudo_shim_dir():
+    """A directory with a `sudo` in it that never asks for a password.
+
+    A notebook written in Colab is full of "!sudo apt-get install ...",
+    because in Colab sudo needs no password.  Here it does, and a cell that
+    asks for one can never be answered: IPython runs a ! command on a pty of
+    its own, sudo opens that pty to read the password, and nobody can type
+    into it.  The cell then sits there -- five minutes, by sudoers' default
+    -- with the kernel busy and the notebook stuck on its first cell.
+
+    So sudo is called with -n, which makes it fail at once and say "a
+    password is required".  That is the same outcome the reader was always
+    going to get, a few minutes earlier and with a reason.
+
+    Only when the command does not already say how it wants to authenticate:
+    -n, -S (read the password from stdin, which is how a notebook pipes one
+    in) and -A are all left alone, or this would break a cell that had
+    thought about it.
+
+    Returns the directory, or None when there is no sudo to wrap.
+    """
+    real = shutil.which("sudo")
+    if not real:
+        return None
+    where = tempfile.mkdtemp(prefix="led-kernel-")
+    shim = os.path.join(where, "sudo")
+    with open(shim, "w") as f:
+        f.write(
+            "#!/bin/sh\n"
+            "# Written by LED: see sudo_shim_dir in ledkernel.py.\n"
+            "for a in \"$@\"; do\n"
+            "  case \"$a\" in\n"
+            "    -n|-S|-A|--non-interactive|--stdin|--askpass)\n"
+            "      exec %s \"$@\" ;;\n"
+            "  esac\n"
+            "done\n"
+            "exec %s -n \"$@\"\n" % (real, real))
+    os.chmod(shim, 0o755)
+    return where
+
+
 def main():
     if len(sys.argv) < 2:
         fail("no kernel named")
@@ -120,9 +164,24 @@ def main():
         fail("jupyter_client is not installed for %s (%s)"
              % (sys.executable, e))
 
+    shim = sudo_shim_dir()
+    env = dict(os.environ)
+    if shim:
+        env["PATH"] = shim + os.pathsep + env.get("PATH", "")
+
     km = KernelManager(kernel_name=name)
     try:
-        km.start_kernel()
+        # The kernel's own stdin is /dev/null, and this matters more than it
+        # looks.  Left alone, the kernel inherits this helper's stdin -- the
+        # pipe LED sends commands on -- and so does everything the kernel
+        # starts.  A cell with "!sudo apt-get install ..." in it then has
+        # sudo reading the editor's command stream while it waits for a
+        # password that can never arrive: the cell never finishes, and the
+        # commands that were meant for the kernel are eaten by sudo.  With
+        # /dev/null the same cell fails in a second, saying it has no
+        # terminal, which is the truth and is recoverable.
+        with open(os.devnull, "rb") as devnull:
+            km.start_kernel(stdin=devnull, env=env)
     except Exception as e:                                   # noqa: BLE001
         fail("the %s kernel would not start (%s)" % (name, e))
 
@@ -247,6 +306,8 @@ def main():
         km.shutdown_kernel(now=True)
     except Exception:                                        # noqa: BLE001
         pass
+    if shim:
+        shutil.rmtree(shim, ignore_errors=True)
 
 
 if __name__ == "__main__":

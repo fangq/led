@@ -6700,6 +6700,30 @@ begin
   Check('so the two cells ran in one session, sharing what the first left '
     + 'behind', LineOfText('142') > 0);
 
+  { A Colab cell, run here.
+
+    %%shell is Colab's own and no kernel installed anywhere else has it: the
+    reader's teaching notebook has seventeen such cells, and every one of
+    them answered "UsageError: Cell magic `%%shell` not found" -- on stderr,
+    with the run reported as a success, so they looked as though they had
+    simply done nothing.  What is sent is %%bash, which means the same
+    thing; the cell in the file is left as it was written. }
+  { The shell is asked to work something out rather than to echo a word:
+    the first version waited for a word that was in the cell's own source,
+    so it found it on the page whether the cell had run or not and passed
+    with the whole rewrite switched off. }
+  Doc.NBSetCellSource(2, '%%shell' + #10 + 'echo $((111 + 111))' + #10);
+  Line := Doc.NBSourceLineOf(2);
+  V.CaretXY := Point(1, Line + 1);
+  Pump;
+  F.actRunCell.Execute;
+  Check('a %%shell cell runs what the shell would run',
+    WaitFor('222', 90));
+  Check('and no kernel complained about the magic',
+    LineOfText('UsageError') < 0);
+  Check('while the cell still says %%shell, which is what the file says',
+    Pos('%%shell', Doc.Notebook.CellSource(2)) = 1);
+
   { Saving writes the outputs the kernel produced. }
   Doc.Save;
   Pump;
