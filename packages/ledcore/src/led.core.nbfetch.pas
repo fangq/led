@@ -44,7 +44,7 @@ interface
 
 uses
   Classes, SysUtils, syncobjs, fphttpclient, opensslsockets, openssl,
-  Led.Core.Prefs;
+  Led.Core.NBConvert, Led.Core.Prefs;
 
 const
   { On by default: a notebook that names a picture means to show one, and a
@@ -449,7 +449,7 @@ procedure TLedNBFetch.FetchOne(const AURL: string);
 var
   Client: TFPHTTPClient;
   Stream: TMemoryStream;
-  Kind, Why, Bytes: string;
+  Kind, Why, Bytes, Png: string;
 begin
   { No connection is attempted at all without the library to make it with,
     and the reason is the one the reader is shown. }
@@ -484,6 +484,17 @@ begin
         if Stream.Size > 0 then
           Move(Stream.Memory^, Bytes[1], Stream.Size);
         Kind := LedNBSniffImage(Bytes);
+        { An SVG or a WebP, turned into a PNG by whatever converter the
+          machine has -- see Led.Core.NBConvert.  Every badge at the top of a
+          README is an SVG and half the picture hosts now serve WebP, so this
+          is the difference between a page of a notebook and a page of notes
+          saying what is missing. }
+        if Kind = '' then
+          if LedNBToPng(Bytes, Png) then
+          begin
+            Bytes := Png;
+            Kind := LedNBSniffImage(Bytes);
+          end;
         if Kind = '' then
         begin
           { Fetched and useless: webp and svg both turn up in notebooks and

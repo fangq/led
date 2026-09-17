@@ -15,7 +15,7 @@ uses
   Led.Core.Tests.Settings, Led.Core.Tests.Filters, Led.Syn.Tests.Languages,
   Led.Syn.Tests.Theme,
   Led.Core.Tests.CLI, Led.Core.Tests.Tools, Led.Core.Tests.Grep, Led.Term.Tests.Screen, Led.Core.Tests.Ctags, Led.Core.Tests.Markdown, Led.Core.Tests.Recovery,
-  Led.Core.Tests.Hex, Led.Core.Tests.BJDView, Led.Core.Tests.BJDEdit, Led.Core.Tests.NBFormat, Led.Core.Tests.NBView, Led.Core.Tests.Kernel, Led.Core.Tests.NBImage, Led.Core.Tests.NBFetch, Led.Core.Tests.NBMagic, Led.Core.Tests.Wiki, Led.Core.Tests.GdbMI, Led.Core.Tests.Project, Led.Core.Tests.Gdb;
+  Led.Core.Tests.Hex, Led.Core.Tests.BJDView, Led.Core.Tests.BJDEdit, Led.Core.Tests.NBFormat, Led.Core.Tests.NBView, Led.Core.Tests.Kernel, Led.Core.Tests.NBImage, Led.Core.Tests.NBFetch, Led.Core.Tests.NBMagic, Led.Core.Tests.NBConvert, Led.Core.Tests.Wiki, Led.Core.Tests.GdbMI, Led.Core.Tests.Project, Led.Core.Tests.Gdb;
 
 type
   TLedTestRunner = class(TTestRunner)

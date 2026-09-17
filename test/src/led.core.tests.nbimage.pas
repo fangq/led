@@ -14,7 +14,7 @@ interface
 
 uses
   Classes, SysUtils, fpcunit, testregistry,
-  Led.Core.NBFormat, Led.Core.NBImage;
+  Led.Core.NBFormat, Led.Core.NBImage, Led.Core.NBConvert;
 
 type
   TTestNBImage = class(TTestCase)
@@ -27,6 +27,7 @@ type
     procedure TheMimeTypeComesBackAsAFileExtension;
     procedure AnOutputWithNoPictureSaysSo;
     procedure TextIsNotAPicture;
+    procedure SvgIsAPictureWhereItCanBeConverted;
     { the pictures a prose cell points at }
     procedure ADataURIIsAPicture;
     procedure AnAttachmentIsAPicture;
@@ -101,8 +102,7 @@ begin
   AssertEquals('jpg', LedNBImageExt('image/jpeg'));
   AssertEquals('gif', LedNBImageExt('image/gif'));
   AssertTrue('a picture is a picture', LedNBIsImageMime('image/png'));
-  AssertFalse('and markup is not', LedNBIsImageMime('image/svg+xml'));
-  AssertFalse('nor is text', LedNBIsImageMime('text/plain'));
+  AssertFalse('and text is not', LedNBIsImageMime('text/plain'));
 end;
 
 procedure TTestNBImage.AnOutputWithNoPictureSaysSo;
@@ -129,12 +129,49 @@ var
   NB: TLedNotebook;
   Bytes, Mime: string;
 begin
-  { An SVG is a picture to a person and markup to a bitmap reader, so it is
-    left to the text beside it rather than half-drawn. }
-  NB := Notebook('{"image/svg+xml":["<svg/>"],"text/plain":["<Figure>"]}');
+  { Text is text however it is labelled. }
+  NB := Notebook('{"text/plain":["<Figure>"]}');
   try
-    AssertFalse('SVG is not offered as a bitmap',
+    AssertFalse('text is not offered as a bitmap',
       LedNBImageOf(NB, 0, 0, Bytes, Mime));
+  finally
+    NB.Free;
+  end;
+end;
+
+{ An SVG is a picture to a person and markup to a bitmap reader.  It is
+  offered as a picture exactly when this machine has something to convert it
+  with -- see Led.Core.NBConvert -- because on a machine with none the honest
+  answer is no, and the cell falls back to the text beside it rather than
+  showing a gap.  Which of the two this is, is a fact about the machine, so
+  it is asked rather than assumed. }
+procedure TTestNBImage.SvgIsAPictureWhereItCanBeConverted;
+var
+  NB: TLedNotebook;
+  Bytes, Mime: string;
+  Convertible: Boolean;
+begin
+  Convertible := LedNBConverterFor('svg') <> '';
+  AssertEquals('the mime type agrees with the machine',
+    Convertible, LedNBIsImageMime('image/svg+xml'));
+
+  NB := Notebook('{"image/svg+xml":["<svg xmlns=\"http://www.w3.org/2000/svg\"'
+    + ' width=\"4\" height=\"4\"><rect width=\"4\" height=\"4\"/></svg>"],'
+    + '"text/plain":["<Figure>"]}');
+  try
+    AssertEquals('and so does the output',
+      Convertible, LedNBImageOf(NB, 0, 0, Bytes, Mime));
+    if Convertible then
+    begin
+      AssertEquals('which comes back as the SVG it is',
+        'image/svg+xml', Mime);
+      { Converted by the caller, not here: this unit decodes what the file
+        carries and says what it is. }
+      AssertTrue('with the markup in hand', Pos('<svg', Bytes) > 0);
+      AssertTrue('and it can be made drawable',
+        LedNBMakeDrawable(Bytes, Mime));
+      AssertEquals('as a png', 'image/png', Mime);
+    end;
   finally
     NB.Free;
   end;

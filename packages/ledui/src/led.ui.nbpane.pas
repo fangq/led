@@ -33,7 +33,7 @@ uses
   IpHtml, Ipfilebroker,
   SynEditHighlighter,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
-  Led.Core.NBMagic, Led.Core.Markdown,
+  Led.Core.NBConvert, Led.Core.NBMagic, Led.Core.Markdown,
   Led.Syn.Factory, Led.Syn.Notebook, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.PageStyle,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
@@ -811,6 +811,9 @@ begin
     temporary file on the way. }
   if LedNBEmbeddedImage(FDoc.Notebook, FCell, URL, Bytes, Mime) then
   begin
+    { An SVG or a WebP among them is converted first, if the machine has
+      anything to convert it with. }
+    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
     Picture := TPicture.Create;
     Stream := TStringStream.Create(Bytes);
     try
@@ -895,6 +898,13 @@ begin
       Doc.DefaultTypeFace := ProseFace;
       Doc.DefaultFontSize := ProseSize(FDoc);
       Doc.FixedTypeface := FDoc.Master.Font.Name;
+      { And the pictures, through the same hook the panel uses.  Without it
+        the measuring document opens each <img> itself, raises on the first
+        one it cannot find, and the whole measurement is lost -- a prose cell
+        with a picture in it then came out at the fallback height, one line
+        tall with a scrollbar, which is what a picture arriving did to a
+        cell that had been laid out without it. }
+      Doc.OnGetImageX := @ProvideImage;
       Doc.LoadFromStream(Stream);
       { A height of nothing lays nothing out: the page is measured with as
         much room as it could want and comes back with what it used. }
@@ -939,7 +949,9 @@ begin
   { A picture per output that has one.  This is the thing the line view
     cannot do, and the reason this pane exists. }
   for Index_ := 0 to Count - 1 do
-    if LedNBImageOf(FDoc.Notebook, FCell, Index_, Bytes, Mime) then
+    if LedNBImageOf(FDoc.Notebook, FCell, Index_, Bytes, Mime) and
+       { A cell that asked matplotlib for SVG has SVG in its outputs. }
+       LedNBMakeDrawable(Bytes, Mime) then
     begin
       Img := TImage.Create(Self);
       Img.Parent := Self;

@@ -16,7 +16,7 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, base64, fpjson,
-  Led.Core.NBFormat, Led.Core.Markdown;
+  Led.Core.NBFormat, Led.Core.Markdown, Led.Core.NBConvert;
 
 { The bytes of one picture: the mime type it was stored as comes back in
   AMime, which is what tells a TPicture how to read them.  False when the
@@ -145,12 +145,20 @@ end;
 
 function LedNBIsImageMime(const AMime: string): Boolean;
 begin
-  { What the LCL's image readers cover.  SVG is not among them -- it is
-    markup, not a bitmap -- so a cell that produced only SVG falls back to
-    whatever text came with it. }
+  { What the LCL's image readers cover. }
   Result := (AMime = 'image/png') or (AMime = 'image/jpeg') or
             (AMime = 'image/jpg') or (AMime = 'image/gif') or
             (AMime = 'image/bmp');
+  if Result then Exit;
+  { And the two it does not, when this machine has something to convert them
+    with -- a cell that asked matplotlib for SVG is the common one.  Asked
+    rather than assumed, because on a machine with no converter the honest
+    answer is no, and the cell then falls back to whatever text came with
+    it rather than showing a gap. }
+  if (AMime = 'image/svg+xml') or (AMime = 'image/svg') then
+    Result := LedNBConverterFor('svg') <> ''
+  else if AMime = 'image/webp' then
+    Result := LedNBConverterFor('webp') <> '';
 end;
 
 function LedNBImageExt(const AMime: string): string;
@@ -216,9 +224,28 @@ end;
 
 { A data: URI -- data:image/png;base64,iVBORw0... -- which is how a picture
   gets into a markdown cell that was written by hand or by a converter. }
+{ Whether a picture of this kind is stored as base64 or as itself.
+
+  nbformat and data: URIs agree about this and it is easy to miss: a PNG is
+  base64 because it is bytes, and an SVG is the markup itself because it is
+  text.  Decoding the markup as base64 gives nothing, which is how a cell
+  whose plot was SVG came back with an empty picture. }
+function IsCoded(const AMime: string): Boolean;
+begin
+  Result := (AMime <> 'image/svg+xml') and (AMime <> 'image/svg');
+end;
+
+{ The value of a data entry as bytes, decoded if it is stored encoded. }
+function Payload(const AText, AMime: string; out ABytes: string): Boolean;
+begin
+  if IsCoded(AMime) then Exit(LedNBBase64(AText, ABytes));
+  ABytes := AText;
+  Result := ABytes <> '';
+end;
+
 function DataURI(const AURL: string; out ABytes, AMime: string): Boolean;
 var
-  Head, Payload: string;
+  Head, Body: string;
   Semi, Comma: Integer;
 begin
   Result := False;
@@ -228,16 +255,20 @@ begin
   Comma := Pos(',', AURL);
   if Comma = 0 then Exit;
   Head := Copy(AURL, 6, Comma - 6);
-  Payload := Copy(AURL, Comma + 1, MaxInt);
+  Body := Copy(AURL, Comma + 1, MaxInt);
 
   Semi := Pos(';', Head);
   if Semi > 0 then AMime := Copy(Head, 1, Semi - 1) else AMime := Head;
   AMime := LowerCase(Trim(AMime));
   if not LedNBIsImageMime(AMime) then Exit;
-  { Only base64: a data: URI may carry its payload percent-encoded instead,
-    and a picture never does. }
-  if Pos('base64', LowerCase(Head)) = 0 then Exit;
-  Result := LedNBBase64(Payload, ABytes);
+  { A bitmap is always base64 here: a data: URI may carry its payload
+    percent-encoded instead and a picture never does.  An SVG is text and is
+    written either way, so it is taken as it comes. }
+  if IsCoded(AMime) and (Pos('base64', LowerCase(Head)) = 0) then Exit;
+  if Pos('base64', LowerCase(Head)) > 0 then
+    Result := LedNBBase64(Body, ABytes)
+  else
+    Result := Payload(Unpercent(Body), AMime, ABytes);
 end;
 
 function LedNBHideRemoteImages(const AHtml: string;
@@ -321,7 +352,7 @@ begin
     if LedNBIsImageMime(TJSONObject(Entry).Names[i]) then
     begin
       AMime := TJSONObject(Entry).Names[i];
-      Exit(LedNBBase64(Joined(TJSONObject(Entry).Items[i]), ABytes));
+      Exit(Payload(Joined(TJSONObject(Entry).Items[i]), AMime, ABytes));
     end;
 end;
 
@@ -354,7 +385,7 @@ begin
       Break;
     end;
   if Coded = '' then Exit;
-  Result := LedNBBase64(Coded, ABytes);
+  Result := Payload(Coded, AMime, ABytes);
 end;
 
 end.
