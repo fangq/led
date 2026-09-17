@@ -4270,6 +4270,8 @@ var
   View: TLedEdit;
   Why, Key: string;
   At: TPoint;
+  Fields: TLedBJFields;
+  Col, i: Integer;
 begin
   Tab := ActiveTab;
   if (Tab = nil) or (not Tab.Document.IsBJData) then Exit;
@@ -4297,10 +4299,25 @@ begin
   FBJPopupDoc := Doc;
   FBJPopupRow := ATextIdx;
 
-  { Under the row it is editing, at the left margin of the text: the panel
-    is about that line, and a dialog in the middle of the screen would leave
-    the reader looking for which one it came from. }
-  At := View.ClientToScreen(Point(0,
+  { Under the row it is editing and lined up with the row's type marker: the
+    panel is about that field and the reader's eye is already on that column.
+    At the window's left margin -- where it used to open -- it was a panel
+    about a field twenty characters away from it.
+
+    The column comes from the same function that colours the row, so the two
+    cannot disagree about where the marker is, and the pixel comes from
+    SynEdit, which knows about the gutter and about how far the view has been
+    scrolled sideways. }
+  Col := 1;
+  Fields := LedBJRowFields(Doc.BJDataRows[ATextIdx]);
+  for i := 0 to High(Fields) do
+    if Fields[i].Kind = bjfMarker then
+    begin
+      Col := Fields[i].Start;
+      Break;
+    end;
+  At := View.RowColumnToPixels(Point(Col, ATextIdx - View.TopLine + 1));
+  At := View.ClientToScreen(Point(At.x,
     (ATextIdx - View.TopLine + 2) * View.LineHeight));
   FBJPopup.ShowFor(At.x, At.y, Key, Doc.BJRowValueText(ATextIdx),
     Doc.BJDataRows[ATextIdx].Value.Marker);

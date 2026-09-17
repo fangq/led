@@ -7366,9 +7366,11 @@ var
   Tab: TLedTab;
   Kind: TLedBJEditKind;
   Moved: PtrUInt;
-  i, Bad: Integer;
+  i, Bad, MarkCol: Integer;
   Key: Word;
   Handled: Boolean;
+  Fields: TLedBJFields;
+  Spot: TPoint;
 
   function L4(AValue: LongInt): string;
   begin
@@ -7540,6 +7542,21 @@ begin
     Doc.BJRowValueText(1), F.BJValuePopup.ValueBox.Text);
   CheckEq('and the file''s own type selected', 'int32',
     F.BJValuePopup.TypeList.Text);
+
+  { Lined up with the row's own type marker.  It used to open at the window's
+    left margin, which is a panel about a field some twenty characters away
+    from it; the column is read from the same function that colours the row,
+    so this compares the panel against where the marker actually is. }
+  Fields := LedBJRowFields(Doc.BJDataRows[1]);
+  MarkCol := 0;
+  for i := 0 to High(Fields) do
+    if Fields[i].Kind = bjfMarker then MarkCol := Fields[i].Start;
+  CheckGt('the row has a marker column', 0, MarkCol);
+  Spot := Tab.ActiveView.ClientToScreen(
+    Tab.ActiveView.RowColumnToPixels(Point(MarkCol, 2)));
+  Check(Format('the panel''s left edge is at the marker (%d against %d)',
+    [F.BJValuePopup.Left, Spot.x]),
+    Abs(F.BJValuePopup.Left - Spot.x) <= 2);
 
   { The type list is what this text could be stored as, not a menu of
     everything BJData has: 1000 does not fit a byte and is not a boolean. }
