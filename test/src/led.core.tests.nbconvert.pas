@@ -28,6 +28,7 @@ type
     procedure AnSvgBecomesAPng;
     procedure RubbishThatClaimsToBeAnSvgFails;
     procedure SomethingDrawableIsLeftExactlyAsItWas;
+    procedure TheSamePictureIsConvertedOnce;
   end;
 
 implementation
@@ -141,6 +142,44 @@ begin
     AssertEquals('and the bytes are the png''s',
       PngHead, Copy(Bytes, 1, Length(PngHead)));
   end;
+end;
+
+{ A conversion is a process, and starting one costs more than the conversion
+  -- measured here, 41 milliseconds against the four the drawing itself takes
+  -- so the answers are kept.  It matters because the same picture is asked
+  for again every time the cell holding it is drawn, which is what scrolling
+  a notebook of plots does: without this, a cell coming back on screen
+  started a process.
+
+  Asked of the count of converter runs rather than of a stopwatch. }
+procedure TTestNBConvert.TheSamePictureIsConvertedOnce;
+var
+  Png: string;
+  Was, i: Integer;
+begin
+  if LedNBConverterFor('svg') = '' then Exit;
+
+  { Something no other test has converted, so this starts from nothing. }
+  AssertTrue('converted', LedNBToPng(StringReplace(Svg, '#ff0000', '#00ff40',
+    [rfReplaceAll]), Png));
+  Was := LedNBConversions;
+
+  for i := 1 to 5 do
+    AssertTrue('converted again: ' + IntToStr(i),
+      LedNBToPng(StringReplace(Svg, '#ff0000', '#00ff40', [rfReplaceAll]),
+        Png));
+  AssertEquals('and the converter was not run again', Was,
+    LedNBConversions);
+  AssertEquals('while what comes back is still a png',
+    PngHead, Copy(Png, 1, Length(PngHead)));
+
+  { A different picture is a different answer, so it is converted.  A
+    different colour and not a different size: replacing the "8"s would
+    have caught the one in "UTF-8" and handed the converter a drawing that
+    names an encoding nobody has. }
+  AssertTrue('a different drawing', LedNBToPng(
+    StringReplace(Svg, '#ff0000', '#0000c8', [rfReplaceAll]), Png));
+  AssertTrue('runs the converter', LedNBConversions > Was);
 end;
 
 initialization

@@ -5851,6 +5851,43 @@ begin
       Pos('width=', Page) = 0);
   end;
 
+  { ---- a picture is decoded once, however often its cell is drawn ----
+
+    Decoding is what a scroll through a notebook of photographs actually
+    cost: the renderer asks for every picture again every time the page it
+    is on is built, and that happens whenever a cell arrives on screen.
+    Measured on twenty-four cells of one picture each, a two-hundred-notch
+    scroll spent 190 of its 393 milliseconds decoding pictures it had
+    already decoded; with them kept it spends 2.
+
+    Asked of the cache's own count rather than of a stopwatch: "decoded
+    once and drawn twice" is the property, and a timing would be a flaky
+    way to ask it. }
+  Doc.NBSetCellSource(0, 'A picture:' + #10 + #10 +
+    '![plot](data:image/png;base64,' + WidePlotPng + ')' + #10);
+  Pane.Pictures.Clear;
+  Pane.RefreshCell(0);
+  Pump;
+  Was := Pane.Pictures.Decodes;
+  { At least once, and not exactly once: laying a cell out measures the page
+    before it draws it, and a cell whose width has not settled is laid out
+    again at the width it ends up with.  What matters is the line below. }
+  CheckGt('the cell''s picture was decoded when it was drawn', 0, Was);
+  CheckGt('and kept', 0, Pane.Pictures.Count);
+
+  Pane.RefreshCell(0);
+  Pump;
+  CheckEqInt('drawing it again decodes nothing', Was, Pane.Pictures.Decodes);
+
+  { A different notebook may name an attachment the same way, so the
+    pictures go when the document does. }
+  Pane.ShowDocument(nil);
+  Pump;
+  CheckEqInt('and they are let go with the document', 0,
+    Pane.Pictures.Count);
+  Pane.ShowDocument(Doc);
+  Pump;
+
   B := CellBox(Pane, 4);
   Img := ImageIn(B);
   Check('a wide plot is drawn too', Img <> nil);
