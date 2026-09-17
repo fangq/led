@@ -29,7 +29,7 @@ uses
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
-  Led.UI.NBPane, Led.Core.Markdown,
+  Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -5539,11 +5539,11 @@ var
   Img: TImage;
   Host: TForm;
   Loose: TLedNotebookPane;
-  Dark, Light: TLedNBColourSet;
+  Dark, Light: TLedPageColours;
   WasBox: TLedNBCellBox;
   Handled: Boolean;
   Deadline: TDateTime;
-  Page: string;
+  Page, Shown: string;
   Inner: TControl;
   Opened: TStringList;
 
@@ -5662,6 +5662,64 @@ var
     for k := 0 to ABox.ComponentCount - 1 do
       if ABox.Components[k] is TImage then
         Exit(TImage(ABox.Components[k]));
+  end;
+
+  { The face a rendered node actually ends up in, found by walking the tree
+    the renderer built.
+
+    Asked of the page rather than of the panel, because those are different
+    questions and only this one is the reader's: FixedTypeface may be set on
+    the panel and still not reach a <pre>, which is exactly what a <font
+    face=> in the page did to it.  A check that reads back the assignment
+    would have stayed green through all four attempts at this. }
+  function FaceOfNode(ANode: TIpHtmlNode; const AClass: string): string;
+  var
+    k: Integer;
+  begin
+    Result := '';
+    if not (ANode is TIpHtmlNodeMulti) then Exit;
+    if SameText(ANode.ClassName, AClass) then
+    begin
+      if TIpHtmlNodeMulti(ANode).Props <> nil then
+        Result := TIpHtmlNodeMulti(ANode).Props.FontName;
+      if Result <> '' then Exit;
+    end;
+    for k := 0 to TIpHtmlNodeMulti(ANode).ChildCount - 1 do
+    begin
+      Result := FaceOfNode(TIpHtmlNodeMulti(ANode).ChildNode[k], AClass);
+      if Result <> '' then Exit;
+    end;
+  end;
+
+  function FaceInPage(APanel: TIpHtmlPanel; const AClass: string): string;
+  begin
+    Result := '';
+    if (APanel = nil) or (APanel.MasterFrame = nil) or
+       (APanel.MasterFrame.Html = nil) then Exit;
+    Result := FaceOfNode(APanel.MasterFrame.Html.HtmlNode, AClass);
+  end;
+
+  { Every word of a rendered page, in the order it was laid out and decoded
+    the way it is drawn.  Asked of the page rather than of the markup, so an
+    escape that was written once and read twice shows up here. }
+  function TextOfNode(ANode: TIpHtmlNode): string;
+  var
+    k: Integer;
+  begin
+    Result := '';
+    if ANode is TIpHtmlNodeText then
+      Result := TIpHtmlNodeText(ANode).ANSIText
+    else if ANode is TIpHtmlNodeMulti then
+      for k := 0 to TIpHtmlNodeMulti(ANode).ChildCount - 1 do
+        Result := Result + TextOfNode(TIpHtmlNodeMulti(ANode).ChildNode[k]);
+  end;
+
+  function TextInPage(APanel: TIpHtmlPanel): string;
+  begin
+    Result := '';
+    if (APanel = nil) or (APanel.MasterFrame = nil) or
+       (APanel.MasterFrame.Html = nil) then Exit;
+    Result := TextOfNode(APanel.MasterFrame.Html.HtmlNode);
   end;
 
   function LabelsIn(ABox: TLedNBCellBox): string;
@@ -5944,10 +6002,10 @@ begin
 
   { The page a prose cell renders, asked of the same function the cell uses.
     Four of the five complaints are answered here and each is a line of it. }
-  Page := LedNBColourCode(
+  Page := LedPageColourCode(
     LedMarkdownToHTML('Some `inline code` and a block:' + #10 + #10 +
       '```c' + #10 + 'int count = 100;  /* a remark */' + #10 + '```' + #10),
-    'Fira Code', $00E0E0E0, $00202020);
+    $00E0E0E0, $00202020);
 
   { A fence that names its language is coloured by that language's own
     highlighter -- the keyword and the remark cannot come out the same. }
@@ -5977,6 +6035,44 @@ begin
   Check('the panel is told the reader''s own monospaced font instead',
     CellBox(Pane, 0).Rendered.FixedTypeface = Doc.Master.Font.Name);
 
+  { And it gets there.  The cell is given a fence and a span of inline code,
+    and the face is read off the nodes the renderer built for them: that is
+    the question "does the reader see monospaced code", where the line above
+    is only "was the panel told". }
+  Doc.NBSetCellSource(0, 'Prose with `inline code` and a block:' + #10 +
+    #10 + '```c' + #10 + '#include <stdio.h>' + #10 +
+    '  if (a < b)  b++;' + #10 + '```' + #10);
+  Pane.RefreshCell(0);
+  Pump;
+  B := CellBox(Pane, 0);
+  { Both are <code> in the page -- a fence as much as a span, see
+    Led.UI.PageStyle -- so the face is asked of the node that carries it. }
+  CheckEq('code is drawn in the reader''s own monospaced face',
+    Doc.Master.Font.Name, FaceInPage(B.Rendered, 'TIpHtmlNodePhrase'));
+
+  { What the reader actually sees in the block, read back off the page.
+
+    A fence used to be a <pre>, and this renderer takes the text of a <pre>
+    as already decoded and escapes it again: a notebook full of "i < count"
+    was drawn as "i &lt; count", six characters for one.  Writing the "<"
+    raw instead loses it altogether -- the tokeniser reads "<s" as a tag --
+    so neither spelling worked and the block is built out of <code> and
+    <br> now. }
+  Shown := TextInPage(B.Rendered);
+  Check('a "<" in a code block is drawn as itself: ' +
+    Copy(Shown, 1, 120), Pos('#include <stdio.h>', Shown) > 0);
+  Check('and not as the escape that spells it',
+    Pos('&lt;', Shown) = 0);
+  { And the shape of the code survives, which is what a <pre> was for: the
+    indent of a line and the columns inside it. }
+  { The renderer holds a non-breaking space as #2 of its own, so that is
+    what a page it has read back says: two of them are the two-space indent
+    the line was written with. }
+  Check('a line keeps the indent it was written with',
+    Pos(#2#2 + 'if', Shown) > 0);
+  Check('and the run of spaces inside it',
+    Pos('b)' + #2#2 + 'b++', Shown) > 0);
+
   { Every token of a coloured block keeps the face, not just the block: a
     nested font tag replaces the face here rather than inheriting it, so a
     coloured token came back proportional and the block stopped looking like
@@ -5991,10 +6087,10 @@ begin
 
   { A table is drawn in the renderer's own black whatever the page says, so
     on a dark theme it came out unreadable beside prose that was fine. }
-  Page := LedNBColourCode(
+  Page := LedPageColourCode(
     LedMarkdownToHTML('| a | b |' + #10 + '| - | - |' + #10 +
       '| one | two |' + #10),
-    'Fira Code', $00E0E0E0, $00202020);
+    $00E0E0E0, $00202020);
   Check('a table is rendered: ' + Copy(Page, 1, 60), Pos('<table', Page) > 0);
   Check('and its cells are given the page''s text colour',
     Pos('<td><font color="#e0e0e0">', LowerCase(Page)) > 0);
@@ -6053,7 +6149,7 @@ begin
   LedSetCurrentTheme('oblivion');
   Pane.Reload;
   Pump;
-  Dark := LedNBColours;
+  Dark := LedPageColours;
   CheckEqInt('the pane is the theme''s page colour', Dark.Page, Pane.Color);
   CheckEqInt('and so is a cell', Dark.Page, CellBox(Pane, 0).Color);
   Check('a code cell sits on a shade of its own',
@@ -6066,7 +6162,7 @@ begin
   LedSetCurrentTheme('solarized-light');
   Pane.Reload;
   Pump;
-  Light := LedNBColours;
+  Light := LedPageColours;
   Check('a light theme gives a light page', LedColourLuma(Light.Page) > 128);
   CheckEqInt('and the pane followed it', Light.Page, Pane.Color);
   Check('the cells followed too', CellBox(Pane, 0).Color = Light.Page);

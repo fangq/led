@@ -19,7 +19,8 @@ uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
-  Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.UI.Dpi;
+  Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.Core.NBImage,
+  Led.Core.NBFetch, Led.UI.Dpi, Led.UI.PageStyle;
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
@@ -35,6 +36,7 @@ type
     FIsWiki: Boolean;
     FTimer: TTimer;
     FResizeTimer: TTimer;
+    FImageTimer: TTimer;
     FHasRendered: Boolean;
     FPendingRender: Boolean;
     FRenderedWidth: Integer;
@@ -53,6 +55,13 @@ type
     procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
     procedure ApplyFixedFont;
+    { Whether a picture on the web is in hand, and if not, why the page should
+      say so in its place.  Asking for one starts the fetch. }
+    function HaveRemote(const AURL: string; out AWhy: string): Boolean;
+    { Pictures that have arrived since the last look.  The page was laid out
+      without them and is laid out again now -- there is no way to put one
+      picture into a page IPro is already holding. }
+    procedure ImageTick(Sender: TObject);
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
       directory.  Any failure to load degrades to "no image" instead of an
@@ -84,6 +93,11 @@ type
       in adjacent tabs each render as themselves. }
     property IsWiki: Boolean read FIsWiki write FIsWiki;
     procedure ShowMessage_(const AText: string);
+    { Draws the same document again in the colours it is now given.  The
+      render path skips a page it has already drawn at the same width, which
+      is right for a tab change and wrong for a theme change: the text has
+      not moved but every colour in it has. }
+    procedure Restyle;
     { Renders now instead of a quarter-second from now, and says whether the
       HTML control took it.  For the self-test: the render path swallows an
       exception into a message label, so "it rendered" and "it quietly gave
@@ -187,6 +201,13 @@ begin
   FTimer.Enabled := False;
   FTimer.OnTimer := @Render;
 
+  { Runs only while a picture is in flight, so a document with none costs
+    nothing. }
+  FImageTimer := TTimer.Create(Self);
+  FImageTimer.Interval := 300;
+  FImageTimer.Enabled := False;
+  FImageTimer.OnTimer := @ImageTick;
+
   FResizeTimer := TTimer.Create(Self);
   FResizeTimer.Interval := 200;
   FResizeTimer.Enabled := False;
@@ -219,26 +240,44 @@ end;
 procedure TLedPreviewPane.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
 var
-  FN: string;
+  FN, Bytes, Kind: string;
+  Stream: TStringStream;
 begin
   Picture := nil;
   if URL = '' then Exit;
 
-  if (Pos('://', URL) > 0) or ((Length(URL) > 1) and (URL[2] = ':')) or
-     (URL[1] in ['/', '\']) then
-    FN := URL
-  else
-    FN := IncludeTrailingPathDelimiter(FBaseDir) + URL;
+  { One from the web that has been fetched.  What it is comes from its own
+    first bytes rather than from the name it was served under. }
+  if LedNBIsRemote(URL) then
+  begin
+    if not LedNBImages.Lookup(URL, Bytes) then Exit;
+    Kind := LedNBSniffImage(Bytes);
+    if Kind = '' then Exit;
+    Picture := TPicture.Create;
+    Stream := TStringStream.Create(Bytes);
+    try
+      try
+        Picture.LoadFromStreamWithFileExt(Stream, Kind);
+      except
+        FreeAndNil(Picture);
+      end;
+    finally
+      Stream.Free;
+    end;
+    Exit;
+  end;
+
+  { Otherwise a file: beside the document, an absolute path, or a file://
+    URL -- which the renderer does not resolve itself, its provider dealing
+    in paths rather than URLs. }
+  FN := LedNBLocalPath(URL, FBaseDir);
+  if (FN = '') or (not FileExists(FN)) then Exit;
 
   Picture := TPicture.Create;
   try
     Picture.LoadFromFile(FN);
   except
-    on E: Exception do
-    begin
-      Picture.Free;
-      Picture := nil;
-    end;
+    FreeAndNil(Picture);
   end;
 end;
 
@@ -472,9 +511,46 @@ begin
   if Face <> '' then FHtml.FixedTypeface := Face;
 end;
 
+function TLedPreviewPane.HaveRemote(const AURL: string;
+  out AWhy: string): Boolean;
+begin
+  AWhy := '';
+  Result := LedNBImages.Want(AURL);
+  if Result then Exit;
+  { Asking started a fetch, so start looking for the answer. }
+  if LedNBImages.Pending > 0 then FImageTimer.Enabled := True;
+  AWhy := LedNBImages.Failure(AURL);
+  if AWhy <> '' then Exit;
+  if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
+end;
+
+procedure TLedPreviewPane.ImageTick(Sender: TObject);
+var
+  URL: string;
+  Again: Boolean;
+begin
+  Again := False;
+  { The whole queue is read before anything is drawn, so a page with three
+    pictures on it is laid out once rather than three times. }
+  while LedNBImages.TakeArrived(URL) do
+    if Pos(URL, FRenderedText) > 0 then Again := True;
+  if Again then Restyle;
+  FImageTimer.Enabled := LedNBImages.Pending > 0;
+end;
+
+procedure TLedPreviewPane.Restyle;
+begin
+  { The page is the same text at the same width, which is exactly what the
+    render path is entitled to skip; this says to draw it anyway. }
+  FPendingRender := True;
+  if FHasRendered and Showing then Render(nil);
+end;
+
 procedure TLedPreviewPane.Render(Sender: TObject);
 var
   Page: string;
+  Colours: TLedPageColours;
+  Body: string;
 begin
   FTimer.Enabled := False;
   { Re-read now rather than only at construction, so a font changed in
@@ -508,14 +584,34 @@ begin
     Exit;
   end;
 
+  { The body only: the page around it is built in the theme's colours rather
+    than in the fixed light-grey wrapper LedMarkdownToPage carries, which was
+    written before LED had themes. }
+  Colours := LedPageColours;
   if FIsWiki then
-    Page := LedWikiToPage(FPendingText, FPendingTitle, True)
+    Body := LedWikiToHTML(FPendingText, True)
   else
-    Page := LedMarkdownToPage(FPendingText, FPendingTitle, True);
+    Body := LedMarkdownToHTML(FPendingText, True);
+  { A picture on somebody's server cannot be drawn while the page is being
+    laid out -- see Led.Core.NBFetch -- so one that is not in hand yet is
+    replaced by a line saying so, and the page is drawn again when it lands. }
+  Body := LedNBHideRemoteImages(Body, @HaveRemote);
+  Page := LedPageHead(FPendingTitle, Colours, 12) + Body + LedPageTail;
   try
     { Both adjustments are for the renderer rather than for the document:
       see LedWrapPreLines and LedSplitInlineRuns. }
     Page := LedSplitInlineRuns(LedWrapPreLines(Page, CodeColumns));
+    { The same treatment the notebook's cells get, and for the same reasons:
+      the renderer draws in its own colours unless told otherwise, so a page
+      on a dark theme was black text on a black background with its tables
+      worse still, and a fenced block that named its language went
+      uncoloured though LED has the highlighter for it. }
+    Page := LedPageColourCode(Page, Colours.Text, Colours.CodeBg);
+    FHtml.BgColor := Colours.Page;
+    FHtml.TextColor := Colours.Text;
+    FHtml.LinkColor := Colours.Link;
+    FHtml.VLinkColor := Colours.Link;
+    FHtml.ALinkColor := Colours.Link;
     FHtml.SetHtmlFromStr(Page);
     { From the page as it was handed over: neither adjustment touches an id,
       but this is the string the control is actually holding. }

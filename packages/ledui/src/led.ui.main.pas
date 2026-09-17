@@ -1943,6 +1943,10 @@ begin
   finally
     Tabs.Free;
   end;
+  { Both rendered panes take their colours -- and their fixed font -- from
+    what has just been applied. }
+  if (FNBPane <> nil) and FDock.PaneVisible('notebook') then FNBPane.Reload;
+  if (FPreview <> nil) and FDock.PaneVisible('preview') then FPreview.Restyle;
   UpdateStatusBar;
 end;
 
@@ -2878,8 +2882,10 @@ begin
     Tabs.Free;
   end;
   { And the notebook pane, whose every colour is the theme's: the page it
-    draws on, the shade behind a code cell, the prose it renders. }
+    draws on, the shade behind a code cell, the prose it renders.  The
+    Markdown preview is the same page in the same colours. }
   if (FNBPane <> nil) and FDock.PaneVisible('notebook') then FNBPane.Reload;
+  if (FPreview <> nil) and FDock.PaneVisible('preview') then FPreview.Restyle;
 end;
 
 { --- session -------------------------------------------------------------- }

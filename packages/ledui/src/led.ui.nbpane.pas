@@ -33,7 +33,7 @@ uses
   IpHtml, Ipfilebroker,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
   Led.Core.Markdown,
-  SynEditHighlighter, Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons,
+  Led.Syn.Factory, Led.Syn.Theme, Led.UI.Icons, Led.UI.PageStyle,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
 type
@@ -89,10 +89,9 @@ type
     property OnDblClick;
   end;
 
-  { The colours the pane draws with; see LedNBColours. }
-  TLedNBColourSet = record
-    Page, Text, Muted, CodeBg, Border, Link: TColor;
-  end;
+  { The colours the pane draws with.  The same record the Markdown and wiki
+    preview uses: see Led.UI.PageStyle. }
+  TLedNBColourSet = TLedPageColours;
 
   { One cell: its label, its Run button, its source, and whatever it
     produced. }
@@ -343,50 +342,16 @@ begin
 end;
 
 function LedNBColours: TLedNBColourSet;
-var
-  Style: TLedStyle;
 begin
-  Result.Page := clWindow;
-  Result.Text := clWindowText;
-  if LedCurrentTheme <> nil then
-  begin
-    if LedCurrentTheme.Find(LedStyleText, Style) then
-    begin
-      if lsfBackground in Style.Flags then
-        Result.Page := LedColourToTColor(Style.Background);
-      if lsfForeground in Style.Flags then
-        Result.Text := LedColourToTColor(Style.Foreground);
-    end;
-  end;
-  if Result.Page = clNone then Result.Page := clWindow;
-  if Result.Text = clNone then Result.Text := clWindowText;
-
-  { A code cell sits on a block a little away from the page, the way it does
-    in a notebook front end; the label beside it recedes.
-
-    LedMixColours takes the percentage of its *first* colour, so "mostly the
-    page" is a high number.  Getting that backwards put the code block at 93
-    per cent of the text colour -- a near-white slab on a dark theme -- which
-    is what the check against two themes caught. }
-  Result.CodeBg := LedMixColours(Result.Page, Result.Text, 93);
-  Result.Border := LedMixColours(Result.Page, Result.Text, 78);
-  Result.Muted := LedEnsureReadable(
-    LedMixColours(Result.Text, Result.Page, 62), Result.Page, 3.0);
-  { Links have to be readable on the page as well as look like links. }
-  Result.Link := LedEnsureReadable($00D08040, Result.Page, 4.0);
+  Result := LedPageColours;
 end;
 
-{ A colour as HTML says it.  TColor is $00BBGGRR and HTML wants RRGGBB, so
-  this is not a hex dump of the number. }
+{ A colour as HTML says it. }
 function HtmlColour(AColour: TColor): string;
 begin
-  Result := Format('#%.2x%.2x%.2x',
-    [AColour and $FF, (AColour shr 8) and $FF, (AColour shr 16) and $FF]);
+  Result := LedHtmlColour(AColour);
 end;
 
-{ How tall a page wants to be is worked out by TIpHtml.GetPageRect, which is
-  protected -- so it is reached the way LED reaches SynEdit's protected parts
-  elsewhere: a descendant declared here, which may see them. }
 type
   TIpHtmlMeasure = class(TIpHtml)
   public
@@ -433,191 +398,17 @@ end;
 
 { ---- code inside prose ---- }
 
-{ The text of an HTML-escaped run, back as it was written.  The page carries
-  code escaped, and a highlighter wants the code. }
-function Unescaped(const AText: string): string;
-begin
-  Result := StringReplace(AText, '&lt;', '<', [rfReplaceAll]);
-  Result := StringReplace(Result, '&gt;', '>', [rfReplaceAll]);
-  Result := StringReplace(Result, '&quot;', '"', [rfReplaceAll]);
-  Result := StringReplace(Result, '&#39;', '''', [rfReplaceAll]);
-  { Last, so that an escaped ampersand does not turn the text after it into
-    another escape. }
-  Result := StringReplace(Result, '&amp;', '&', [rfReplaceAll]);
-end;
-
-{ One block of code, tokenised by ALang's highlighter and written out as
-  coloured spans.  A language LED cannot colour comes back as plain text in
-  the page's own colour, which is what a file of that language would get in
-  the editor too. }
-function ColouredCode(const ACode, ALang: string;
-  ATextColour, ABackColour: TColor): string;
-var
-  HL: TSynCustomHighlighter;
-  Lines: TStringList;
-  i: Integer;
-  Attr: TSynHighlighterAttributes;
-  Colour: TColor;
-  Painted: string;
-begin
-  Result := '';
-  HL := nil;
-  if ALang <> '' then HL := LedCreateHighlighter(ALang);
-
-  Lines := TStringList.Create;
-  try
-    Lines.TextLineBreakStyle := tlbsLF;
-    Lines.Text := ACode;
-    while (Lines.Count > 0) and (Lines[Lines.Count - 1] = '') do
-      Lines.Delete(Lines.Count - 1);
-
-    if HL = nil then
-    begin
-      for i := 0 to Lines.Count - 1 do
-        Result := Result + LedHtmlEscape(Lines[i]) + #10;
-      Exit;
-    end;
-
-    LedApplyThemeToHighlighter(LedCurrentTheme, HL);
-    HL.ResetRange;
-    for i := 0 to Lines.Count - 1 do
-    begin
-      { In order and without resetting between lines: that is what carries a
-        string or a comment from one line of the block to the next. }
-      HL.SetLine(Lines[i], i);
-      Painted := '';
-      while not HL.GetEol do
-      begin
-        Attr := HL.GetTokenAttribute;
-        Colour := ATextColour;
-        if (Attr <> nil) and (Attr.Foreground <> clNone) then
-          Colour := Attr.Foreground;
-        { Against the block's own background rather than the page's: a colour
-          chosen to be read on one is not always readable on the other. }
-        Colour := LedEnsureReadable(Colour, ABackColour, 3.0);
-        { Colour only, and deliberately no face.
-
-          A face is not named here because naming one breaks it.  The
-          renderer resolves a face through FindFontName, which parses the
-          value with CommaText -- and CommaText splits on spaces, so "Fira
-          Code" is read as a font called "Fira", not found, and quietly
-          replaced by the menu font.  That is what made every monospaced
-          stretch of a page come out proportional the moment it was coloured.
-
-          A <pre> or a <code> takes FixedTypeface straight from the panel
-          with no such parsing, and a nested <font> that names no face
-          inherits it.  So the block carries the face and the tokens carry
-          the colours. }
-        Painted := Painted + '<font color="' + HtmlColour(Colour) + '">' +
-          LedHtmlEscape(HL.GetToken) + '</font>';
-        HL.Next;
-      end;
-      Result := Result + Painted + #10;
-    end;
-  finally
-    Lines.Free;
-    HL.Free;
-  end;
-end;
-
-{ Wraps what is inside every AOpen..AClose in the page's text colour.  Used
-  for table cells, which the renderer otherwise draws in black. }
-function ColourCells(const AHtml, AOpen, AClose: string;
-  ATextColour: TColor): string;
-var
-  At, Start, Stop, Close_: Integer;
-  Body, Replacement, Lower: string;
-begin
-  Result := AHtml;
-  At := 1;
-  while True do
-  begin
-    Lower := LowerCase(Result);
-    Start := PosEx(AOpen, Lower, At);
-    if Start = 0 then Break;
-    Close_ := PosEx('>', Result, Start);
-    if Close_ = 0 then Break;
-    Stop := PosEx(AClose, Lower, Close_);
-    if Stop = 0 then Break;
-
-    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
-    { Already coloured -- a cell holding code, say -- and left alone. }
-    if Pos('<font', LowerCase(Body)) = 1 then
-    begin
-      At := Stop + Length(AClose);
-      Continue;
-    end;
-    Replacement := Copy(Result, Start, Close_ - Start + 1) +
-      '<font color="' + HtmlColour(ATextColour) + '">' + Body + '</font>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop, MaxInt);
-    At := Start + Length(Replacement);
-  end;
-end;
+{ The colouring itself lives in Led.UI.PageStyle, which the Markdown and wiki
+  preview uses too: both panes render HTML, both had the same faults, and one
+  fix is better than two. }
 
 function LedNBColourCode(const AHtml, AFixedFace: string;
   ATextColour, ABackColour: TColor): string;
-var
-  At, Start, Stop, Close_, Quote: Integer;
-  Head, Lang, Body, Replacement, Lower: string;
 begin
-  Result := AHtml;
-
-  { ---- fenced blocks ---- }
-  At := 1;
-  while True do
-  begin
-    Lower := LowerCase(Result);
-    Start := PosEx('<pre', Lower, At);
-    if Start = 0 then Break;
-    Close_ := PosEx('>', Result, Start);
-    if Close_ = 0 then Break;
-    Stop := PosEx('</pre>', Lower, Close_);
-    if Stop = 0 then Break;
-
-    Head := Copy(Result, Start, Close_ - Start + 1);
-    Lang := '';
-    Quote := Pos('class="language-', LowerCase(Head));
-    if Quote > 0 then
-    begin
-      Lang := Copy(Head, Quote + Length('class="language-'), MaxInt);
-      Quote := Pos('"', Lang);
-      if Quote > 0 then Lang := Copy(Lang, 1, Quote - 1);
-    end;
-
-    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
-    Replacement := Head + '<font color="' + HtmlColour(ATextColour) + '">' +
-      ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour) +
-      '</font></pre>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop + Length('</pre>'), MaxInt);
-    At := Start + Length(Replacement);
-  end;
-
-  { ---- table cells ---- }
-
-  { A table is drawn in the renderer's own colours -- black text -- whatever
-    the page says, so on a dark theme a table came out unreadable while the
-    prose around it was fine.  Each cell is given the page's text colour. }
-  Result := ColourCells(Result, '<td', '</td>', ATextColour);
-  Result := ColourCells(Result, '<th', '</th>', ATextColour);
-
-  { ---- inline code ---- }
-  At := 1;
-  while True do
-  begin
-    Lower := LowerCase(Result);
-    Start := PosEx('<code>', Lower, At);
-    if Start = 0 then Break;
-    Stop := PosEx('</code>', Lower, Start);
-    if Stop = 0 then Break;
-    Body := Copy(Result, Start + 6, Stop - Start - 6);
-    Replacement := '<code><font color="' + HtmlColour(ATextColour) + '">' +
-      Body + '</font></code>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop + Length('</code>'), MaxInt);
-    At := Start + Length(Replacement);
-  end;
+  { AFixedFace is deliberately not passed on.  Naming a face is what breaks
+    the monospaced font -- Led.UI.PageStyle says why at length -- and the
+    face reaches the page through the panel's FixedTypeface instead. }
+  Result := LedPageColourCode(AHtml, ATextColour, ABackColour);
 end;
 
 { ---- one cell ---- }
@@ -993,20 +784,9 @@ begin
   C := LedNBColours;
   Html := LedNBHideRemoteImages(LedMarkdownToHTML(ASource), @HaveRemote);
   Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
-  Result :=
-    '<html><head><style>' +
-    'body { margin: 0; font-family: sans-serif; color: ' +
-      HtmlColour(C.Text) + '; }' +
-    'h1, h2, h3, h4 { margin: 6px 0 4px 0; }' +
-    'p { margin: 4px 0 8px 0; }' +
-    'pre, code { background: ' + HtmlColour(C.CodeBg) + '; }' +
-    'blockquote { border-left: 3px solid ' + HtmlColour(C.Border) +
-      '; padding-left: 8px; }' +
-    'a { color: ' + HtmlColour(C.Link) + '; }' +
-    '</style></head>' +
-    '<body bgcolor="' + HtmlColour(C.Page) + '" text="' +
-      HtmlColour(C.Text) + '" link="' + HtmlColour(C.Link) + '" vlink="' +
-      HtmlColour(C.Link) + '">' + Html + '</body></html>';
+  { The page around it is the shared one -- see Led.UI.PageStyle -- so that
+    a cell and a Markdown file are drawn the same way. }
+  Result := LedPageHead('', C) + Html + LedPageTail;
 end;
 
 { How tall a page of HTML comes out at a given width.
@@ -1035,9 +815,13 @@ begin
   Stream := TStringStream.Create(APage);
   try
     try
-      { The same face and size the panel was given, for the same reason. }
+      { The same face and size the panel was given, for the same reason --
+        and the monospaced one too, which was left out: a block of code
+        measured in the renderer's own 'Courier New', which no desktop here
+        has, is not the height it is then drawn at. }
       Doc.DefaultTypeFace := ProseFace;
       Doc.DefaultFontSize := ProseSize(FDoc);
+      Doc.FixedTypeface := FDoc.Master.Font.Name;
       Doc.LoadFromStream(Stream);
       { A height of nothing lays nothing out: the page is measured with as
         much room as it could want and comes back with what it used. }
