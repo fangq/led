@@ -5542,8 +5542,9 @@ var
   Tab: TLedTab;
   Pane: TLedNotebookPane;
   B: TLedNBCellBox;
-  i, Bottom, Was, WasImage, Deep: Integer;
+  i, Bottom, Was, WasImage, Deep, Line: Integer;
   Img: TImage;
+  V: TLedEdit;
   Host: TForm;
   Loose: TLedNotebookPane;
   Dark, Light: TLedPageColours;
@@ -5779,6 +5780,7 @@ begin
   Pump;
   Tab := F.ActiveTab;
   Doc := Tab.Document;
+  V := Tab.ActiveView;
   Doc.LoadFromFile(Path);
   Pump;
   Check('the notebook opened', Doc.IsNotebook);
@@ -5865,6 +5867,9 @@ begin
     way to ask it. }
   Doc.NBSetCellSource(0, 'A picture:' + #10 + #10 +
     '![plot](data:image/png;base64,' + WidePlotPng + ')' + #10);
+  { Brought back on screen first: the pane was scrolled away from it just
+    above, and a cell with no box is not redrawn. }
+  CellBox(Pane, 0);
   Pane.Pictures.Clear;
   Pane.RefreshCell(0);
   Pump;
@@ -6409,6 +6414,60 @@ begin
   Pane.ScrollToCell(0);
   Pump;
   Check('and the first cell can be got back to', Pane.BoxOf(0) <> nil);
+
+  { ---- the two views stay on the same cell ----
+
+    The pane and the buffer are two views of one file, so scrolling either
+    should not leave the other somewhere else -- the same arrangement the
+    Markdown preview has with its text.  Per cell, because a cell is the
+    unit the two have in common: the buffer has a header, source and output
+    lines for one, and the pane has a box.
+
+    Checked here, on the tall notebook, and not on the five-cell fixture
+    above: five cells is fewer lines than the text view has rows, so its top
+    line cannot move at all, and every one of these checks passed for that
+    reason rather than for the right one. }
+  Pane.ScrollToCell(40);
+  Pane.ReportTopNow;
+  Pump;
+  CheckEqInt('scrolling the pane puts that cell at its top', 40,
+    Pane.TopCell);
+  CheckEqInt(Format('and the buffer follows it (top line %d)', [V.TopLine]),
+    40, Doc.NBCellOfLine(V.TopLine - 1));
+
+  Line := Doc.NBSourceLineOf(7);
+  CheckGt('the eighth cell has a line to scroll to', 0, Line);
+  V.TopLine := Line;
+  Pump;
+  CheckEqInt(Format('scrolling the buffer brings the pane with it ' +
+    '(line %d, pane at %d)', [Line, Pane.TopCell]), 7, Pane.TopCell);
+
+  { Neither chases the other: the same request twice is one move. }
+  Was := Pane.TopCell;
+  V.TopLine := Line;
+  Pump;
+  CheckEqInt('and asking for the same place again changes nothing',
+    Was, Pane.TopCell);
+
+  { Scrolling within a cell is not a move to another cell, so the other view
+    stays where it is: a cell is the unit, and a buffer line that belongs to
+    the same cell says nothing new. }
+  V.TopLine := Line + 1;
+  Pump;
+  CheckEqInt('a line further down the same cell moves nothing', Was,
+    Pane.TopCell);
+
+  { A click in a cell puts the caret in it, so that Run Cell runs the cell
+    the reader is pointing at. }
+  B := CellBox(Pane, 9);
+  if (B <> nil) and Assigned(TControlEvents(B).OnMouseDown) then
+  begin
+    TControlEvents(B).OnMouseDown(B, mbLeft, [], 4, 4);
+    Pump;
+    Pump;
+    CheckEqInt('clicking a cell moves the caret into it', 9,
+      Doc.NBCellOfLine(V.CaretY - 1));
+  end;
 
   DeleteFile(Path);
 end;

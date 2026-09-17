@@ -313,6 +313,14 @@ type
     FNote: TLabel;
     FImages: TCustomImageList;
     FOnRun: TLedNBCellEvent;
+    FOnScrolled: TLedNBCellEvent;
+    FOnPicked: TLedNBCellEvent;
+    { The top cell as it was last reported, so that a scroll within one cell
+      is not reported over and over -- and a flag for a scroll this pane was
+      told to make, which must not be reported at all: that would be an echo
+      of whoever told it. }
+    FToldCell: Integer;
+    FFollowing: Boolean;
     FBuilding: Boolean;        // BuildWindow is not re-entrant
     { Resizing is coalesced.  Dragging the splitter fires a resize per pixel,
       and every one of them would re-wrap every cell and re-measure every
@@ -325,6 +333,8 @@ type
     procedure CellEdited(Sender: TObject; ACell: Integer);
     procedure ResizeSettled(Sender: TObject);
     procedure BarScrolled(Sender: TObject);
+    procedure ReportTop;
+    procedure CellPicked(ACell: Integer);
     procedure ImageTick(Sender: TObject);
     procedure LeaveEditDeferred(AData: PtrInt);
     procedure PaneMouseDown(Sender: TObject; AButton: TMouseButton;
@@ -414,6 +424,25 @@ type
     { Fired when a cell's Run button is pressed; the window runs it, because
       the kernel is the document's and the reporting is the window's. }
     property OnRunCell: TLedNBCellEvent read FOnRun write FOnRun;
+
+    { Which cell is at the top of the viewport, or -1 when there is no
+      notebook.  What the text view follows when the two are kept in step. }
+    function TopCell: Integer;
+    { Says where the pane is, as a scroll by the reader would.  For a check,
+      which moves the pane by calling ScrollToCell rather than by turning a
+      wheel. }
+    procedure ReportTopNow;
+    { Puts ACell at the top without saying so: this is the pane following
+      something else, and reporting it would be an echo. }
+    procedure FollowToCell(ACell: Integer);
+
+    { Fired when the cell at the top of the viewport changes because the
+      reader scrolled the pane. }
+    property OnScrolled: TLedNBCellEvent read FOnScrolled write FOnScrolled;
+    { Fired when the reader puts the mouse in a cell, so that the window can
+      move the caret there: the two views then look at the same cell, and Run
+      Cell runs the one under the pointer. }
+    property OnCellPicked: TLedNBCellEvent read FOnPicked write FOnPicked;
   end;
 
 implementation
@@ -1003,7 +1032,10 @@ procedure TLedNBCellBox.ChildMouseDown(Sender: TObject;
   AButton: TMouseButton; AShift: TShiftState; X, Y: Integer);
 begin
   if Parent is TLedNotebookPane then
+  begin
     TLedNotebookPane(Parent).LeaveEditing;
+    TLedNotebookPane(Parent).CellPicked(FCell);
+  end;
 end;
 
 function TLedNBCellBox.HaveRemote(const AURL: string;
@@ -1489,6 +1521,7 @@ begin
   FBoxes := TFPList.Create;
   FPics := TLedNBPictures.Create;
   FFirst := -1;
+  FToldCell := -1;
   Color := LedNBColours.Page;
   ParentColor := False;
 
@@ -1806,6 +1839,15 @@ begin
   if (B <> nil) and B.Editing then B.SetEditing(False);
 end;
 
+{ A cell the reader has put the mouse in. }
+procedure TLedNotebookPane.CellPicked(ACell: Integer);
+begin
+  { Counted as where the pane is, so that following the caret back here does
+    not scroll the pane away from the cell just clicked. }
+  FToldCell := TopCell;
+  if Assigned(FOnPicked) then FOnPicked(Self, ACell);
+end;
+
 procedure TLedNotebookPane.PaneMouseDown(Sender: TObject;
   AButton: TMouseButton; AShift: TShiftState; X, Y: Integer);
 begin
@@ -1818,9 +1860,60 @@ begin
     FImageTimer.Enabled := True;
 end;
 
+function TLedNotebookPane.TopCell: Integer;
+var
+  Cell, Offset: Integer;
+begin
+  Result := -1;
+  if not LiveDoc then Exit;
+  if CellCount = 0 then Exit;
+  { The same arithmetic BuildWindow starts with: which cell the top of the
+    viewport is inside. }
+  Offset := FBar.Position;
+  Cell := 0;
+  while (Cell < CellCount - 1) and
+        (VirtualTop(Cell) + HeightOf(Cell) <= Offset) do
+    Inc(Cell);
+  Result := Cell;
+end;
+
+procedure TLedNotebookPane.FollowToCell(ACell: Integer);
+begin
+  if not LiveDoc then Exit;
+  if TopCell = ACell then Exit;
+  FFollowing := True;
+  try
+    ScrollToCell(ACell);
+  finally
+    FFollowing := False;
+  end;
+  { Remembered as told, so that the next report is a real move by the
+    reader and not the tail of this one. }
+  FToldCell := TopCell;
+end;
+
+{ Says which cell the reader has scrolled to, once per cell rather than once
+  per pixel, and never for a scroll the pane was told to make. }
+procedure TLedNotebookPane.ReportTop;
+var
+  Cell: Integer;
+begin
+  if FFollowing then Exit;
+  Cell := TopCell;
+  if (Cell < 0) or (Cell = FToldCell) then Exit;
+  FToldCell := Cell;
+  if Assigned(FOnScrolled) then FOnScrolled(Self, Cell);
+end;
+
+procedure TLedNotebookPane.ReportTopNow;
+begin
+  ReportTop;
+end;
+
 procedure TLedNotebookPane.BarScrolled(Sender: TObject);
 begin
   BuildWindow;
+  ReportTop;
 end;
 
 function TLedNotebookPane.DoMouseWheel(AShift: TShiftState;
@@ -1832,6 +1925,7 @@ begin
   if Notches = 0 then
     if AWheelDelta > 0 then Notches := 1 else Notches := -1;
   ScrollPos := ScrollPos - Notches * LedScale96(48);
+  ReportTop;
   Result := True;
 end;
 

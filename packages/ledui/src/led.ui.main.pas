@@ -549,6 +549,9 @@ type
     { Set while a click on the preview is moving the caret, so the scroll that
       move causes does not come straight back and move the page. }
     FPreviewJumping: Boolean;
+    { One view is being moved to follow the other, so its own report of
+      having moved is not a request to move anything back. }
+    FNBSyncing: Boolean;
     FCheckingDisk: Boolean;
     { One per tab group: the button at the right-hand end of the tab strip
       that closes the current tab. }
@@ -570,6 +573,9 @@ type
     procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
+    procedure SyncNotebookPaneToLine;
+    procedure NBPaneScrolled(Sender: TObject; ACell: Integer);
+    procedure NBCellPicked(Sender: TObject; ACell: Integer);
     procedure SyncPreviewToLine;
     procedure SymbolJump(ALine: Integer; const AName: string);
     procedure BrowserOpenFile(const AFileName: string);
@@ -1077,6 +1083,8 @@ begin
 
   FNBPane := TLedNotebookPane.Create(Self);
   FNBPane.OnRunCell := @NBPaneRun;
+  FNBPane.OnScrolled := @NBPaneScrolled;
+  FNBPane.OnCellPicked := @NBCellPicked;
   FNBPane.Images := ImageList1;
   FDock.AddPane(ledRight, 'notebook', 'Notebook', FNBPane, 'doc');
 
@@ -4664,7 +4672,10 @@ begin
     wheel and the keys alike; the caret moving is not enough on its own,
     since a caret can move without the view going anywhere. }
   if scTopLine in AChanges then
+  begin
     SyncPreviewToLine;
+    SyncNotebookPaneToLine;
+  end;
 end;
 
 { The block the top of the text view is in, shown at the top of the preview.
@@ -4682,6 +4693,99 @@ begin
   View := ActiveView;
   if View = nil then Exit;
   FPreview.ScrollToLine(View.TopLine);
+end;
+
+{ The notebook pane and the buffer are two views of one file, so they are
+  kept looking at the same cell -- the same arrangement the Markdown preview
+  has with its text, and for the same reason: a reader who scrolls one and
+  finds the other somewhere else has to keep finding their place again.
+
+  Per cell, not per line.  A cell is the unit both views have in common: the
+  buffer has a header, source and output lines for one, and the pane has a
+  box.  Scrolling within a cell moves neither. }
+procedure TLedMainForm.SyncNotebookPaneToLine;
+var
+  View: TLedEdit;
+  Doc: TLedDocument;
+  Cell, Line: Integer;
+begin
+  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if FNBSyncing then Exit;
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if (not Doc.IsNotebook) or (FNBPane.Document <> Doc) then Exit;
+  View := ActiveView;
+  if View = nil then Exit;
+
+  { The top line, or the first line below it that belongs to a cell: the
+    line between two cells belongs to neither, and the reader who has one of
+    those at the top means the cell that starts under it. }
+  Cell := -1;
+  Line := View.TopLine - 1;
+  while (Cell < 0) and (Line < View.Lines.Count) and
+        (Line < View.TopLine + 2) do
+  begin
+    Cell := Doc.NBCellOfLine(Line);
+    Inc(Line);
+  end;
+  if Cell < 0 then Exit;
+  FNBPane.FollowToCell(Cell);
+end;
+
+{ And the buffer follows the pane. }
+procedure TLedMainForm.NBPaneScrolled(Sender: TObject; ACell: Integer);
+var
+  View: TLedEdit;
+  Doc: TLedDocument;
+  Line: Integer;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if (not Doc.IsNotebook) or (FNBPane = nil) or
+     (FNBPane.Document <> Doc) then Exit;
+  View := ActiveView;
+  if View = nil then Exit;
+  Line := Doc.NBSourceLineOf(ACell);
+  if Line < 0 then Exit;
+
+  { The header at the top, since that is what names the cell -- and the
+    caret is left where it was: this is a scroll, not a move.  The flag
+    covers the status change SynEdit raises inside it, which would otherwise
+    come back as a request to scroll the pane to wherever the text now is. }
+  FNBSyncing := True;
+  try
+    View.TopLine := Line;
+  finally
+    FNBSyncing := False;
+  end;
+end;
+
+{ A cell the reader has put the mouse in: the caret goes there, so that the
+  two views agree about which cell is in hand and Run Cell runs the one that
+  was clicked. }
+procedure TLedMainForm.NBCellPicked(Sender: TObject; ACell: Integer);
+var
+  View: TLedEdit;
+  Doc: TLedDocument;
+  Line: Integer;
+begin
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if (not Doc.IsNotebook) or (FNBPane = nil) or
+     (FNBPane.Document <> Doc) then Exit;
+  View := ActiveView;
+  if View = nil then Exit;
+  Line := Doc.NBSourceLineOf(ACell);
+  if Line < 0 then Exit;
+
+  { The caret moves and the focus does not: the reader clicked in the pane
+    and is working there. }
+  FNBSyncing := True;
+  try
+    View.CaretXY := Point(1, Line + 1);
+  finally
+    FNBSyncing := False;
+  end;
 end;
 
 { And the text follows the preview: a click on the page puts the caret on the
