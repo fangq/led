@@ -351,23 +351,35 @@ begin
     end
     else if F.Preview <> nil then
     begin
+      { The pane appearing and the pane's own work are timed apart: a pane
+        arriving resizes the editor beside it, and for a big file that turned
+        out to cost far more than anything the pane itself does. }
       T := GetTickCount64;
       if not F.Dock.PaneVisible('preview') then
         F.actTogglePreviewExecute(nil);
+      Pump;
+      Note('the preview pane appears (dock, resize)', T);
+
+      T := GetTickCount64;
       F.Preview.RenderNow;
       Pump;
       Note('markdown preview (render)', T);
+
+      T := GetTickCount64;
       F.Dock.HidePane('preview');
       Pump;
+      Note('and goes away again', T);
     end;
 
     T := GetTickCount64;
     if not F.Dock.PaneVisible('symbols') then
       F.actToggleSymbolsExecute(nil);
     Pump;
-    Note('outline pane', T);
+    Note('the outline pane appears and fills', T);
+    T := GetTickCount64;
     F.Dock.HidePane('symbols');
     Pump;
+    Note('and goes away again', T);
 
     T := GetTickCount64;
     Doc.Master.Modified := False;
