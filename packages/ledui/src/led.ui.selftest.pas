@@ -169,6 +169,22 @@ begin
   end;
 end;
 
+{ How tall this font draws, in pixels: for comparing two fonts without
+  caring whether either says its size in points or in pixels. }
+function LedTextHeightOf(AFont: TFont): Integer;
+var
+  Bmp: TBitmap;
+begin
+  Bmp := TBitmap.Create;
+  try
+    Bmp.SetSize(8, 8);
+    Bmp.Canvas.Font.Assign(AFont);
+    Result := Bmp.Canvas.TextHeight('Mg');
+  finally
+    Bmp.Free;
+  end;
+end;
+
 procedure CheckGt(const AName: string; AFloor, AActual: Integer);
 begin
   Check(AName + Format(' (%d > %d)', [AActual, AFloor]), AActual > AFloor);
@@ -6554,8 +6570,15 @@ begin
   { The code in a cell is set a size up from the editor's own: the pane is a
     reading view, and at the editor's size the code came out smaller than the
     prose around it. }
-  CheckGt('the code in a cell is larger than the editor''s own font',
-    Doc.Master.Font.Size, CellBox(Pane, 1).Editor.Font.Size);
+  { Measured as drawn rather than compared as Font.Size.  A font can say its
+    size in points or in pixels, and when it says pixels Size reads back
+    negative -- so "bigger" is a smaller number and comparing the field
+    asserts the opposite of what it says.  Not hypothetical: on the CI runner
+    both fonts read -9, and this check failed while the cells really were the
+    same size as the editor.  A canvas answers the question being asked. }
+  CheckGt('the code in a cell is drawn larger than the editor''s own font',
+    LedTextHeightOf(Doc.Master.Font),
+    LedTextHeightOf(CellBox(Pane, 1).Editor.Font));
 
   { Fixed at ten points the prose came out smaller than the code beside it,
     which is the wrong way round.  It follows the reader's own editor font

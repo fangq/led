@@ -29,7 +29,7 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
-  Graphics, Forms, ImgList, LazUTF8,
+  Graphics, Forms, ImgList, LazUTF8, LCLType,
   IpHtml, Ipfilebroker,
   SynEditHighlighter,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
@@ -511,6 +511,37 @@ begin
   Result := Result + 3;
 end;
 
+{ APoints bigger, whether the font says its size in points or in pixels.
+
+  Font.Size is only meaningful when it is positive.  A desktop with no font
+  preference leaves LED's own size at zero, the LCL answers with the system
+  font, and from then on the font is described by Font.Height -- Size reads
+  back as a negative number, and adding two to that is not two points bigger,
+  it is nonsense.  So the bump was skipped there and the code in a cell came
+  out at exactly the editor's size, which is the thing it is here to prevent.
+  That is what the CI runner has, and what a fresh install has until somebody
+  chooses a font.
+
+  Height is in pixels and its sign says which way is bigger: negative is the
+  em size, positive is the whole cell.  A font that gives neither is left
+  alone -- there is nothing there to add to. }
+procedure BumpFont(AFont: TFont; APoints: Integer);
+var
+  Px: Integer;
+begin
+  if AFont.Size > 0 then
+  begin
+    AFont.Size := AFont.Size + APoints;
+    Exit;
+  end;
+  Px := MulDiv(APoints, AFont.PixelsPerInch, 72);
+  if Px < 1 then Px := 1;
+  if AFont.Height < 0 then
+    AFont.Height := AFont.Height - Px
+  else if AFont.Height > 0 then
+    AFont.Height := AFont.Height + Px;
+end;
+
 function LedNBColours: TLedNBColourSet;
 begin
   Result := LedPageColours;
@@ -888,7 +919,7 @@ begin
   { A size up from the editor's.  The pane is a reading view -- the cells are
     looked at rather than typed in all day -- and at the editor's own size the
     code in it came out smaller than the prose around it. }
-  if FEdit.Font.Size > 0 then FEdit.Font.Size := FEdit.Font.Size + 2;
+  BumpFont(FEdit.Font, 2);
   LedApplyThemeToEditor(LedCurrentTheme, FEdit);
   { On the code block's shade rather than the page's, which is what makes a
     cell read as a cell.  After the theme, so it is not overwritten by it. }
