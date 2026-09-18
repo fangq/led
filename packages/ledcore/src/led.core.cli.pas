@@ -37,6 +37,10 @@ type
     ShowHelp: Boolean;
     SelfTest: Boolean;
     BenchLongLine: Boolean;
+    { --bench-open: opens each file named, times what that costs and says
+      so, then exits.  For measuring the editor against real files rather
+      than against a feeling about them. }
+    BenchOpen: Boolean;
     UseSession: Boolean;
     UseSessionSet: Boolean;
     AppName: string;
@@ -183,6 +187,7 @@ begin
       else if (Arg = '-h') or (Arg = '--help') then ShowHelp := True
       else if Arg = '--self-test' then SelfTest := True
       else if Arg = '--bench-longline' then BenchLongLine := True
+      else if Arg = '--bench-open' then BenchOpen := True
       else if TakeValue('--app-name', Value) then AppName := Value
       else if TakeValue('--geometry', Value) then Geometry := Value
       else if TakeValue('--script', Value) then ScriptFile := Value
@@ -327,6 +332,7 @@ begin
     '      --script=FILE      run a script and exit' + LineEnding +
     '      --self-test        run the built-in checks and exit' + LineEnding +
     '      --bench-longline   run the long-line benchmark and exit' + LineEnding +
+    '      --bench-open       time opening the files named, then exit' + LineEnding +
     '  -h, --help             show this text' + LineEnding +
     '      --version          show the version';
 end;

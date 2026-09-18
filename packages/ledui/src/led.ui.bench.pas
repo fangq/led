@@ -13,13 +13,28 @@ unit Led.UI.Bench;
 
 interface
 
+uses
+  Led.Core.CLI;
+
 function LedRunLongLineBench: Integer;
+
+{ Opens each file named on the command line, times what that costs, and says
+  so.  Run with `led --bench-open FILE...`; needs a display.
+
+  What it times is what a reader waits for: the file decoded and in the
+  buffer with its first page painted, then a page-down through it, then the
+  pane that belongs to that kind of file -- the Markdown preview, the
+  notebook's cells, the outline -- because a notebook that opens in a
+  hundred milliseconds and then spends two seconds building cells is not a
+  notebook that opens in a hundred milliseconds. }
+function LedRunOpenBench(ACmd: TLedCommandLine): Integer;
 
 implementation
 
 uses
   Classes, SysUtils, Forms, Controls, LCLIntf,
-  Led.Core.FileIO, Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit;
+  Led.Core.FileIO, Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit,
+  Led.UI.Dock, Led.UI.NBPane;
 
 type
   TStep = record
@@ -29,6 +44,9 @@ type
 
 var
   Steps: array of TStep;
+  { The open benchmark keeps its own list, so that one file's timings are
+    not appended to the last one's. }
+  Steps_: array of TStep;
 
 { The buffer length is printed beside every step on purpose.  Truncation is
   a display feature, so any step that changes this number has reached the
@@ -48,6 +66,9 @@ begin
   if WatchLen <> nil then
     L := Format('   buffer=%d', [WatchLen()]);
   WriteLn(Format('  %-42s %6d ms%s', [AName, Steps[High(Steps)].Millis, L]));
+  { Flushed, because this is read from a file while it runs: a phase that
+    takes a minute should say so a minute in, not at the end. }
+  Flush(Output);
 end;
 
 procedure Pump;
@@ -220,6 +241,143 @@ begin
   WriteLn(Format('  lines=%d  first line length=%d',
     [V.Lines.Count, Length(V.Lines[0])]));
   WriteLn;
+end;
+
+{ ---- opening real files ---- }
+
+function LedRunOpenBench(ACmd: TLedCommandLine): Integer;
+var
+  F: TLedMainForm;
+  i, k, Steps: Integer;
+  T, Total: QWord;
+  Files: TStringList;
+  Path: string;
+  Tab: TLedTab;
+  V: TLedEdit;
+  Doc: TLedDocument;
+begin
+  Result := 0;
+  F := LedMainForm;
+  { No dialog may appear.  A benchmark that stops on a question is a
+    benchmark that never finishes -- and the first run of this one sat for
+    ten minutes using no processor at all, which is what waiting for
+    somebody to click Yes looks like from outside. }
+  F.Silent := True;
+  F.Show;
+  Pump;
+
+  WriteLn('LED open benchmark');
+  WriteLn('  each phase is what the reader waits for, in milliseconds');
+  WriteLn;
+
+  for i := 0 to ACmd.FileCount - 1 do
+  begin
+    Path := ACmd.Files[i].Path;
+    if not FileExists(Path) then
+    begin
+      WriteLn('  (no such file: ', Path, ')');
+      Continue;
+    end;
+    WriteLn(Format('%s  (%d KiB)', [ExtractFileName(Path),
+      FileSizeKiB(Path)]));
+    SetLength(Steps_, 0);
+
+    Total := GetTickCount64;
+    Files := TStringList.Create;
+    try
+      Files.Add(Path);
+      T := GetTickCount64;
+      F.OpenFiles(Files);
+      Pump;
+      Note('open (decode, buffer, highlighter, first paint)', T);
+    finally
+      Files.Free;
+    end;
+
+    Tab := F.ActiveTab;
+    if Tab = nil then Continue;
+    V := Tab.ActiveView;
+    Doc := Tab.Document;
+    WatchLen := nil;
+
+    if V <> nil then
+    begin
+      WriteLn(Format('  %-42s %6d lines', ['(the buffer holds)',
+        V.Lines.Count]));
+
+      { A page down, twenty times: every row that comes into view is
+        measured, highlighted and painted, which is what scrolling costs. }
+      T := GetTickCount64;
+      for k := 1 to 20 do
+      begin
+        V.TopLine := V.TopLine + V.LinesInWindow;
+        Pump;
+      end;
+      Note('scroll twenty pages', T);
+
+      T := GetTickCount64;
+      V.TopLine := 1;
+      V.CaretXY := Point(1, 1);
+      Pump;
+      Note('back to the top', T);
+
+      { To the end, which for a big file is the case that finds a walk of
+        the whole buffer. }
+      T := GetTickCount64;
+      V.CaretXY := Point(1, V.Lines.Count);
+      Pump;
+      Note('caret to the last line', T);
+    end;
+
+    { The pane that belongs to this kind of file. }
+    if Doc.IsNotebook then
+    begin
+      T := GetTickCount64;
+      if not F.Dock.PaneVisible('notebook') then
+        F.actToggleNotebookPane.Execute;
+      F.RefreshNotebookPane;
+      Pump;
+      Note('notebook pane (cells on screen)', T);
+
+      T := GetTickCount64;
+      for k := 1 to 20 do
+      begin
+        F.NotebookPane.ScrollPos := F.NotebookPane.ScrollPos + 400;
+        Pump;
+      end;
+      Note('scroll the cells twenty times', T);
+      F.Dock.HidePane('notebook');
+      Pump;
+    end
+    else if F.Preview <> nil then
+    begin
+      T := GetTickCount64;
+      if not F.Dock.PaneVisible('preview') then
+        F.actTogglePreviewExecute(nil);
+      F.Preview.RenderNow;
+      Pump;
+      Note('markdown preview (render)', T);
+      F.Dock.HidePane('preview');
+      Pump;
+    end;
+
+    T := GetTickCount64;
+    if not F.Dock.PaneVisible('symbols') then
+      F.actToggleSymbolsExecute(nil);
+    Pump;
+    Note('outline pane', T);
+    F.Dock.HidePane('symbols');
+    Pump;
+
+    T := GetTickCount64;
+    Doc.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+    Note('close', T);
+
+    WriteLn(Format('  %-42s %6d ms', ['TOTAL', GetTickCount64 - Total]));
+    WriteLn;
+  end;
 end;
 
 function LedRunLongLineBench: Integer;

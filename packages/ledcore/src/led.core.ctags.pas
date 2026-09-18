@@ -30,6 +30,9 @@ type
   TLedTags = class
   private
     FItems: array of TLedTag;
+    { How many of them are real: the array is grown in blocks, so its length
+      is not the answer. }
+    FCount: Integer;
     function GetCount: Integer;
     function GetItem(AIndex: Integer): TLedTag;
   public
@@ -72,7 +75,7 @@ end;
 
 function TLedTags.GetCount: Integer;
 begin
-  Result := Length(FItems);
+  Result := FCount;
 end;
 
 function TLedTags.GetItem(AIndex: Integer): TLedTag;
@@ -82,13 +85,19 @@ end;
 
 procedure TLedTags.Clear;
 begin
+  FCount := 0;
   SetLength(FItems, 0);
 end;
 
 procedure TLedTags.Add(const ATag: TLedTag);
 begin
-  SetLength(FItems, Length(FItems) + 1);
-  FItems[High(FItems)] := ATag;
+  { Grown in blocks and trimmed at the end, rather than one at a time: a
+    large C++ file has thirty thousand tags, and reallocating the array for
+    each of them copies it thirty thousand times. }
+  if FCount >= Length(FItems) then
+    SetLength(FItems, Length(FItems) * 2 + 256);
+  FItems[FCount] := ATag;
+  Inc(FCount);
 end;
 
 function TLedTags.KindName(const AKind: string): string;
@@ -217,13 +226,20 @@ begin
   finally
     Lines.Free;
   end;
-  Result := Length(FItems);
+  Result := FCount;
 end;
 
 function TLedTags.RunOn(const AFileName: string): Boolean;
+const
+  { A pipe holds 64 KiB on Linux; reading in chunks of that size means one
+    read per bufferful rather than one per line. }
+  ChunkSize = 64 * 1024;
 var
   P: TProcess;
-  Output: TStringList;
+  Chunk: array[0..ChunkSize - 1] of Byte;
+  Got: Integer;
+  Text: string;
+  Held: Int64;
 begin
   Result := False;
   Clear;
@@ -231,7 +247,6 @@ begin
   if not LedCtagsAvailable then Exit;
 
   P := TProcess.Create(nil);
-  Output := TStringList.Create;
   try
     P.Executable := FCtagsPath;
     { -f - writes to stdout, which avoids a temporary file entirely. }
@@ -240,17 +255,43 @@ begin
     P.Parameters.Add('--fields=+nKs');
     P.Parameters.Add('--excmd=number');
     P.Parameters.Add(AFileName);
-    P.Options := [poUsePipes, poNoConsole, poWaitOnExit];
+    { Read while it runs, and waited for afterwards.
+
+      Not poWaitOnExit with the reading after it, which is what this did and
+      is a deadlock waiting for a big enough file: a pipe holds 64 KiB, and
+      when ctags fills it the child blocks on the write while the parent
+      blocks on the exit.  Neither ever moves.  Measured, it took about six
+      hundred tags -- an ordinary large C file -- and the reader saw the
+      editor stop dead the moment the Outline pane was opened on one.
+
+      Errors go into the same pipe rather than into one nobody reads, which
+      would deadlock the same way for a file ctags complains about at
+      length.  ParseText skips anything that is not a tag line. }
+    P.Options := [poUsePipes, poNoConsole, poStderrToOutPut];
+    Text := '';
+    Held := 0;
     try
       P.Execute;
-      Output.LoadFromStream(P.Output);
+      repeat
+        { Blocks until there is something or the child closes the pipe,
+          which is what makes this a loop and not a poll. }
+        Got := P.Output.Read(Chunk, ChunkSize);
+        if Got > 0 then
+        begin
+          if Held + Got > Length(Text) then
+            SetLength(Text, (Held + Got) * 2 + ChunkSize);
+          Move(Chunk[0], Text[Held + 1], Got);
+          Inc(Held, Got);
+        end;
+      until Got <= 0;
+      SetLength(Text, Held);
+      P.WaitOnExit;
     except
       Exit;
     end;
-    ParseText(Output.Text);
+    ParseText(Text);
     Result := True;
   finally
-    Output.Free;
     P.Free;
   end;
 end;

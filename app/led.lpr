@@ -62,7 +62,8 @@ begin
       another instance would test the wrong binary. }
     HandedOver := False;
     Inst := TLedInstance.Create(Cmd.AppName);
-    if (not Cmd.NewApp) and (not Cmd.SelfTest) and (not Cmd.BenchLongLine) then
+    if (not Cmd.NewApp) and (not Cmd.SelfTest) and (not Cmd.BenchLongLine)
+       and (not Cmd.BenchOpen) then
     begin
       if Inst.Start = lirClient then
       begin
@@ -134,6 +135,8 @@ begin
       Exit(LedRunSelfTest);
     if Cmd.BenchLongLine then
       Exit(LedRunLongLineBench);
+    if Cmd.BenchOpen then
+      Exit(LedRunOpenBench(Cmd));
 
     LedMainForm.ApplyCommandLine(Cmd, GetCurrentDir);
     Application.Run;
