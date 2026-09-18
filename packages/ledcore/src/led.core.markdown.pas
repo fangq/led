@@ -37,6 +37,32 @@ function LedMarkdownToPage(const AText, ATitle: string;
 function LedIsLanguageWord(const AWord: string): Boolean;
 function LedHtmlEscape(const AText: string): string;
 
+{ As much of a document as is worth laying out, cut at a line boundary.
+
+  ALimitBytes <= 0 means all of it.  ACut says whether anything was left off,
+  so the caller can say so on the page.
+
+  This exists because laying out a page costs more than the square of its
+  size.  Measured through IpHtmlPanel on plain prose: 8 KiB takes 140 ms,
+  32 KiB 1.9 seconds, 256 KiB two minutes -- and a 2 MB document the best
+  part of an hour, which is what "the preview never appears" was.  On the
+  shape of document a reader actually previews -- lecture notes, a table and
+  a code sample per section -- it is three times worse again, measured end
+  to end from the pane opening:
+
+    8 KB    406 ms      32 KB   4.9 s
+    16 KB   1.3 s       96 KB   39.9 s
+
+  None of that is LED's own time: building the page from a 512 KiB document
+  is 200 ms, and the rest is spent inside the renderer after the page is
+  handed over.
+
+  The cut has to fall at a newline.  Half a fence leaves the rest of the page
+  preformatted and half a table row leaves a broken table; ending on a line
+  boundary at worst drops a paragraph early. }
+function LedPreviewCut(const AText: string; ALimitBytes: Integer;
+  out ACut: Boolean): string;
+
 { Breaks the lines inside <pre> blocks so none is wider than AColumns
   characters.  AColumns <= 0 leaves AHtml alone.
 
@@ -73,6 +99,25 @@ function LedWrapPreLines(const AHtml: string; AColumns: Integer): string;
 function LedSplitInlineRuns(const AHtml: string): string;
 
 implementation
+
+function LedPreviewCut(const AText: string; ALimitBytes: Integer;
+  out ACut: Boolean): string;
+var
+  Stop: Integer;
+begin
+  ACut := False;
+  Result := AText;
+  if ALimitBytes <= 0 then Exit;
+  if Length(AText) <= ALimitBytes then Exit;
+
+  Stop := ALimitBytes;
+  while (Stop > 1) and (AText[Stop] <> #10) do Dec(Stop);
+  { A document with no newline in its first ALimitBytes -- one very long
+    generated line, say -- has no boundary to cut at, so cut where asked. }
+  if Stop <= 1 then Stop := ALimitBytes;
+  Result := Copy(AText, 1, Stop);
+  ACut := True;
+end;
 
 function LedHtmlEscape(const AText: string): string;
 begin

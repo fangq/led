@@ -54,6 +54,10 @@ type
     procedure LineIdsCountBlankLines;
     procedure ListItemsAreMarkedOneByOne;
     procedure LineIdsSurviveTheWholePage;
+    procedure ASmallDocumentIsPreviewedWhole;
+    procedure ABigDocumentIsCutAtALineBoundary;
+    procedure NoLimitMeansTheWholeDocument;
+    procedure ALineTooLongToCutIsCutAnyway;
   end;
 
 implementation
@@ -429,6 +433,57 @@ begin
     LedMarkdownToPage('# Title', 'doc', True), '<h1 id="L1">');
   AssertFalse('and does not when it was not asked',
     Pos('id="L1"', LedMarkdownToPage('# Title', 'doc')) > 0);
+end;
+
+procedure TTestMarkdown.ASmallDocumentIsPreviewedWhole;
+var
+  Cut: Boolean;
+begin
+  AssertEquals('all of it', '# Title' + #10,
+    LedPreviewCut('# Title' + #10, 4096, Cut));
+  AssertFalse('and nothing was left off', Cut);
+end;
+
+procedure TTestMarkdown.ABigDocumentIsCutAtALineBoundary;
+var
+  Doc, Got: string;
+  Cut: Boolean;
+  i: Integer;
+begin
+  { Ten-character lines, so the limit of 95 falls inside the tenth one and
+    the cut has to fall back to the end of the ninth. }
+  Doc := '';
+  for i := 1 to 20 do Doc := Doc + 'abcdefghi' + #10;
+  Got := LedPreviewCut(Doc, 95, Cut);
+  AssertTrue('something was left off', Cut);
+  AssertEquals('cut at the newline before the limit', 90, Length(Got));
+  AssertEquals('so it ends with one', #10, Got[Length(Got)]);
+  AssertEquals('and is the start of the document', Got, Copy(Doc, 1, 90));
+end;
+
+procedure TTestMarkdown.NoLimitMeansTheWholeDocument;
+var
+  Doc: string;
+  Cut: Boolean;
+begin
+  Doc := StringOfChar('x', 5000);
+  AssertEquals('zero is no limit', 5000, Length(LedPreviewCut(Doc, 0, Cut)));
+  AssertFalse('nothing left off', Cut);
+  AssertEquals('nor is a negative one', 5000,
+    Length(LedPreviewCut(Doc, -1, Cut)));
+end;
+
+procedure TTestMarkdown.ALineTooLongToCutIsCutAnyway;
+var
+  Got: string;
+  Cut: Boolean;
+begin
+  { One generated line of JSON has no boundary to stop at.  Cutting where
+    asked is worse markup than cutting at a newline, and far better than
+    handing the renderer a megabyte. }
+  Got := LedPreviewCut(StringOfChar('x', 5000), 100, Cut);
+  AssertTrue('still cut', Cut);
+  AssertEquals('at the limit', 100, Length(Got));
 end;
 
 initialization

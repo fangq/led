@@ -101,6 +101,14 @@ const
   LedPrefRecoveryEnabled  = 'Editor/recovery_enabled';
   LedPrefRecoveryInterval = 'Editor/recovery_interval';
 
+  { How much of a document the Markdown/wiki preview lays out, in kilobytes.
+    The renderer's layout is worse than quadratic in the size of the page, so
+    this is a ceiling on waiting rather than on memory: at the default a big
+    document previews in about a second, at four times that it is a minute.
+    0 means "all of it, however long that takes".  See LedPreviewCut for the
+    measurements behind the number. }
+  LedPrefPreviewMaxKB     = 'Editor/preview_max_kb';
+
 implementation
 
 procedure LedClearInheritedPaneLock(APrefs: TLedPrefs);

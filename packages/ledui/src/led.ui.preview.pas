@@ -94,6 +94,7 @@ type
     procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
     procedure ApplyFixedFont;
+    function TruncationNote(AShown, AWhole: Integer): string;
     { Whether a picture on the web is in hand, and if not, why the page should
       say so in its place.  Asking for one starts the fetch. }
     function HaveRemote(const AURL: string; out AWhy: string): Boolean;
@@ -167,6 +168,17 @@ type
       otherwise has no way to tell a page that stayed still from one that
       was scrolled back to where it started. }
     function ScrollPos: Integer;
+
+    { Whether the page the renderer is holding carries an element with this
+      id.  For the self-test: the pane hands over a string and the renderer
+      parses it, and the two are worth telling apart. }
+    function PageHasElement(const AId: string): Boolean;
+
+    { The last document line the page was built from, or 0 for an empty
+      page.  Less than the document's own line count when the document was
+      too big to lay out whole -- see LedPreviewCut -- which is the one way
+      from outside to tell a capped page from a complete one. }
+    function LastLineShown: Integer;
 
     { Which line of the document is at the top of the page as it stands.
       What OnScrolledToLine reports, asked for directly: a check can scroll
@@ -365,6 +377,18 @@ begin
   { Restarting the timer on each call is the debounce: a burst of refreshes
     renders once, at the end. }
   FTimer.Enabled := True;
+end;
+
+{ The line that says the page is not all of the document. }
+function TLedPreviewPane.TruncationNote(AShown, AWhole: Integer): string;
+begin
+  { The id is how a check tells the note reached the renderer rather than
+    only the string that was handed to it. }
+  Result := Format('<hr><p id="ledcut"><i>Previewing the first %d KB ' +
+    'of %d KB.  Laying out a page costs more than the square of its size, ' +
+    'so the whole of this one would take far longer than this did; ' +
+    'raise %s to see more.</i></p>',
+    [AShown div 1024, AWhole div 1024, LedPrefPreviewMaxKB]);
 end;
 
 { How many characters of a code block fit across the pane.
@@ -610,6 +634,25 @@ begin
   Result := FHtml.VScrollPos;
 end;
 
+function TLedPreviewPane.PageHasElement(const AId: string): Boolean;
+var
+  Html: TIpHtml;
+begin
+  Result := False;
+  if (not FHasRendered) or (FHtml.MasterFrame = nil) then Exit;
+  Html := FHtml.MasterFrame.Html;
+  if Html = nil then Exit;
+  Result := TLedIpHtmlReach(Html).FindId(AId) <> nil;
+end;
+
+function TLedPreviewPane.LastLineShown: Integer;
+begin
+  if Length(FLineIds) = 0 then
+    Result := 0
+  else
+    Result := FLineIds[High(FLineIds)];
+end;
+
 function TLedPreviewPane.LineAtTopOfPage: Integer;
 begin
   Result := 0;
@@ -730,7 +773,8 @@ procedure TLedPreviewPane.Render(Sender: TObject);
 var
   Page: string;
   Colours: TLedPageColours;
-  Body: string;
+  Body, Shown: string;
+  Cut: Boolean;
 begin
   FTimer.Enabled := False;
   { Re-read now rather than only at construction, so a font changed in
@@ -768,10 +812,14 @@ begin
     than in the fixed light-grey wrapper LedMarkdownToPage carries, which was
     written before LED had themes. }
   Colours := LedPageColours;
+  Shown := LedPreviewCut(FPendingText,
+    LedPrefs.GetInt(LedPrefPreviewMaxKB, 16) * 1024, Cut);
   if FIsWiki then
-    Body := LedWikiToHTML(FPendingText, True)
+    Body := LedWikiToHTML(Shown, True)
   else
-    Body := LedMarkdownToHTML(FPendingText, True);
+    Body := LedMarkdownToHTML(Shown, True);
+  if Cut then Body := Body + TruncationNote(Length(Shown),
+    Length(FPendingText));
   { A picture on somebody's server cannot be drawn while the page is being
     laid out -- see Led.Core.NBFetch -- so one that is not in hand yet is
     replaced by a line saying so, and the page is drawn again when it lands. }

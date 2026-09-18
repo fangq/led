@@ -9045,6 +9045,93 @@ begin
   DeleteFile(P);
 end;
 
+{ A document too big to lay out whole is previewed in part, and says so.
+
+  The renderer's layout costs more than the square of the page's size -- see
+  LedPreviewCut -- so this is the difference between a preview and a pane
+  that never fills.  The limit is turned down for the check because the point
+  is the behaviour and not the number: at the shipped 96 KB the document this
+  would need takes twenty seconds to lay out. }
+procedure TestPreviewCapsABigDocument(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P, Was: string;
+  L: TStringList;
+  HadOne: Boolean;
+  i, Whole: Integer;
+begin
+  Say('preview of a document too big to lay out');
+  if F.Preview = nil then Exit;
+
+  HadOne := LedPrefs.HasKey(LedPrefPreviewMaxKB);
+  Was := LedPrefs.GetStr(LedPrefPreviewMaxKB, '');
+  LedPrefs.SetInt(LedPrefPreviewMaxKB, 3);
+
+  P := TempName('long.md');
+  L := TStringList.Create;
+  try
+    { Around 12 KB, four times the limit, in paragraphs of a known length so
+      the cut has plenty of boundaries to land on.  Small, because the second
+      half of the check renders the whole of it and the renderer's cost
+      climbs faster than the document does. }
+    for i := 1 to 120 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      L.Add('Some prose in section ' + IntToStr(i) + ' of the document, ' +
+        'long enough to be worth a line of its own.');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab <> nil then
+  begin
+    Whole := Tab.Document.Master.Lines.Count;
+    F.actTogglePreviewExecute(nil);
+    Pump;
+    Check('the preview of a big document renders at all', F.Preview.RenderNow);
+    Check('and says on the page that it is not all of it',
+      F.Preview.PageHasElement('ledcut'));
+    Check('the page stops well short of the end of the document',
+      (F.Preview.LastLineShown > 0) and
+      (F.Preview.LastLineShown < Whole div 2));
+
+    { The part that is there is still a working preview: the ids and the
+      line mapping are the ones the sync scroll needs. }
+    Check('the part that is shown still maps to its lines',
+      F.Preview.ScrollToLine(5));
+
+    { And with the cap off, the same document is previewed whole -- which is
+      the other half of the behaviour: a reader who raises the limit gets
+      the wait and the whole page. }
+    LedPrefs.SetInt(LedPrefPreviewMaxKB, 0);
+    F.Preview.Update(Tab.Document.Master.Lines.Text, 'long', '');
+    Check('with no limit the whole document renders', F.Preview.RenderNow);
+    Check('and then the page does not say it was cut',
+      not F.Preview.PageHasElement('ledcut'));
+    Check('and it reaches the last of the document',
+      F.Preview.LastLineShown > Whole div 2);
+
+    F.Dock.EdgeVisible[ledRight] := False;
+    Pump;
+    Tab.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(P);
+
+  { The reader's own setting, back as it was -- including "never set". }
+  if HadOne then
+    LedPrefs.SetStr(LedPrefPreviewMaxKB, Was)
+  else
+    LedPrefs.Remove(LedPrefPreviewMaxKB);
+end;
+
 procedure TestWikiMarkup(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -11939,6 +12026,7 @@ begin
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
   TestPreviewClickKeepsPage(F);
+  TestPreviewCapsABigDocument(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);
