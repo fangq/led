@@ -3039,6 +3039,116 @@ begin
   if A <> nil then Result := A.Command;
 end;
 
+{ A drag keeps the point it started from.
+
+  Reported as: dragging out a selection resets its starting position when the
+  pointer passes a fold mark.  The fold mark is incidental -- what those lines
+  have in common is that they are *short*, because in source a block opens on
+  a line holding little more than a brace, and that is where a fold mark sits.
+
+  What the pointer passing one used to do: LED clamps a drag to the end of
+  each line, so that a selection cannot cover the virtual space past it, and
+  the clamp went through BlockBegin and BlockEnd.  Those are the selection's
+  ordered ends rather than its anchor and its moving end, and assigning
+  BlockBegin collapses the selection onto that point.  Dragging upwards, the
+  moving end is the earlier of the two -- so as soon as it crossed a line
+  shorter than the column the drag began in, the anchor moved to the pointer
+  and everything selected below it was lost. }
+procedure TestDragKeepsItsStartingPoint(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Path: string;
+  L: TStringList;
+  P1, P2: TPoint;
+begin
+  Say('a drag keeps the point it started from');
+
+  Path := TempName('drag.c');
+  L := TStringList.Create;
+  try
+    L.Add('int main(int argc, char **argv)');   { 1: long }
+    L.Add('{');                                 { 2: a brace, and a fold mark }
+    L.Add('    int x = 1;');                    { 3 }
+    L.Add('    return x;');                     { 4 }
+    L.Add('}');                                 { 5 }
+    L.SaveToFile(Path);
+  finally
+    L.Free;
+  end;
+
+  F.AddTab(F.Documents.OpenFile(Path));
+  Pump; Pump;
+  V := F.ActiveTab.ActiveView;
+  if V = nil then Exit;
+  LedTryFocus(V);
+  Pump;
+
+  { Up the file from the end of line 4 to the middle of line 1, which takes
+    the pointer across line 2 -- one character long, and the line the fold
+    mark is drawn beside. }
+  P1 := V.RowColumnToPixels(Point(14, 4));
+  P2 := V.RowColumnToPixels(Point(20, 1));
+  TLedMousePoke.Drag(V, [ssLeft], P1.X, P1.Y, P2.X, P2.Y, 6);
+  Pump;
+
+  Check('the drag selected something', V.SelAvail);
+  CheckEqInt('it still starts on the line the drag started from', 4,
+    V.BlockEnd.Y);
+  CheckEqInt('and at the column it started from', 14, V.BlockEnd.X);
+  CheckEqInt('and reaches the line the pointer ended on', 1, V.BlockBegin.Y);
+  CheckEqInt('at the column it ended on', 20, V.BlockBegin.X);
+
+  { And the other way round.  The selection from the drag above is dropped
+    first: a press inside a selection is the beginning of dragging the text
+    somewhere, not of a new selection, so leaving it there would test the
+    wrong gesture. }
+  V.CaretXY := Point(1, 5);
+  V.BlockBegin := Point(1, 5);
+  V.BlockEnd := Point(1, 5);
+  Pump;
+
+  P1 := V.RowColumnToPixels(Point(20, 1));
+  P2 := V.RowColumnToPixels(Point(14, 4));
+  TLedMousePoke.Drag(V, [ssLeft], P1.X, P1.Y, P2.X, P2.Y, 6);
+  Pump;
+  CheckEqInt('dragging down still starts where it started', 1,
+    V.BlockBegin.Y);
+  CheckEqInt('and ends where the pointer ended', 4, V.BlockEnd.Y);
+
+  { A drag that *ends* out past the end of a short line: the selection is
+    pulled back to the line's end, and it survives being pulled back.  The
+    caret has to move for that, and moving the caret is how a selection is
+    normally given up -- so this is where the drag would lose everything it
+    had selected instead of losing the virtual spaces. }
+  V.CaretXY := Point(1, 5);
+  V.BlockBegin := Point(1, 5);
+  V.BlockEnd := Point(1, 5);
+  Pump;
+  P1 := V.RowColumnToPixels(Point(14, 4));
+  P2 := V.RowColumnToPixels(Point(12, 2));
+  TLedMousePoke.Drag(V, [ssLeft], P1.X, P1.Y, P2.X, P2.Y, 4);
+  Pump;
+  Check('a drag onto the space past a short line still has a selection',
+    V.SelAvail);
+  CheckEqInt('which still reaches the line it started on', 4, V.BlockEnd.Y);
+  CheckEqInt('and stops at the end of the short line, not out past it', 2,
+    V.BlockBegin.X);
+  CheckEqInt('on that line', 2, V.BlockBegin.Y);
+  CheckEqInt('with the caret pulled back to the same place', 2, V.CaretX);
+
+  { The clamp itself still works: neither end of the selection may sit past
+    the end of its own line, which is what the drag would otherwise leave
+    behind on the short lines it crossed. }
+  Check('no end of the selection is past the end of its line',
+    (V.BlockBegin.X <= Length(V.Lines[V.BlockBegin.Y - 1]) + 1) and
+    (V.BlockEnd.X <= Length(V.Lines[V.BlockEnd.Y - 1]) + 1));
+
+  F.ActiveTab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestColumnSelection(F: TLedMainForm);
 var
   V: TLedEdit;
@@ -12151,6 +12261,7 @@ begin
   WriteLn;
   TestFindReplace(F);
   WriteLn;
+  TestDragKeepsItsStartingPoint(F);
   TestColumnSelection(F);
   WriteLn;
   TestPrefsAndShortcuts(F);

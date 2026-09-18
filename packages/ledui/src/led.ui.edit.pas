@@ -175,6 +175,8 @@ type
     procedure MouseDown(AButton: TMouseButton; AShift: TShiftState;
       X, Y: Integer); override;
     procedure MouseMove(AShift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(AButton: TMouseButton; AShift: TShiftState;
+      X, Y: Integer); override;
     { Typing over a dump edits a byte rather than inserting a character, so
       the key never reaches SynEdit's own input. }
     procedure UTF8KeyPress(var Key: TUTF8Char); override;
@@ -930,19 +932,33 @@ procedure TLedEdit.ClampSelectionToLineEnd;
   end;
 
 var
-  B, E: TPoint;
+  Anchor, Moving: TPoint;
 begin
   if FHexMode then Exit;
   if SelectionMode = smColumn then Exit;   { a rectangle may reach past a line }
   if not SelAvail then Exit;
-  B := Clamped(BlockBegin);
-  E := Clamped(BlockEnd);
-  if (B.X = BlockBegin.X) and (E.X = BlockEnd.X) then Exit;
-  { Assigned rather than set through SetCaretAndSelection, which is private
-    to TCustomSynEdit.  BlockBegin first: assigning it moves the anchor and
-    takes the far end with it. }
-  BlockBegin := B;
-  BlockEnd := E;
+  if FBlockSelection = nil then Exit;
+
+  { The selection's own two ends, rather than BlockBegin and BlockEnd.
+
+    Those two are the selection *ordered*: BlockBegin is whichever end comes
+    first in the document, and assigning it collapses the selection onto that
+    point and leaves it as the anchor.  Dragging upwards the moving end is
+    the earlier of the two -- so clamping through BlockBegin moved the anchor
+    to wherever the pointer had got to, and everything selected below it was
+    gone.  Reported as the selection resetting when the pointer passes a fold
+    mark: a block opens on a line holding little more than a brace, and a
+    line that short is exactly the one whose end a drag has to be clamped to.
+
+    StartLineBytePosAdjusted moves the anchor without collapsing the
+    selection, which is what it exists for, and EndLineBytePos moves the
+    other end and leaves the anchor where it is. }
+  Anchor := FBlockSelection.StartLineBytePos;
+  Moving := FBlockSelection.EndLineBytePos;
+  if (Clamped(Anchor).X = Anchor.X) and (Clamped(Moving).X = Moving.X) then
+    Exit;
+  FBlockSelection.StartLineBytePosAdjusted := Clamped(Anchor);
+  FBlockSelection.EndLineBytePos := Clamped(Moving);
 end;
 
 function TLedEdit.SelectionIsReal: Boolean;
@@ -1707,22 +1723,52 @@ var
 begin
   inherited MouseMove(AShift, X, Y);
 
-  { A drag stops at the end of the line, as a click does.  Without this every
-    click was a tiny drag into the space past the line -- a mouse moves a
-    pixel or two between press and release -- which left a selection of
-    virtual spaces: nothing drawn, nothing to see, and the current-line rules
-    suppressed because SynEdit said there was a selection. }
-  if (ssLeft in AShift) and (AShift * [ssCtrl, ssAlt] = []) and
-     (SelectionMode <> smColumn) then
-  begin
-    ClampCaretToLineEnd;
-    ClampSelectionToLineEnd;
-  end;
+  { A drag is clamped to the ends of the lines when it finishes, in MouseUp,
+    and not here.  Correcting the caret or the selection while the pointer is
+    still down cannot be done without disturbing the point the drag started
+    from, and it fired on just the lines a drag passes over that are shorter
+    than the column it began in. }
 
   if not Assigned(FOnHoverExpression) then Exit;
   Expr := ExpressionAtPixels(X, Y);
   if Expr = FHoverExpr then Exit;
   RequestHover(Expr);
+end;
+
+procedure TLedEdit.MouseUp(AButton: TMouseButton; AShift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseUp(AButton, AShift, X, Y);
+
+  { The end of a drag is where it is pulled back to the text.
+
+    What this is for: eoScrollPastEol is on, because column selection needs
+    it, so the caret can sit out in the space past a line where there is
+    nothing.  A press, a pixel or two of movement and a release -- which is
+    what an ordinary click is, from a real mouse -- is a drag as far as
+    SynEdit is concerned, and out there it selects virtual spaces that are
+    not in the buffer: nothing is drawn for them, and the current-line rules
+    go away because SynEdit says there is a selection.
+
+    On release rather than on every move, which is where this used to be.
+    Mid-drag the correction cannot be made without disturbing the point the
+    drag started from -- moving the caret collapses the selection onto it --
+    and it fired on exactly those lines a drag passes over that are shorter
+    than the column it began in.  In source those are the lines holding
+    little more than a brace, which are the lines a fold mark is drawn
+    beside: the reported "selection resets when the pointer passes a fold
+    mark". }
+  if (AButton <> mbLeft) or (AShift * [ssCtrl, ssAlt] <> []) or
+     (SelectionMode = smColumn) then Exit;
+  ClampSelectionToLineEnd;
+  { The selection first and the caret second.  Moving a caret is how a
+    selection is normally given up, so the order looks fragile -- but by here
+    the selection has already been pulled back to the same place the caret is
+    about to be, and SynEdit's own mouse-selection is still in hand, so the
+    move extends rather than abandons.  The check for a drag that ends out
+    past a short line is what says so; it fails if the selection is clamped
+    through its ordered ends instead of its own two. }
+  ClampCaretToLineEnd;
 end;
 
 procedure TLedEdit.RequestHover(const AExpr: string);
