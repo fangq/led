@@ -22,7 +22,8 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Graphics, SynEditHighlighter,
-  Led.Core.Markdown, Led.Syn.Factory, Led.Syn.Theme, Led.UI.Document;
+  Led.Core.Markdown, Led.Core.StrBuf, Led.Syn.Factory, Led.Syn.Theme,
+  Led.UI.Document;
 
 type
   { The colours a page is drawn in, all of them derived from the theme. }
@@ -83,6 +84,11 @@ function LedPageHead(const ATitle: string;
 function LedPageTail: string;
 
 implementation
+
+var
+  { One highlighter per language, kept for the process: see
+    PageHighlighter. }
+  GPageHigh: TStringList = nil;
 
 function LedPageColours: TLedPageColours;
 var
@@ -183,6 +189,38 @@ begin
   end;
 end;
 
+{ The highlighter for a language, made once and kept.
+
+  One per language for the life of the process, not one per block: a page of
+  a lecture has a code sample in every section, and building a highlighter
+  and colouring its attributes from the theme for each of them is most of
+  what colouring a page used to cost.  Its own instances rather than the
+  shared cached ones, because an editor's highlighter carries the scan state
+  of the document it is attached to and this drives them by hand. }
+function PageHighlighter(const ALang: string): TSynCustomHighlighter;
+var
+  i: Integer;
+begin
+  Result := nil;
+  if ALang = '' then Exit;
+  if GPageHigh = nil then
+  begin
+    GPageHigh := TStringList.Create;
+    GPageHigh.OwnsObjects := True;
+    GPageHigh.CaseSensitive := False;
+  end;
+  i := GPageHigh.IndexOf(ALang);
+  if i >= 0 then
+  begin
+    Result := TSynCustomHighlighter(GPageHigh.Objects[i]);
+    Exit;
+  end;
+  Result := LedCreateHighlighter(ALang);
+  { A language LED cannot colour is remembered as nothing, so it is not
+    looked up again for every block of it. }
+  GPageHigh.AddObject(ALang, Result);
+end;
+
 { One block of code, tokenised by ALang's highlighter and written out as
   coloured spans, one <br>-terminated line at a time.  A language LED cannot
   colour comes back as plain text in the page's own colour, which is what a
@@ -196,11 +234,12 @@ var
   Attr: TSynHighlighterAttributes;
   Colour: TColor;
   Painted, Mask, Line: string;
+  Buf: TLedStrBuf;
 begin
   Result := '';
-  HL := nil;
-  if ALang <> '' then HL := LedCreateHighlighter(ALang);
+  HL := PageHighlighter(ALang);
 
+  Buf.Init(Length(ACode) * 2 + 256);
   Lines := TStringList.Create;
   try
     Lines.TextLineBreakStyle := tlbsLF;
@@ -216,12 +255,16 @@ begin
       for i := 0 to Lines.Count - 1 do
       begin
         Line := Lines[i];
-        if i > 0 then Result := Result + '<br>' + #10;
-        Result := Result + CodeText(Line, 1, NbspMask(Line));
+        if i > 0 then Buf.Add('<br>' + #10);
+        Buf.Add(CodeText(Line, 1, NbspMask(Line)));
       end;
+      Result := Buf.Text;
       Exit;
     end;
 
+    { Coloured from the theme here rather than when the instance was made:
+      the theme can change between one page and the next, and applying it to
+      one highlighter per page is nothing. }
     LedApplyThemeToHighlighter(LedCurrentTheme, HL);
     HL.ResetRange;
     for i := 0 to Lines.Count - 1 do
@@ -231,7 +274,7 @@ begin
       { In order and without resetting between lines: that is what carries a
         string or a comment from one line of the block to the next. }
       HL.SetLine(Line, i);
-      Painted := '';
+      if i > 0 then Buf.Add('<br>' + #10);
       while not HL.GetEol do
       begin
         Attr := HL.GetTokenAttribute;
@@ -241,102 +284,122 @@ begin
         { Against the block's own background rather than the page's: a colour
           chosen to be read on one is not always readable on the other. }
         Colour := LedEnsureReadable(Colour, ABackColour, 3.0);
-        Painted := Painted + '<font color="' + LedHtmlColour(Colour) + '">' +
-          CodeText(HL.GetToken, HL.GetTokenPos + 1, Mask) + '</font>';
+        Buf.Add('<font color="');
+        Buf.Add(LedHtmlColour(Colour));
+        Buf.Add('">');
+        Buf.Add(CodeText(HL.GetToken, HL.GetTokenPos + 1, Mask));
+        Buf.Add('</font>');
         HL.Next;
       end;
-      if i > 0 then Result := Result + '<br>' + #10;
-      Result := Result + Painted;
     end;
+    Result := Buf.Text;
   finally
     Lines.Free;
-    HL.Free;
   end;
 end;
 
 { Wraps what is inside every AOpen..AClose in the page's text colour.  Used
   for table cells, which the renderer otherwise draws in black whatever the
-  page says -- unreadable on a dark theme beside prose that is fine. }
+  page says -- unreadable on a dark theme beside prose that is fine.
+
+  One pass, appending as it goes.  The first version cut and rejoined the
+  whole page for every cell it found and lowered the case of the whole page
+  to find the next one, which for a document rather than a notebook cell is
+  the difference between a page appearing and a page never appearing: half a
+  megabyte took sixteen seconds and a doubling took four times as long. }
 function ColourCells(const AHtml, AOpen, AClose: string;
   ATextColour: TColor): string;
 var
   At, Start, Stop, Close_: Integer;
-  Body, Replacement, Lower: string;
+  Buf: TLedStrBuf;
+  Ink: string;
 begin
-  Result := AHtml;
+  Buf.Init(Length(AHtml) + Length(AHtml) div 4);
+  Ink := '<font color="' + LedHtmlColour(ATextColour) + '">';
   At := 1;
   while True do
   begin
-    Lower := LowerCase(Result);
-    Start := PosEx(AOpen, Lower, At);
+    Start := LedFindCI(AHtml, AOpen, At);
     if Start = 0 then Break;
-    Close_ := PosEx('>', Result, Start);
+    Close_ := PosEx('>', AHtml, Start);
     if Close_ = 0 then Break;
-    Stop := PosEx(AClose, Lower, Close_);
+    Stop := LedFindCI(AHtml, AClose, Close_);
     if Stop = 0 then Break;
 
-    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
+    { Everything up to and including the opening tag goes over unchanged. }
+    Buf.AddSlice(AHtml, At, Close_ - At + 1);
     { Already coloured -- a cell holding code, say -- and left alone. }
-    if Pos('<font', LowerCase(Body)) = 1 then
+    if LedSameCI(AHtml, Close_ + 1, '<font') then
+      Buf.AddSlice(AHtml, Close_ + 1, Stop - Close_ - 1)
+    else
     begin
-      At := Stop + Length(AClose);
-      Continue;
+      Buf.Add(Ink);
+      Buf.AddSlice(AHtml, Close_ + 1, Stop - Close_ - 1);
+      Buf.Add('</font>');
     end;
-    Replacement := Copy(Result, Start, Close_ - Start + 1) +
-      '<font color="' + LedHtmlColour(ATextColour) + '">' + Body + '</font>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop, MaxInt);
-    At := Start + Length(Replacement);
+    At := Stop;
   end;
+  Buf.AddSlice(AHtml, At, Length(AHtml) - At + 1);
+  Result := Buf.Text;
 end;
 
 function LedPageColourCode(const AHtml: string;
   ATextColour, ABackColour: TColor): string;
 var
   At, Start, Stop, Close_, Quote: Integer;
-  Head, Lang, Body, Replacement, Lower: string;
+  Head, Lang, Body, Ink: string;
+  Buf: TLedStrBuf;
+  Pass: string;
 begin
-  Result := AHtml;
+  Ink := '<font color="' + LedHtmlColour(ATextColour) + '">';
 
   { ---- inline code ----
 
     Before the fenced blocks, because those are rewritten into <code> as
-    well and this pass would then find them and wrap them a second time. }
+    well and this pass would then find them and wrap them a second time.
+
+    Each pass appends into a buffer as it goes rather than cutting and
+    rejoining the page for every match, and each looks for its next match
+    without lowering the case of the whole page to do it.  Both of those
+    were per-match costs over the whole document, which is quadratic and was
+    measured at sixteen seconds for half a megabyte. }
+  Buf.Init(Length(AHtml) + Length(AHtml) div 4);
   At := 1;
   while True do
   begin
-    Lower := LowerCase(Result);
-    Start := PosEx('<code>', Lower, At);
+    Start := LedFindCI(AHtml, '<code>', At);
     if Start = 0 then Break;
-    Stop := PosEx('</code>', Lower, Start);
+    Stop := LedFindCI(AHtml, '</code>', Start);
     if Stop = 0 then Break;
-    Body := Copy(Result, Start + 6, Stop - Start - 6);
-    Replacement := '<code><font color="' + LedHtmlColour(ATextColour) + '">' +
-      Body + '</font></code>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop + Length('</code>'), MaxInt);
-    At := Start + Length(Replacement);
+    Buf.AddSlice(AHtml, At, Start - At);
+    Buf.Add('<code>');
+    Buf.Add(Ink);
+    Buf.AddSlice(AHtml, Start + 6, Stop - Start - 6);
+    Buf.Add('</font></code>');
+    At := Stop + Length('</code>');
   end;
+  Buf.AddSlice(AHtml, At, Length(AHtml) - At + 1);
+  Pass := Buf.Text;
 
   { ---- table cells ---- }
-  Result := ColourCells(Result, '<td', '</td>', ATextColour);
-  Result := ColourCells(Result, '<th', '</th>', ATextColour);
+  Pass := ColourCells(Pass, '<td', '</td>', ATextColour);
+  Pass := ColourCells(Pass, '<th', '</th>', ATextColour);
 
   { ---- fenced blocks ---- }
+  Buf.Init(Length(Pass) + Length(Pass) div 4);
   At := 1;
   while True do
   begin
-    Lower := LowerCase(Result);
-    Start := PosEx('<pre', Lower, At);
+    Start := LedFindCI(Pass, '<pre', At);
     if Start = 0 then Break;
-    Close_ := PosEx('>', Result, Start);
+    Close_ := PosEx('>', Pass, Start);
     if Close_ = 0 then Break;
-    Stop := PosEx('</pre>', Lower, Close_);
+    Stop := LedFindCI(Pass, '</pre>', Close_);
     if Stop = 0 then Break;
 
-    Head := Copy(Result, Start, Close_ - Start + 1);
+    Head := Copy(Pass, Start, Close_ - Start + 1);
     Lang := '';
-    Quote := Pos('class="language-', LowerCase(Head));
+    Quote := LedFindCI(Head, 'class="language-', 1);
     if Quote > 0 then
     begin
       Lang := Copy(Head, Quote + Length('class="language-'), MaxInt);
@@ -344,20 +407,25 @@ begin
       if Quote > 0 then Lang := Copy(Lang, 1, Quote - 1);
     end;
 
-    Body := Copy(Result, Close_ + 1, Stop - Close_ - 1);
+    Body := Copy(Pass, Close_ + 1, Stop - Close_ - 1);
+    Buf.AddSlice(Pass, At, Start - At);
     { The language it named is carried over onto the <code>, so that what
       the page says about itself survives the rewrite. }
-    Replacement := '<p><code';
-    if Lang <> '' then Replacement := Replacement + ' class="language-' +
-      Lang + '"';
-    Replacement := Replacement + '><font color="' +
-      LedHtmlColour(ATextColour) + '">' +
-      ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour) +
-      '</font></code></p>';
-    Result := Copy(Result, 1, Start - 1) + Replacement +
-      Copy(Result, Stop + Length('</pre>'), MaxInt);
-    At := Start + Length(Replacement);
+    Buf.Add('<p><code');
+    if Lang <> '' then
+    begin
+      Buf.Add(' class="language-');
+      Buf.Add(Lang);
+      Buf.Add('"');
+    end;
+    Buf.Add('>');
+    Buf.Add(Ink);
+    Buf.Add(ColouredCode(Unescaped(Body), Lang, ATextColour, ABackColour));
+    Buf.Add('</font></code></p>');
+    At := Stop + Length('</pre>');
   end;
+  Buf.AddSlice(Pass, At, Length(Pass) - At + 1);
+  Result := Buf.Text;
 end;
 
 function LedPageHead(const ATitle: string;
@@ -389,5 +457,8 @@ function LedPageTail: string;
 begin
   Result := '</body></html>';
 end;
+
+finalization
+  GPageHigh.Free;
 
 end.
