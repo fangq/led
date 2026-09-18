@@ -731,6 +731,9 @@ type
     { The preview pane.  Public because whether its HTML control accepted
       what the converter produced is not observable from anywhere else --
       the render path turns an exception into a message label. }
+    { The search window, once it has been opened.  For the check that the
+      editing keys reach its box rather than the document behind it. }
+    property FindWindow: TLedFindForm read FFindForm;
     property Preview: TLedPreviewPane read FPreview;
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;

@@ -92,6 +92,9 @@ type
     constructor CreateFor(AOwner: TComponent; AState: TLedSearchState;
       AGetView: TLedViewFunc);
     procedure ShowFor(AReplace: Boolean);
+    { The box the search text is typed into.  Public so a check can put the
+      caret in it and ask what an editing key does there. }
+    property SearchBox: TComboBox read FCboFind;
   end;
 
   { The incremental bar.  Parented into the window rather than floating,
@@ -471,6 +474,13 @@ begin
   FCboReplace.Enabled := AReplace;
   FLblStatus.Caption := '';
   Show;
+  { In front, and then focused.  A window the manager has left behind the
+    editor cannot take the keyboard, and what the reader gets then is a
+    search box that ignores them while their typing -- and their paste --
+    goes into the document underneath.  BringToFront is what the rest of LED
+    uses to raise a window; on Wayland a client cannot raise itself and the
+    taskbar entry is all there is. }
+  BringToFront;
   LedTryFocus(FCboFind);
 end;
 

@@ -51,7 +51,7 @@ uses
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
-  Led.UI.Outline, Led.Core.Outline,
+  Led.UI.Outline, Led.Core.Outline, Led.UI.EditKeys,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
@@ -2391,6 +2391,129 @@ begin
   finally
     Solo.Free;
   end;
+end;
+
+{ The editing keys belong to the box the caret is in.
+
+  Reported as: Ctrl+F, then paste, and the text goes into the document behind
+  the search window instead of into the search box.  The LCL offers a
+  shortcut to the focused form and then to the *main* form -- so a dialog of
+  plain controls, which has no shortcuts of its own, hands Ctrl+V to LED's
+  window, where it is the editor's Paste action.
+
+  Asked of LedEditKeyAction rather than of a keystroke: the LCL reads the
+  live modifier state off the keyboard rather than out of the message, so a
+  scripted key cannot say that Ctrl was down.  What the hook adds on top is
+  one line, and that it is installed is checked too. }
+procedure TestEditKeysGoToTheFocusedBox(F: TLedMainForm);
+var
+  V: TLedEdit;
+  Before: string;
+  Box: TComboBox;
+  Edit: TEdit;
+  WasSilent: Boolean;
+begin
+  Say('the editing keys go to the box with the caret');
+
+  Check('the guard is installed', Assigned(Application.OnShortcut));
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  V := F.ActiveTab.ActiveView;
+  if V = nil then Exit;
+  V.Lines.Text := 'the document';
+  V.CaretXY := Point(1, 1);
+  Pump;
+  Clipboard.AsText := 'from the clipboard';
+  Before := V.Lines.Text;
+
+  { ---- the search window ----
+
+    Opened for real, which means lifting the silent flag for the length of
+    this check: ShowFindForm does nothing while it is up, so that a scripted
+    run cannot leave windows on somebody's screen.  This one is closed again
+    a few lines down. }
+  WasSilent := F.Silent;
+  F.Silent := False;
+  F.actFind.Execute;
+  Pump; Pump;
+  Check('the search window is up', F.FindWindow <> nil);
+  if F.FindWindow = nil then
+  begin
+    F.Silent := WasSilent;
+    Exit;
+  end;
+  Box := F.FindWindow.SearchBox;
+  Check('and it has a box to type in', Box <> nil);
+  if Box = nil then
+  begin
+    F.Silent := WasSilent;
+    Exit;
+  end;
+
+  Box.Text := '';
+  Box.SelStart := 0;
+  Check('Ctrl+V is dealt with where the caret is',
+    LedEditKeyAction(VK_V, [ssCtrl], Box));
+  CheckEq('the clipboard went into the search box', 'from the clipboard',
+    Box.Text);
+  CheckEq('and not into the document behind it', Before, V.Lines.Text);
+
+  { Select-all likewise: it used to select the whole document. }
+  Check('Ctrl+A is dealt with there too',
+    LedEditKeyAction(VK_A, [ssCtrl], Box));
+  CheckEq('and it selected the box', 'from the clipboard', Box.SelText);
+  Check('while the document has no selection', not V.SelAvail);
+
+  { Cut takes the text out of the box and leaves the document alone. }
+  Check('and so is Ctrl+X', LedEditKeyAction(VK_X, [ssCtrl], Box));
+  CheckEq('the box is empty now', '', Box.Text);
+  CheckEq('the document is still what it was', Before, V.Lines.Text);
+
+  F.FindWindow.Close;
+  F.Silent := WasSilent;
+  Pump;
+
+  { ---- the document's own editor is not touched ---- }
+
+  { A SynEdit is not a TCustomEdit, so the guard does not match it and the
+    window's own actions keep the key -- which is what puts Paste in the
+    menu and in the document's undo. }
+  Check('the editor is left to the window''s actions',
+    not LedEditKeyAction(VK_V, [ssCtrl], V));
+  CheckEq('so nothing was pasted behind the editor''s back', Before,
+    V.Lines.Text);
+
+  { ---- a plain box, and the two that must refuse ---- }
+  Edit := TEdit.Create(F);
+  try
+    Edit.Parent := F;
+    Edit.Visible := False;
+    Edit.Text := '';
+    Check('a plain edit takes the paste', LedEditKeyAction(VK_V, [ssCtrl], Edit));
+    CheckEq('and has the text', 'from the clipboard', Edit.Text);
+
+    Edit.ReadOnly := True;
+    Edit.Text := 'locked';
+    Check('a read-only box refuses it',
+      not LedEditKeyAction(VK_V, [ssCtrl], Edit));
+    CheckEq('and keeps what it had', 'locked', Edit.Text);
+    { Copying out of it is still fine: reading is not writing. }
+    Edit.SelectAll;
+    Check('but copying out of it is allowed',
+      LedEditKeyAction(VK_C, [ssCtrl], Edit));
+  finally
+    Edit.Free;
+  end;
+
+  { Ctrl with anything else is somebody else's shortcut -- Ctrl+Shift+V is
+    the editor's column paste. }
+  Check('Ctrl+Shift+V is not claimed',
+    not LedEditKeyAction(VK_V, [ssCtrl, ssShift], Box));
+
+  F.ActiveTab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
 end;
 
 procedure TestDockEdges(F: TLedMainForm);
@@ -12338,6 +12461,7 @@ begin
   TestUntitledNumbering(F);
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
+  TestEditKeysGoToTheFocusedBox(F);
   TestPaneIsBuiltOffScreen(F);
   TestDockEdges(F);
   TestPaneSizes(F);
