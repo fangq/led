@@ -18,12 +18,13 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
+  Led.Core.Outline,
   fpjson,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Symbols, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
+  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Outline, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
   Led.Core.Project,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -538,7 +539,7 @@ type
       whether a debug session should follow it. }
     FBuildTool: TLedTool;
     FBuildThenDebug: Boolean;
-    FSymbols: TLedSymbolPane;
+    FSymbols: TLedOutlinePane;
     FProject: TLedProjectPane;
     FPreview: TLedPreviewPane;
     { The notebook pane: the same file as the line view, shown as cells with
@@ -574,6 +575,7 @@ type
     procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
+    procedure PreviewScrolled(Sender: TObject; ALine: Integer);
     procedure SyncNotebookPaneToLine;
     procedure NBPaneScrolled(Sender: TObject; ACell: Integer);
     procedure NBCellPicked(Sender: TObject; ACell: Integer);
@@ -732,13 +734,14 @@ type
     property Preview: TLedPreviewPane read FPreview;
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
+    procedure RefreshOutline;
     procedure NBPaneRun(Sender: TObject; ACell: Integer);
     procedure NBPaneInsert(Sender: TObject; ACell: Integer;
       AKind: TLedNBCellKind);
     procedure NBPaneDelete(Sender: TObject; ACell: Integer);
     procedure NBCellChanged(ADoc: TLedDocument; ACell: Integer);
     procedure NBCellDeferred(AData: PtrInt);
-    property SymbolPane: TLedSymbolPane read FSymbols;
+    property SymbolPane: TLedOutlinePane read FSymbols;
     { Public so the self-test can drive a session round trip. }
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
@@ -1063,9 +1066,13 @@ begin
   FProject.LoadFrom(LedConfigFile('filelist.json'));
   FDock.AddPane(ledLeft, 'project', 'Project', FProject, 'doc');
 
-  FSymbols := TLedSymbolPane.Create(Self);
+  FSymbols := TLedOutlinePane.Create(Self);
   FSymbols.OnJump := @SymbolJump;
-  FDock.AddPane(ledRight, 'symbols', 'Symbols', FSymbols, 'symbols');
+  { The pane's own name is "Outline" -- it shows the headings of a document
+    as much as the symbols of a source file -- but its id stays 'symbols',
+    because that is what is written in every reader's saved layout and a new
+    id would move the pane back to its default corner. }
+  FDock.AddPane(ledRight, 'symbols', 'Outline', FSymbols, 'symbols');
   FDock.EdgeVisible[ledRight] := False;
   FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'run');
 
@@ -1083,6 +1090,7 @@ begin
     the rest, and LoadLayout finds everything it names. }
   FPreview := TLedPreviewPane.Create(Self);
   FPreview.OnJumpToLine := @PreviewJumpToLine;
+  FPreview.OnScrolledToLine := @PreviewScrolled;
   FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
 
   FNBPane := TLedNotebookPane.Create(Self);
@@ -1613,11 +1621,54 @@ end;
 procedure TLedMainForm.actToggleSymbolsExecute(Sender: TObject);
 begin
   { The pane, not the edge.  Toggling the edge shut the preview along with
-    the symbols, and toggling it open showed the preview when the symbols
-    were what was asked for. }
+    the outline, and toggling it open showed the preview when the outline
+    was what was asked for. }
   FDock.TogglePane('symbols');
-  if FDock.PaneVisible('symbols') and (ActiveTab <> nil) then
-    FSymbols.Reload(ActiveTab.Document.FileName);
+  RefreshOutline;
+end;
+
+{ What the Outline pane shows, which depends on what kind of document is in
+  front: the headings of a document, or the symbols ctags found in source.
+
+  Only when the pane is on screen: running ctags for a pane nobody is looking
+  at is pure cost.  Asked of the pane, not of the edge it was registered on
+  -- the right edge is shared with the preview, so the edge answered yes for
+  an outline that was shut and no for one that had been dragged to another
+  edge. }
+procedure TLedMainForm.RefreshOutline;
+var
+  Doc: TLedDocument;
+  First: string;
+begin
+  if (FSymbols = nil) or (not FDock.PaneVisible('symbols')) then Exit;
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+
+  if Doc.IsNotebook then
+  begin
+    { From the notebook rather than from the file on disk: the reader may
+      have just typed the heading. }
+    Doc.NBSyncFromBuffer;
+    FSymbols.ShowOutline(Doc.FileName, Doc.NBOutline);
+    Exit;
+  end;
+
+  First := '';
+  if Doc.Master.Lines.Count > 0 then First := Doc.Master.Lines[0];
+  if LedIsWikiFile(Doc.FileName, First) then
+  begin
+    FSymbols.ShowOutline(Doc.FileName,
+      LedOutlineOfWiki(Doc.Master.Lines.Text));
+    Exit;
+  end;
+  if LedPreviewHandles(Doc.FileName, First) then
+  begin
+    FSymbols.ShowOutline(Doc.FileName,
+      LedOutlineOfMarkdown(Doc.Master.Lines.Text));
+    Exit;
+  end;
+
+  FSymbols.Reload(Doc.FileName);
 end;
 
 procedure TLedMainForm.actCompleteExecute(Sender: TObject);
@@ -3401,10 +3452,7 @@ begin
     { Same reasoning as the preview below: the outline is of the document in
       front of you, and a pane opened from an edge button would otherwise sit
       empty until the next time the document changed. }
-    begin
-      if (FSymbols <> nil) and (ActiveTab <> nil) then
-        FSymbols.Reload(ActiveTab.Document.FileName);
-    end
+    RefreshOutline
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
@@ -4752,9 +4800,7 @@ begin
     edge it was registered on -- the right edge is shared with the preview,
     so the edge answered yes for a symbol pane that was shut and no for one
     that had been dragged to another edge. }
-  if (FSymbols <> nil) and FDock.PaneVisible('symbols') and
-     (ActiveTab <> nil) then
-    FSymbols.Reload(ActiveTab.Document.FileName);
+  RefreshOutline;
   { Immediately: this is a different document now, and a pane still holding
     the last one for a quarter of a second is showing the wrong file. }
   RefreshPreview(True);
@@ -4914,6 +4960,28 @@ begin
   if FPreview <> nil then
     FPreview.AssumeSynced(View.TopLine);
   LedTryFocus(View);
+end;
+
+{ The page has been scrolled, so the text goes with it.
+
+  A scroll and not a jump: the caret stays where it was, because the reader
+  is reading rather than editing -- which is the same thing the notebook pane
+  does to the buffer when it is scrolled.  The flag covers the status change
+  SynEdit raises inside the move, which would otherwise come straight back
+  as a request to scroll the page to wherever the text now is. }
+procedure TLedMainForm.PreviewScrolled(Sender: TObject; ALine: Integer);
+var
+  View: TLedEdit;
+begin
+  View := ActiveView;
+  if View = nil then Exit;
+  if ALine < 1 then Exit;
+  FPreviewJumping := True;
+  try
+    View.TopLine := ALine;
+  finally
+    FPreviewJumping := False;
+  end;
 end;
 
 procedure TLedMainForm.UpdateStatusBar;

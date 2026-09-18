@@ -23,6 +23,7 @@ uses
   SynEditMiscClasses, SynEditHighlighter, SynEditKeyCmds,
   Led.Core.Types, Led.Core.FileIO, Led.Core.Hex, Led.Core.BJDView,
   Led.Core.BJDEdit, Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic,
+  Led.Core.Outline,
   Led.Core.Kernel,
   fpjson,
   Led.Syn.BJData, Led.Syn.Notebook,
@@ -321,6 +322,14 @@ type
 
     { The buffer line a cell's header is on, or -1. }
     function NBHeaderLineOf(ACell: Integer): Integer;
+
+    { The notebook's headings, in order, with the buffer line each one is on.
+
+      From the prose cells only: a heading is Markdown, and a code cell's
+      hashes are comments.  The lines are the buffer's rather than the
+      cell's, because that is what the reader is taken to when they pick one
+      -- a cell's own line numbers mean nothing to the view. }
+    function NBOutline: TLedOutline;
 
     { Puts a new empty cell of AKind after ACell and answers where it went.
       ACell of -1 puts it first; ACell past the end appends.
@@ -1543,6 +1552,27 @@ begin
     if (T <> 0) and ((-T) mod NBTagKinds = NBTagHeader) and
        ((-T) div NBTagKinds = ACell) then
       Exit(i);
+  end;
+end;
+
+function TLedDocument.NBOutline: TLedOutline;
+var
+  Cell, i, Head: Integer;
+  Inner: TLedOutline;
+begin
+  SetLength(Result, 0);
+  if not FIsNotebook then Exit;
+  for Cell := 0 to FNotebook.CellCount - 1 do
+  begin
+    if FNotebook.CellKind(Cell) <> nbkMarkdown then Continue;
+    Head := NBHeaderLineOf(Cell);
+    if Head < 0 then Continue;
+    Inner := LedOutlineOfMarkdown(FNotebook.CellSource(Cell));
+    for i := 0 to High(Inner) do
+      { The cell's first line is the one after its header, and the heading's
+        line is 1-based inside the cell. }
+      LedOutlineAdd(Result, Inner[i].Level, Inner[i].Title,
+        Head + 1 + Inner[i].Line);
   end;
 end;
 

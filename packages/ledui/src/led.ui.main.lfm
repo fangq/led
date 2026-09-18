@@ -334,7 +334,7 @@ object LedMainForm: TLedMainForm
       OnExecute = actToggleTerminalExecute
     end
     object actToggleSymbols: TAction
-      Caption = '&Symbols'
+      Caption = '&Outline'
       ImageIndex = 31
       OnExecute = actToggleSymbolsExecute
     end

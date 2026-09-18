@@ -51,7 +51,7 @@ uses
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
-  Led.UI.Symbols,
+  Led.UI.Outline,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
@@ -187,10 +187,24 @@ begin
     Application.ProcessMessages;
 end;
 
+{ A file written byte for byte, with no line-ending translation and no
+  encoding: a fixture has to be exactly what it says it is. }
+procedure WriteBytes(const APath: string; const ABytes: string); forward;
+
 function TempName(const ASuffix: string): string;
 begin
   Result := IncludeTrailingPathDelimiter(GetTempDir) +
     Format('led-selftest-%d-%s', [GetProcessID, ASuffix]);
+end;
+
+procedure WriteBytes(const APath: string; const ABytes: string);
+begin
+  with TFileStream.Create(APath, fmCreate) do
+    try
+      if ABytes <> '' then Write(ABytes[1], Length(ABytes));
+    finally
+      Free;
+    end;
 end;
 
 { --- the spikes phase 0 exists to prove ------------------------------------ }
@@ -4212,7 +4226,7 @@ end;
   document those symbols were never in. }
 procedure TestSymbolsFollowTheDocument(F: TLedMainForm);
 var
-  MdPath, CPath: string;
+  MdPath, CPath, NbPath: string;
   L: TStringList;
   V: TLedEdit;
   Node: TTreeNode;
@@ -4229,12 +4243,7 @@ var
   end;
 
 begin
-  Say('symbols follow the document');
-  if not LedCtagsAvailable then
-  begin
-    Say('  (ctags is not installed; skipped)');
-    Exit;
-  end;
+  Say('the outline follows the document');
   if F.SymbolPane = nil then Exit;
 
   MdPath := TempName('outline.md');
@@ -4245,9 +4254,131 @@ begin
     L.Add('Some prose.');
     L.Add('');
     L.Add('## MarkdownSectionTwo');
+    L.Add('');
+    L.Add('```sh');
+    L.Add('# not a heading');
+    L.Add('```');
+    L.Add('');
+    L.Add('### MarkdownDeeper');
+    L.Add('');
+    L.Add('## MarkdownSectionThree');
     L.SaveToFile(MdPath);
   finally
     L.Free;
+  end;
+
+  { ---- a document's outline is its table of contents ----
+
+    Headings, nested by level, in the order they appear -- which is what a
+    reader of a lecture wants, and is not what ctags gives: it reports the
+    same headings as a flat set of tags grouped by kind, each one scoped by
+    the file it came from. }
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  F.AddTab(F.Documents.OpenFile(MdPath));
+  Pump; Pump;
+
+  Check('the outline lists the headings: ' + TreeText,
+    Pos('MarkdownChapterOne', TreeText) > 0);
+  Check('and the one inside the fenced block is not one of them',
+    Pos('not a heading', TreeText) = 0);
+  CheckEqInt('four headings, and nothing else', 4,
+    F.SymbolPane.Tree.Items.Count);
+
+  { In the order they appear, which is the whole point of an outline. }
+  CheckEq('the first is the chapter', 'MarkdownChapterOne',
+    F.SymbolPane.Tree.Items[0].Text);
+  CheckEq('then the section under it', 'MarkdownSectionTwo',
+    F.SymbolPane.Tree.Items[1].Text);
+  CheckEq('then the one under that', 'MarkdownDeeper',
+    F.SymbolPane.Tree.Items[2].Text);
+  CheckEq('then the next section', 'MarkdownSectionThree',
+    F.SymbolPane.Tree.Items[3].Text);
+
+  { Nested by level: a chapter holds its sections and a section holds what
+    is under it. }
+  CheckEqInt('the chapter is at the top of the tree', 0,
+    F.SymbolPane.Tree.Items[0].Level);
+  CheckEqInt('its section is inside it', 1,
+    F.SymbolPane.Tree.Items[1].Level);
+  CheckEqInt('and the subsection inside that', 2,
+    F.SymbolPane.Tree.Items[2].Level);
+  CheckEqInt('while the next section is back at the section level', 1,
+    F.SymbolPane.Tree.Items[3].Level);
+
+  { And no file name hung off any of them: the pane says which file it is
+    showing, and repeating it on every line is noise. }
+  Check('no entry carries the document name: ' + TreeText,
+    Pos('outline', LowerCase(TreeText)) = 0);
+
+  { Clicking one goes to its line in the text. }
+  V := F.ActiveView;
+  if V <> nil then
+  begin
+    F.SymbolPane.Tree.Selected := F.SymbolPane.Tree.Items[1];
+    if Assigned(F.SymbolPane.Tree.OnDblClick) then
+      F.SymbolPane.Tree.OnDblClick(F.SymbolPane.Tree);
+    Pump;
+    CheckEqInt('and clicking a heading goes to the line it is on', 5,
+      V.CaretY);
+  end;
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  Pump;
+
+  { ---- a notebook's outline is the headings of its prose cells ----
+
+    From the prose cells only: a heading is Markdown, and a code cell's
+    hashes are comments.  The lines are the buffer's, because that is where
+    picking one takes the reader. }
+  NbPath := TempName('outline.ipynb');
+  WriteBytes(NbPath,
+    '{' + #10 + ' "cells": [' + #10 +
+    '  {"cell_type": "markdown", "metadata": {},' +
+    ' "source": ["# NotebookTitle\n"]},' + #10 +
+    '  {"cell_type": "code", "execution_count": null, "metadata": {},' +
+    ' "outputs": [], "source": ["# not a heading, a remark\n"]},' + #10 +
+    '  {"cell_type": "markdown", "metadata": {},' +
+    ' "source": ["## NotebookSection\n", "\n", "prose\n"]}' + #10 +
+    ' ],' + #10 +
+    ' "metadata": {"language_info": {"name": "python"}},' + #10 +
+    ' "nbformat": 4, "nbformat_minor": 5' + #10 + '}' + #10);
+  F.AddTab(F.Documents.OpenFile(NbPath));
+  Pump; Pump;
+  Check('the notebook opened', F.ActiveTab.Document.IsNotebook);
+  Check('its outline has the prose cells'' headings: ' + TreeText,
+    Pos('NotebookTitle', TreeText) > 0);
+  Check('and the section inside it', Pos('NotebookSection', TreeText) > 0);
+  Check('but not the comment in the code cell',
+    Pos('a remark', TreeText) = 0);
+  CheckEqInt('two headings', 2, F.SymbolPane.Tree.Items.Count);
+  CheckEqInt('the second is nested inside the first', 1,
+    F.SymbolPane.Tree.Items[1].Level);
+
+  V := F.ActiveView;
+  if V <> nil then
+  begin
+    F.SymbolPane.Tree.Selected := F.SymbolPane.Tree.Items[1];
+    if Assigned(F.SymbolPane.Tree.OnDblClick) then
+      F.SymbolPane.Tree.OnDblClick(F.SymbolPane.Tree);
+    Pump;
+    { The buffer line the heading is on, which is inside the third cell --
+      not the line it is on inside its own cell. }
+    CheckEqInt('clicking it lands on the heading in the buffer',
+      F.ActiveTab.Document.NBSourceLineOf(2) + 1, V.CaretY);
+  end;
+
+  while F.TabCount > 1 do F.CloseActiveTab(True);
+  Pump;
+  DeleteFile(NbPath);
+
+  { ---- and source is still grouped by what a symbol is ---- }
+  if not LedCtagsAvailable then
+  begin
+    Say('  (ctags is not installed; the rest of this needs it)');
+    F.Dock.HidePane('symbols');
+    DeleteFile(MdPath);
+    Exit;
   end;
 
   CPath := TempName('outline.c');
@@ -4262,19 +4393,11 @@ begin
     L.Free;
   end;
 
-  F.Dock.ShowPane('symbols');
-  Pump; Pump;
-
-  F.AddTab(F.Documents.OpenFile(MdPath));
-  Pump; Pump;
-  Check('the outline of a Markdown file lists its headings: ' + TreeText,
-    Pos('MarkdownChapterOne', TreeText) > 0);
-
   F.AddTab(F.Documents.OpenFile(CPath));
   Pump; Pump;
-  Check('switching document rebuilds the outline: ' + TreeText,
+  Check('source is still what ctags found: ' + TreeText,
     Pos('a_c_function', TreeText) > 0);
-  Check('and nothing of the old file is left in it',
+  Check('and nothing of the last document is left in it',
     Pos('Markdown', TreeText) = 0);
   CheckEq('and the pane agrees about which file it is showing',
     CPath, F.SymbolPane.FileName);
@@ -5093,16 +5216,6 @@ end;
 
 { Writes ABytes to APath exactly, with no terminator and no line-ending
   translation -- the bytes are the thing under test. }
-procedure WriteBytes(const APath: string; const ABytes: string);
-begin
-  with TFileStream.Create(APath, fmCreate) do
-    try
-      if ABytes <> '' then Write(ABytes[1], Length(ABytes));
-    finally
-      Free;
-    end;
-end;
-
 { The colour a scheme gave one scope, read off the highlighter that is in
   use -- which is where the answer actually is, after the map-to chain, the
   theme lookup and the readability floor have all had their say. }
@@ -8810,6 +8923,61 @@ begin
     Pump;
     CheckEqInt('and a sync arriving after the jump moves nothing either',
       Before, F.Preview.ScrollPos);
+  end;
+
+  { ---- and the text follows the page when the page is scrolled ----
+
+    The other half of keeping the two in step, and the half that was
+    missing: scrolling the preview left the text where it was.  The
+    renderer scrolls inside a control of its own and raises nothing, so the
+    pane looks -- and what it has to look up is the reverse of
+    MakeAnchorVisible, which IPro has nothing for.
+
+    Driven here by scrolling the page and then asking the pane to look, the
+    way its own timer does. }
+  if V <> nil then
+  begin
+    F.Preview.ScrollToLine(1);
+    Pump;
+    V.TopLine := 1;
+    Pump;
+    Target := 4 * 30 + 1;        { the heading of section 31 }
+    F.Preview.ScrollToLine(Target);
+    Pump;
+    { The sync the scroll above would have reported, had a reader made it:
+      the pane treats its own move as its own and says nothing, so this asks
+      for the answer directly.
+
+      Near the block it was scrolled to, not exactly it: scrolling to a
+      block brings it into view rather than to the very top -- measured, it
+      stops some forty pixels short -- so the block at the top of the page
+      is that one or the one before it, and either is the right answer to
+      "where is the reader looking".  What would not be is a line from
+      somewhere else in the document. }
+    After := F.Preview.LineAtTopOfPage;
+    Check(Format('the page knows roughly which line is at the top of it ' +
+      '(%d against %d)', [After, Target]),
+      (After > 0) and (Abs(After - Target) <= 4));
+
+    { And further down the document reports a line further down it: the
+      mapping is in the right order, which a single reading cannot show. }
+    F.Preview.ScrollToLine(4 * 35 + 1);
+    Pump;
+    CheckGt('scrolling further down reports a later line',
+      After, F.Preview.LineAtTopOfPage);
+    F.Preview.ScrollToLine(Target);
+    Pump;
+
+    { And the wiring: a reported scroll moves the text view and leaves the
+      caret alone. }
+    Before := V.CaretY;
+    if Assigned(F.Preview.OnScrolledToLine) then
+      F.Preview.OnScrolledToLine(F.Preview, Target);
+    Pump;
+    CheckEqInt('scrolling the page brings the text with it', Target,
+      V.TopLine);
+    CheckEqInt('and leaves the caret where the reader left it', Before,
+      V.CaretY);
   end;
 
   F.Dock.EdgeVisible[ledRight] := False;

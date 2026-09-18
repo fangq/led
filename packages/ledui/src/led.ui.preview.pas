@@ -27,6 +27,29 @@ type
     line that place came from. }
   TLedPreviewLineEvent = procedure(Sender: TObject; ALine: Integer) of object;
 
+  { Reaching two things IPro keeps to itself, both needed for the same
+    question: which line of the document is at the top of the page.
+
+    Going the other way is easy -- MakeAnchorVisible scrolls to a block --
+    and there is nothing at all for the reverse, so the page positions of
+    the blocks are read off the nodes and kept.  FindElementId is protected
+    on TIpHtml and ReportDrawRects is protected on TIpHtmlNode, so each is
+    reached through a descendant declared here, the same way the notebook
+    pane reaches GetPageRect. }
+  TLedIpHtmlReach = class(TIpHtml)
+  public
+    function FindId(const AId: string): TIpHtmlNode;
+  end;
+
+  TLedIpNodeReach = class(TIpHtmlNodeCore)
+  private
+    procedure NoteRect(const R: TRect);
+  public
+    { The top of the topmost rectangle the node draws into, in page
+      coordinates -- the same space the scroll position is in. }
+    function PageTop: Integer;
+  end;
+
   TLedPreviewPane = class(TPanel)
   private
     FHtml: TIpHtmlPanel;
@@ -46,8 +69,22 @@ type
     FPendingText: string;
     FPendingTitle: string;
     FLineIds: array of Integer;   { the source lines the page carries, rising }
+    { Where those lines are on the page, for answering which one is at the
+      top of it.  Built after a render, and only for the blocks that report
+      a position: a paragraph reports none, and a heading does, which is why
+      the answer is a section rather than a line -- and a section is the
+      granularity a reader scrolling a preview is working in anyway. }
+    FTopY: array of Integer;
+    FTopLine: array of Integer;
+    FTopsFor: Integer;            { the scroll height they were built at }
+    FLastScroll: Integer;
+    FScrollTimer: TTimer;
+    FOnScrolled: TLedPreviewLineEvent;
     FSyncedLine: Integer;         { the last line scrolled to, to not repeat }
     FOnJumpToLine: TLedPreviewLineEvent;
+    procedure BuildTops;
+    function LineAtTop(AY: Integer): Integer;
+    procedure ScrollTick(Sender: TObject);
     function CodeColumns: Integer;
     procedure CollectLineIds(const APage: string);
     function NearestLineId(ALine: Integer): Integer;
@@ -127,10 +164,25 @@ type
       was scrolled back to where it started. }
     function ScrollPos: Integer;
 
+    { Which line of the document is at the top of the page as it stands.
+      What OnScrolledToLine reports, asked for directly: a check can scroll
+      the page but cannot make the reader's own scroll happen. }
+    function LineAtTopOfPage: Integer;
+
     { Clicking a place in the page reports the line it was made from, which is
       how the text view follows the preview. }
     property OnJumpToLine: TLedPreviewLineEvent
       read FOnJumpToLine write FOnJumpToLine;
+
+    { And scrolling the page reports the line that is now at the top of it,
+      which is the other half of keeping the two in step.
+
+      Polled rather than watched: the renderer scrolls inside a control of
+      its own and raises nothing anybody outside can hear -- the same reason
+      the notebook pane polls for its hover bar, and the same control that
+      swallowed the wheel and the double click. }
+    property OnScrolledToLine: TLedPreviewLineEvent
+      read FOnScrolled write FOnScrolled;
   end;
 
 { True when this document is one the preview understands. }
@@ -140,6 +192,31 @@ function LedPreviewHandles(const AFileName: string): Boolean;
 function LedPreviewHandles(const AFileName, AFirstLine: string): Boolean;
 
 implementation
+
+var
+  { ReportDrawRects wants a method to call back, and a class used only as a
+    way through to a protected member must not have fields of its own: the
+    object it is cast over is a real node and has no room for them.  So the
+    smallest possible piece of state lives here.  Single-threaded, which is
+    what makes that safe: this runs on the main thread inside one call. }
+  GNodeTop: Integer;
+
+function TLedIpHtmlReach.FindId(const AId: string): TIpHtmlNode;
+begin
+  Result := FindElementId(AId);
+end;
+
+procedure TLedIpNodeReach.NoteRect(const R: TRect);
+begin
+  if (R.Bottom > R.Top) and (R.Top < GNodeTop) then GNodeTop := R.Top;
+end;
+
+function TLedIpNodeReach.PageTop: Integer;
+begin
+  GNodeTop := MaxInt;
+  ReportDrawRects(@NoteRect);
+  if GNodeTop = MaxInt then Result := -1 else Result := GNodeTop;
+end;
 
 function LedPreviewHandles(const AFileName: string): Boolean;
 begin
@@ -210,6 +287,15 @@ begin
   FImageTimer.Interval := 300;
   FImageTimer.Enabled := False;
   FImageTimer.OnTimer := @ImageTick;
+
+  { The renderer scrolls inside a control of its own and says nothing about
+    it, so the pane looks. }
+  FScrollTimer := TTimer.Create(Self);
+  FScrollTimer.Interval := 150;
+  FScrollTimer.Enabled := True;
+  FScrollTimer.OnTimer := @ScrollTick;
+  FTopsFor := -1;
+  FLastScroll := -1;
 
   FResizeTimer := TTimer.Create(Self);
   FResizeTimer.Interval := 200;
@@ -468,6 +554,9 @@ begin
   if N = FSyncedLine then Exit;
   FSyncedLine := N;
   FHtml.MakeAnchorVisible('L' + IntToStr(N));
+  { This pane moved the page, so the next look must not read it as the
+    reader having moved it. }
+  FLastScroll := FHtml.VScrollPos;
 end;
 
 { The source line of the block under the mouse.  IPro keeps the element the
@@ -497,9 +586,105 @@ begin
   end;
 end;
 
+{ Where each of the page's blocks sits, for answering which line is at the
+  top of it.
+
+  Only the blocks that report a position, which in practice means the
+  headings: a paragraph's node reports none.  That makes the answer a
+  section rather than a line, which is the granularity a reader scrolling a
+  preview is working in anyway -- and it is the same granularity the
+  notebook pane syncs at, for the same reason.
+
+  Built once per rendered page and thrown away when the page changes: the
+  positions are only true of the layout they were read from. }
+procedure TLedPreviewPane.BuildTops;
+var
+  i, n, Y: Integer;
+  Html: TIpHtml;
+  Node: TIpHtmlNode;
+begin
+  SetLength(FTopY, 0);
+  SetLength(FTopLine, 0);
+  FTopsFor := -1;
+  if (not FHasRendered) or (FHtml.MasterFrame = nil) then Exit;
+  Html := FHtml.MasterFrame.Html;
+  if Html = nil then Exit;
+  { The layout has to exist before anything can be asked where it is. }
+  FHtml.GetContentSize;
+
+  n := 0;
+  for i := 0 to High(FLineIds) do
+  begin
+    Node := TLedIpHtmlReach(Html).FindId('L' + IntToStr(FLineIds[i]));
+    if Node = nil then Continue;
+    if not (Node is TIpHtmlNodeCore) then Continue;
+    Y := TLedIpNodeReach(Node).PageTop;
+    if Y < 0 then Continue;
+    { Rising, and one entry per position: two blocks at the same place are
+      one answer, and the first of them is the one a reader means. }
+    if (n > 0) and (Y <= FTopY[n - 1]) then Continue;
+    SetLength(FTopY, n + 1);
+    SetLength(FTopLine, n + 1);
+    FTopY[n] := Y;
+    FTopLine[n] := FLineIds[i];
+    Inc(n);
+  end;
+  FTopsFor := FHtml.GetContentSize.cy;
+end;
+
+function TLedPreviewPane.LineAtTop(AY: Integer): Integer;
+var
+  i: Integer;
+begin
+  Result := 0;
+  if Length(FTopY) = 0 then Exit;
+  { The last block that starts at, above, or just below the top of the view.
+
+    "Just below" matters and is not slack for its own sake: scrolling to a
+    block does not put its first pixel exactly at the top -- the renderer
+    stops a few pixels short -- so without it the answer is the block
+    before the one the reader is looking at. }
+  for i := 0 to High(FTopY) do
+    if FTopY[i] <= AY + LedScale96(12) then
+      Result := FTopLine[i]
+    else
+      Break;
+  { Above the first block, the first block is the answer. }
+  if Result = 0 then Result := FTopLine[0];
+end;
+
+{ Has the reader scrolled the page?  Asked rather than waited for: see
+  OnScrolledToLine. }
+procedure TLedPreviewPane.ScrollTick(Sender: TObject);
+var
+  Now_, Line: Integer;
+begin
+  if (not FHasRendered) or (not FHtml.Visible) or (not Showing) then Exit;
+  if not Assigned(FOnScrolled) then Exit;
+  Now_ := FHtml.VScrollPos;
+  if Now_ = FLastScroll then Exit;
+  FLastScroll := Now_;
+
+  if (FTopsFor < 0) or (FTopsFor <> FHtml.GetContentSize.cy) then BuildTops;
+  Line := LineAtTop(Now_);
+  if (Line <= 0) or (Line = FSyncedLine) then Exit;
+  { Remembered as synced, so that the text view moving in answer to this
+    does not come straight back as a request to scroll the page again. }
+  FSyncedLine := Line;
+  FOnScrolled(Self, Line);
+end;
+
 function TLedPreviewPane.ScrollPos: Integer;
 begin
   Result := FHtml.VScrollPos;
+end;
+
+function TLedPreviewPane.LineAtTopOfPage: Integer;
+begin
+  Result := 0;
+  if not FHasRendered then Exit;
+  if (FTopsFor < 0) or (FTopsFor <> FHtml.GetContentSize.cy) then BuildTops;
+  Result := LineAtTop(FHtml.VScrollPos);
 end;
 
 procedure TLedPreviewPane.AssumeSynced(ALine: Integer);
@@ -701,6 +886,9 @@ begin
     { From the page as it was handed over: neither adjustment touches an id,
       but this is the string the control is actually holding. }
     CollectLineIds(Page);
+    { The positions of the old page are not the positions of this one. }
+    FTopsFor := -1;
+    FLastScroll := FHtml.VScrollPos;
     FSyncedLine := 0;
     FRenderedWidth := FHtml.ClientWidth;
     FRenderedText := FPendingText;

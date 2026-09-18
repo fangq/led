@@ -270,9 +270,9 @@
         <UnitName Value="Led.Core.Ctags"/>
       </Unit>
       <Unit>
-        <Filename Value="../packages/ledui/src/led.ui.symbols.pas"/>
+        <Filename Value="../packages/ledui/src/led.ui.outline.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="Led.UI.Symbols"/>
+        <UnitName Value="Led.UI.Outline"/>
       </Unit>
       <Unit>
         <Filename Value="../packages/ledcore/src/led.core.markdown.pas"/>
