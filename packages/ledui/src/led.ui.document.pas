@@ -1439,25 +1439,55 @@ end;
 
 procedure TLedDocument.NBSyncFromBuffer;
 var
-  i, Cell, Line: Integer;
+  i, Cell: Integer;
+  T: PtrInt;
   Source: string;
   First: Boolean;
+  Any: Boolean;
+  Done: array of Boolean;
 begin
   if not FIsNotebook then Exit;
-  for Cell := 0 to FNotebook.CellCount - 1 do
+
+  { One walk of the buffer for every cell, rather than a walk per cell.
+
+    This used to ask NBSourceLineOf where each cell began, and that scans
+    the whole buffer: eight hundred cells over twenty thousand lines is
+    seventeen million line lookups, on a path that runs before running a
+    cell, before inserting or deleting one, before saving, and every time
+    the Outline pane is filled. }
+  SetLength(Done, FNotebook.CellCount);
+  i := 0;
+  while i < FMaster.Lines.Count do
   begin
-    Line := NBSourceLineOf(Cell);
-    if Line < 0 then Continue;
+    T := NBTagOf(i);
+    if (T = 0) or ((-T) mod NBTagKinds <> NBTagHeader) then
+    begin
+      Inc(i);
+      Continue;
+    end;
+    Cell := (-T) div NBTagKinds;
+    Inc(i);                           { the line after the header }
+
     Source := '';
     First := True;
-    i := Line;
+    Any := False;
     while (i < FMaster.Lines.Count) and (NBTagOf(i) = 0) do
     begin
       if not First then Source := Source + #10;
       Source := Source + FMaster.Lines[i];
       First := False;
+      Any := True;
       Inc(i);
     end;
+
+    { A header as the very last line of the buffer has no source lines at
+      all, which is what NBSourceLineOf answered -1 for: the notebook keeps
+      what it had.  A header followed straight away by another tagged line
+      is a different thing -- the reader deleted the cell's last line, and
+      an empty cell is what they now have -- so that one is not skipped. }
+    if (not Any) and (i >= FMaster.Lines.Count) then Continue;
+    if (Cell < 0) or (Cell > High(Done)) or Done[Cell] then Continue;
+    Done[Cell] := True;
     { Only when it differs, so that a notebook opened and saved again is the
       same bytes: rewriting a cell's source splits it into lines afresh, and
       a file that stored its source as one string would come back as a list. }
@@ -1558,14 +1588,36 @@ end;
 function TLedDocument.NBOutline: TLedOutline;
 var
   Cell, i, Head: Integer;
+  Heads: array of Integer;
+  T: PtrInt;
   Inner: TLedOutline;
 begin
   SetLength(Result, 0);
   if not FIsNotebook then Exit;
+
+  { Where every cell's header line is, found in one pass over the buffer.
+
+    Asking NBHeaderLineOf per cell walks the whole buffer once per cell: for
+    a notebook of eight hundred cells over twenty thousand lines that is
+    seventeen million lookups, and it was 428 of the 1661 ms opening a big
+    notebook took -- for a pane the reader may well open on every one. }
+  SetLength(Heads, FNotebook.CellCount);
+  for Cell := 0 to High(Heads) do Heads[Cell] := -1;
+  for i := 0 to FMaster.Lines.Count - 1 do
+  begin
+    T := NBTagOf(i);
+    if (T = 0) or ((-T) mod NBTagKinds <> NBTagHeader) then Continue;
+    Cell := (-T) div NBTagKinds;
+    { The first one, as NBHeaderLineOf answered: a cell has one header, and
+      a stale tag below it must not win over the real one. }
+    if (Cell >= 0) and (Cell <= High(Heads)) and (Heads[Cell] < 0) then
+      Heads[Cell] := i;
+  end;
+
   for Cell := 0 to FNotebook.CellCount - 1 do
   begin
     if FNotebook.CellKind(Cell) <> nbkMarkdown then Continue;
-    Head := NBHeaderLineOf(Cell);
+    Head := Heads[Cell];
     if Head < 0 then Continue;
     Inner := LedOutlineOfMarkdown(FNotebook.CellSource(Cell));
     for i := 0 to High(Inner) do

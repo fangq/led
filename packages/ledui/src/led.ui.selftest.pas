@@ -51,7 +51,7 @@ uses
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
-  Led.UI.Outline,
+  Led.UI.Outline, Led.Core.Outline,
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
@@ -4230,6 +4230,7 @@ var
   L: TStringList;
   V: TLedEdit;
   Node: TTreeNode;
+  Items: TLedOutline;
   i: Integer;
 
   function TreeText: string;
@@ -4366,6 +4367,24 @@ begin
       not the line it is on inside its own cell. }
     CheckEqInt('clicking it lands on the heading in the buffer',
       F.ActiveTab.Document.NBSourceLineOf(2) + 1, V.CaretY);
+  end;
+
+  { The lines themselves, asked of the document rather than through a click.
+
+    SymbolJump looks for the name within four hundred lines of the line it
+    is given, which is right for ctags -- its lines are read from the file on
+    disk and go stale as soon as anything is typed above them -- but it also
+    means a wrong line in a small file lands on the right one anyway.  So the
+    outline's own answer is checked here. }
+  Items := F.ActiveTab.Document.NBOutline;
+  CheckEqInt('the outline of the notebook has both headings', 2,
+    Length(Items));
+  if Length(Items) = 2 then
+  begin
+    CheckEqInt('the title is on the line the buffer has it on',
+      F.ActiveTab.Document.NBSourceLineOf(0) + 1, Items[0].Line);
+    CheckEqInt('and the section on its own, in the third cell',
+      F.ActiveTab.Document.NBSourceLineOf(2) + 1, Items[1].Line);
   end;
 
   while F.TabCount > 1 do F.CloseActiveTab(True);
@@ -7640,6 +7659,28 @@ begin
   Check('and the old output is gone', LineOfText('  3') < 0);
   CheckEq('while its source is left alone', 'a = 1', Doc.Master.Lines[1]);
   Check('and the source is still source', Doc.NBLineIsSource(1));
+
+  { ---- a cell the reader emptied is empty ----
+
+    The line after a cell's header is its source, and deleting the last of
+    them leaves the header with the next cell's header straight after it.
+    That is not "this cell's lines are not in the buffer" -- which is what a
+    header on the very last line means, and where the notebook keeps what it
+    had -- it is a cell the reader emptied, and the notebook has to follow.
+    The two cases are one line apart in NBSyncFromBuffer. }
+
+  Line := LineOfText('# Notes');
+  Check('the markdown cell has its one line', Line > 0);
+  if Line > 0 then
+  begin
+    Doc.Master.Lines.Delete(Line);
+    Pump;
+    Doc.NBSyncFromBuffer;
+    CheckEq('emptying a cell in the buffer empties the cell',
+      '', Doc.Notebook.CellSource(1));
+    CheckEq('and leaves its neighbour alone',
+      'a = 1', Copy(Doc.Notebook.CellSource(0), 1, 5));
+  end;
 
   { ---- and the round trip the whole thing rests on ---- }
 
