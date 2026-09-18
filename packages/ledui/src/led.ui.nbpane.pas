@@ -35,7 +35,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
   Led.Core.NBConvert, Led.Core.NBMagic, Led.Core.Markdown,
   Led.Syn.Factory, Led.Syn.Notebook, Led.Syn.Theme, Led.UI.Icons,
-  Led.UI.PageStyle,
+  Led.UI.PageStyle, Led.UI.Pictures,
   Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
 
 type
@@ -142,68 +142,10 @@ type
     property DeleteAbove: TSpeedButton read FDrop;
   end;
 
-  { Pictures already decoded, kept so that a cell scrolled back into view is
-    not decoded again.
-
-    Decoding is what a scroll actually costs: a 700 by 1034 photograph is
-    twenty milliseconds of PNG, and the renderer asks for every picture again
-    every time the page it is on is built -- which is once per cell arriving
-    on screen, twice counting the pass that measures how tall the cell is.
-    Measured on twelve cells of one big picture each, a forty-notch scroll
-    spent 98 of its 554 milliseconds in there and almost nothing anywhere
-    else.
-
-    What is handed out is a copy, because the renderer frees the picture it
-    is given (TIpHtmlNodeIMG.UnloadImage), and a copy of a decoded bitmap is
-    a memory move rather than a decode.
-
-    Kept at the size the page draws it at, not at the size the file holds:
-    the cell writes a width into the tag for a picture too wide for it, so
-    the scaling may as well happen once, here, instead of on every paint --
-    and a photograph three thousand pixels wide then costs what the pane
-    shows, not what the file has.
-
-    Bounded by what it holds rather than by how many, because a lecture
-    notebook has eighty pictures in it and their sizes are not alike: a
-    budget in pixels is the same promise about memory whether they are
-    thumbnails or plots.  The least recently wanted goes first. }
-  TLedNBPictures = class
-  private
-    FKeys: TStringList;      { key -> TPicture, most recently used last }
-    FBudget: Int64;          { in pixels }
-    FDecodes: Integer;
-    function Pixels: Int64;
-    function Find(const AKey: string): TPicture;
-    function Add(const AKey: string; APicture: TPicture): TPicture;
-  public
-    constructor Create(ABudgetPixels: Int64 = 8 * 1000 * 1000);
-    destructor Destroy; override;
-    { A picture for the caller to hand to the renderer: ABytes decoded, or
-      the bitmap already kept for AKey, and always a fresh TPicture --
-      because the renderer frees what it is given.
-
-      AFitWidth is the width the page draws it at: anything wider is scaled
-      down on the way in, so a photograph three thousand pixels wide costs
-      what the pane shows rather than what the file holds, and the scaling
-      happens once instead of on every paint.
-
-      The decoding lives here rather than in the caller so that the count
-      below is a count of decodes.  It was a count of insertions at first,
-      and the mutation that stopped consulting the cache at all still
-      passed the check that read it. }
-    function Get(const AKey, ABytes, AExt: string;
-      AFitWidth: Integer): TPicture;
-    { The size of the picture kept under AKey, and the picture itself so a
-      caller can tell "nothing kept" from "kept and empty".  Does not count
-      as wanting it: asking how big something is is not drawing it. }
-    function SizeOf_(const AKey: string; out AW, AH: Integer): TPicture;
-    procedure Clear;
-    function Count: Integer;
-    { How many pictures have actually been decoded.  For a check: "decoded
-      once and drawn twice" cannot be seen from outside otherwise, and a
-      timing would be a flaky way to ask it. }
-    property Decodes: Integer read FDecodes;
-  end;
+  { The pictures the cells have decoded, and where a cell's pictures come
+    from: both in Led.UI.Pictures now, because the Markdown preview asks the
+    renderer's questions in exactly the same words. }
+  TLedNBPictures = TLedPictureCache;
 
   { The colours the pane draws with.  The same record the Markdown and wiki
     preview uses: see Led.UI.PageStyle. }
@@ -240,6 +182,7 @@ type
       the same picture in a pane that has been made wider is a different
       bitmap. }
     FFitWidth: Integer;
+    FPicSrc: TLedPictureSource;
     function EditLineKind(ALine: Integer; out ACell: Integer;
       out ALang: string): TLedNBLine;
     function EditLineText(ALine: Integer): string;
@@ -276,7 +219,9 @@ type
     procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
     function ImageSize(const AURL: string; out AW, AH: Integer): Boolean;
-    function PictureFrom(const AURL, ABytes, AExt: string): TPicture;
+    function Pictures: TLedPictureSource;
+    function EmbeddedPicture(const AURL: string;
+      out ABytes, AMime: string): Boolean;
 
   public
     { The page this cell's prose renders to, at a given width.  Public for
@@ -285,6 +230,7 @@ type
     function ProsePage(const ASource: string; AWidth: Integer): string;
     constructor Create(AOwner: TComponent; ADoc: TLedDocument;
       ACell: Integer; AImages: TCustomImageList); reintroduce;
+    destructor Destroy; override;
     { Lays the cell out for AWidth and answers how tall it came to.
 
       The width is given rather than read back from the box: laying the pane
@@ -737,169 +683,6 @@ begin
   SetBounds(0, 0, X + LedScale96(2), LedScale96(22));
 end;
 
-{ ---- pictures already decoded ---- }
-
-constructor TLedNBPictures.Create(ABudgetPixels: Int64);
-begin
-  inherited Create;
-  FBudget := ABudgetPixels;
-  FKeys := TStringList.Create;
-  FKeys.OwnsObjects := True;
-end;
-
-function TLedNBPictures.Pixels: Int64;
-var
-  i: Integer;
-  P: TPicture;
-begin
-  Result := 0;
-  for i := 0 to FKeys.Count - 1 do
-  begin
-    P := TPicture(FKeys.Objects[i]);
-    if (P <> nil) and (P.Graphic <> nil) then
-      Inc(Result, Int64(P.Width) * P.Height);
-  end;
-end;
-
-destructor TLedNBPictures.Destroy;
-begin
-  FKeys.Free;
-  inherited Destroy;
-end;
-
-{ The kept bitmap for a key, or nil, moved to the end of the list because it
-  has just been wanted: what falls off the front is what nobody has looked at
-  for longest. }
-function TLedNBPictures.Find(const AKey: string): TPicture;
-var
-  i: Integer;
-begin
-  Result := nil;
-  i := FKeys.IndexOf(AKey);
-  if i < 0 then Exit;
-  Result := TPicture(FKeys.Objects[i]);
-  { Wanted, so it goes to the end: what falls off the front is what nobody
-    has looked at for longest. }
-  FKeys.Move(i, FKeys.Count - 1);
-end;
-
-{ Takes ownership of APicture and hands back what is in the cache under AKey
-  afterwards -- which is APicture, unless something was already there, in
-  which case APicture is freed and the one already there comes back.  Handing
-  it back rather than nothing is what stops a caller holding a pointer to
-  what it has just given away: the first version freed the duplicate and left
-  the caller reading it. }
-function TLedNBPictures.Add(const AKey: string; APicture: TPicture): TPicture;
-var
-  i: Integer;
-begin
-  Result := APicture;
-  if APicture = nil then Exit;
-  i := FKeys.IndexOf(AKey);
-  if i >= 0 then
-  begin
-    APicture.Free;
-    Exit(TPicture(FKeys.Objects[i]));
-  end;
-  FKeys.AddObject(AKey, APicture);
-  Inc(FDecodes);
-  { One is always kept, however big it is: a reader looking at a single
-    enormous picture still wants it not to be decoded twice. }
-  while (FKeys.Count > 1) and (Pixels > FBudget) do FKeys.Delete(0);
-end;
-
-function TLedNBPictures.Get(const AKey, ABytes, AExt: string;
-  AFitWidth: Integer): TPicture;
-var
-  Kept, Scaled: TPicture;
-  Stream: TStringStream;
-  W, H: Integer;
-begin
-  Result := nil;
-  if ABytes = '' then Exit;
-
-  Kept := Find(AKey);
-  if Kept = nil then
-  begin
-    Kept := TPicture.Create;
-    Stream := TStringStream.Create(ABytes);
-    try
-      try
-        Inc(FDecodes);
-        Kept.LoadFromStreamWithFileExt(Stream, AExt);
-      except
-        FreeAndNil(Kept);
-      end;
-    finally
-      Stream.Free;
-    end;
-    if Kept = nil then Exit;
-    if Kept.Graphic = nil then
-    begin
-      Kept.Free;
-      Exit;
-    end;
-
-    { Down to the width the page draws it at, if that is smaller. }
-    if (AFitWidth > 0) and (Kept.Width > AFitWidth) then
-    begin
-      W := AFitWidth;
-      H := Round(Kept.Height * (AFitWidth / Kept.Width));
-      if H < 1 then H := 1;
-      Scaled := TPicture.Create;
-      try
-        Scaled.Bitmap.SetSize(W, H);
-        Scaled.Bitmap.Canvas.AntialiasingMode := amOn;
-        Scaled.Bitmap.Canvas.StretchDraw(Rect(0, 0, W, H), Kept.Graphic);
-        Kept.Free;
-        Kept := Scaled;
-      except
-        { Scaling is an improvement, not a requirement: the unscaled
-          picture is still a picture. }
-        Scaled.Free;
-      end;
-    end;
-
-    Kept := Add(AKey, Kept);
-  end;
-
-  { A copy, because the renderer frees the picture it is given -- see
-    TIpHtmlNodeIMG.UnloadImage -- and a copy of a decoded bitmap is a memory
-    move rather than a decode. }
-  Result := TPicture.Create;
-  try
-    Result.Assign(Kept);
-  except
-    FreeAndNil(Result);
-  end;
-end;
-
-function TLedNBPictures.SizeOf_(const AKey: string;
-  out AW, AH: Integer): TPicture;
-var
-  i: Integer;
-begin
-  Result := nil;
-  AW := 0;
-  AH := 0;
-  i := FKeys.IndexOf(AKey);
-  if i < 0 then Exit;
-  Result := TPicture(FKeys.Objects[i]);
-  if (Result = nil) or (Result.Graphic = nil) then Exit(nil);
-  AW := Result.Width;
-  AH := Result.Height;
-end;
-
-procedure TLedNBPictures.Clear;
-begin
-  FKeys.Clear;
-end;
-
-function TLedNBPictures.Count: Integer;
-begin
-  Result := FKeys.Count;
-end;
-
 { ---- one cell ---- }
 
 constructor TLedNBCellBox.Create(AOwner: TComponent; ADoc: TLedDocument;
@@ -1080,6 +863,15 @@ end;
   and the box shows the entire file, and setting its text rewrites the
   document.  A cell is its own little document here, the same arrangement the
   notebook highlighter makes for the language highlighter it drives. }
+destructor TLedNBCellBox.Destroy;
+begin
+  { The pictures this cell asked for.  Freeing the source does not free the
+    bitmaps when the cache belongs to the pane, which is the point of the
+    pane owning it. }
+  FPicSrc.Free;
+  inherited Destroy;
+end;
+
 procedure TLedNBCellBox.MakeEditor;
 begin
   if FEdit <> nil then Exit;
@@ -1223,166 +1015,58 @@ end;
 
 function TLedNBCellBox.HaveRemote(const AURL: string;
   out AWhy: string): Boolean;
+var
+  Fetching: Boolean;
 begin
-  AWhy := '';
-  Result := LedNBImages.Want(AURL);
-  { Asking started a fetch, so the pane starts looking for the answer. }
-  if (not Result) and (Parent is TLedNotebookPane) then
+  Result := Pictures.Have(AURL, AWhy, Fetching);
+  { Asking started a fetch, so the pane starts looking for the answer.  That
+    part is the pane's own: what to do when one arrives is "redraw the cells
+    that name it" here and "lay the page out again" in the preview. }
+  if Fetching and (Parent is TLedNotebookPane) then
     TLedNotebookPane(Parent).WatchForImages;
-  if Result then Exit;
-  AWhy := LedNBImages.Failure(AURL);
-  if AWhy <> '' then Exit;
-  if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
 end;
 
-{ How big the picture behind a reference is, for the page to be written with
-  a size that fits.  The same three places ProvideImage looks -- what was
-  fetched, what the notebook carries, and a file beside it -- and read from
-  the picture's own header rather than by decoding it. }
+{ Where this cell's pictures come from, and the three answers the renderer
+  wants about them: Led.UI.Pictures has all of it.  Made on first use, so a
+  cell nobody has scrolled to has cost nothing, and sharing the pane's own
+  cache -- a cell scrolled out of view must not throw away what scrolling it
+  back needs. }
+function TLedNBCellBox.Pictures: TLedPictureSource;
+begin
+  if FPicSrc = nil then
+  begin
+    if Parent is TLedNotebookPane then
+      FPicSrc := TLedPictureSource.Create(TLedNotebookPane(Parent).Pictures)
+    else
+      { A box with no pane over it, which happens in a check: it keeps its
+        own pictures and lets them go with itself. }
+      FPicSrc := TLedPictureSource.Create;
+    FPicSrc.BaseDir := ExtractFileDir(FDoc.FileName);
+    FPicSrc.OnEmbedded := @EmbeddedPicture;
+  end;
+  FPicSrc.FitWidth := FFitWidth;
+  Result := FPicSrc;
+end;
+
+{ The pictures a notebook carries in itself: a data: URI in a cell's text, or
+  an attachment pasted into it.  This is the part only the cell can answer,
+  which is why the shared code asks rather than doing it. }
+function TLedNBCellBox.EmbeddedPicture(const AURL: string;
+  out ABytes, AMime: string): Boolean;
+begin
+  Result := LedNBEmbeddedImage(FDoc.Notebook, FCell, AURL, ABytes, AMime);
+end;
+
 function TLedNBCellBox.ImageSize(const AURL: string;
   out AW, AH: Integer): Boolean;
-var
-  Bytes, Mime, FN: string;
-  F: TFileStream;
-  Kept: TPicture;
 begin
-  Result := False;
-  AW := 0;
-  AH := 0;
-  if AURL = '' then Exit;
-
-  { A picture already decoded answers for itself, and answering that way
-    skips everything below: a copy of half a megabyte of PNG for every
-    picture on every page build, and -- for an SVG or a WebP -- a converter
-    run per picture per build, which is a process each time.
-
-    The kept picture is the size the page draws it at rather than the size
-    the file holds, and that is the right answer here too: the page asks
-    "does this need narrowing", and something already narrowed does not. }
-  if Parent is TLedNotebookPane then
-  begin
-    Kept := TLedNotebookPane(Parent).Pictures.SizeOf_(
-      IntToStr(FFitWidth) + '|' + AURL, AW, AH);
-    if Kept <> nil then Exit(True);
-  end;
-
-  Bytes := '';
-  if LedNBIsRemote(AURL) then
-    LedNBImages.Lookup(AURL, Bytes)
-  else if LedNBEmbeddedImage(FDoc.Notebook, FCell, AURL, Bytes, Mime) then
-    { taken as it is }
-  else
-  begin
-    FN := LedNBLocalPath(AURL, ExtractFilePath(FDoc.FileName));
-    if (FN <> '') and FileExists(FN) then
-      try
-        F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
-        try
-          { The header is all this needs, and a picture on disk may be
-            enormous. }
-          SetLength(Bytes, 4096);
-          SetLength(Bytes, F.Read(Bytes[1], 4096));
-        finally
-          F.Free;
-        end;
-      except
-        Bytes := '';
-      end;
-  end;
-  if Bytes = '' then Exit;
-  { A converted picture is measured after converting: an SVG says its size
-    in its markup, in units this does not read. }
-  Mime := '';
-  if LedNBConvertKind(Bytes) <> '' then
-    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
-  Result := LedNBPictureSize(Bytes, AW, AH);
-end;
-
-{ A picture from bytes, through the pane's own cache: decoded once, kept at
-  the size the page draws it at, and handed over as a copy.  See
-  TLedNBPictures, which is where all of that happens.
-
-  A box with no pane over it -- which happens in a check -- decodes for
-  itself and keeps nothing. }
-function TLedNBCellBox.PictureFrom(const AURL, ABytes, AExt: string): TPicture;
-var
-  Own: TLedNBPictures;
-begin
-  if Parent is TLedNotebookPane then
-    Exit(TLedNotebookPane(Parent).Pictures.Get(
-      IntToStr(FFitWidth) + '|' + AURL, ABytes, AExt, FFitWidth));
-  Own := TLedNBPictures.Create;
-  try
-    Result := Own.Get(AURL, ABytes, AExt, FFitWidth);
-  finally
-    Own.Free;
-  end;
+  Result := Pictures.SizeOf_(AURL, AW, AH);
 end;
 
 procedure TLedNBCellBox.ProvideImage(Sender: TIpHtmlNode; const URL: string;
   var Picture: TPicture);
-var
-  FN, Bytes, Mime: string;
-  F: TFileStream;
 begin
-  Picture := nil;
-  if URL = '' then Exit;
-
-  { One that came off the web and is in hand.  The kind is taken from the
-    bytes rather than from the name it was served under: servers lie about
-    content types and people name a JPEG .png. }
-  if LedNBIsRemote(URL) and LedNBImages.Lookup(URL, Bytes) then
-  begin
-    Mime := LedNBSniffImage(Bytes);
-    if Mime = '' then Exit;
-    Picture := PictureFrom(URL, Bytes, Mime);
-    Exit;
-  end;
-
-  { A picture that is in the notebook: a data: URI, or an attachment pasted
-    into the cell.  Decoded rather than fetched, and nothing is written to a
-    temporary file on the way. }
-  if LedNBEmbeddedImage(FDoc.Notebook, FCell, URL, Bytes, Mime) then
-  begin
-    { An SVG or a WebP among them is converted first, if the machine has
-      anything to convert it with.  Cached under its own name, so the
-      conversion happens once as well. }
-    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
-    Picture := PictureFrom(URL, Bytes, LedNBImageExt(Mime));
-    Exit;
-  end;
-
-  { Anything that needed fetching and has not arrived is already out of the
-    page, so what is left names a file: beside the notebook, an absolute
-    path, or a file:// URL -- which the renderer does not resolve itself, its
-    provider dealing in paths rather than URLs. }
-  if LedNBIsRemote(URL) then Exit;
-  FN := LedNBLocalPath(URL, ExtractFileDir(FDoc.FileName));
-  if (FN = '') or (not FileExists(FN)) then Exit;
-
-  { Read as bytes and decoded through the cache, the same as the others: a
-    picture on disk is decoded once however many times it is drawn, and a
-    picture beside a notebook is often the same one in every cell. }
-  Bytes := '';
-  try
-    F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
-    try
-      SetLength(Bytes, F.Size);
-      if F.Size > 0 then F.Read(Bytes[1], F.Size);
-    finally
-      F.Free;
-    end;
-  except
-    Bytes := '';
-  end;
-  if Bytes = '' then Exit;
-  if LedNBConvertKind(Bytes) <> '' then
-  begin
-    Mime := '';
-    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
-  end;
-  Picture := PictureFrom(FN, Bytes, LowerCase(Copy(ExtractFileExt(FN), 2,
-    MaxInt)));
+  Picture := Pictures.Provide(URL);
 end;
 
 { One prose cell as a page, in the theme's colours.

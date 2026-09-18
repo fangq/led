@@ -20,7 +20,8 @@ uses
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.Core.NBImage,
-  Led.Core.NBFetch, Led.Core.NBConvert, Led.UI.Dpi, Led.UI.PageStyle;
+  Led.Core.NBFetch, Led.Core.NBConvert, Led.UI.Dpi, Led.UI.PageStyle,
+  Led.UI.Pictures;
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
@@ -79,6 +80,7 @@ type
     FTopsFor: Integer;            { the scroll height they were built at }
     FLastScroll: Integer;
     FScrollTimer: TTimer;
+    FPicSrc: TLedPictureSource;
     FOnScrolled: TLedPreviewLineEvent;
     FSyncedLine: Integer;         { the last line scrolled to, to not repeat }
     FOnJumpToLine: TLedPreviewLineEvent;
@@ -102,6 +104,7 @@ type
       without them and is laid out again now -- there is no way to put one
       picture into a page IPro is already holding. }
     procedure ImageTick(Sender: TObject);
+    function Pictures: TLedPictureSource;
     { Resolves an <img> URL against the document's own folder, since
       TIpFileDataProvider otherwise looks relative to the process's working
       directory.  Any failure to load degrades to "no image" instead of an
@@ -121,6 +124,7 @@ type
       the editor's and not IPro's default. }
     function FixedFace: string;
     constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
     { Shows AText rendered as Markdown.  Debounced by default, because a
       refresh can arrive several times over in a row -- a tab change is three
       notifications -- and IPro relays out the whole document each time.
@@ -304,6 +308,12 @@ begin
   OnResize := @PaneResize;
 end;
 
+destructor TLedPreviewPane.Destroy;
+begin
+  FPicSrc.Free;
+  inherited Destroy;
+end;
+
 procedure TLedPreviewPane.PaneResize(Sender: TObject);
 begin
   if FHasRendered and FHtml.Visible then
@@ -326,85 +336,6 @@ begin
     FHtml.Visible := True;
 end;
 
-procedure TLedPreviewPane.ProvideImage(Sender: TIpHtmlNode; const URL: string;
-  var Picture: TPicture);
-var
-  FN, Bytes, Kind: string;
-  Stream: TStringStream;
-  F: TFileStream;
-begin
-  Picture := nil;
-  if URL = '' then Exit;
-
-  { One from the web that has been fetched.  What it is comes from its own
-    first bytes rather than from the name it was served under. }
-  if LedNBIsRemote(URL) then
-  begin
-    if not LedNBImages.Lookup(URL, Bytes) then Exit;
-    Kind := LedNBSniffImage(Bytes);
-    if Kind = '' then Exit;
-    Picture := TPicture.Create;
-    Stream := TStringStream.Create(Bytes);
-    try
-      try
-        Picture.LoadFromStreamWithFileExt(Stream, Kind);
-      except
-        FreeAndNil(Picture);
-      end;
-    finally
-      Stream.Free;
-    end;
-    Exit;
-  end;
-
-  { Otherwise a file: beside the document, an absolute path, or a file://
-    URL -- which the renderer does not resolve itself, its provider dealing
-    in paths rather than URLs. }
-  FN := LedNBLocalPath(URL, FBaseDir);
-  if (FN = '') or (not FileExists(FN)) then Exit;
-
-  { An SVG or a WebP beside the document is converted first, if the machine
-    has anything to convert it with.
-
-    Read as bytes and not as text: a WebP's own header carries a carriage
-    return, and handing binary to a text property rewrites it -- which is
-    how a picture once arrived with its signature broken. }
-  Bytes := '';
-  try
-    F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
-    try
-      SetLength(Bytes, F.Size);
-      if F.Size > 0 then F.Read(Bytes[1], F.Size);
-    finally
-      F.Free;
-    end;
-  except
-    Bytes := '';
-  end;
-  if LedNBConvertKind(Bytes) <> '' then
-  begin
-    if not LedNBToPng(Bytes, Bytes) then Exit;
-    Picture := TPicture.Create;
-    Stream := TStringStream.Create(Bytes);
-    try
-      try
-        Picture.LoadFromStreamWithFileExt(Stream, 'png');
-      except
-        FreeAndNil(Picture);
-      end;
-    finally
-      Stream.Free;
-    end;
-    Exit;
-  end;
-
-  Picture := TPicture.Create;
-  try
-    Picture.LoadFromFile(FN);
-  except
-    FreeAndNil(Picture);
-  end;
-end;
 
 procedure TLedPreviewPane.ShowMessage_(const AText: string);
 begin
@@ -735,58 +666,42 @@ begin
   if Face <> '' then FHtml.FixedTypeface := Face;
 end;
 
+{ Where this document's pictures come from, and the three answers the
+  renderer wants about them: Led.UI.Pictures has all of it, and the notebook
+  pane asks it the same three questions.  Nothing embedded is offered -- a
+  Markdown file has no attachments -- so a data: URI is the only picture in
+  the document itself, and Led.Core.NBImage reads those. }
+function TLedPreviewPane.Pictures: TLedPictureSource;
+begin
+  if FPicSrc = nil then FPicSrc := TLedPictureSource.Create;
+  FPicSrc.BaseDir := FBaseDir;
+  { The page's own width, so a picture wider than the pane is scaled once on
+    the way in rather than by the renderer on every paint. }
+  FPicSrc.FitWidth := FHtml.ClientWidth - LedScale96(32);
+  Result := FPicSrc;
+end;
+
 function TLedPreviewPane.HaveRemote(const AURL: string;
   out AWhy: string): Boolean;
+var
+  Fetching: Boolean;
 begin
-  AWhy := '';
-  Result := LedNBImages.Want(AURL);
-  if Result then Exit;
-  { Asking started a fetch, so start looking for the answer. }
-  if LedNBImages.Pending > 0 then FImageTimer.Enabled := True;
-  AWhy := LedNBImages.Failure(AURL);
-  if AWhy <> '' then Exit;
-  if LedNBImages.Enabled then AWhy := 'fetching' else AWhy := 'not fetched';
+  Result := Pictures.Have(AURL, AWhy, Fetching);
+  { Asking started a fetch, so start looking for the answer.  What to do
+    when one arrives is this pane's own business: lay the page out again. }
+  if Fetching then FImageTimer.Enabled := True;
 end;
 
 function TLedPreviewPane.ImageSize(const AURL: string;
   out AW, AH: Integer): Boolean;
-var
-  Bytes, Mime, FN: string;
-  F: TFileStream;
 begin
-  Result := False;
-  AW := 0;
-  AH := 0;
-  if AURL = '' then Exit;
+  Result := Pictures.SizeOf_(AURL, AW, AH);
+end;
 
-  Bytes := '';
-  if LedNBIsRemote(AURL) then
-    LedNBImages.Lookup(AURL, Bytes)
-  else
-  begin
-    FN := LedNBLocalPath(AURL, FBaseDir);
-    if (FN <> '') and FileExists(FN) then
-      try
-        F := TFileStream.Create(FN, fmOpenRead or fmShareDenyNone);
-        try
-          { The header is all this needs, and a picture on disk may be
-            enormous. }
-          SetLength(Bytes, 4096);
-          SetLength(Bytes, F.Read(Bytes[1], 4096));
-        finally
-          F.Free;
-        end;
-      except
-        Bytes := '';
-      end;
-  end;
-  if Bytes = '' then Exit;
-  { A converted picture is measured after converting: an SVG says its size
-    in its markup, in units this does not read. }
-  Mime := '';
-  if LedNBConvertKind(Bytes) <> '' then
-    if not LedNBMakeDrawable(Bytes, Mime) then Exit;
-  Result := LedNBPictureSize(Bytes, AW, AH);
+procedure TLedPreviewPane.ProvideImage(Sender: TIpHtmlNode; const URL: string;
+  var Picture: TPicture);
+begin
+  Picture := Pictures.Provide(URL);
 end;
 
 procedure TLedPreviewPane.ImageTick(Sender: TObject);
