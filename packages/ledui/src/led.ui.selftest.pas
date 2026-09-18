@@ -6150,9 +6150,18 @@ var
     k: Integer;
   begin
     Result := '';
+    { TIpHtmlNodeText is not in every IPro.  The Lazarus that setup-lazarus
+      installs on the macOS and Windows runners does not export it, and the
+      build there stopped on this line -- while the Linux one, which is where
+      the self-test actually runs, has it.  So it is asked for at compile time
+      rather than assumed.  Nothing is skipped quietly: without the class the
+      words come back empty and the checks below fail rather than pass. }
+    {$IF declared(TIpHtmlNodeText)}
     if ANode is TIpHtmlNodeText then
       Result := TIpHtmlNodeText(ANode).ANSIText
-    else if ANode is TIpHtmlNodeMulti then
+    else
+    {$ENDIF}
+    if ANode is TIpHtmlNodeMulti then
       for k := 0 to TIpHtmlNodeMulti(ANode).ChildCount - 1 do
         Result := Result + TextOfNode(TIpHtmlNodeMulti(ANode).ChildNode[k]);
   end;
