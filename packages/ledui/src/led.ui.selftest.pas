@@ -11565,6 +11565,50 @@ begin
   Pump;
   Check('focus does not move into an empty group', F.ActiveTab <> nil);
 
+  { ---- closing the last tab of a group closes the group ----
+
+    Reported: a document moved to the split group and then closed left the
+    other group holding half the window, with the rest of it blank and no
+    way back but the menu.  Nothing brought the split down when a group
+    emptied.
+
+    Only on a close: opening a split with one tab open deliberately leaves
+    the second group empty, so that the reader has somewhere to put the next
+    file, and collapsing whenever a group is empty would undo the split the
+    moment it was made. }
+  { A scratch document for this, rather than the one carrying the text the
+    rest of the test is about: what is being checked is a close, and closing
+    the document under the checks below would leave them reading a freed
+    one. }
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  F.MoveTabToOtherNotebook;
+  Pump;
+  Check('the scratch tab is in the second group',
+    (F.ActiveTab <> nil) and (F.ActiveTab.Sheet.PageControl = F.Notebook2));
+  CheckEqInt('and it is the only one there', 1, F.Notebook2.PageCount);
+
+  F.CloseActiveTab(False);
+  Pump;
+  Check('closing it takes the split down with it', not F.NotebookSplit);
+  Check('and the second group is gone', F.Notebook2 = nil);
+  CheckEqInt('while the tabs that were in the first group are still there',
+    Before, F.TabCount);
+  Check('and the first group fills the window again',
+    F.Notebook.Align = alClient);
+
+  { A split made with one tab open still stays open, which is the case the
+    rule above must not catch. }
+  if F.TabCount = 1 then
+  begin
+    F.SetNotebookSplit(True);
+    Pump;
+    Check('a split opened with one tab keeps its empty group',
+      F.NotebookSplit);
+    F.SetNotebookSplit(False);
+    Pump;
+  end;
+
   { Unsplitting brings everything back rather than closing anything. }
   F.SetNotebookSplit(False);
   Pump;

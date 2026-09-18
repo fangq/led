@@ -746,6 +746,7 @@ type
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
+    procedure CollapseEmptySplit;
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
     function ConfirmBJExpand(ACount: Int64): Boolean;
@@ -5710,11 +5711,30 @@ begin
   if Doc.ViewCount = 0 then
     FDocs.CloseDocument(Doc);
 
+  { A split group with nothing left in it goes, and the other group takes
+    the whole area back.
+
+    Only on a close, and not whenever a group happens to be empty: opening a
+    split with one tab open deliberately leaves the second group empty, so
+    that the reader has somewhere to open the next file.  Closing the last
+    tab of a group is the other thing entirely -- the reader is finished
+    with it -- and leaving half the window blank with no way back to it but
+    the menu is what they reported. }
+  CollapseEmptySplit;
+
   ApplyTabVisibility;
   if AReplace and (FBook.PageCount = 0) then
     actNewExecute(nil)
   else
     UpdateStatusBar;
+end;
+
+{ Closes the split when one of its two groups has no tabs left in it. }
+procedure TLedMainForm.CollapseEmptySplit;
+begin
+  if not NotebookSplit then Exit;
+  if (FBook.PageCount > 0) and (FBook2.PageCount > 0) then Exit;
+  SetNotebookSplit(False, False);
 end;
 
 procedure TLedMainForm.actSplitSideBySideExecute(Sender: TObject);
