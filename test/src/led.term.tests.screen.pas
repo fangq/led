@@ -46,6 +46,14 @@ type
     procedure WindowTitle;
     procedure UnknownSequenceIsIgnored;
     procedure ResizeKeepsContent;
+    procedure AWideCharacterTakesTwoCells;
+    procedure AWideCharacterAtTheMarginWrapsWhole;
+    procedure OverwritingHalfAPairClearsTheOther;
+    procedure ErasingTakesBothHalves;
+    procedure CopiedTextHasNoGapInIt;
+    procedure ACombiningMarkJoinsTheCharacterBeforeIt;
+    procedure DeletingACharacterKeepsPairsWhole;
+    procedure InsertingACharacterKeepsPairsWhole;
   end;
 
 implementation
@@ -260,6 +268,125 @@ begin
   S.Resize(40, 10);
   AssertEquals('hello', S.RowText(0));
   AssertEquals(40, S.Cols);
+end;
+
+
+{ ---- double-width characters ----
+
+  An ideograph, kana or fullwidth form is drawn two cells wide, so the model
+  has to hold it as a pair: the left cell carries the character, the right one
+  is a placeholder the glyph reaches into.  Before this, a Chinese character
+  advanced the cursor by one and every column after it on the line was drawn
+  over its neighbour. }
+
+procedure TTestTermScreen.AWideCharacterTakesTwoCells;
+begin
+  S.Feed(#$E4#$BD#$A0#$E5#$A5#$BD);             { 你好 }
+  AssertEquals('the character is in the first cell', #$E4#$BD#$A0,
+    S.Cell(0, 0).Ch);
+  AssertTrue('and is marked as wide', S.Cell(0, 0).Wide);
+  AssertTrue('the cell beside it is its other half', S.Cell(1, 0).Tail);
+  AssertEquals('which carries no character of its own', '', S.Cell(1, 0).Ch);
+  AssertEquals('the second character is two cells along', #$E5#$A5#$BD,
+    S.Cell(2, 0).Ch);
+  AssertTrue('also wide', S.Cell(2, 0).Wide);
+  AssertTrue('with its own other half', S.Cell(3, 0).Tail);
+  AssertEquals('and the cursor has moved by four cells, not two', 4,
+    S.CursorX);
+end;
+
+procedure TTestTermScreen.AWideCharacterAtTheMarginWrapsWhole;
+begin
+  { One cell left at the right margin is not enough for a pair: the pair goes
+    to the next line whole rather than straddling the edge. }
+  S.Feed(StringOfChar('a', S.Cols - 1) + #$E4#$BD#$A0);
+  AssertEquals('the last cell of the first row is left blank', ' ',
+    S.Cell(S.Cols - 1, 0).Ch);
+  AssertEquals('and the character is at the start of the next row',
+    #$E4#$BD#$A0, S.Cell(0, 1).Ch);
+  AssertTrue('still whole', S.Cell(0, 1).Wide and S.Cell(1, 1).Tail);
+end;
+
+procedure TTestTermScreen.OverwritingHalfAPairClearsTheOther;
+begin
+  { Half a pair left behind would draw a wide glyph over its neighbour, so
+    writing into either half takes the other with it. }
+  S.Feed(#$E4#$BD#$A0);
+  S.Feed(#27'[1;1H' + 'x');                     { over the left half }
+  AssertEquals('the new character is there', 'x', S.Cell(0, 0).Ch);
+  AssertFalse('nothing is left of the pair', S.Cell(1, 0).Tail);
+  AssertEquals('and its other half is blank', ' ', S.Cell(1, 0).Ch);
+
+  S.Feed(#27'[2J' + #27'[1;1H' + #$E4#$BD#$A0);
+  S.Feed(#27'[1;2H' + 'y');                     { over the right half }
+  AssertEquals('the new character is there', 'y', S.Cell(1, 0).Ch);
+  AssertFalse('and the wide character is gone', S.Cell(0, 0).Wide);
+  AssertEquals('leaving a blank where it was', ' ', S.Cell(0, 0).Ch);
+end;
+
+procedure TTestTermScreen.ErasingTakesBothHalves;
+begin
+  S.Feed('ab' + #$E4#$BD#$A0 + 'cd');
+  { Erase from the right half onwards: the left half is outside the range and
+    would otherwise survive on its own. }
+  S.Feed(#27'[1;4H' + #27'[K');
+  AssertFalse('the wide character did not survive alone',
+    S.Cell(2, 0).Wide);
+  AssertEquals('it is blank', ' ', S.Cell(2, 0).Ch);
+  AssertEquals('what was before it is untouched', 'a', S.Cell(0, 0).Ch);
+end;
+
+procedure TTestTermScreen.CopiedTextHasNoGapInIt;
+begin
+  S.Feed(#$E4#$BD#$A0#$E5#$A5#$BD + 'ok');
+  { The placeholder cells are not characters of the line: copying them would
+    put a space inside every Chinese word. }
+  AssertEquals(#$E4#$BD#$A0#$E5#$A5#$BD + 'ok', S.RowText(0));
+end;
+
+procedure TTestTermScreen.ACombiningMarkJoinsTheCharacterBeforeIt;
+begin
+  S.Feed('e' + #$CC#$81);                       { e + combining acute }
+  AssertEquals('the mark joined the letter', 'e' + #$CC#$81,
+    S.Cell(0, 0).Ch);
+  AssertEquals('and took no cell of its own', 1, S.CursorX);
+end;
+
+procedure TTestTermScreen.DeletingACharacterKeepsPairsWhole;
+begin
+  S.Feed('a' + #$E4#$BD#$A0 + 'b');
+  { Delete the 'a': the pair shifts left by one cell, and a shift by an odd
+    number is exactly what leaves half a pair behind. }
+  S.Feed(#27'[1;1H' + #27'[P');
+  AssertEquals('the pair shifted left whole', #$E4#$BD#$A0,
+    S.Cell(0, 0).Ch);
+  AssertTrue('with its base marked', S.Cell(0, 0).Wide);
+  AssertTrue('and its other half beside it', S.Cell(1, 0).Tail);
+  AssertEquals('and what followed it came with it', 'b', S.Cell(2, 0).Ch);
+
+  { And a delete that lands on the left half of a pair takes the pair: the
+    right half would otherwise shift into place with no base. }
+  S.Feed(#27'[2J' + #27'[1;1H' + 'a' + #$E4#$BD#$A0 + 'b');
+  S.Feed(#27'[1;2H' + #27'[P');
+  AssertFalse('no orphaned half is left', S.Cell(1, 0).Tail);
+  AssertFalse('nor an orphaned base', S.Cell(1, 0).Wide);
+end;
+
+procedure TTestTermScreen.InsertingACharacterKeepsPairsWhole;
+begin
+  S.Feed('a' + #$E4#$BD#$A0 + 'b');
+  { Insert before the pair: everything to the right of the cursor shifts by
+    one, so the pair's two halves land one cell apart with a blank between
+    them.  Nothing else notices -- the shift is a copy of cells -- so the row
+    has to be mended afterwards or a wide glyph is drawn over the character
+    beside it. }
+  S.Feed(#27'[1;2H' + #27'[@');
+  AssertEquals('the inserted blank is where the cursor was', ' ',
+    S.Cell(1, 0).Ch);
+  AssertFalse('and no base is left without its other half',
+    S.Cell(2, 0).Wide and (not S.Cell(3, 0).Tail));
+  AssertFalse('nor an other half without its base',
+    S.Cell(3, 0).Tail and (not S.Cell(2, 0).Wide));
 end;
 
 initialization

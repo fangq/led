@@ -15,7 +15,8 @@ unit Led.Term.Screen;
 interface
 
 uses
-  Classes, SysUtils;
+  Classes, SysUtils,
+  Led.Core.CharWidth;
 
 const
   LedTermMaxScrollback = 5000;
@@ -28,6 +29,13 @@ type
     Ch: string[6];       // one UTF-8 character
     FG, BG: SmallInt;    // -1 = default, 0..255 = palette index
     Attr: TLedCellAttr;
+    { A double-width character -- an ideograph, kana, a fullwidth form --
+      occupies two cells: the left one carries the character and has Wide
+      set, and the right one carries nothing and has Tail set.  The pair is
+      written, erased, scrolled and copied as one thing; what must never
+      happen is half a pair surviving, because the renderer would then draw a
+      wide glyph over its neighbour, which is the bug this replaced. }
+    Wide, Tail: Boolean;
   end;
 
   TLedCellRow = array of TLedCell;
@@ -64,6 +72,16 @@ type
     procedure ScrollUp(ACount: Integer);
     procedure ScrollDown(ACount: Integer);
     procedure PutChar(const AChar: string);
+    { Takes apart the double-width pair that covers ACol, if there is one, so
+      that whatever is about to be written there cannot leave half of one. }
+    procedure BreakPair(ACol, ARow: Integer);
+    { Blanks any half of a pair that has lost its partner.  Cells that are
+      shifted -- inserted or deleted characters -- move by one, which splits
+      every pair they pass through, and which half is left depends on the
+      direction; this settles it for the whole row rather than reasoning
+      about the two ends. }
+    procedure MendRow(ARow: Integer);
+    procedure Blank(var ACell: TLedCell);
     procedure Execute(AByte: Byte);
     procedure DispatchCSI(AFinal: Char);
     procedure DispatchSGR;
@@ -157,6 +175,8 @@ begin
     ARow[i].FG := -1;
     ARow[i].BG := -1;
     ARow[i].Attr := [];
+    ARow[i].Wide := False;
+    ARow[i].Tail := False;
   end;
 end;
 
@@ -263,8 +283,14 @@ begin
   Result := '';
   Row := VisibleRow(ARow);
   if Row = nil then Exit;
+  { The right half of a double-width pair is a cell the glyph reaches into,
+    not a character of the line.  It holds the empty string, so skipping it
+    changes nothing today -- it is here so that the pair stays out of the
+    text if a later change gives that cell something to hold, which is how a
+    stray space would get inside every Chinese word. }
   for i := 0 to High(Row) do
-    Result := Result + Row[i].Ch;
+    if not Row[i].Tail then
+      Result := Result + Row[i].Ch;
   Result := TrimRight(Result);
 end;
 
@@ -311,8 +337,63 @@ begin
   FDirty := True;
 end;
 
-procedure TLedTermScreen.PutChar(const AChar: string);
+procedure TLedTermScreen.Blank(var ACell: TLedCell);
 begin
+  ACell.Ch := ' ';
+  ACell.Attr := [];
+  ACell.Wide := False;
+  ACell.Tail := False;
+end;
+
+procedure TLedTermScreen.BreakPair(ACol, ARow: Integer);
+begin
+  if (ARow < 0) or (ARow >= FRows) or (ACol < 0) or (ACol >= FCols) then Exit;
+  if FGrid[ARow][ACol].Wide and (ACol + 1 < FCols) then
+    Blank(FGrid[ARow][ACol + 1]);
+  if FGrid[ARow][ACol].Tail and (ACol > 0) then
+    Blank(FGrid[ARow][ACol - 1]);
+end;
+
+procedure TLedTermScreen.MendRow(ARow: Integer);
+var
+  i: Integer;
+begin
+  if (ARow < 0) or (ARow >= FRows) then Exit;
+  { Left to right, so a base blanked here leaves its tail to be blanked when
+    the loop reaches it. }
+  for i := 0 to FCols - 1 do
+  begin
+    if FGrid[ARow][i].Wide and
+       ((i + 1 >= FCols) or (not FGrid[ARow][i + 1].Tail)) then
+      Blank(FGrid[ARow][i]);
+    if FGrid[ARow][i].Tail and
+       ((i = 0) or (not FGrid[ARow][i - 1].Wide)) then
+      Blank(FGrid[ARow][i]);
+  end;
+end;
+
+procedure TLedTermScreen.PutChar(const AChar: string);
+var
+  Cells: Integer;
+begin
+  Cells := LedCharCells(AChar);
+
+  { A combining mark belongs to the character before it: it is drawn on top
+    of it and moves the cursor by nothing.  Appended to that cell when it
+    fits, and dropped when it does not -- a cell holds six bytes, which is
+    one character and one mark. }
+  if Cells = 0 then
+  begin
+    if (not FWrapPending) and (FCurX > 0) and (FCurY >= 0) and
+       (FCurY < FRows) and
+       (Length(FGrid[FCurY][FCurX - 1].Ch) + Length(AChar) <= 6) then
+    begin
+      FGrid[FCurY][FCurX - 1].Ch := FGrid[FCurY][FCurX - 1].Ch + AChar;
+      FDirty := True;
+    end;
+    Exit;
+  end;
+
   { Wrapping happens when the next character arrives, not when the last
     column is filled: a line that ends exactly at the margin should not
     produce a blank line. }
@@ -323,18 +404,53 @@ begin
     FWrapPending := False;
   end;
 
+  { A double-width character will not straddle the right margin.  Real
+    terminals blank the last cell and wrap, which is also the only thing that
+    keeps the two halves of the pair on the same row. }
+  if (Cells = 2) and (FCurX = FCols - 1) then
+  begin
+    if (FCurY >= 0) and (FCurY < FRows) then
+    begin
+      BreakPair(FCurX, FCurY);
+      Blank(FGrid[FCurY][FCurX]);
+    end;
+    FCurX := 0;
+    if FCurY = FScrollBottom then ScrollUp(1) else Inc(FCurY);
+  end;
+
   if (FCurY >= 0) and (FCurY < FRows) and (FCurX >= 0) and (FCurX < FCols) then
   begin
+    { Whatever was here may have been half of a pair. }
+    BreakPair(FCurX, FCurY);
+    if Cells = 2 then BreakPair(FCurX + 1, FCurY);
+
     FGrid[FCurY][FCurX].Ch := AChar;
     FGrid[FCurY][FCurX].FG := FFG;
     FGrid[FCurY][FCurX].BG := FBG;
     FGrid[FCurY][FCurX].Attr := FAttr;
+    FGrid[FCurY][FCurX].Wide := Cells = 2;
+    FGrid[FCurY][FCurX].Tail := False;
+
+    if (Cells = 2) and (FCurX + 1 < FCols) then
+    begin
+      FGrid[FCurY][FCurX + 1].Ch := '';
+      FGrid[FCurY][FCurX + 1].FG := FFG;
+      FGrid[FCurY][FCurX + 1].BG := FBG;
+      FGrid[FCurY][FCurX + 1].Attr := FAttr;
+      FGrid[FCurY][FCurX + 1].Wide := False;
+      FGrid[FCurY][FCurX + 1].Tail := True;
+    end;
   end;
 
-  if FCurX >= FCols - 1 then
-    FWrapPending := True
+  if FCurX + Cells > FCols - 1 then
+  begin
+    { On the last cell the wrap waits for the next character; a wide pair
+      that ends there has already used both of its cells. }
+    FCurX := FCols - 1;
+    FWrapPending := True;
+  end
   else
-    Inc(FCurX);
+    Inc(FCurX, Cells);
   FDirty := True;
 end;
 
@@ -356,13 +472,15 @@ begin
   else
     First := FCurX; Last := FCols - 1;
   end;
+  { The ends of the range may cut a double-width pair in half. }
+  BreakPair(First, FCurY);
+  BreakPair(Last, FCurY);
   for i := First to Last do
     if (i >= 0) and (i < FCols) then
     begin
-      FGrid[FCurY][i].Ch := ' ';
+      Blank(FGrid[FCurY][i]);
       FGrid[FCurY][i].FG := FFG;
       FGrid[FCurY][i].BG := FBG;
-      FGrid[FCurY][i].Attr := [];
     end;
   FDirty := True;
 end;
@@ -422,13 +540,14 @@ procedure TLedTermScreen.DeleteChars(ACount: Integer);
 var
   i, n: Integer;
 begin
+  BreakPair(FCurX, FCurY);
   for n := 1 to ACount do
   begin
     for i := FCurX to FCols - 2 do
       FGrid[FCurY][i] := FGrid[FCurY][i + 1];
-    FGrid[FCurY][FCols - 1].Ch := ' ';
-    FGrid[FCurY][FCols - 1].Attr := [];
+    Blank(FGrid[FCurY][FCols - 1]);
   end;
+  MendRow(FCurY);
   FDirty := True;
 end;
 
@@ -436,13 +555,14 @@ procedure TLedTermScreen.InsertChars(ACount: Integer);
 var
   i, n: Integer;
 begin
+  BreakPair(FCurX, FCurY);
   for n := 1 to ACount do
   begin
     for i := FCols - 1 downto FCurX + 1 do
       FGrid[FCurY][i] := FGrid[FCurY][i - 1];
-    FGrid[FCurY][FCurX].Ch := ' ';
-    FGrid[FCurY][FCurX].Attr := [];
+    Blank(FGrid[FCurY][FCurX]);
   end;
+  MendRow(FCurY);
   FDirty := True;
 end;
 
@@ -450,12 +570,11 @@ procedure TLedTermScreen.EraseChars(ACount: Integer);
 var
   i: Integer;
 begin
+  BreakPair(FCurX, FCurY);
+  BreakPair(FCurX + ACount - 1, FCurY);
   for i := FCurX to FCurX + ACount - 1 do
     if i < FCols then
-    begin
-      FGrid[FCurY][i].Ch := ' ';
-      FGrid[FCurY][i].Attr := [];
-    end;
+      Blank(FGrid[FCurY][i]);
   FDirty := True;
 end;
 

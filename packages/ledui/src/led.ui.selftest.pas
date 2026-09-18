@@ -4162,12 +4162,30 @@ begin
   Pump;
 end;
 
+{ Whether anything but the background colour was drawn in one terminal cell. }
+function CellHasInk(ABmp: TBitmap; ACol, ARow: Integer; ATerm: TLedTermView;
+  ABack: TColor): Boolean;
+var
+  X, Y, X0, Y0: Integer;
+begin
+  Result := False;
+  X0 := ACol * ATerm.CellWidth;
+  Y0 := ATerm.TopMargin + ARow * ATerm.CellHeight;
+  for Y := Y0 to Y0 + ATerm.CellHeight - 1 do
+    for X := X0 to X0 + ATerm.CellWidth - 1 do
+      if (X >= 0) and (Y >= 0) and (X < ABmp.Width) and (Y < ABmp.Height) and
+         (ABmp.Canvas.Pixels[X, Y] <> ABack) then
+        Exit(True);
+end;
+
 procedure TestTerminal(F: TLedMainForm);
 var
   Term: TLedTermView;
   Waited: Integer;
-  Found: Boolean;
-  y: Integer;
+  Found, LeftInk, RightInk: Boolean;
+  y, WideRow, Cell: Integer;
+  Bmp: TBitmap;
+  Left, Right: TColor;
 begin
   Say('terminal');
   if not LedPtyAvailable then
@@ -4208,6 +4226,87 @@ begin
           Found := True;
     end;
     Check('the shell ran a command and echoed the result', Found);
+
+    { ---- a double-width character, through the pty ----
+
+      An ideograph takes two cells, so the model holds it as a pair and the
+      renderer draws the glyph across both.  Driven through the shell rather
+      than fed to the parser directly, because that is where the bytes of one
+      character arrive split across reads.  Octal escapes: \x is not in
+      POSIX printf and dash does not have it. }
+    Term.Paste('printf ''\344\275\240\345\245\275\n''' + LineEnding);
+    Found := False;
+    Waited := 0;
+    while (not Found) and (Waited < 100) do
+    begin
+      Application.ProcessMessages;
+      Sleep(50);
+      Inc(Waited);
+      for y := 0 to Term.Screen.Rows - 1 do
+        if Pos(#$E4#$BD#$A0#$E5#$A5#$BD, Term.Screen.RowText(y)) > 0 then
+        begin
+          Found := True;
+          WideRow := y;
+        end;
+    end;
+    Check('the shell printed a Chinese word', Found);
+    if Found then
+    begin
+      Cell := 0;
+      while (Cell < Term.Screen.Cols) and
+            (Term.Screen.Cell(Cell, WideRow).Ch <> #$E4#$BD#$A0) do
+        Inc(Cell);
+      Check('the character is on the row', Cell < Term.Screen.Cols);
+      if Cell < Term.Screen.Cols then
+      begin
+        Check('it is held as a double-width cell',
+          Term.Screen.Cell(Cell, WideRow).Wide);
+        Check('with the cell beside it as its other half',
+          Term.Screen.Cell(Cell + 1, WideRow).Tail);
+        Check('and the next character is two cells along, not one',
+          Term.Screen.Cell(Cell + 2, WideRow).Ch = #$E5#$A5#$BD);
+      end;
+      { And the pane draws the glyph across both cells, over a background
+        that covers both of them.
+
+        Painted into a bitmap and read back, because both things that go
+        wrong here are painting decisions.  The cell is given a colour first:
+        with one, the placeholder cell's own background fill lands on top of
+        the right-hand half of the character -- so ink in the left half and
+        none in the right is the placeholder painting when it should have
+        been skipped, and a right half in the page colour is a background
+        filled one cell wide instead of two.
+
+        The ink half is conditional on the left half having any: if no font
+        on the machine covers CJK there is nothing to find, and a check that
+        cannot run should say so rather than fail. }
+      Term.Visible := True;
+      Term.Screen.Feed(#27'[2J' + #27'[1;1H' + #27'[41m' +
+        #$E4#$BD#$A0 + #27'[0m');
+      Term.Invalidate;
+      Pump;
+      Bmp := TBitmap.Create;
+      try
+        Bmp.SetSize(Term.Width, Term.Height);
+        Term.PaintTo(Bmp.Canvas, 0, 0);
+        { The corners of the two halves: a glyph does not reach them, so this
+          is the background fill rather than the character. }
+        Left := Bmp.Canvas.Pixels[1, Term.TopMargin + 1];
+        Right := Bmp.Canvas.Pixels[Term.CellWidth + 1, Term.TopMargin + 1];
+        Check('the background of a wide character covers both its cells',
+          Left = Right);
+
+        LeftInk := CellHasInk(Bmp, 0, 0, Term, Left);
+        RightInk := CellHasInk(Bmp, 1, 0, Term, Left);
+        if LeftInk then
+          Check('and the glyph itself reaches into the second cell', RightInk)
+        else
+          Say('  (no font here covers CJK; the drawn half cannot be read)');
+      finally
+        Bmp.Free;
+      end;
+      Term.Visible := False;
+    end;
 
     Term.Stop;
     Pump;

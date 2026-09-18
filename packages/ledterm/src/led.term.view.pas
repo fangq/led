@@ -102,6 +102,12 @@ type
     function SchemeCount: Integer;
 
     property Screen: TLedTermScreen read FScreen;
+    { The cell geometry the renderer draws on.  Published so a check can read
+      back what was painted where -- a double-width character has to reach
+      into the cell beside it, and that is a question about pixels. }
+    property CellWidth: Integer read FCharW;
+    property CellHeight: Integer read FCharH;
+    property TopMargin: Integer read FTopMargin;
     property OnTitleChange: TNotifyEvent read FOnTitleChange write FOnTitleChange;
     property OnExited: TNotifyEvent read FOnExited write FOnExited;
   end;
@@ -525,7 +531,7 @@ end;
 
 procedure TLedTermView.Paint;
 var
-  X, Y, Row, PxX, PxY: Integer;
+  X, Y, Row, PxX, PxY, Cells: Integer;
   C: TLedCell;
   FG, BG, T: TColor;
   Line: TLedCellRow;
@@ -562,6 +568,10 @@ begin
     for X := 0 to High(Line) do
     begin
       C := Line[X];
+      { The right half of a double-width pair is drawn by its left half: the
+        glyph reaches across both cells, and painting this one would put the
+        cell's background over the right-hand side of the character. }
+      if C.Tail then Continue;
       FG := ColourOf(C.FG, Schemes[FScheme].Foreground);
       BG := ColourOf(C.BG, Schemes[FScheme].Background);
       if caInverse in C.Attr then
@@ -577,10 +587,13 @@ begin
       end;
 
       PxX := X * FCharW;
+      { One cell, or two for a double-width character. }
+      Cells := 1;
+      if C.Wide then Cells := 2;
       if BG <> Schemes[FScheme].Background then
       begin
         Canvas.Brush.Color := BG;
-        Canvas.FillRect(PxX, PxY, PxX + FCharW, PxY + FCharH);
+        Canvas.FillRect(PxX, PxY, PxX + Cells * FCharW, PxY + FCharH);
       end;
 
       if (C.Ch <> '') and (C.Ch <> ' ') then
@@ -600,10 +613,14 @@ begin
 
   if FScreen.CursorVisible and (FScrollOffset = 0) and Focused then
   begin
+    { As wide as the character under it, so the block sits over the whole of
+      an ideograph rather than over its left half. }
+    Cells := 1;
+    if FScreen.Cell(FScreen.CursorX, FScreen.CursorY).Wide then Cells := 2;
     Canvas.Brush.Color := Schemes[FScheme].Cursor;
     Canvas.FillRect(FScreen.CursorX * FCharW,
       FTopMargin + FScreen.CursorY * FCharH,
-      FScreen.CursorX * FCharW + FCharW,
+      FScreen.CursorX * FCharW + Cells * FCharW,
       FTopMargin + FScreen.CursorY * FCharH + FCharH);
   end;
 end;
