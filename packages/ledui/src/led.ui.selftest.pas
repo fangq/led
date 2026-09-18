@@ -2312,6 +2312,71 @@ begin
   end;
 end;
 
+{ A pane is built where no screen reaches.
+
+  Reported as a flash in the top-left corner of the screen on every start,
+  before the window appears.  AnchorDocking builds a host site for each pane
+  and copies the pane's own bounds onto it; that site is a toplevel until it
+  is anchored into the main window, and gtk2 maps it on the way there -- at
+  the bounds it was given, which at the designed (0, 0) is the corner of the
+  screen.  See TLedPaneForm.CreatePane.
+
+  Asserted on the site rather than on the pane, because the site is the
+  window that gets mapped: the pane itself is never realised. }
+procedure TestPaneIsBuiltOffScreen(F: TLedMainForm);
+var
+  Probe: TPanel;
+  Pane, Solo: TLedPaneForm;
+  Site: TWinControl;
+  Screen0: TPoint;
+begin
+  Say('a pane is built off screen');
+
+  Probe := TPanel.Create(F);
+  Probe.Name := 'LedFlashProbePanel';
+  Pane := F.Dock.AddPane(ledRight, 'flashprobe', 'Flash probe', Probe, '');
+  Pump;
+  Check('the pane was added', Pane <> nil);
+  if Pane = nil then Exit;
+
+  Check('it is the size its edge asks for', Pane.Width > 0);
+
+  Check('it was docked into a site', Pane.Parent is TWinControl);
+  if Pane.Parent is TWinControl then
+  begin
+    Site := TWinControl(Pane.Parent);
+    { The site copied the pane's bounds, which is the whole point: a window
+      mapped at -20000 is a window nobody sees. }
+    Check('and the site it went into is off screen too: ' +
+      IntToStr(Site.Left) + ',' + IntToStr(Site.Top),
+      (Site.Left < -1000) and (Site.Top < -1000));
+  end;
+
+  { And once it is on screen it is where a pane belongs, so the off-screen
+    origin is only ever where the window is built -- it does not leak into
+    the layout the reader sees. }
+  F.Dock.ShowPane('flashprobe');
+  Pump; Pump;
+  Screen0 := Pane.ClientToScreen(Point(0, 0));
+  Check('a shown pane is on screen: ' + IntToStr(Screen0.X) + ',' +
+    IntToStr(Screen0.Y), (Screen0.X > -1000) and (Screen0.Y > -1000));
+
+  F.Dock.HidePane('flashprobe');
+  Pump;
+
+  { And the pane's own bounds, before anything docks it -- which is where the
+    site gets them from.  Asked of a pane built and thrown away, because
+    docking resets a pane's position to its place inside the site. }
+  Solo := TLedPaneForm.CreatePane(F, 'flashsolo', 'Flash probe', ledRight,
+    nil, '');
+  try
+    CheckEqInt('a pane is built off screen, horizontally', -20000, Solo.Left);
+    CheckEqInt('and vertically', -20000, Solo.Top);
+  finally
+    Solo.Free;
+  end;
+end;
+
 procedure TestDockEdges(F: TLedMainForm);
 var
   E: TLedDockEdge;
@@ -12241,6 +12306,7 @@ begin
   TestUntitledNumbering(F);
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
+  TestPaneIsBuiltOffScreen(F);
   TestDockEdges(F);
   TestPaneSizes(F);
   TestPaneSizeMemory(F);

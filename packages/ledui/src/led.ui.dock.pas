@@ -417,6 +417,32 @@ begin
   Name := 'Pane_' + StringReplace(AId, '-', '_', [rfReplaceAll]) + ASuffix;
   Caption := ACaption;
   BorderStyle := bsSizeable;
+  { Sized where it is going to be docked, and positioned where no screen
+    reaches.
+
+    The position is what stops the window that flashed in the top-left corner
+    of the screen on every start.  A pane is docked by AnchorDocking, which
+    builds a host site for it -- a form of its own -- and copies the pane's
+    bounds onto it:
+
+      Site.BoundsRect := AControl.BoundsRect;   { anchordocking.pas }
+
+    That site is a toplevel until it is anchored into the main window, and
+    gtk2 maps it on the way there.  The LCL moves a window to its bounds as
+    part of making it visible -- SetVisible calls SetWindowSizeAndPosition,
+    which calls gtk_window_move before the map -- so the bounds a pane
+    carries here are where its site briefly appears.  At the designed (0, 0)
+    that is the corner of the screen, 220 by 220, for the few tens of
+    milliseconds before the dock takes it.  Traced with xev: the site was
+    created, moved nowhere, mapped, unmapped and destroyed.
+
+    Off-screen it still maps, and nobody sees it.  Nothing downstream reads
+    this position: a pane the reader undocks is floated by
+    TAnchorDockHostSite.Undock, which takes its bounds from where the site is
+    on screen at that moment, and a pane restored from a saved layout is
+    placed by the layout. }
+  Left := -20000;
+  Top := -20000;
   Width := EdgeDefault[AEdge];
   Height := EdgeDefault[AEdge];
 
