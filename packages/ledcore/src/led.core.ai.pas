@@ -48,6 +48,11 @@ const
     asked to do it at all. }
   LedPrefAIOllamaThink   = 'AI/ollama_think';
   LedPrefAIClaudeModel   = 'AI/claude_model';
+  { Which program to run.  Normally empty, meaning "the claude on the PATH".
+    A reader with it installed somewhere unusual names it here -- and so
+    does a check, which is how the part of this that drives a process gets
+    tested without needing an account. }
+  LedPrefAIClaudePath    = 'AI/claude_path';
   { What the claude session is allowed to do in the project: 'chat' for
     nothing at all, 'ask' for tools with every one of them put to the reader
     first, 'edits' to let it write files without asking, 'full' for no
