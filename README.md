@@ -1,4 +1,4 @@
-# LED — a lightweight programmer's text editor
+# LED - A Lightweight Editor for Doers
 
 <p align="center">
   <img src="packaging/icons/led.svg" width="120" alt="LED">
@@ -13,16 +13,18 @@
 - **GitHub**: <https://github.com/fangq/led>
 
 **A fast, no-nonsense editor for code and text.** `led` opens instantly, brings
-its own syntax highlighting for 128 languages, and puts a file browser, a real
-terminal, a symbol list, a Markdown preview and a C/C++ debugger in the same
-window — without a plugin marketplace, an account, or a background updater.
+its own syntax highlighting for 127 languages, and puts a file browser, a real
+terminal, a symbol list, a Markdown preview, Jupyter notebooks, a C/C++
+debugger and an AI chat pane in the same window — without a plugin
+marketplace, an account, or a background updater.
 
-One native binary per platform. Nothing to configure before you can use it.
+One native binary per platform, about 9 MB, linked against nothing but your
+desktop's own GTK. Nothing to configure before you can use it.
 
 > **Who it's for:** anyone who wants a small, quick editor that still has the
 > things a working programmer reaches for — split views, column selection, find
-> in files, a terminal, breakpoints. If you have used **medit**, **gedit**,
-> **Kate** or **Notepad++**, LED will feel familiar.
+> in files, a terminal, breakpoints, notebooks. If you have used **medit**,
+> **gedit**, **Kate** or **Notepad++**, LED will feel familiar.
 
 ---
 
@@ -36,7 +38,9 @@ One native binary per platform. Nothing to configure before you can use it.
   - [Panes and window layout](#panes-and-window-layout)
   - [Terminal](#terminal)
   - [Markdown and wiki preview](#markdown-and-wiki-preview)
-  - [Binary files](#binary-files)
+  - [Jupyter notebooks](#jupyter-notebooks)
+  - [The AI pane](#the-ai-pane)
+  - [Binary and structured files](#binary-and-structured-files)
   - [Debugging C and C++](#debugging-c-and-c)
   - [Tools](#tools)
   - [Sessions and crash recovery](#sessions-and-crash-recovery)
@@ -58,7 +62,7 @@ One native binary per platform. Nothing to configure before you can use it.
 
 - **Starts fast and stays fast.** A 5 MB single-line file opens in under a
   tenth of a second.
-- **128 languages out of the box** — no downloads, no language servers.
+- **127 languages out of the box** — no downloads, no language servers.
 - **Split views and split tab groups** — the same file twice, or two files
   side by side, in one window.
 - **Column (box) selection** with copy, paste and typing across the rectangle.
@@ -67,6 +71,10 @@ One native binary per platform. Nothing to configure before you can use it.
 - **Step-by-step C/C++ debugging** with gdb — breakpoints, watchpoints,
   hover-to-inspect, `launch.json` projects.
 - **Binaries open as a hex dump** instead of as garbage you might save back.
+- **Jupyter notebooks** open as notebooks — cells, outputs, a real kernel,
+  and a file that comes back byte for byte as Jupyter wrote it.
+- **An AI pane** that talks to a model on your own machine (ollama) or to
+  Claude Code, and can proof-read or rewrite what you have selected.
 - **Live Markdown and wiki preview**, scroll-synced with the text.
 - **Crash recovery** — unsaved work is journalled continuously, including
   never-saved buffers.
@@ -80,8 +88,9 @@ One native binary per platform. Nothing to configure before you can use it.
 
 - **Tabs and split views** over one shared buffer — edit in either half, both
   update. Split *side by side* or *stacked*.
-- **Two independent tab groups** per window (*Split Notebook*), so you can keep
-  two files visible and still flip through tabs on each side.
+- **Two independent tab groups** per window (*Split Notebook* — medit's name
+  for it; nothing to do with Jupyter notebooks), so you can keep two files
+  visible and still flip through tabs on each side.
 - **Column (box) selection** — hold `Ctrl` and drag, or `Ctrl+Shift+arrows`.
   Typing replaces the rectangle on every line, Backspace and Delete take a
   character from each, and copy puts it on the clipboard one row per line.
@@ -107,7 +116,7 @@ One native binary per platform. Nothing to configure before you can use it.
 
 ### Languages, themes and fonts
 
-- **128 syntax highlighting grammars**, covering everything from C, C++, Rust,
+- **127 syntax highlighting grammars**, covering everything from C, C++, Rust,
   Go, Python, JavaScript and Java to LaTeX, Makefiles, INI, Diff and SQL.
   Language is picked from the filename, the MIME type or a `#!` line, and can
   be set by hand per document.
@@ -140,8 +149,8 @@ One native binary per platform. Nothing to configure before you can use it.
 ### Panes and window layout
 
 LED has a **File Browser** (with a clickable breadcrumb path bar), **Project
-Files**, **Symbols**, **Output**, **Terminal**, **Preview**, **Debugger** and
-**Breakpoints** panes.
+Files**, **Outline**, **Output**, **Terminal**, **Preview**, **Notebook
+Cells**, **AI Chat**, **Debugger** and **Breakpoints** panes.
 
 - Every window edge carries a **strip of buttons**, one per pane docked there,
   so a pane you closed comes back with one click.
@@ -179,7 +188,69 @@ dialect: `= Heading =`, numbered headings with `<toc>`, `*`/`#` lists,
 `; term : definition`, `||tables||`, `'''bold'''`, `[[FreeLinks]]`,
 `[url label]`, bare URLs, `WikiWord`, `[#anchors]` and `<nowiki>`.
 
-### Binary files
+### Jupyter notebooks
+
+A `.ipynb` file opens as a notebook, not as JSON. **View ▸ Notebook Cells**
+puts the cells beside the text: one box per cell, code in a real editor with
+its own highlighting, prose rendered as Markdown, and the outputs — text,
+tables, images and error tracebacks — under the cell that produced them.
+
+- **Run a cell** with `Ctrl+Enter`, run it and move on with `Shift+Enter`, or
+  run the lot with `Ctrl+Shift+Enter`. **Interrupt** and **Restart** are in the
+  Notebook menu.
+- The kernel is a real Jupyter kernel. LED drives a small Python helper that
+  speaks the wire protocol, so **every kernel you have installed works** and
+  the magics work with it — `%%octave`, `%matplotlib inline`, `!pip install`.
+  Needs `python3` with `jupyter_client`; without it the pane still shows the
+  notebook and says why it cannot run anything.
+- A cell that opens with a **cell magic** is coloured as what it actually is:
+  `%%bash` is shell, `%%octave` is Octave, not Python painted over.
+- **Add and delete cells** by hovering near a cell boundary — `+ Code`,
+  `+ Text`, `Delete Above`.
+- **Saving keeps the file byte for byte** as Jupyter writes it: one space of
+  indent, sorted keys, non-ASCII left as itself. Everything LED does not edit
+  — kernel metadata, widget state, tags other tools left — is carried from the
+  file to the file rather than dropped. A notebook in version control does not
+  churn because you opened it here.
+
+The text half is still the text: you can edit a cell in the buffer or in its
+box, and the two stay in step.
+
+### The AI pane
+
+**View ▸ AI Chat** opens a pane that talks to a model. Two backends, chosen in
+the pane or in **Preferences ▸ AI**:
+
+| Backend | What it is | Needs |
+|---|---|---|
+| **ollama** | A model running on your own machine. Nothing leaves it. | `ollama` on your `PATH`, or a server URL in the preferences |
+| **claude** | Claude Code, driven as a subprocess | the `claude` CLI, installed and signed in |
+
+- **Answers stream as they are written**, and **Stop** works from the moment
+  you ask — which matters, because the first question of a session can spend a
+  minute loading a large local model before it says a word.
+- **Replies are rendered like the Markdown preview**: headings, lists, tables,
+  quotations, and fenced code coloured by LED's own highlighters in the font
+  you edit in.
+- **What the model thought** on its way to an answer is kept and shown only if
+  you press *Thinking*. It can never reach a file.
+- **Nothing reaches your document on its own.** A finished answer offers
+  *Copy*, *Insert at caret*, *New document*, and — when you asked for a
+  rewrite — a button that names what it will do: *Replace the selection*,
+  *Replace the file*. Applying is one undo step, and an answer is refused if
+  the text it was about has changed since you asked.
+- **Transforms, not just chat.** Pick *Proof-read*, *Rewrite*, *Explain*,
+  *Summarise* or *Comment* and what you send is the selection (or the whole
+  file, if you say so). **Edit ▸ Ask AI about Selection** starts one in a
+  keystroke.
+- What Claude Code is allowed to do in your project is spelled out in the
+  preferences — nothing at all, plan only, write files, or run commands — and
+  the default is **nothing at all**.
+
+Neither backend is required. With neither installed the pane says so and the
+rest of the editor is unaffected.
+
+### Binary and structured files
 
 Open an ELF, a PNG or a `.zip` in most editors and you get line noise — and if
 you press Save, the file is quietly corrupted, because the editor rewrote its
@@ -199,6 +270,24 @@ you changed are different. Editing is overwrite-only, so offsets never shift.
 
 If LED guesses wrong, **File ▸ Open as Text** overrules it for that one
 opening.
+
+**BJData** files get better than a dump. A `.bjd`, `.jdb`, `.bnii`, `.bmsh`,
+`.bnirs`, `.beeg` or `.bmeg` file is JSON with its punctuation replaced by
+one-byte type markers,
+so a hex dump of one is *almost* readable — which is worse than useless,
+because it invites you to squint at it. LED shows the structure instead: one
+line per record, indented by container depth, with the type marker, the
+length where there is one, and the value.
+
+```
+     0  {                     object, 1 item
+     1    SNIRFData  {        object, 8 items
+    13      formatVersion  S #3    "1.0"
+   154      TimeUnit  C            's'
+```
+
+Press `F2` on a line to edit that value in place; `Ctrl+Z` takes back the last
+byte that changed, and only the bytes you changed are different when you save.
 
 ### Debugging C and C++
 
@@ -315,7 +404,13 @@ every file as plain, unhighlighted text.
 | Program | Enables |
 |---|---|
 | `gdb` | The C/C++ debugger |
-| `ctags` (universal or exuberant) | The symbol browser |
+| `ctags` (universal or exuberant) | The Outline pane |
+| `python3` with `jupyter_client` | Running notebook cells |
+| `ollama` | The AI pane, against a model on your own machine |
+| `claude` | The AI pane, against Claude Code |
+
+None of them is needed to install or start LED. Each feature says so in words
+when the program it needs is not there.
 
 ### Unsigned installers
 
@@ -445,6 +540,15 @@ All of these are remappable in **Edit ▸ Configure Shortcuts**.
 | `Alt+Down` / `Alt+Up` | Next / previous bookmark |
 | `Ctrl+PageDown` / `Ctrl+PageUp` | Next / previous tab |
 
+### Notebooks
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Enter` | Run the cell |
+| `Shift+Enter` | Run it and move to the next |
+| `Ctrl+Shift+Enter` | Run every cell |
+| `F2` | Edit the value under the caret (BJData files) |
+
 ### View
 
 | Shortcut | Action |
@@ -494,6 +598,13 @@ A few preferences worth knowing, set in `prefs.ini` or the Preferences dialog:
 | `Editor/lock_pane_layout` | Stop panes being dragged around |
 | `Editor/recovery_enabled` | Crash-recovery journalling |
 | `Editor/recovery_interval` | How often it snapshots |
+| `Editor/preview_max_kb` | How much of a long document the preview renders (16) |
+| `Notebook/fetch_images` | Whether a notebook's remote images are fetched |
+| `AI/enabled` | Offer the AI pane at all |
+| `AI/backend` | `ollama` or `claude` |
+| `AI/ollama_url` | Where ollama is; blank means `http://localhost:11434` |
+| `AI/max_context_kb` | Most of a file the AI pane may send (64) |
+| `AI/claude_tools` | What Claude Code may do in your project (`chat` by default) |
 
 A `langs/` or `themes/` folder in your config directory overrides the shipped
 ones, so you can add a language or a colour scheme without touching the
@@ -552,7 +663,9 @@ natively on Linux, Windows and macOS.
 
 ```
 app/                  the program
-packages/ledcore/     no visual dependency — file I/O, config, tools, grep, hex
+packages/ledcore/     no visual dependency — file I/O, config, tools, grep,
+                      hex, notebooks, the Jupyter kernel client, the AI
+                      backends
 packages/ledsyn/      themes, language registry, highlighter factory
 packages/ledui/       forms, documents, views, docking, panes
 packages/ledterm/     pty, VT parser, terminal widget
@@ -576,28 +689,41 @@ loads every grammar, runs the GUI self-test under `xvfb`, verifies the bundled
 fonts against their upstream checksums, and checks the committed icons still
 match their generator.
 
-**Parity with medit.** LED is a feature-comparable successor to
-[medit](https://github.com/fangq/medit). [`PARITY.md`](PARITY.md) tracks every
-medit action, preference key, shipped tool and behavioural feature, recording
-what is done, what an LCL facility replaces, and what is deliberately not
-carried over.
+**Parity with medit.** LED is a fresh implementation that sets out to match
+[medit](https://github.com/fangq/medit) feature for feature; it shares no code
+with it. [`PARITY.md`](PARITY.md) tracks every medit action, preference key,
+shipped tool and behavioural feature, recording what is done, what an LCL
+facility replaces, and what is deliberately not carried over — it is a
+specification LED is measured against, not an inheritance.
 
 ---
 
 ## License
 
 LED is free software: you can redistribute it and/or modify it under the terms
-of the **GNU General Public License, version 3 or later**, as
-published by the Free Software Foundation.
+of the **GNU General Public License, version 3 or later**, as published by the
+Free Software Foundation. See [`LICENSE`](LICENSE) for the full text, or
+<https://www.gnu.org/licenses/gpl-3.0.html>.
 
 LED is distributed in the hope that it will be useful, but **WITHOUT ANY
 WARRANTY**; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-A PARTICULAR PURPOSE. See <https://www.gnu.org/licenses/gpl-3.0.html> for the
-full text.
+A PARTICULAR PURPOSE.
 
-The bundled **Fira Code** font is distributed under the SIL Open Font License
-1.1; see [`data/fonts/OFL.txt`](data/fonts/OFL.txt). The bundled `en_US` word
-list carries its own notice in [`data/dict/`](data/dict/).
+### What is bundled, and under what
+
+LED ships other people's work in `data/` and in one vendored directory. None
+of it is covered by LED's licence; each keeps its own.
+
+| What | Where | Licence |
+|---|---|---|
+| Language definitions and colour themes, from **GtkSourceView** | `data/langs/`, `data/themes/` | LGPL-2.1-or-later |
+| **Fira Code** | `data/fonts/` | SIL Open Font License 1.1 — [`OFL.txt`](data/fonts/OFL.txt) |
+| **SCOWL** `en_US` word list, by Kevin Atkinson | `data/dict/` | its own notice — [`en_US.COPYRIGHT`](data/dict/en_US.COPYRIGHT) |
+| TextMate grammar engine, copied from **Lazarus** 4.2 | `packages/ledsyn/vendor/` | as upstream — see [that directory's README](packages/ledsyn/vendor/README.md) |
+
+The grammars are converted to TextMate JSON by `tools/lang2tm.py` at build
+time; the `.lang` sources are shipped unmodified apart from one documented
+patch, noted in `PARITY.md`.
 
 ---
 
@@ -605,6 +731,28 @@ list carries its own notice in [`data/dict/`](data/dict/).
 
 - **Qianqian Fang** — author, with assistance from the AI coding assistant
   [Claude](https://claude.ai) (Anthropic).
-- **Yevgen Muntyan** — original author of [medit](http://mooedit.sourceforge.net/)
-  (2004–2010), whose design and feature set LED follows.
+
+- **Yevgen Muntyan** — original author of
+  [medit](http://mooedit.sourceforge.net/) (2004–2010).
+
+  LED is a **new program**, written from nothing in Free Pascal against the
+  Lazarus LCL. medit is C++ and GTK3; **no medit source code is used here, and
+  none was translated line by line.** What LED took from it is a *design* — and
+  it is worth being exact about which parts:
+
+  - **The feature set as a specification.** [`PARITY.md`](PARITY.md) is a list
+    of what medit does, used as the target to build against and to measure
+    against.
+  - **The vocabulary.** Preference keys (`Editor/tab_width`, and the rest),
+    the menu structure and the names of commands are medit's, so that anyone
+    moving over finds what they expect and an old `prefs.ini` still reads.
+  - **The shipped tools.** The fifteen tool definitions in `data/tools/` do
+    what medit's do, expressed in LED's own file format.
+  - **The wiki dialect.** `Led.Core.Wiki` implements the same UseMod/Habitat
+    rules medit's in-tree converter implements — reimplemented in Pascal from
+    the rules, rule for rule, not ported from the C source.
+
+  The language grammars and colour themes both editors ship are
+  **GtkSourceView's**, not medit's; they are credited above.
+
 - Source code and bug reports: <https://github.com/fangq/led>
