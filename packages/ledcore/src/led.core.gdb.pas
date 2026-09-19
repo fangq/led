@@ -39,7 +39,7 @@ unit Led.Core.Gdb;
 interface
 
 uses
-  Classes, SysUtils, Process, Led.Core.GdbMI;
+  Classes, SysUtils, Process, Led.Core.LineSplit, Led.Core.GdbMI;
 
 type
   TLedGdbState = (lgsIdle, lgsLoading, lgsReady, lgsRunning, lgsStopped,
@@ -140,7 +140,7 @@ type
   private
     FProcess: TProcess;
     FState: TLedGdbState;
-    FPending: string;                 // partial trailing line from the pipe
+    FSplit: TLedLineSplitter;         // holds a partial line from the pipe
     FToken: Integer;
     FVersion: string;
     FInferiorAlive: Boolean;
@@ -460,6 +460,7 @@ end;
 constructor TLedGdbSession.Create;
 begin
   inherited Create;
+  FSplit := TLedLineSplitter.Create;
   FState := lgsIdle;
   FToken := 0;
   FVarObjs := TStringList.Create;
@@ -470,6 +471,7 @@ begin
   Quit;
   FProcess.Free;
   FVarObjs.Free;
+  FSplit.Free;
   inherited Destroy;
 end;
 
@@ -640,7 +642,7 @@ begin
     end;
   end;
 
-  FPending := '';
+  FSplit.Reset;
   FInferiorAlive := False;
   SetState(lgsLoading);
   { Proves the pipe works and gives us a version to show. }
@@ -744,9 +746,8 @@ end;
 function TLedGdbSession.Poll: Boolean;
 var
   Buf: array[0..8191] of Char;
-  N, i: Integer;
+  N: Integer;
   Chunk, Line: string;
-  Lines: TStringList;
   Rec: TLedMIRecord;
 begin
   Result := False;
@@ -758,42 +759,22 @@ begin
     N := FProcess.Output.Read(Buf, SizeOf(Buf));
     if N <= 0 then Break;
     SetString(Chunk, Buf, N);
-    FPending := FPending + Chunk;
+    { A record is a line, and a read can end in the middle of one -- the
+      tail is held back until its newline arrives, or half a *stopped would
+      be parsed as garbage and the stop would be missed.  Held back by the
+      splitter, which is where that rule is written down once and checked. }
+    FSplit.Feed(Chunk);
     Result := True;
   end;
 
-  if FPending <> '' then
+  while FSplit.Next(Line) do
   begin
-    Lines := TStringList.Create;
+    if Trim(Line) = '' then Continue;
+    Rec := LedMIParse(Line);
     try
-      { A record is a line, and a read can end in the middle of one -- the
-        tail is held back until its newline arrives, or half a *stopped
-        would be parsed as garbage and the stop would be missed. }
-      FPending := StringReplace(FPending, #13#10, #10, [rfReplaceAll]);
-      Lines.StrictDelimiter := True;
-      Lines.Delimiter := #10;
-      Lines.DelimitedText := FPending;
-      if (FPending <> '') and (FPending[Length(FPending)] = #10) then
-        FPending := ''
-      else if Lines.Count > 0 then
-      begin
-        FPending := Lines[Lines.Count - 1];
-        Lines.Delete(Lines.Count - 1);
-      end;
-
-      for i := 0 to Lines.Count - 1 do
-      begin
-        Line := Lines[i];
-        if Trim(Line) = '' then Continue;
-        Rec := LedMIParse(Line);
-        try
-          Dispatch(Rec);
-        finally
-          Rec.Free;
-        end;
-      end;
+      Dispatch(Rec);
     finally
-      Lines.Free;
+      Rec.Free;
     end;
   end;
 

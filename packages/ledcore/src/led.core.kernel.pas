@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Process, fpjson,
-  Led.Core.NBFormat, Led.Core.Paths, Led.Core.Prefs;
+  Led.Core.LineSplit, Led.Core.NBFormat, Led.Core.Paths, Led.Core.Prefs;
 
 type
   TLedKernelState = (
@@ -85,7 +85,7 @@ type
     FLastError: string;
     FLanguage: string;
     FKernelName: string;
-    FPending: string;      // a partial line held back until its newline
+    FSplit: TLedLineSplitter;  // holds a partial line until its newline
     FNextId: Integer;
     FOnEvent: TLedKernelEventProc;
     procedure Send(const ALine: string);
@@ -267,6 +267,7 @@ end;
 constructor TLedKernel.Create;
 begin
   inherited Create;
+  FSplit := TLedLineSplitter.Create;
   FState := lksOff;
   FNextId := 0;
 end;
@@ -275,6 +276,7 @@ destructor TLedKernel.Destroy;
 begin
   Shutdown;
   FProcess.Free;
+  FSplit.Free;
   inherited Destroy;
 end;
 
@@ -335,7 +337,7 @@ begin
   end;
 
   FKernelName := AKernelName;
-  FPending := '';
+  FSplit.Reset;
   FLanguage := '';
   FLastError := '';
   FState := lksStarting;
@@ -401,9 +403,8 @@ end;
 function TLedKernel.Poll: Boolean;
 var
   Buf: array[0..16383] of Char;
-  N, i: Integer;
+  N: Integer;
   Chunk, Line, Err: string;
-  Lines: TStringList;
   Ev: TLedKernelEvent;
 begin
   Result := False;
@@ -414,61 +415,42 @@ begin
     N := FProcess.Output.Read(Buf, SizeOf(Buf));
     if N <= 0 then Break;
     SetString(Chunk, Buf, N);
-    FPending := FPending + Chunk;
+    { An event is a line, and a read can end in the middle of one: the tail
+      waits for its newline rather than being parsed as half an event.  The
+      splitter is where that is written down, and where it is tested -- this
+      used to be twenty lines here and twenty more in Led.Core.Gdb, neither
+      of them reachable by a check without a subprocess to hand. }
+    FSplit.Feed(Chunk);
     Result := True;
   end;
 
-  if FPending <> '' then
+  while FSplit.Next(Line) do
   begin
-    Lines := TStringList.Create;
+    if Trim(Line) = '' then Continue;
+    if not LedKernelParseEvent(Line, Ev, Err) then Continue;
     try
-      { An event is a line, and a read can end in the middle of one: the
-        tail waits for its newline rather than being parsed as half an
-        event. }
-      FPending := StringReplace(FPending, #13#10, #10, [rfReplaceAll]);
-      Lines.StrictDelimiter := True;
-      Lines.Delimiter := #10;
-      Lines.DelimitedText := FPending;
-      if FPending[Length(FPending)] = #10 then
-        FPending := ''
-      else if Lines.Count > 0 then
-      begin
-        FPending := Lines[Lines.Count - 1];
-        Lines.Delete(Lines.Count - 1);
-      end;
-
-      for i := 0 to Lines.Count - 1 do
-      begin
-        Line := Lines[i];
-        if Trim(Line) = '' then Continue;
-        if not LedKernelParseEvent(Line, Ev, Err) then Continue;
-        try
-          case Ev.Kind of
-            lkeReady:
-              begin
-                FLanguage := Ev.Language;
-                FState := lksIdle;
-              end;
-            lkeStatus:
-              if Ev.Status = 'idle' then FState := lksIdle
-              else if Ev.Status = 'busy' then FState := lksBusy;
-            lkeFailed:
-              begin
-                FState := lksFailed;
-                FLastError := Ev.Message;
-              end;
-            lkeDone:
-              FState := lksIdle;
+      case Ev.Kind of
+        lkeReady:
+          begin
+            FLanguage := Ev.Language;
+            FState := lksIdle;
           end;
-          Dispatch(Ev);
-        finally
-          { The parser hands ownership of an output event's object over; the
-            document has taken what it wanted from it by now. }
-          if Ev.Kind = lkeOutput then Ev.Output.Free;
-        end;
+        lkeStatus:
+          if Ev.Status = 'idle' then FState := lksIdle
+          else if Ev.Status = 'busy' then FState := lksBusy;
+        lkeFailed:
+          begin
+            FState := lksFailed;
+            FLastError := Ev.Message;
+          end;
+        lkeDone:
+          FState := lksIdle;
       end;
+      Dispatch(Ev);
     finally
-      Lines.Free;
+      { The parser hands ownership of an output event's object over; the
+        document has taken what it wanted from it by now. }
+      if Ev.Kind = lkeOutput then Ev.Output.Free;
     end;
   end;
 
