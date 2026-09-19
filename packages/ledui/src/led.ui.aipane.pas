@@ -43,7 +43,9 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Clipbrd, LCLType,
   IpHtml, Ipfilebroker,
-  Led.Core.AI, Led.Core.Markdown,
+  LCLIntf,
+  Led.Core.AI, Led.Core.Markdown, Led.Core.Prefs,
+  Led.Syn.Factory,
   Led.UI.PageStyle, Led.UI.NBPane, Led.UI.DPI, Led.UI.Focus;
 
 type
@@ -74,15 +76,22 @@ type
     FRole: TLedAIRole;
     FText: string;              // the raw Markdown, whole and uncut
     FHead: TLabel;
-    FLive: TMemo;               // while it is being written
-    FRender: TLedNBProse;       // once it has been
+    FLive: TMemo;               // what was said, as plain text
+    FRender: TLedNBProse;       // an assistant's turn, once it has settled
     FProvider: TIpFileDataProvider;
     FBar: TPanel;
     FReplaces: Boolean;
     FCut: Boolean;
     FLayingOut: Boolean;
+    FPage: string;        // the HTML handed to the renderer
+    FPageWidth: Integer;  // ...and the width it was measured at
     procedure MakeHead;
     procedure MakeLive;
+    procedure ChildWheel(Sender: TObject; AShift: TShiftState;
+      AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
+    procedure HookRenderChildren;
+    function Fill: TColor;
+    function InnerWidth: Integer;
     procedure MakeRender;
     procedure ProvideImage(Sender: TIpHtmlNode; const AURL: string;
       var APicture: TPicture);
@@ -92,6 +101,8 @@ type
     procedure ApplyClicked(Sender: TObject);
     function Page(AWidth: Integer): string;
     function PageHeight(const APage: string; AWidth: Integer): Integer;
+  protected
+    procedure Paint; override;
   public
     constructor CreateTurn(AOwner: TLedAIPane; AIndex: Integer;
       ARole: TLedAIRole; const AText: string);
@@ -109,6 +120,13 @@ type
     function OffersApply: Boolean;
     function RenderedPage: string;
     function LiveText: string;
+    function ShownText: string;
+    { The control the words are in, so a check can turn the wheel over it
+      the way a reader would. }
+    function BodyControl: TWinControl;
+    { The colour it is drawn on, so a check can say the two sides of the
+      conversation do not look alike. }
+    function Colour: TColor;
   end;
 
   TLedAIPane = class(TPanel)
@@ -151,8 +169,14 @@ type
     procedure ScrollToEnd;
     procedure RelayoutSoon(Data: PtrInt);
     procedure Restack;
+    procedure LayoutBars;
+    { One notch of the wheel, wherever it was turned.  True when there was
+      something to scroll. }
+    function WheelNotch(AWheelDelta: Integer): Boolean;
   protected
     procedure Resize; override;
+    function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+      AMousePos: TPoint): Boolean; override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -188,6 +212,9 @@ type
     procedure PickTask(ATask: TLedAITask);
     procedure ApplyTurn(ATurn: Integer; AKind: TLedAIApply);
     function InputControl: TWinControl;
+    { Where the conversation is scrolled to, and how far there is to go. }
+    function ScrollPos: Integer;
+    function ScrollRange: Integer;
     function BackendName: string;
     function ModelName: string;
     procedure TypePrompt(const AText: string);
@@ -229,6 +256,15 @@ const
   parent yet has no handle, and asking it for a canvas during its own
   constructor makes one -- which is how the window came to hang before it
   was ever shown.  A bitmap has a canvas of its own and needs nobody. }
+{ The face the reader edits in, which is the one a code block belongs in. }
+function FixedFace: string;
+var
+  Size: Integer;
+begin
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), Result, Size);
+  if Result = '' then Result := 'Monospace';
+end;
+
 function TextRoom(AFont: TFont; const AText: string): Integer;
 var
   B: TBitmap;
@@ -237,6 +273,32 @@ begin
   try
     B.Canvas.Font.Assign(AFont);
     Result := B.Canvas.TextWidth(AText);
+  finally
+    B.Free;
+  end;
+end;
+
+{ How tall AText comes out at AWidth once it has been wrapped.
+
+  Counting lines and multiplying is what this replaced, and it is wrong in
+  the one case that matters: a wrapped line is several lines tall and counts
+  as one, so a paragraph of an answer was given a single line of room. }
+function TextBlockHeight(AFont: TFont; const AText: string;
+  AWidth: Integer): Integer;
+var
+  B: TBitmap;
+  R: TRect;
+  Said: string;
+begin
+  Said := AText;
+  if Said = '' then Said := 'Mg';
+  B := TBitmap.Create;
+  try
+    B.Canvas.Font.Assign(AFont);
+    R := Rect(0, 0, AWidth, 0);
+    DrawText(B.Canvas.Handle, PChar(Said), Length(Said), R,
+      DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX);
+    Result := R.Bottom - R.Top;
   finally
     B.Free;
   end;
@@ -378,34 +440,109 @@ begin
   Color := LedPageColours.Page;
   ParentColor := False;
   MakeHead;
-  if ARole = larAssistant then MakeLive;
+  { Both sides get one.  The reader's own words were kept and never shown,
+    which made their half of the conversation a row of empty headings. }
+  MakeLive;
+  if AText <> '' then FLive.Text := AText;
   Relayout;
+end;
+
+{ The colour this turn is drawn on.  The reader's own words are picked out:
+  a transcript where both halves are the same colour is a wall of text that
+  has to be read to be navigated. }
+function TLedAIBubble.Fill: TColor;
+var
+  C: TLedPageColours;
+begin
+  C := LedPageColours;
+  if FRole = larUser then
+    { Towards the link colour, which is the one colour in the scheme chosen
+      to stand out against the page and still be readable on it. }
+    Result := LedMixColours(C.Page, C.Link, 86)
+  else
+    Result := C.CodeBg;
+end;
+
+{ Rounded, and drawn here rather than left to the panel, because a panel is
+  a rectangle and a conversation drawn in rectangles reads as a table. }
+procedure TLedAIBubble.Paint;
+var
+  R: TRect;
+  Round_: Integer;
+begin
+  R := ClientRect;
+  { The pane behind it first, so the corners that are cut away show the
+    scroll box and not whatever was underneath. }
+  Canvas.Brush.Color := FPane.FRoll.Color;
+  Canvas.FillRect(R);
+
+  Round_ := LedScale96(10);
+  Canvas.Brush.Color := Fill;
+  Canvas.Pen.Color := LedMixColours(Fill, LedPageColours.Text, 88);
+  Canvas.RoundRect(R.Left, R.Top, R.Right, R.Bottom, Round_, Round_);
 end;
 
 procedure TLedAIBubble.MakeHead;
 begin
   FHead := TLabel.Create(Self);
   FHead.Parent := Self;
-  FHead.Align := alTop;
+  FHead.Align := alNone;
   FHead.AutoSize := False;
   FHead.Height := LedScale96(16);
+  FHead.Transparent := True;
   FHead.Font.Style := [fsBold];
   FHead.Font.Color := LedPageColours.Muted;
-  if FRole = larUser then FHead.Caption := 'You' else FHead.Caption := 'Assistant';
+  if FRole = larUser then FHead.Caption := 'You'
+  else FHead.Caption := 'Assistant';
 end;
 
 procedure TLedAIBubble.MakeLive;
 begin
   FLive := TMemo.Create(Self);
   FLive.Parent := Self;
-  FLive.Align := alTop;
+  FLive.Align := alNone;
   FLive.ReadOnly := True;
-  FLive.ScrollBars := ssAutoVertical;
+  FLive.ScrollBars := ssNone;
   FLive.WordWrap := True;
   FLive.BorderStyle := bsNone;
-  FLive.Color := LedPageColours.Page;
+  { The bubble's own colour, so the box does not show as a rectangle inside
+    the rounded shape. }
+  FLive.Color := Fill;
   FLive.Font.Color := LedPageColours.Text;
-  FLive.Height := LedScale96(24);
+  FLive.Height := LedScale96(20);
+  { A memo keeps the wheel for itself and has nothing to scroll, being
+    exactly as tall as its text.  The notch belongs to the pane. }
+  FLive.OnMouseWheel := @ChildWheel;
+end;
+
+{ Every windowed child keeps the wheel and none of them has anywhere to go
+  with it, so it is handed to the pane -- which is what the reader meant by
+  turning it. }
+procedure TLedAIBubble.ChildWheel(Sender: TObject; AShift: TShiftState;
+  AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
+begin
+  AHandled := FPane.WheelNotch(AWheelDelta);
+end;
+
+{ The renderer makes its own inner control when it is given a page, so this
+  runs after every SetHtmlFromStr and not only once. }
+procedure TLedAIBubble.HookRenderChildren;
+
+  procedure Hook(AControl: TWinControl);
+  var
+    i: Integer;
+    C: TControl;
+  begin
+    for i := 0 to AControl.ControlCount - 1 do
+    begin
+      C := AControl.Controls[i];
+      TControlEvents(C).OnMouseWheel := @ChildWheel;
+      if C is TWinControl then Hook(TWinControl(C));
+    end;
+  end;
+
+begin
+  if FRender <> nil then Hook(FRender);
 end;
 
 procedure TLedAIBubble.ProvideImage(Sender: TIpHtmlNode; const AURL: string;
@@ -428,12 +565,16 @@ begin
   FProvider.OnGetImage := @ProvideImage;
   FRender := TLedNBProse.Create(Self);
   FRender.Parent := Self;
-  FRender.Align := alTop;
+  FRender.Align := alNone;
   FRender.DataProvider := FProvider;
+  FRender.OnWheelPassedUp := @ChildWheel;
   FRender.DefaultTypeFace := Screen.SystemFont.Name;
   FRender.DefaultFontSize := 10;
-  FRender.FixedTypeface := Font.Name;
-  FRender.BgColor := C.Page;
+  { The editor's own face for anything fixed-width.  The pane's font is the
+    menu font, and a code block in an answer drawn in the menu font is not
+    a code block -- which is what it looked like. }
+  FRender.FixedTypeface := FixedFace;
+  FRender.BgColor := Fill;
   FRender.TextColor := C.Text;
   FRender.LinkColor := C.Link;
   FRender.VLinkColor := C.Link;
@@ -462,8 +603,10 @@ begin
   if FBar <> nil then Exit;
   FBar := TPanel.Create(Self);
   FBar.Parent := Self;
-  FBar.Align := alTop;
+  FBar.Align := alNone;
   FBar.BevelOuter := bvNone;
+  FBar.Color := Fill;
+  FBar.ParentColor := False;
   { A height of its own rather than AutoSize.  A strip that sizes itself to
     its buttons, inside a bubble whose own height is worked out from the
     strip, is a loop -- and the LCL says so: "InvalidatePreferredSize loop
@@ -513,6 +656,16 @@ begin
   FPane.Restack;
 end;
 
+{ What this turn is showing, as opposed to what it is remembering.  A check
+  that reads FText only proves the pane kept the words; the reader's
+  complaint was that it kept them and showed nothing. }
+function TLedAIBubble.ShownText: string;
+begin
+  Result := '';
+  if (FLive <> nil) and FLive.Visible then Result := FLive.Text
+  else if FRender <> nil then Result := FText;
+end;
+
 function TLedAIBubble.Page(AWidth: Integer): string;
 var
   C: TLedPageColours;
@@ -526,6 +679,13 @@ begin
   Result := LedPageHead('', C) + Html + LedPageTail;
 end;
 
+{ How tall the page is at the width it will be drawn at.
+
+  Measured narrower, on purpose.  The renderer lays out inside margins of
+  its own, so a page measured at the panel's full width wraps into more
+  lines than it was given room for -- and a bubble too short for its answer
+  grows a scrollbar, which is the one thing a bubble must not do.  Too tall
+  costs a little white space; too short costs the end of the answer. }
 function TLedAIBubble.PageHeight(const APage: string;
   AWidth: Integer): Integer;
 var
@@ -549,11 +709,11 @@ begin
         a bubble with a scrollbar in it. }
       Doc.DefaultTypeFace := Screen.SystemFont.Name;
       Doc.DefaultFontSize := 10;
-      Doc.FixedTypeface := Font.Name;
+      Doc.FixedTypeface := FixedFace;
       Doc.OnGetImageX := @ProvideImage;
       Doc.LoadFromStream(Stream);
-      H := Doc.PageHeightAt(Surface.Canvas, AWidth);
-      if H > 0 then Result := H + LedScale96(20);
+      H := Doc.PageHeightAt(Surface.Canvas, AWidth - LedScale96(16));
+      if H > 0 then Result := H + LedScale96(28);
     except
       { A page that will not lay out gets the default rather than taking the
         pane down with it. }
@@ -569,50 +729,94 @@ begin
 end;
 
 procedure TLedAIBubble.Settle(AReplaces, ACut: Boolean);
-var
-  P: string;
-  W: Integer;
 begin
   FReplaces := AReplaces;
   FCut := ACut;
+  { The words stay in FText; only the plain box goes, replaced by the page
+    that was built from them. }
   FreeAndNil(FLive);
   MakeRender;
   MakeButtons;
 
-  W := Width - LedScale96(8);
-  if W < LedScale96(80) then W := LedScale96(80);
-  P := Page(W);
-  FRender.Height := PageHeight(P, W);
-  FRender.SetHtmlFromStr(P);
+  { Measured at the width it will be drawn at, which is the width inside
+    the rounded edge and not the width of the bubble.  Measuring at one and
+    drawing at the other wraps the text into more lines than were paid for,
+    and a turn too short for its own answer scrolls inside itself -- which
+    is the one thing a bubble must never do. }
+  FPageWidth := InnerWidth;
+  FPage := Page(FPageWidth);
+  FRender.Height := PageHeight(FPage, FPageWidth);
+  FRender.SetHtmlFromStr(FPage);
+  HookRenderChildren;
   Relayout;
   FPane.Restack;
 end;
 
+{ The room inside the rounded edge: what every child is given, and what the
+  page is measured against. }
+function TLedAIBubble.InnerWidth: Integer;
+begin
+  Result := Width - LedScale96(8) * 2;
+  if Result < LedScale96(40) then Result := LedScale96(40);
+end;
+
 procedure TLedAIBubble.Relayout;
 var
-  H: Integer;
-  Lines: Integer;
+  Pad, Inner, Y: Integer;
 begin
   { Setting a height inside a scroll box lays the box out again, which can
     come back here.  Once is enough. }
   if FLayingOut then Exit;
   FLayingOut := True;
   try
-    H := FHead.Height;
-    if FLive <> nil then
+    { Room for the rounded edge to show.  Children placed by hand rather
+      than aligned, so that the corners are not painted over. }
+    Pad := LedScale96(8);
+    Inner := InnerWidth;
+
+    { A pane made narrower wraps the answer into more lines, so the page is
+      measured again -- but only when the width it was measured at has
+      actually changed, because measuring is a whole layout of the page. }
+    if (FRender <> nil) and (Inner <> FPageWidth) and (FPage <> '') then
     begin
-      { As tall as it needs, up to a point, and then it scrolls: an answer
-        still being written has no settled height, and a box that grew
-        without limit would push the question out of the pane. }
-      Lines := FLive.Lines.Count;
-      if Lines < 1 then Lines := 1;
-      FLive.Height := Min(LedScale96(300),
-        Max(LedScale96(24), (Lines + 1) * TextTall(Font)));
-      Inc(H, FLive.Height);
+      FPageWidth := Inner;
+      FRender.Height := PageHeight(FPage, Inner);
     end;
-    if FRender <> nil then Inc(H, FRender.Height);
-    if FBar <> nil then Inc(H, FBar.Height);
-    Height := H + LedScale96(6);
+
+    Y := Pad;
+    FHead.SetBounds(Pad, Y, Inner, LedScale96(16));
+    Inc(Y, FHead.Height + LedScale96(2));
+
+    if (FLive <> nil) and FLive.Visible then
+    begin
+      { As tall as the words are once wrapped, so a turn never scrolls
+        inside itself -- the pane is what scrolls. }
+      { Measured a little narrower than it is drawn, and given a spare
+        line.  A memo wraps inside its own margins, so text measured at the
+        full width wraps into more lines than were paid for -- and the
+        difference is not a scrollbar here, it is the end of the sentence
+        simply not being shown. }
+      FLive.SetBounds(Pad, Y, Inner,
+        Max(LedScale96(16),
+            TextBlockHeight(FLive.Font, FLive.Text, Inner - LedScale96(8)) +
+            TextTall(FLive.Font)));
+      Inc(Y, FLive.Height);
+    end;
+
+    if FRender <> nil then
+    begin
+      FRender.SetBounds(Pad, Y, Inner, FRender.Height);
+      Inc(Y, FRender.Height);
+    end;
+
+    if FBar <> nil then
+    begin
+      Inc(Y, LedScale96(2));
+      FBar.SetBounds(Pad, Y, Inner, FBar.Height);
+      Inc(Y, FBar.Height);
+    end;
+
+    Height := Y + Pad;
   finally
     FLayingOut := False;
   end;
@@ -639,6 +843,17 @@ function TLedAIBubble.RenderedPage: string;
 begin
   Result := '';
   if FRender <> nil then Result := Page(Max(LedScale96(80), Width));
+end;
+
+function TLedAIBubble.BodyControl: TWinControl;
+begin
+  if (FLive <> nil) and FLive.Visible then Result := FLive
+  else Result := FRender;
+end;
+
+function TLedAIBubble.Colour: TColor;
+begin
+  Result := Fill;
 end;
 
 function TLedAIBubble.LiveText: string;
@@ -785,7 +1000,35 @@ end;
 procedure TLedAIPane.RelayoutSoon(Data: PtrInt);
 begin
   FRelayoutQueued := False;
+  LayoutBars;
   Restack;
+end;
+
+{ The two strips of controls.
+
+  Laid out here rather than by Align, and from the queued pass rather than
+  from Resize: a combo box aligned inside a strip only as tall as it is
+  argues with the widget set about its own height and the LCL gives up with
+  "InvalidatePreferredSize loop detected".  Widths are shared out because
+  this pane is usually narrow -- docked to an edge it is about 230 points
+  across, and three controls at their natural widths do not fit. }
+procedure TLedAIPane.LayoutBars;
+var
+  Gap, Room: Integer;
+begin
+  Gap := LedScale96(4);
+
+  Room := FTop.ClientWidth - FStop.Width - FClear.Width - Gap * 4;
+  if Room < LedScale96(120) then Room := LedScale96(120);
+  FBackends.SetBounds(Gap, LedScale96(3), Room div 3, LedScale96(24));
+  FModels.SetBounds(FBackends.Left + FBackends.Width + Gap, LedScale96(3),
+    Room - FBackends.Width - Gap, LedScale96(24));
+
+  Room := FBottom.ClientWidth - FSend.Width - Gap * 4;
+  if Room < LedScale96(120) then Room := LedScale96(120);
+  FTask.SetBounds(Gap, LedScale96(3), Room div 2, LedScale96(24));
+  FAttach.SetBounds(FTask.Left + FTask.Width + Gap, LedScale96(3),
+    Room - FTask.Width - Gap, LedScale96(24));
 end;
 
 { Every turn, in order, down the inside of the scroll box.  The box takes
@@ -805,8 +1048,14 @@ begin
     B := TLedAIBubble(FTurns[i]);
     B.SetBounds(LedScale96(4), Y, W, B.Height);
     B.Relayout;
+    B.SetBounds(LedScale96(4), Y, W, B.Height);
     Inc(Y, B.Height + LedScale96(6));
   end;
+
+  { Said out loud rather than left to the box to work out from where its
+    children happen to end: children placed by hand do not always tell it,
+    and a range of nothing is a wheel that does nothing. }
+  if FRoll.HandleAllocated then FRoll.VertScrollBar.Range := Y;
 end;
 
 function TLedAIPane.AddTurn(ARole: TLedAIRole;
@@ -835,7 +1084,41 @@ end;
 
 procedure TLedAIPane.ScrollToEnd;
 begin
+  { A scroll box that has never been shown has no handle to scroll, and
+    asking it to anyway is "ScrollBy_WS: Handle not allocated" -- which a
+    pane built off screen, as every pane here is, would meet on the first
+    answer it was given. }
+  if not FRoll.HandleAllocated then Exit;
   FRoll.VertScrollBar.Position := FRoll.VertScrollBar.Range;
+end;
+
+{ The wheel.
+
+  Every windowed thing in the transcript -- the memo holding a turn, the
+  renderer holding an answer -- takes the notch for itself and has nothing
+  to do with it, being exactly as tall as its contents.  So they all hand it
+  here, and so does the pane itself, and one notch moves the conversation
+  the way the reader meant. }
+function TLedAIPane.WheelNotch(AWheelDelta: Integer): Boolean;
+var
+  Notches, Was: Integer;
+begin
+  Result := False;
+  if not FRoll.HandleAllocated then Exit;
+  Notches := AWheelDelta div 120;
+  if Notches = 0 then
+    if AWheelDelta > 0 then Notches := 1 else Notches := -1;
+  Was := FRoll.VertScrollBar.Position;
+  FRoll.VertScrollBar.Position := Was - Notches * LedScale96(48);
+  Result := FRoll.VertScrollBar.Position <> Was;
+end;
+
+function TLedAIPane.DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
+  AMousePos: TPoint): Boolean;
+begin
+  Result := WheelNotch(AWheelDelta);
+  if not Result then
+    Result := inherited DoMouseWheel(AShift, AWheelDelta, AMousePos);
 end;
 
 procedure TLedAIPane.Ask(const AText: string; ATask: TLedAITask);
@@ -891,7 +1174,14 @@ begin
   end;
   FTurns.Clear;
   FLive := nil;
+  { A cleared pane is not waiting for anything.  Leaving this set left Stop
+    lit over an empty transcript, and -- worse -- made the next question be
+    refused as "still answering the last one". }
+  FThinking := False;
+  FThinkTimer.Enabled := False;
+  FStop.Enabled := False;
   FStatus.Caption := 'ready';
+  Restack;
 end;
 
 procedure TLedAIPane.InputKey(Sender: TObject; var Key: Word;
@@ -1141,6 +1431,16 @@ procedure TLedAIPane.PickAttach(AKind: TLedAIAttach);
 begin
   FAttach.ItemIndex := Ord(AKind);
   AttachPicked(nil);
+end;
+
+function TLedAIPane.ScrollPos: Integer;
+begin
+  Result := FRoll.VertScrollBar.Position;
+end;
+
+function TLedAIPane.ScrollRange: Integer;
+begin
+  Result := FRoll.VertScrollBar.Range;
 end;
 
 function TLedAIPane.InputControl: TWinControl;

@@ -25,7 +25,7 @@ implementation
 uses
   Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
   FileUtil,
-  LCLType, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
+  LCLType, LCLIntf, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
@@ -2452,6 +2452,15 @@ begin
 end;
 
 type
+  TLedAIPaneCheck = procedure(F: TLedMainForm);
+
+  { The wheel arrives at a protected method, and a check has to be able to
+    turn it. }
+  TLedAIPaneWheel = class(TLedAIPane)
+  public
+    function Wheel(ADelta: Integer): Boolean;
+  end;
+
   { What the pane asked for, caught before it reaches a backend.  A class
     because the event is a method pointer. }
   TLedAIAskCatcher = class
@@ -2462,6 +2471,11 @@ type
     procedure Note(Sender: TObject; const APrompt: string;
       ATask: TLedAITask; AAttach: TLedAIAttach);
   end;
+
+function TLedAIPaneWheel.Wheel(ADelta: Integer): Boolean;
+begin
+  Result := DoMouseWheel([], ADelta, Point(0, 0));
+end;
 
 procedure TLedAIAskCatcher.Note(Sender: TObject; const APrompt: string;
   ATask: TLedAITask; AAttach: TLedAIAttach);
@@ -2482,8 +2496,7 @@ var
   WasAsk: TLedAIAskEvent;
   V: TLedEdit;
   R: TLedAIResult;
-  Was, WasOn: string;
-  HadOn: Boolean;
+  Was: string;
 begin
   Say('a transform is asked for about the selected text');
 
@@ -2497,14 +2510,6 @@ begin
   V.SelEnd := Length('teh cat sat') + 1;
   Check('there is something selected', V.SelAvail);
   P.NoteSelection(True);
-
-  { Switched off, so that pressing Send goes all the way through the form
-    -- which is what records what the turn is about -- without a model
-    being asked anything. }
-  HadOn := LedPrefs.HasKey(LedPrefAIEnabled);
-  WasOn := LedPrefs.GetStr(LedPrefAIEnabled, '');
-  LedPrefs.SetBool(LedPrefAIEnabled, False);
-  F.AIRefresh;
 
   Catch := TLedAIAskCatcher.Create;
   WasAsk := P.OnAsk;
@@ -2626,9 +2631,6 @@ begin
 
   P.Clear;
   P.PickTask(laskChat);
-  if HadOn then LedPrefs.SetStr(LedPrefAIEnabled, WasOn)
-  else LedPrefs.Remove(LedPrefAIEnabled);
-  F.AIRefresh;
 end;
 
 { A preference the reader changes has to reach the pane without a restart,
@@ -2685,6 +2687,217 @@ begin
   P.Clear;
 end;
 
+{ The pane's own checks, run with nothing behind the pane.
+
+  Every one of them presses Send or drives a turn, and with a backend
+  installed that means a real question to a real model: the first one of a
+  session loads seventeen gigabytes, and twenty of them queue up behind it.
+  A check must report LED's behaviour, not spend four minutes proving that
+  somebody's GPU works. }
+procedure WithNoModelBehindIt(F: TLedMainForm; AProc: TLedAIPaneCheck);
+var
+  Had: Boolean;
+  Was: string;
+begin
+  Had := LedPrefs.HasKey(LedPrefAIEnabled);
+  Was := LedPrefs.GetStr(LedPrefAIEnabled, '');
+  LedPrefs.SetBool(LedPrefAIEnabled, False);
+  F.AIRefresh;
+  try
+    AProc(F);
+  finally
+    if Had then LedPrefs.SetStr(LedPrefAIEnabled, Was)
+    else LedPrefs.Remove(LedPrefAIEnabled);
+    F.AIRefresh;
+  end;
+end;
+
+{ Reported: the pane shows "You" and nothing under it.
+
+  The words were kept and never shown -- the reader's half of the
+  conversation was a column of empty headings -- and the check that was
+  supposed to cover this read the text the pane had stored rather than the
+  text it was showing.  This one reads what is on the screen. }
+procedure TestTheReadersOwnWordsAreShown(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  B: TLedAIBubble;
+  M: TWinControl;
+  Bmp: TBitmap;
+  Need: TRect;
+  Line: Integer;
+begin
+  Say('the reader''s own words are shown, not just kept');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.Ask('what does poUsePipes do?');
+  Pump;
+
+  B := P.Turn(0);
+  Check('the question is a turn', B <> nil);
+  if B = nil then Exit;
+  CheckEq('and it is showing what was asked', 'what does poUsePipes do?',
+    B.ShownText);
+  Check('in a control of its own', B.BodyControl <> nil);
+
+  { And with room for all of it.  Measured here at the width the control
+    actually has, which is the whole point: the pane measured at one width
+    and drew at another, and the difference was the end of every long
+    question quietly not being shown. }
+  P.Clear;
+  F.Dock.ShowPane('ai');
+  Pump;
+  P.Ask('A question long enough to need several lines of the pane to show ' +
+    'it, so that the height the pane works out for it is the height the ' +
+    'words really take once they have been wrapped.');
+  Pump; Pump;
+  B := P.Turn(0);
+  M := B.BodyControl;
+  if M is TMemo then
+  begin
+    Bmp := TBitmap.Create;
+    try
+      Bmp.Canvas.Font.Assign(TMemo(M).Font);
+      Need := Rect(0, 0, M.ClientWidth, 0);
+      DrawText(Bmp.Canvas.Handle, PChar(TMemo(M).Text),
+        Length(TMemo(M).Text), Need,
+        DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX);
+      { Room to spare, and not merely room.  A measurement is not the
+        widget's own wrapping -- a memo wraps inside margins of its own --
+        so a box sized to exactly what was measured is a box that clips the
+        last line the moment the two disagree.  A spare line is what makes
+        that impossible, so a spare line is what is asserted. }
+      Line := Bmp.Canvas.TextHeight('Mg');
+      Check(Format('there is room for every line of it and one to spare: ' +
+        '%d >= %d + %d', [M.Height, Need.Bottom - Need.Top, Line]),
+        M.Height >= (Need.Bottom - Need.Top) + Line);
+      Check('and the bubble is taller than the words in it',
+        B.Height > M.Height);
+    finally
+      Bmp.Free;
+    end;
+  end;
+
+  P.Clear;
+  F.Dock.HidePane('ai');
+  Pump;
+end;
+
+{ Clearing a transcript while an answer is on its way.
+
+  Found by a check of my own that started failing for a reason that had
+  nothing to do with it: a cleared pane went on believing it was waiting,
+  so Stop stayed lit over an empty transcript and the next question was
+  refused as "still answering the last one". }
+procedure TestClearingWhileItThinksLeavesItReady(F: TLedMainForm);
+var
+  P: TLedAIPane;
+begin
+  Say('clearing while it is thinking leaves it ready');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.BeginReply;
+  Check('it is waiting', P.Thinking);
+
+  P.Clear;
+  Pump;
+  Check('and a cleared pane is not', not P.Thinking);
+  Check('with nothing to stop', not P.StopEnabled);
+  CheckEqInt('and nothing in it', 0, P.TurnCount);
+
+  { The point of all three: the next question is taken. }
+  P.Ask('and now a new one');
+  Pump;
+  CheckEqInt('a new question is asked', 1, P.TurnCount);
+  P.Clear;
+end;
+
+{ Reported: the two halves of the conversation look alike, so a transcript
+  has to be read to be navigated. }
+procedure TestTheTwoSidesOfTheConversationLookDifferent(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+begin
+  Say('the reader''s turns are picked out from the answers');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.Ask('a question');
+  P.BeginReply;
+  P.AddWords('an answer');
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+
+  Check('there are two turns', P.TurnCount = 2);
+  if P.TurnCount < 2 then Exit;
+  Check('and they are not drawn the same colour',
+    P.Turn(0).Colour <> P.Turn(1).Colour);
+  P.Clear;
+end;
+
+{ Reported: the wheel does nothing over the pane.
+
+  Everything in the transcript is a windowed control exactly as tall as its
+  own contents, so each of them takes the notch and has nowhere to put it.
+  Unless they hand it up, the conversation cannot be scrolled at all. }
+procedure TestTheWheelScrollsTheConversation(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  B: TLedAIBubble;
+  M: TWinControl;
+  i, Was: Integer;
+  Handled: Boolean;
+begin
+  Say('the wheel scrolls the conversation');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  F.Dock.ShowPane('ai');
+  Pump;
+  P.Clear;
+  for i := 1 to 20 do
+    P.Ask('a question, number ' + IntToStr(i));
+  Pump; Pump;
+
+  Check('there is more here than fits: ' + IntToStr(P.ScrollRange) + ' > ' +
+    IntToStr(P.Height), P.ScrollRange > P.Height);
+
+  Was := P.ScrollPos;
+  Check('a notch over the pane is taken',
+    TLedAIPaneWheel(P).Wheel(-120));
+  Check('and it moved: ' + IntToStr(Was) + ' -> ' + IntToStr(P.ScrollPos),
+    P.ScrollPos <> Was);
+
+  { And over a turn, which is where the pointer actually is: a memo keeps
+    the wheel for itself unless it is told to pass it up. }
+  B := P.Turn(P.TurnCount - 1);
+  M := B.BodyControl;
+  Check('a turn has something to turn the wheel over', M <> nil);
+  if M <> nil then
+  begin
+    Check('the words pass the wheel up', Assigned(TControlEvents(M).OnMouseWheel));
+    if Assigned(TControlEvents(M).OnMouseWheel) then
+    begin
+      Was := P.ScrollPos;
+      Handled := False;
+      TControlEvents(M).OnMouseWheel(M, [], -120, Point(0, 0), Handled);
+      Check('a notch over a turn is taken too', Handled);
+      Check('and moves the conversation', P.ScrollPos <> Was);
+    end;
+  end;
+
+  P.Clear;
+  F.Dock.HidePane('ai');
+  Pump;
+end;
+
 { The pane shows a model's name; the backend has to be asking with that one.
   Without it the two agree only by accident, and a reader looking at a pane
   that plainly names a model is told that none has been chosen. }
@@ -2707,7 +2920,12 @@ end;
 procedure TestTheAIPaneDrawsCodeItCanRead(F: TLedMainForm);
 var
   P: TLedAIPane;
-  R: TLedAIResult;
+  Res: TLedAIResult;
+  R: TWinControl;
+  Doc: TIpHtmlMeasure;
+  Bmp: TBitmap;
+  Stream: TStringStream;
+  Need2, Line: Integer;
   Page: string;
 begin
   Say('the AI pane draws code a reader can read');
@@ -2716,10 +2934,41 @@ begin
   if P = nil then Exit;
   P.Clear;
   P.BeginReply;
-  P.AddWords('Try this:'#10'```pascal'#10'begin end.'#10'```'#10);
-  R := Default(TLedAIResult);
-  P.EndReply(R);
+  F.Dock.ShowPane('ai');
   Pump;
+  P.AddWords('Try this, and mind that it is long enough to wrap more than ' +
+    'once in a pane this narrow:'#10'```pascal'#10'begin end.'#10'```'#10 +
+    'That is all there is to it, really.');
+  Res := Default(TLedAIResult);
+  P.EndReply(Res);
+  Pump; Pump;
+
+  { The answer has to fit the room it was given, with something to spare:
+    the height is worked out by laying the page out in a throwaway
+    document, and that is not the renderer's own layout.  Sized to exactly
+    what was measured, a bubble grows a scrollbar the moment the two
+    disagree by a pixel -- which is what a long answer in a narrow pane
+    did. }
+  R := P.Turn(P.TurnCount - 1).BodyControl;
+  if R <> nil then
+  begin
+    Doc := TIpHtmlMeasure.Create;
+    Bmp := TBitmap.Create;
+    Stream := TStringStream.Create(P.Turn(P.TurnCount - 1).RenderedPage);
+    try
+      Doc.DefaultTypeFace := Screen.SystemFont.Name;
+      Doc.DefaultFontSize := 10;
+      Doc.LoadFromStream(Stream);
+      Need2 := Doc.PageHeightAt(Bmp.Canvas, R.ClientWidth);
+      Line := Bmp.Canvas.TextHeight('Mg');
+      Check(Format('the answer has room to spare: %d >= %d + %d',
+        [R.Height, Need2, Line]), R.Height >= Need2 + Line);
+    finally
+      Stream.Free;
+      Bmp.Free;
+      Doc.Free;
+    end;
+  end;
 
   Page := P.Turn(P.TurnCount - 1).RenderedPage;
   { IPro cannot draw a <pre> at all -- it runs the lines together -- so a
@@ -2776,8 +3025,6 @@ procedure TestEnterSendsAndShiftEnterDoesNot(F: TLedMainForm);
 var
   P: TLedAIPane;
   Before: Integer;
-  Had: Boolean;
-  Was: string;
 begin
   Say('Enter sends a question and Shift+Enter does not');
 
@@ -2785,14 +3032,6 @@ begin
   if P = nil then Exit;
   P.Clear;
 
-  { With the pane switched off there is nothing behind it, so pressing
-    Enter asks the pane and stops there.  A check must not start a real
-    turn: the first question of a session loads tens of gigabytes, and a
-    check that waits for that is a check nobody runs. }
-  Had := LedPrefs.HasKey(LedPrefAIEnabled);
-  Was := LedPrefs.GetStr(LedPrefAIEnabled, '');
-  LedPrefs.SetBool(LedPrefAIEnabled, False);
-  F.AIRefresh;
   try
 
   P.TypePrompt('a two line');
@@ -2812,9 +3051,6 @@ begin
   CheckEq('the box is empty afterwards', '', TMemo(P.InputControl).Text);
   P.Clear;
   finally
-    if Had then LedPrefs.SetStr(LedPrefAIEnabled, Was)
-    else LedPrefs.Remove(LedPrefAIEnabled);
-    F.AIRefresh;
   end;
 end;
 
@@ -12935,15 +13171,23 @@ begin
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
   TestEditKeysGoToTheFocusedBox(F);
-  TestTheAIPaneShowsAnAnswerAsItArrives(F);
+  { The AI pane.  All but one of these press Send or drive a turn, and with
+    something installed to ask that means a real question to a real model,
+    so they run with nothing behind the pane.  The exception needs whatever
+    is installed, and only reads. }
   TestTheModelShownIsTheModelAsked(F);
-  TestAskingForATransformOfTheSelection(F);
-  TestAChatReplyIsNotOfferedAsAReplacement(F);
+  WithNoModelBehindIt(F, @TestTheAIPaneShowsAnAnswerAsItArrives);
+  WithNoModelBehindIt(F, @TestTheReadersOwnWordsAreShown);
+  WithNoModelBehindIt(F, @TestClearingWhileItThinksLeavesItReady);
+  WithNoModelBehindIt(F, @TestTheTwoSidesOfTheConversationLookDifferent);
+  WithNoModelBehindIt(F, @TestTheWheelScrollsTheConversation);
+  WithNoModelBehindIt(F, @TestAskingForATransformOfTheSelection);
+  WithNoModelBehindIt(F, @TestAChatReplyIsNotOfferedAsAReplacement);
   TestTurningTheAIPaneOffTakesEffectAtOnce(F);
-  TestTheAIPaneDrawsCodeItCanRead(F);
-  TestTheAIQuestionBoxKeepsItsKeys(F);
-  TestEnterSendsAndShiftEnterDoesNot(F);
-  TestTheAIPaneNeverWritesToTheDocumentByItself(F);
+  WithNoModelBehindIt(F, @TestTheAIPaneDrawsCodeItCanRead);
+  WithNoModelBehindIt(F, @TestTheAIQuestionBoxKeepsItsKeys);
+  WithNoModelBehindIt(F, @TestEnterSendsAndShiftEnterDoesNot);
+  WithNoModelBehindIt(F, @TestTheAIPaneNeverWritesToTheDocumentByItself);
   TestACodeBlockCanBeTakenOutOfAnAnswer(F);
   TestPaneIsBuiltOffScreen(F);
   TestDockEdges(F);
