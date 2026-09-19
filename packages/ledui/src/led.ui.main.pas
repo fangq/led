@@ -776,6 +776,11 @@ type
     property Preview: TLedPreviewPane read FPreview;
     { For the self-test, which drives the pane without a model behind it. }
     property AIPane: TLedAIPane read FAIPane;
+    { Picks the backend up again after a preference has changed. }
+    procedure AIRefresh;
+    { The model the backend will actually ask with.  Published so a check
+      can say that it is the one the pane is showing. }
+    function AIModelAsked: string;
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
     procedure RefreshOutline;
@@ -1878,6 +1883,17 @@ begin
   Names := TStringList.Create;
   Models := TStringList.Create;
   try
+    { Off is one setting away, and off means there is nothing to ask rather
+      than a pane that looks ready and then fails.  A reader who would
+      rather their editor did not talk to a model -- or a check that must
+      not -- says so here. }
+    if not LedPrefs.GetBool(LedPrefAIEnabled, True) then
+    begin
+      FreeAndNil(FAI);
+      FAIPane.SetBackends(Names, '');
+      FAIPane.SetAvailable(False, 'the AI pane is switched off');
+      Exit;
+    end;
     if TLedAIOllama.Available then Names.Add(TLedAIOllama.BackendName);
     if TLedAIClaude.Available then Names.Add(TLedAIClaude.BackendName);
 
@@ -1909,15 +1925,33 @@ begin
       FAIPane.SetModels(Models, LedPrefs.GetStr(LedPrefAIOllamaModel, ''))
     else
     begin
+      { A backend that chooses its own model -- claude does -- offers no
+        list, and the pane shows an empty box rather than a wrong one. }
       Models.Clear;
       FAIPane.SetModels(Models, '');
     end;
+    { The model the pane shows is the model that gets asked for.  Without
+      this the two agree only by accident: the pane would name one and the
+      backend would ask with nothing, which reads as "no model has been
+      chosen" against a pane that plainly shows one. }
+    FAI.Model := FAIPane.ModelName;
     FAIPane.SetAvailable(True, '');
     if Why <> '' then FAIPane.Failed(Why);
   finally
     Names.Free;
     Models.Free;
   end;
+end;
+
+procedure TLedMainForm.AIRefresh;
+begin
+  if FAIPane <> nil then AIChooseBackend;
+end;
+
+function TLedMainForm.AIModelAsked: string;
+begin
+  Result := '';
+  if FAI <> nil then Result := FAI.Model;
 end;
 
 procedure TLedMainForm.AIBackendChanged(Sender: TObject);
@@ -1982,6 +2016,12 @@ begin
   FAIAttach := AAttach;
   FAIWas := R.Context;
   if Tab <> nil then FAIDoc := Tab.Document else FAIDoc := nil;
+
+  { Read again here rather than only when the backend was made: the reader
+    may have picked another model since. }
+  FAI.Model := FAIPane.ModelName;
+  if (FAI is TLedAIOllama) and (FAI.Model <> '') then
+    LedPrefs.SetStr(LedPrefAIOllamaModel, FAI.Model);
 
   FAIChat.Add(larUser, APrompt);
   if not FAI.Ask(R, Seq) then

@@ -2451,6 +2451,25 @@ begin
   Check('the page says something', Pos('Hello', Page) > 0);
 end;
 
+{ The pane shows a model's name; the backend has to be asking with that one.
+  Without it the two agree only by accident, and a reader looking at a pane
+  that plainly names a model is told that none has been chosen. }
+procedure TestTheModelShownIsTheModelAsked(F: TLedMainForm);
+begin
+  Say('the model the pane shows is the one that gets asked for');
+
+  if F.AIPane = nil then Exit;
+  if F.AIPane.ModelName = '' then
+  begin
+    { No local model server on this machine, or a backend that picks its own
+      model.  Nothing to compare, and nothing wrong. }
+    Say('  (no model list here; nothing to compare)');
+    Exit;
+  end;
+  CheckEq('the backend was told which model', F.AIPane.ModelName,
+    F.AIModelAsked);
+end;
+
 procedure TestTheAIPaneDrawsCodeItCanRead(F: TLedMainForm);
 var
   P: TLedAIPane;
@@ -2523,12 +2542,24 @@ procedure TestEnterSendsAndShiftEnterDoesNot(F: TLedMainForm);
 var
   P: TLedAIPane;
   Before: Integer;
+  Had: Boolean;
+  Was: string;
 begin
   Say('Enter sends a question and Shift+Enter does not');
 
   P := F.AIPane;
   if P = nil then Exit;
   P.Clear;
+
+  { With the pane switched off there is nothing behind it, so pressing
+    Enter asks the pane and stops there.  A check must not start a real
+    turn: the first question of a session loads tens of gigabytes, and a
+    check that waits for that is a check nobody runs. }
+  Had := LedPrefs.HasKey(LedPrefAIEnabled);
+  Was := LedPrefs.GetStr(LedPrefAIEnabled, '');
+  LedPrefs.SetBool(LedPrefAIEnabled, False);
+  F.AIRefresh;
+  try
 
   P.TypePrompt('a two line');
   Check('Shift+Enter is left to the box', not P.PressEnter([ssShift]));
@@ -2542,8 +2573,15 @@ begin
   Check('Enter is claimed', P.PressEnter([]));
   Pump;
   CheckEqInt('and the question is asked', Before + 1, P.TurnCount);
+  CheckEq('which is the question that was typed', 'what is a pipe?',
+    P.Turn(Before).Text);
   CheckEq('the box is empty afterwards', '', TMemo(P.InputControl).Text);
   P.Clear;
+  finally
+    if Had then LedPrefs.SetStr(LedPrefAIEnabled, Was)
+    else LedPrefs.Remove(LedPrefAIEnabled);
+    F.AIRefresh;
+  end;
 end;
 
 procedure TestTheAIPaneNeverWritesToTheDocumentByItself(F: TLedMainForm);
@@ -12663,6 +12701,7 @@ begin
   TestShowPaneShowsThatPane(F);
   TestEditKeysGoToTheFocusedBox(F);
   TestTheAIPaneShowsAnAnswerAsItArrives(F);
+  TestTheModelShownIsTheModelAsked(F);
   TestTheAIPaneDrawsCodeItCanRead(F);
   TestTheAIQuestionBoxKeepsItsKeys(F);
   TestEnterSendsAndShiftEnterDoesNot(F);
