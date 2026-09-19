@@ -83,11 +83,21 @@ type
     FPicSrc: TLedPictureSource;
     FOnScrolled: TLedPreviewLineEvent;
     FSyncedLine: Integer;         { the last line scrolled to, to not repeat }
+    { The line the text view is showing, kept across a re-render.  A page
+      drawn again starts at the top, and the reader who was half way down a
+      document has not moved: without this the preview answers a picture
+      arriving by jumping to the beginning and staying there until they
+      scroll far enough to leave the block they are in. }
+    FWantedLine: Integer;
     FOnJumpToLine: TLedPreviewLineEvent;
     procedure BuildTops;
     function LineAtTop(AY: Integer): Integer;
     procedure ScrollTick(Sender: TObject);
     function CodeColumns: Integer;
+    { Where the text beside the page is, from whichever direction the pane
+      was told.  One place, because two would cover for one another and
+      neither could then be shown to matter. }
+    procedure NoteWhereTheReaderIs(ALine: Integer);
     procedure CollectLineIds(const APage: string);
     function NearestLineId(ALine: Integer): Integer;
     function LineUnderCursor: Integer;
@@ -179,6 +189,10 @@ type
       too big to lay out whole -- see LedPreviewCut -- which is the one way
       from outside to tell a capped page from a complete one. }
     function LastLineShown: Integer;
+    { Empty unless the renderer's layout raised while being walked.  A
+      preview that stops following says why here instead of taking the
+      window down with it. }
+    function LayoutTrouble: string;
 
     { Which line of the document is at the top of the page as it stands.
       What OnScrolledToLine reports, asked for directly: a check can scroll
@@ -216,6 +230,9 @@ var
     smallest possible piece of state lives here.  Single-threaded, which is
     what makes that safe: this runs on the main thread inside one call. }
   GNodeTop: Integer;
+  { The last thing that went wrong inside the renderer's layout, kept so a
+    report can say what happened rather than "it crashed". }
+  GLayoutTrouble: string = '';
 
 function TLedIpHtmlReach.FindId(const AId: string): TIpHtmlNode;
 begin
@@ -230,7 +247,23 @@ end;
 function TLedIpNodeReach.PageTop: Integer;
 begin
   GNodeTop := MaxInt;
-  ReportDrawRects(@NoteRect);
+  { Walking the renderer's own layout, which is only as valid as the last
+    thing that touched it.  A page being laid out again -- a picture
+    arriving, a resize, a restyle -- can be walked half way through, and
+    what comes back then is an exception out of the middle of IPro.
+
+    Answering "I do not know where that block is" costs the reader one tick
+    of a preview that does not follow.  Letting it out costs them a dialog
+    about data corruption over a feature that only scrolls a page. }
+  try
+    ReportDrawRects(@NoteRect);
+  except
+    on E: Exception do
+    begin
+      GLayoutTrouble := E.ClassName + ': ' + E.Message;
+      Exit(-1);
+    end;
+  end;
   if GNodeTop = MaxInt then Result := -1 else Result := GNodeTop;
 end;
 
@@ -442,6 +475,11 @@ end;
   is ascending.  Read back off the finished page rather than kept by the
   converter: that keeps the converter a string-to-string function, and the
   scan costs a millisecond on a page that takes half a second to lay out. }
+procedure TLedPreviewPane.NoteWhereTheReaderIs(ALine: Integer);
+begin
+  if ALine > 0 then FWantedLine := ALine;
+end;
+
 procedure TLedPreviewPane.CollectLineIds(const APage: string);
 const
   Marker = ' id="L';
@@ -500,6 +538,9 @@ var
   N: Integer;
 begin
   Result := False;
+  { Remembered before anything can turn back, so that a re-render knows
+    where the reader was even if this particular call does nothing. }
+  NoteWhereTheReaderIs(ALine);
   if (not FHasRendered) or (not FHtml.Visible) then Exit;
   N := NearestLineId(ALine);
   if N = 0 then Exit;
@@ -508,7 +549,20 @@ begin
     text view scrolls past, and each move repaints the page. }
   if N = FSyncedLine then Exit;
   FSyncedLine := N;
-  FHtml.MakeAnchorVisible('L' + IntToStr(N));
+  { Same reasoning as PageTop: this makes the renderer lay the page out to
+    find the block, and a page mid-layout can raise from inside it. }
+  try
+    FHtml.MakeAnchorVisible('L' + IntToStr(N));
+  except
+    on E: Exception do
+    begin
+      GLayoutTrouble := E.ClassName + ': ' + E.Message;
+      { Not marked as synced, so the next scroll tries again rather than
+        the preview stopping for good. }
+      FSyncedLine := 0;
+      Exit;
+    end;
+  end;
   { This pane moved the page, so the next look must not read it as the
     reader having moved it. }
   FLastScroll := FHtml.VScrollPos;
@@ -629,6 +683,11 @@ begin
   FOnScrolled(Self, Line);
 end;
 
+function TLedPreviewPane.LayoutTrouble: string;
+begin
+  Result := GLayoutTrouble;
+end;
+
 function TLedPreviewPane.ScrollPos: Integer;
 begin
   Result := FHtml.VScrollPos;
@@ -667,6 +726,7 @@ var
 begin
   N := NearestLineId(ALine);
   if N > 0 then FSyncedLine := N;
+  NoteWhereTheReaderIs(ALine);
 end;
 
 procedure TLedPreviewPane.HtmlClicked(Sender: TObject);
@@ -861,6 +921,9 @@ begin
     FNote.Visible := False;
     FHtml.Visible := True;
     FHasRendered := True;
+    { And back to where the reader was.  The new page is at its top; the
+      text beside it is wherever it was left. }
+    if FWantedLine > 0 then ScrollToLine(FWantedLine);
   except
     on E: Exception do
       ShowMessage_('The preview could not be rendered: ' + E.Message);

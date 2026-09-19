@@ -10435,6 +10435,73 @@ end;
   that never fills.  The limit is turned down for the check because the point
   is the behaviour and not the number: at the shipped 96 KB the document this
   would need takes twenty seconds to lay out. }
+{ Reported: the preview sometimes jumps to the beginning of the page while
+  the text is still in the middle.
+
+  A page drawn again starts at its top, and a preview is drawn again more
+  often than a reader thinks: a picture arriving, the theme changing, the
+  pane being resized.  The reader has not moved, so nothing scrolls the page
+  back, and it sits at the beginning until they scroll far enough to leave
+  the block they were in.  The pane remembers where the text was and goes
+  back there itself. }
+procedure TestPreviewKeepsItsPlaceAcrossARedraw(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P, Line: string;
+  L: TStringList;
+  i, Was: Integer;
+begin
+  Say('the preview keeps its place when the page is drawn again');
+  if F.Preview = nil then Exit;
+
+  P := TempName('redrawn.md');
+  L := TStringList.Create;
+  try
+    for i := 1 to 40 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      Line := 'Paragraph ' + IntToStr(i) + ', with enough words in it to ';
+      L.Add(Line + 'wrap once or twice in a pane of this width.');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  F.Preview.RenderNow;
+  Pump;
+
+  { Half way down, and the preview follows. }
+  Tab.ActiveView.TopLine := 80;
+  Pump; Pump;
+  Was := F.Preview.ScrollPos;
+  Check(Format('the preview followed the text down (%d)', [Was]), Was > 0);
+
+  { Now the page is drawn again with nothing else changing -- which is what
+    a picture arriving does. }
+  F.Preview.Restyle;
+  Pump; Pump;
+  Check(Format('and it is still down there afterwards (%d, was %d)',
+    [F.Preview.ScrollPos, Was]), F.Preview.ScrollPos > 0);
+  { The block it lands on is the one the text is in, so the two agree to
+    within a block rather than exactly. }
+  CheckEqInt('with nothing gone wrong inside the renderer', 0,
+    Length(F.Preview.LayoutTrouble));
+
+  F.Dock.HidePane('preview');
+  Pump;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 procedure TestPreviewCapsABigDocument(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -12303,6 +12370,11 @@ end;
 type
   { MouseDown and MouseUp are protected, and clicking is the thing to check. }
   TMapPoke = class(TLedMiniMap);
+  { The highlighter's buffer, so a check can point it where a second
+    document of the same language points it -- and the view's own buffer,
+    which is protected on SynEdit. }
+  TLedHLPoke = class(TSynCustomHighlighter);
+  TLedEditPeek = class(TLedEdit);
 
 { The mean brightness of one pixel column of a control. }
 function ColumnLuma(AControl: TWinControl; AX: Integer): Integer;
@@ -12347,6 +12419,106 @@ end;
   clicking in it scrolls the text.  Ink is counted rather than described: a
   minimap that paints its background and nothing else would satisfy every
   property assertion about it, and looks exactly like a broken one. }
+{ Reported: dragging the minimap, or just scrolling, raises
+  "List index (0) out of bounds".
+
+  One highlighter is shared by every document of a language -- Led.Syn.Factory
+  hands out one instance each -- and it holds a pointer to the lines it was
+  last used for, with the range list that goes with them.  The minimap
+  replays those ranges to colour its bars.  Ask it to replay line 1 while the
+  highlighter is pointed at a document that has not been scanned, and SynEdit
+  reads CurrentRanges[0] of an empty list.
+
+  A second empty document of the same language is all it takes, which is why
+  the reader saw it "sometimes": it depends which view touched the
+  highlighter last. }
+procedure TestMiniMapSurvivesASharedHighlighter(F: TLedMainForm);
+var
+  Tab, Other: TLedTab;
+  Map: TLedMiniMap;
+  HL: TSynCustomHighlighter;
+  Src: string;
+  Raised: Boolean;
+  Why: string;
+  L: TStringList;
+begin
+  Say('the minimap survives a highlighter another document is using');
+
+  Src := TempName('shared-hl.md');
+  L := TStringList.Create;
+  try
+    L.Add('# A heading');
+    L.Add('');
+    L.Add('Some prose with `code` in it.');
+    L.Add('');
+    L.Add('```pascal');
+    L.Add('begin end.');
+    L.Add('```');
+    L.SaveToFile(Src);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(Src));
+  Pump;
+  if Tab = nil then Exit;
+  Map := Tab.MiniMap;
+  if Map = nil then Exit;
+  if not Map.Visible then F.actToggleMiniMap.Execute;
+  Pump; Pump;
+  Check('the minimap is up', Map.Visible);
+
+  HL := Tab.ActiveView.Highlighter;
+  Check('the document has a highlighter to share', HL <> nil);
+  if HL = nil then Exit;
+
+  { A second document of the same language, which is what shares it. }
+  Other := F.AddTab(F.Documents.NewDocument);
+  Pump;
+  if Other <> nil then Other.Document.SetLanguage('markdown');
+  Pump;
+  Check('and the second document shares the very same one',
+    (Other <> nil) and (Other.ActiveView.Highlighter = HL));
+
+  { Pointed at the empty one, which is where a scan of it leaves it. }
+  if Other <> nil then
+    TLedHLPoke(HL).CurrentLines := TLedEditPeek(Other.ActiveView).TextBuffer;
+
+  Raised := False;
+  Why := '';
+  try
+    TMapPoke(Map).Paint;
+  except
+    on E: Exception do
+    begin
+      Raised := True;
+      Why := E.ClassName + ': ' + E.Message;
+    end;
+  end;
+  Check('painting it does not raise: ' + Why, not Raised);
+
+  { And it still colours: the guard falls back for one repaint and the next
+    one has the ranges back, rather than the minimap going permanently
+    plain. }
+  Pump;
+  Raised := False;
+  try
+    TMapPoke(Map).Paint;
+  except
+    on E: Exception do Raised := True;
+  end;
+  Check('and neither does the one after it', not Raised);
+
+  if Other <> nil then
+  begin
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Src);
+end;
+
 procedure TestMiniMap(F: TLedMainForm);
 var
   Dir, Src: string;
@@ -13429,11 +13601,13 @@ begin
   TestRowStyling(F);
   TestWordAndFoldMarkup(F);
   TestMiniMap(F);
+  TestMiniMapSurvivesASharedHighlighter(F);
   TestHexPairing(F);
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
   TestPreviewClickKeepsPage(F);
+  TestPreviewKeepsItsPlaceAcrossARedraw(F);
   TestPreviewCapsABigDocument(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);

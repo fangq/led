@@ -39,7 +39,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Graphics, LCLType, Forms,
-  SynEdit, SynEditTypes, SynEditHighlighter,
+  SynEdit, SynEditTypes, SynEditHighlighter, SynEditTextBase,
   Led.UI.Edit, Led.UI.Dpi, Led.Syn.Factory;
 
 type
@@ -224,6 +224,42 @@ end;
 
 { AViewPos is 1-based and in view space; the text it shows may be any line of
   the buffer, and is what the highlighter is asked about. }
+{ The range list a highlighter is holding, which is protected on it.  Reached
+  the way this tree reaches every other protected member it needs: through a
+  descendant declared here. }
+type
+  TLedHLPeek = class(TSynCustomHighlighter);
+  { The buffer the ranges belong to is protected on SynEdit too. }
+  TLedEditPeek = class(TLedEdit);
+
+{ Whether the scan has reached this line in the buffer the minimap is drawing.
+
+  Two ways it has not.  The highlighter is shared by every document of its
+  language -- Led.Syn.Factory hands out one instance per language -- and its
+  CurrentLines points at whichever view last used it, so a minimap that
+  replayed a range list without saying whose it was could index another
+  document's.  And even pointed at the right buffer, the editor's own scan
+  may not have reached this line yet, on a document just opened or while a
+  rescan is in flight.
+
+  Either way SynEdit's StartAtLineIndex does CurrentRanges[ALine - 1] with
+  nothing in the list, and the reader gets "List index (0) out of bounds" --
+  from scrolling, or from dragging the minimap, because both repaint it. }
+function RangesReadyFor(AHL: TSynCustomHighlighter; ALines: TSynEditStringsBase;
+  AIndex: Integer): Boolean;
+var
+  Ranges: TSynHighlighterRangeList;
+begin
+  Result := False;
+  if (AHL = nil) or (ALines = nil) then Exit;
+  { Said out loud, exactly as SynEdit says it before its own paint. }
+  if AHL.CurrentLines <> ALines then AHL.CurrentLines := ALines;
+  if AIndex = 0 then Exit(True);      { StartAtLineIndex resets instead }
+  Ranges := TLedHLPeek(AHL).CurrentRanges;
+  Result := (Ranges <> nil) and (AIndex < Ranges.Count) and
+            (AIndex < ALines.Count);
+end;
+
 procedure TLedMiniMap.PaintLine(AViewPos, AY: Integer);
 var
   AIndex: Integer;
@@ -243,10 +279,11 @@ begin
   HL := FEdit.Highlighter;
   Ink := LedMixColours(FEdit.Font.Color, Color, 82);
 
-  if HL = nil then
+  if not RangesReadyFor(HL, TLedEditPeek(FEdit).TextBuffer, AIndex) then
   begin
-    { No highlighter: one bar for the line, indentation included, so the shape
-      of the file is still there. }
+    { No highlighter, or no colours to replay yet: one bar for the line,
+      indentation included, so the shape of the file is still there and the
+      next repaint has them. }
     i := 1;
     while (i <= Length(S)) and (S[i] in [#9, ' ']) do Inc(i);
     X := ShadowWidth + (i - 1) * FColWidth;
