@@ -512,6 +512,16 @@ object LedMainForm: TLedMainForm
       ImageIndex = 44
       OnExecute = actToggleDebugPaneExecute
     end
+    object actToggleAIPane: TAction
+      Caption = '&AI Chat'
+      ImageIndex = 61
+      OnExecute = actToggleAIPaneExecute
+    end
+    object actAskAI: TAction
+      Caption = 'As&k AI about Selection'
+      ImageIndex = 61
+      OnExecute = actAskAIExecute
+    end
     object actToggleBreakPane: TAction
       Caption = 'Brea&kpoints'
       ImageIndex = 49
@@ -711,6 +721,12 @@ object LedMainForm: TLedMainForm
       end
       object mi_StripTrailing: TMenuItem
         Action = actStripTrailing
+      end
+      object mi_AskAISep: TMenuItem
+        Caption = '-'
+      end
+      object mi_AskAI: TMenuItem
+        Action = actAskAI
       end
       object mi_Complete: TMenuItem
         Action = actComplete
@@ -1018,6 +1034,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleNotebookPane: TMenuItem
         Action = actToggleNotebookPane
+      end
+      object mi_ToggleAIPane: TMenuItem
+        Action = actToggleAIPane
       end
       object mi_ToggleMiniMap: TMenuItem
         Action = actToggleMiniMap

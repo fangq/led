@@ -30,6 +30,7 @@ uses
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
+  Led.UI.AIPane, Led.Core.AI,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -2270,7 +2271,8 @@ var
   { Every pane on the right-hand edge.  The list has to be all of them: the
     check hides the edge's panes and then asks which one showing the edge
     opens, and a pane left off the list is a pane left showing. }
-  Right: array[0..3] of string = ('symbols', 'preview', 'notebook', 'debug');
+  Right: array[0..4] of string =
+    ('symbols', 'preview', 'notebook', 'debug', 'ai');
 begin
   Say('showing a pane shows that pane');
 
@@ -2391,6 +2393,204 @@ begin
   finally
     Solo.Free;
   end;
+end;
+
+{ The AI pane, driven without a model behind it.
+
+  Everything here goes through the pane's own door -- the words a backend
+  would deliver, the keys a reader would press -- because the pane is the
+  half of this feature that has no tests anywhere else, and because the
+  failures worth catching are about what the pane does with what it is
+  given rather than about what a model said. }
+procedure TestTheAIPaneShowsAnAnswerAsItArrives(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+  Page: string;
+begin
+  Say('the AI pane shows an answer as it arrives');
+
+  P := F.AIPane;
+  Check('the pane is there', P <> nil);
+  if P = nil then Exit;
+  P.Clear;
+
+  P.BeginReply;
+  Check('it says it is waiting', P.Thinking);
+  { Stop is offered before the first word, not after it.  The wait before a
+    local model answers is tens of seconds while it is loaded, and that is
+    exactly when a reader wants out. }
+  Check('and it can be stopped straight away', P.StopEnabled);
+
+  P.AddWords('Hel');
+  P.AddWords('lo, wor');
+  P.AddWords('ld.');
+  Pump;
+  CheckEq('the words are joined as they arrive', 'Hello, world.',
+    P.StreamText);
+  { Nothing is laid out as a page yet.  IPro relays a page out on every
+    repaint and its layout is worse than quadratic -- 8 KiB is 140 ms -- so
+    a bubble rebuilt on every word would cost more with every word. }
+  CheckEqInt('and nothing has been laid out as a page yet', 0,
+    P.BubbleCount);
+
+  R := Default(TLedAIResult);
+  R.Text := 'Hello, world.';
+  P.EndReply(R);
+  Pump;
+  Check('when it finishes it is not waiting any more', not P.Thinking);
+  Check('and Stop is no longer offered', not P.StopEnabled);
+  CheckEqInt('the answer is one page, laid out once', 1, P.BubbleCount);
+
+  { What the reader keeps is the Markdown, whole: the page is a rendering,
+    and Copy and Apply must never hand over a rendering. }
+  CheckEq('and the words are kept as they were said', 'Hello, world.',
+    P.LastReply);
+
+  Page := P.Turn(P.TurnCount - 1).RenderedPage;
+  Check('the page says something', Pos('Hello', Page) > 0);
+end;
+
+procedure TestTheAIPaneDrawsCodeItCanRead(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+  Page: string;
+begin
+  Say('the AI pane draws code a reader can read');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.BeginReply;
+  P.AddWords('Try this:'#10'```pascal'#10'begin end.'#10'```'#10);
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+
+  Page := P.Turn(P.TurnCount - 1).RenderedPage;
+  { IPro cannot draw a <pre> at all -- it runs the lines together -- so a
+    fenced block has to reach it as coloured <code>. }
+  CheckEqInt('no preformatted block is handed to the renderer', 0,
+    Pos('<pre', LowerCase(Page)));
+  Check('the code is there, as something it can draw',
+    Pos('<code', LowerCase(Page)) > 0);
+  { Not the whole line in one piece: colouring it puts a <font> around
+    every token, which is the point of doing it at all. }
+  { Not in one piece: colouring puts a <font> around every token, which is
+    the point of doing it.  So the page is read with its tags taken off. }
+  Check('and the code itself survived', Pos('begin', Page) > 0);
+  Check('all of it', Pos('end', Page) > 0);
+end;
+
+procedure TestTheAIQuestionBoxKeepsItsKeys(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  Was: string;
+begin
+  Say('the AI question box keeps its own keys');
+
+  P := F.AIPane;
+  if (P = nil) or (F.ActiveView = nil) then Exit;
+  P.Clear;
+  F.Dock.ShowPane('ai');
+  Pump;
+
+  Was := F.ActiveView.Lines.Text;
+  Clipboard.AsText := 'pasted into the question';
+  LedTryFocus(P.InputControl);
+  Pump;
+
+  { The bug this is here for: Ctrl+V in a box that is not the document used
+    to reach the main window's Paste action, which pastes into the
+    document.  A memo is a TCustomEdit, so the guard claims the key for
+    it -- which is also why the question box is a memo and not a SynEdit. }
+  Check('the key is claimed for the box with the caret',
+    LedEditKeyAction(VK_V, [ssCtrl], P.InputControl));
+  Pump;
+  Check('the text went into the question box',
+    Pos('pasted into the question', P.InputControl.Caption +
+      TMemo(P.InputControl).Text) > 0);
+  CheckEq('and not into the document behind it', Was,
+    F.ActiveView.Lines.Text);
+
+  TMemo(P.InputControl).Clear;
+  F.Dock.HidePane('ai');
+  Pump;
+end;
+
+procedure TestEnterSendsAndShiftEnterDoesNot(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  Before: Integer;
+begin
+  Say('Enter sends a question and Shift+Enter does not');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+
+  P.TypePrompt('a two line');
+  Check('Shift+Enter is left to the box', not P.PressEnter([ssShift]));
+  Pump;
+  CheckEqInt('so nothing is asked', 0, P.TurnCount);
+  CheckEq('and what was typed is still there', 'a two line',
+    TMemo(P.InputControl).Text);
+
+  Before := P.TurnCount;
+  P.TypePrompt('what is a pipe?');
+  Check('Enter is claimed', P.PressEnter([]));
+  Pump;
+  CheckEqInt('and the question is asked', Before + 1, P.TurnCount);
+  CheckEq('the box is empty afterwards', '', TMemo(P.InputControl).Text);
+  P.Clear;
+end;
+
+procedure TestTheAIPaneNeverWritesToTheDocumentByItself(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+  Was: string;
+begin
+  Say('an answer does not reach the document on its own');
+
+  P := F.AIPane;
+  if (P = nil) or (F.ActiveView = nil) then Exit;
+  P.Clear;
+  Was := F.ActiveView.Lines.Text;
+
+  { A model asked to proof-read a file sometimes answers "Certainly!  Here
+    is the corrected text:" and stops.  An editor that pasted that over
+    somebody's work automatically would destroy it while looking helpful. }
+  P.BeginReply;
+  P.AddWords('Certainly!  Here is the corrected text:');
+  R := Default(TLedAIResult);
+  R.Replaces := True;
+  P.EndReply(R);
+  Pump;
+
+  CheckEq('the document is exactly as it was', Was,
+    F.ActiveView.Lines.Text);
+  P.Clear;
+end;
+
+procedure TestACodeBlockCanBeTakenOutOfAnAnswer(F: TLedMainForm);
+begin
+  Say('a code block can be taken out of an answer');
+
+  CheckEqInt('two blocks', 2, LedAICodeBlocks(
+    'first:'#10'```'#10'one'#10'```'#10'then:'#10'```py'#10'two'#10'```'));
+  { Without the fence: three backticks and a language name on the clipboard
+    is something to clean up by hand every time. }
+  CheckEq('the first, without its fence', 'one', LedAICodeBlock(
+    'first:'#10'```'#10'one'#10'```'#10'then:'#10'```py'#10'two'#10'```', 0));
+  CheckEq('and the second', 'two', LedAICodeBlock(
+    'first:'#10'```'#10'one'#10'```'#10'then:'#10'```py'#10'two'#10'```', 1));
+  CheckEqInt('prose alone has none', 0,
+    LedAICodeBlocks('just a sentence about `code`.'));
+  { A reply cut off part way still has code in it. }
+  CheckEq('an unclosed block is still a block', 'half',
+    LedAICodeBlock('```'#10'half', 0));
 end;
 
 { The editing keys belong to the box the caret is in.
@@ -12462,6 +12662,12 @@ begin
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
   TestEditKeysGoToTheFocusedBox(F);
+  TestTheAIPaneShowsAnAnswerAsItArrives(F);
+  TestTheAIPaneDrawsCodeItCanRead(F);
+  TestTheAIQuestionBoxKeepsItsKeys(F);
+  TestEnterSendsAndShiftEnterDoesNot(F);
+  TestTheAIPaneNeverWritesToTheDocumentByItself(F);
+  TestACodeBlockCanBeTakenOutOfAnAnswer(F);
   TestPaneIsBuiltOffScreen(F);
   TestDockEdges(F);
   TestPaneSizes(F);

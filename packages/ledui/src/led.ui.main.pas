@@ -19,9 +19,11 @@ uses
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
   Led.Core.Outline,
+  Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude,
   fpjson,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
+  Led.UI.AIPane,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Outline, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
@@ -92,6 +94,8 @@ type
     actBreakpointCondition: TAction;
     actToggleBreakpoint: TAction;
     actToggleDebugPane: TAction;
+    actToggleAIPane: TAction;
+    actAskAI: TAction;
     actToggleBreakPane: TAction;
     actAddWatchpoint: TAction;
     miDebug: TMenuItem;
@@ -109,6 +113,9 @@ type
     miSepDbg4: TMenuItem;
     mi_ToggleBreakpoint: TMenuItem;
     mi_ToggleDebugPane: TMenuItem;
+    mi_ToggleAIPane: TMenuItem;
+    mi_AskAI: TMenuItem;
+    mi_AskAISep: TMenuItem;
     miSepDbg0: TMenuItem;
     miSepDbg1: TMenuItem;
     miSepDbg2: TMenuItem;
@@ -448,6 +455,8 @@ type
     procedure actBreakpointConditionExecute(Sender: TObject);
     procedure actToggleBreakpointExecute(Sender: TObject);
     procedure actToggleDebugPaneExecute(Sender: TObject);
+    procedure actToggleAIPaneExecute(Sender: TObject);
+    procedure actAskAIExecute(Sender: TObject);
     procedure actToggleBreakPaneExecute(Sender: TObject);
     procedure actAddWatchpointExecute(Sender: TObject);
     procedure actToggleProjectExecute(Sender: TObject);
@@ -523,6 +532,19 @@ type
     FBrowser: TLedFileBrowser;
     FTerminal: TLedTerminalPane;
     FDebugPane: TLedDebugPane;
+    { The AI pane, whatever it is talking to, and the timer that drains it.
+      The timer runs only while a turn is in flight: a model is asked a
+      question now and then, not thirty times a second. }
+    FAIPane: TLedAIPane;
+    FAI: TLedAIBackend;
+    FAIChat: TLedAIChat;
+    FAITimer: TTimer;
+    { What the turn in flight was asked about, so that a reply arriving a
+      minute later cannot be applied to something else.  The text as well as
+      the place: an edit that kept the same offsets would otherwise pass. }
+    FAIDoc: TLedDocument;
+    FAIWas: string;
+    FAIAttach: TLedAIAttach;
     FBreakPane: TLedBreakPane;
     FThemeMenu: TPopupMenu;
     { The value editor for structure views, made when one is first wanted and
@@ -625,6 +647,23 @@ type
     procedure ViewMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
     procedure PaneShown(const AId: string);
+    { The AI pane's side of the conversation.  The pane knows nothing about
+      backends and the backends know nothing about tabs; these are where the
+      two meet. }
+    procedure AIAsk(Sender: TObject; const APrompt: string;
+      ATask: TLedAITask; AAttach: TLedAIAttach);
+    procedure AIStop(Sender: TObject);
+    procedure AINeedContext(Sender: TObject; AAttach: TLedAIAttach;
+      out AText, AName, ALanguage: string);
+    procedure AIApply(Sender: TObject; ATurn: Integer; const AText: string;
+      AKind: TLedAIApply);
+    procedure AIBackendChanged(Sender: TObject);
+    procedure AIChooseBackend;
+    procedure AITick(Sender: TObject);
+    procedure AIDelta(Sender: TObject; const ADelta: TLedAIDelta);
+    procedure AIDone(Sender: TObject; const AResult: TLedAIResult);
+    procedure AIFailed(Sender: TObject; ASeq: Integer; const AWhy: string);
+    procedure AIFocusDeferred(Data: PtrInt);
     procedure StartTerminalDeferred(Data: PtrInt);
     procedure RefreshPreviewDeferred(Data: PtrInt);
     procedure StartTerminal;
@@ -735,6 +774,8 @@ type
       editing keys reach its box rather than the document behind it. }
     property FindWindow: TLedFindForm read FFindForm;
     property Preview: TLedPreviewPane read FPreview;
+    { For the self-test, which drives the pane without a model behind it. }
+    property AIPane: TLedAIPane read FAIPane;
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
     procedure RefreshOutline;
@@ -1152,6 +1193,24 @@ begin
   FDebugger.OnConsole := @DebugConsole;
   FDebugger.OnViewFor := @DebugViewFor;
   FDebugger.OnStateChanged := @DebugStateChanged;
+
+  { Registered whether or not there is anything installed to talk to.  A
+    pane missing at startup is a pane the saved layout cannot find, and
+    AnchorDocking answers that with a warning and an empty hole. }
+  FAIChat := TLedAIChat.Create;
+  FAIPane := TLedAIPane.Create(Self);
+  FAIPane.OnAsk := @AIAsk;
+  FAIPane.OnStop := @AIStop;
+  FAIPane.OnNeedContext := @AINeedContext;
+  FAIPane.OnApply := @AIApply;
+  FAIPane.OnBackendChanged := @AIBackendChanged;
+  FDock.AddPane(ledRight, 'ai', 'AI Chat', FAIPane, 'assistant');
+
+  FAITimer := TTimer.Create(Self);
+  FAITimer.Interval := 50;
+  FAITimer.Enabled := False;
+  FAITimer.OnTimer := @AITick;
+  AIChooseBackend;
 
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
@@ -1803,6 +1862,244 @@ begin
     Exit;
   end;
   FDebugger.ToggleBreakpoint(Tab.Document.FileName, Tab.ActiveView.CaretY);
+end;
+
+{ Which model LED is talking to, and what the pane should offer.  Called at
+  startup and whenever the reader changes the choice.
+
+  Both backends are offered whether or not either is installed: a list with
+  one entry in it tells a reader nothing about why the other is missing, and
+  the status line can say so in words. }
+procedure TLedMainForm.AIChooseBackend;
+var
+  Names, Models: TStringList;
+  Want, Why: string;
+begin
+  Names := TStringList.Create;
+  Models := TStringList.Create;
+  try
+    if TLedAIOllama.Available then Names.Add(TLedAIOllama.BackendName);
+    if TLedAIClaude.Available then Names.Add(TLedAIClaude.BackendName);
+
+    Want := FAIPane.BackendName;
+    if Want = '' then Want := LedPrefs.GetStr(LedPrefAIBackend, 'ollama');
+    if Names.IndexOf(Want) < 0 then
+    begin
+      if Names.Count > 0 then Want := Names[0] else Want := '';
+    end;
+    FAIPane.SetBackends(Names, Want);
+
+    FreeAndNil(FAI);
+    if Want = TLedAIClaude.BackendName then
+      FAI := TLedAIClaude.Create(FAIChat)
+    else if Want = TLedAIOllama.BackendName then
+      FAI := TLedAIOllama.Create(FAIChat);
+
+    if FAI = nil then
+    begin
+      FAIPane.SetAvailable(False,
+        'neither ollama nor claude is installed on this machine');
+      Exit;
+    end;
+
+    FAI.OnDelta := @AIDelta;
+    FAI.OnDone := @AIDone;
+    FAI.OnError := @AIFailed;
+    if FAI.ModelList(Models, Why) then
+      FAIPane.SetModels(Models, LedPrefs.GetStr(LedPrefAIOllamaModel, ''))
+    else
+    begin
+      Models.Clear;
+      FAIPane.SetModels(Models, '');
+    end;
+    FAIPane.SetAvailable(True, '');
+    if Why <> '' then FAIPane.Failed(Why);
+  finally
+    Names.Free;
+    Models.Free;
+  end;
+end;
+
+procedure TLedMainForm.AIBackendChanged(Sender: TObject);
+begin
+  LedPrefs.SetStr(LedPrefAIBackend, FAIPane.BackendName);
+  AIChooseBackend;
+end;
+
+procedure TLedMainForm.AINeedContext(Sender: TObject; AAttach: TLedAIAttach;
+  out AText, AName, ALanguage: string);
+var
+  Tab: TLedTab;
+begin
+  AText := '';
+  AName := '';
+  ALanguage := '';
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
+  AName := ExtractFileName(Tab.Document.DisplayName);
+  if Tab.Document.LangInfo <> nil then
+    ALanguage := LowerCase(Tab.Document.LangInfo.Id);
+  case AAttach of
+    laaSelection:
+      if Tab.ActiveView.SelAvail then AText := Tab.ActiveView.SelText;
+    laaDocument:
+      AText := Tab.ActiveView.Lines.Text;
+  end;
+end;
+
+procedure TLedMainForm.AIAsk(Sender: TObject; const APrompt: string;
+  ATask: TLedAITask; AAttach: TLedAIAttach);
+var
+  R: TLedAIRequest;
+  Seq: Integer;
+  Tab: TLedTab;
+begin
+  if FAI = nil then
+  begin
+    FAIPane.Failed('there is nothing installed to ask');
+    Exit;
+  end;
+
+  R := Default(TLedAIRequest);
+  R.Task := ATask;
+  R.Instruction := APrompt;
+  AINeedContext(Sender, AAttach, R.Context, R.ContextName, R.Language);
+  { A question about a piece of a file expects that piece back; a
+    conversation does not. }
+  R.Replaces := (AAttach <> laaNothing) and (ATask <> laskChat) and
+                (ATask <> laskExplain) and (ATask <> laskSummarise);
+  R.Standalone := R.Replaces;
+
+  { Remembered so that a reply arriving a minute from now cannot be applied
+    to a document that has moved on.  The text, not just the offsets: an
+    edit that kept the same length would otherwise pass unnoticed. }
+  Tab := ActiveTab;
+  { Where a backend that may act in the project is allowed to act: beside
+    the file being edited, and not wherever LED happened to be started. }
+  if (FAI is TLedAIClaude) and (Tab <> nil) and
+     (Tab.Document.FileName <> '') then
+    TLedAIClaude(FAI).WorkDir := ExtractFilePath(Tab.Document.FileName);
+  FAIAttach := AAttach;
+  FAIWas := R.Context;
+  if Tab <> nil then FAIDoc := Tab.Document else FAIDoc := nil;
+
+  FAIChat.Add(larUser, APrompt);
+  if not FAI.Ask(R, Seq) then
+  begin
+    FAIPane.Failed(FAI.LastError);
+    Exit;
+  end;
+  FAIPane.BeginReply;
+  FAITimer.Enabled := True;
+end;
+
+procedure TLedMainForm.AIStop(Sender: TObject);
+begin
+  if FAI <> nil then FAI.Stop;
+  FAITimer.Enabled := False;
+end;
+
+procedure TLedMainForm.AITick(Sender: TObject);
+begin
+  if FAI = nil then Exit;
+  FAI.Poll;
+  { Off again the moment there is nothing in flight: a pane nobody is
+    talking to should cost nothing. }
+  if FAI.State <> laiBusy then FAITimer.Enabled := False;
+end;
+
+procedure TLedMainForm.AIDelta(Sender: TObject; const ADelta: TLedAIDelta);
+begin
+  case ADelta.Kind of
+    ladText: FAIPane.AddWords(ADelta.Text);
+    ladTool: FAIPane.AddWords(LineEnding + '[' + ADelta.Name + ']' + LineEnding);
+  end;
+end;
+
+procedure TLedMainForm.AIDone(Sender: TObject; const AResult: TLedAIResult);
+begin
+  FAIChat.Add(larAssistant, AResult.Text);
+  FAIPane.EndReply(AResult);
+  FAITimer.Enabled := False;
+  { A backend that may edit files has probably edited some.  The same check
+    that runs when the window is given focus, run here for the same reason. }
+  CheckExternalChanges;
+end;
+
+procedure TLedMainForm.AIFailed(Sender: TObject; ASeq: Integer;
+  const AWhy: string);
+begin
+  FAIPane.Failed(AWhy);
+  FAITimer.Enabled := False;
+end;
+
+{ Putting a reply into the document.  The only path there is, and it is a
+  click: nothing a model says reaches a file by itself. }
+procedure TLedMainForm.AIApply(Sender: TObject; ATurn: Integer;
+  const AText: string; AKind: TLedAIApply);
+var
+  V: TLedEdit;
+  Tab: TLedTab;
+begin
+  Tab := ActiveTab;
+  if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
+  V := Tab.ActiveView;
+
+  if AKind <> lapInsert then
+  begin
+    { The reply was asked for about a particular piece of a particular
+      document.  If either has changed since, it is refused rather than
+      applied to whatever happens to be there now. }
+    if Tab.Document <> FAIDoc then
+    begin
+      FAIPane.Failed('that answer was about a different file');
+      Exit;
+    end;
+    if (FAIAttach = laaSelection) and
+       (not V.SelAvail or (V.SelText <> FAIWas)) then
+    begin
+      FAIPane.Failed('the selected text has changed since that was asked');
+      Exit;
+    end;
+    if (FAIAttach = laaDocument) and (V.Lines.Text <> FAIWas) then
+    begin
+      FAIPane.Failed('the file has changed since that was asked');
+      Exit;
+    end;
+  end;
+
+  V.BeginUndoBlock;
+  try
+    if (AKind = lapReplaceSelection) and (FAIAttach = laaDocument) then
+      V.SelectAll;
+    { SelText is replace-the-selection when there is one and insert-at-the-
+      caret when there is not, which is exactly the two cases.  One undo
+      block around it, so one Ctrl+Z puts back what was there. }
+    V.SelText := AText;
+  finally
+    V.EndUndoBlock;
+  end;
+end;
+
+procedure TLedMainForm.AIFocusDeferred(Data: PtrInt);
+begin
+  if FAIPane <> nil then LedTryFocus(FAIPane.InputControl);
+end;
+
+procedure TLedMainForm.actToggleAIPaneExecute(Sender: TObject);
+begin
+  FDock.TogglePane('ai');
+end;
+
+{ Ask about what is selected, from the Edit menu or the editor's own popup.
+  The pane opens with the selection already attached, so the common case --
+  select a paragraph, ask for it to be proof-read -- is one command and a
+  sentence rather than a hunt through a pane. }
+procedure TLedMainForm.actAskAIExecute(Sender: TObject);
+begin
+  FDock.ShowPane('ai');
+  FAIPane.PickAttach(laaSelection);
+  LedTryFocus(FAIPane.InputControl);
 end;
 
 procedure TLedMainForm.actToggleDebugPaneExecute(Sender: TObject);
@@ -3319,11 +3616,12 @@ end;
   no menu item handle changed. }
 procedure TLedMainForm.MakeTogglesCheckable;
 const
-  Toggles: array[0..11] of string = (
+  Toggles: array[0..12] of string = (
     'actShowToolbar', 'actToggleOutput', 'actToggleDebugPane',
     'actToggleBreakPane', 'actToggleSymbols', 'actToggleMiniMap',
     'actWrapText', 'actSplitNotebook', 'actLineNumbers',
-    'actToggleLeftPane', 'actToggleBottomPane', 'actTogglePreview');
+    'actToggleLeftPane', 'actToggleBottomPane', 'actTogglePreview',
+    'actToggleAIPane');
 
   function IsToggle(AAction: TBasicAction): Boolean;
   var
@@ -3457,6 +3755,11 @@ begin
       front of you, and a pane opened from an edge button would otherwise sit
       empty until the next time the document changed. }
     RefreshOutline
+  else if SameText(AId, 'ai') then
+    { Nothing to build -- the conversation is already there -- but the caret
+      belongs in the box you type a question into, and queued for the same
+      reason the terminal is: the pane has no size yet while it is docking. }
+    Application.QueueAsyncCall(@AIFocusDeferred, 0)
   else if SameText(AId, 'preview') then
     { The preview renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
@@ -5337,6 +5640,13 @@ begin
   actRunToCursor.Enabled := FDebugger.CanStep and (Tab <> nil) and
                             (Tab.Document.FileName <> '');
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
+  actToggleAIPane.Checked := FDock.PaneVisible('ai');
+  actAskAI.Enabled := HasDoc and (FAI <> nil);
+  { Reuses the SelAvail already read above: the pane follows the selection,
+    and asking the editor twice on the idle path is asking twice. }
+  if FAIPane <> nil then
+    FAIPane.NoteSelection(HasDoc and (Tab <> nil) and
+      (Tab.ActiveView <> nil) and Tab.ActiveView.SelAvail);
   actToggleBreakPane.Checked := FDock.PaneVisible('breaks');
   actToggleSymbols.Checked := FDock.PaneVisible('symbols');
   actComplete.Enabled := HasDoc;

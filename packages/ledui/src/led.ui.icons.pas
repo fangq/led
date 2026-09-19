@@ -114,7 +114,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..60] of string = (
+  IconNames: array[0..61] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -141,7 +141,10 @@ const
       of these" rather than as two more ways to look at what is there. }
     'newfolder', 'newfile',
     { The toolbar's theme chooser. }
-    'theme'
+    'theme',
+    { The AI pane.  Appended, like everything else here: an ImageIndex in
+      the form file is an absolute position. }
+    'assistant'
   );
 
 
@@ -657,6 +660,19 @@ begin
         end
         else
           P.Line(5, 6.5, 11, 6.5);
+      end;
+    { The same speech balloon as 'comment', with a spark instead of a plus.
+      Drawn rather than borrowed: that glyph already means "comment out
+      these lines" in the toolbar and in the Edit menu, and one picture for
+      two unrelated commands is how a toolbar stops being readable. }
+    'assistant':
+      begin
+        P.Poly([1.5, 2.5, 14.5, 2.5, 14.5, 10.5, 6, 10.5, 3, 14, 3, 10.5,
+                1.5, 10.5, 1.5, 2.5]);
+        P.Line(8, 4, 8, 9);
+        P.Line(5.5, 6.5, 10.5, 6.5);
+        P.Line(6.2, 4.7, 9.8, 8.3);
+        P.Line(9.8, 4.7, 6.2, 8.3);
       end;
     'find':
       DrawMagnifier(P);

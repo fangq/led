@@ -21,11 +21,33 @@ unit Led.UI.PageStyle;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, Graphics, SynEditHighlighter,
+  Classes, SysUtils, StrUtils, Graphics, IpHtml, SynEditHighlighter,
   Led.Core.Markdown, Led.Core.StrBuf, Led.Syn.Factory, Led.Syn.Theme,
   Led.UI.Document;
 
 type
+  { How tall a page of HTML comes out at a given width.
+
+    IPro will not say how much room a page wants, so it is laid out once in
+    a document that is thrown away, and the panel lays the same page out
+    again for itself.  Measuring twice costs a few milliseconds; the
+    alternative is a guessed height, which is what once gave every prose
+    cell one line and a scrollbar.
+
+    Here rather than beside either of the panes that need it: the notebook
+    measures a cell this way and the AI pane measures a reply this way, and
+    two copies of it would be two things to keep in step. }
+  TIpHtmlMeasure = class(TIpHtml)
+  public
+    function PageHeightAt(ACanvas: TCanvas; AWidth: Integer): Integer;
+    { Promoted from protected so that a caller can give the measuring
+      document the same picture hook the panel has.  Without it the
+      measurement opens every <img> itself and raises on the first one it
+      cannot find -- and a measurement that raises is a cell given the
+      fallback height, one line tall with a scrollbar. }
+    property OnGetImageX;
+  end;
+
   { The colours a page is drawn in, all of them derived from the theme. }
   TLedPageColours = record
     Page, Text, Muted, CodeBg, Border, Link: TColor;
@@ -84,6 +106,16 @@ function LedPageHead(const ATitle: string;
 function LedPageTail: string;
 
 implementation
+
+function TIpHtmlMeasure.PageHeightAt(ACanvas: TCanvas;
+  AWidth: Integer): Integer;
+var
+  R: TRect;
+begin
+  { As much room as it could want, and what it comes back having used. }
+  R := GetPageRect(ACanvas, AWidth, 1000000);
+  Result := R.Bottom - R.Top;
+end;
 
 var
   { One highlighter per language, kept for the process: see

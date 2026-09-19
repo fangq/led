@@ -553,21 +553,6 @@ begin
   Result := LedHtmlColour(AColour);
 end;
 
-type
-  TIpHtmlMeasure = class(TIpHtml)
-  public
-    function PageHeightAt(ACanvas: TCanvas; AWidth: Integer): Integer;
-  end;
-
-function TIpHtmlMeasure.PageHeightAt(ACanvas: TCanvas;
-  AWidth: Integer): Integer;
-var
-  R: TRect;
-begin
-  R := GetPageRect(ACanvas, AWidth, 1000000);
-  Result := R.Bottom - R.Top;
-end;
-
 function TLedNBCellEdit.DoMouseWheel(AShift: TShiftState;
   AWheelDelta: Integer; AMousePos: TPoint): Boolean;
 var
