@@ -659,7 +659,6 @@ type
     procedure AIBackendChanged(Sender: TObject);
     procedure AIChooseBackend;
     procedure AITick(Sender: TObject);
-    procedure AIDelta(Sender: TObject; const ADelta: TLedAIDelta);
     procedure AIDone(Sender: TObject; const AResult: TLedAIResult);
     procedure AIFailed(Sender: TObject; ASeq: Integer; const AWhy: string);
     procedure AIFocusDeferred(Data: PtrInt);
@@ -781,6 +780,10 @@ type
       the path a check has to drive: a setting that takes effect only at
       the next start is a setting that did not take effect. }
     procedure PrefsApplied(Sender: TObject);
+    { What a backend says, on its way to the pane.  Public for the same
+      reason: it is a seam, and a seam nothing drives is a seam that quietly
+      stops working. }
+    procedure AIDelta(Sender: TObject; const ADelta: TLedAIDelta);
     { The model the backend will actually ask with.  Published so a check
       can say that it is the one the pane is showing. }
     function AIModelAsked: string;
@@ -2056,10 +2059,10 @@ end;
 
 procedure TLedMainForm.AIDelta(Sender: TObject; const ADelta: TLedAIDelta);
 begin
-  case ADelta.Kind of
-    ladText: FAIPane.AddWords(ADelta.Text);
-    ladTool: FAIPane.AddWords(LineEnding + '[' + ADelta.Name + ']' + LineEnding);
-  end;
+  { Handed over whole.  Which kind of delta goes where is the pane's
+    business, and deciding it here put the decision where no check could
+    reach it. }
+  FAIPane.AddDelta(ADelta);
 end;
 
 procedure TLedMainForm.AIDone(Sender: TObject; const AResult: TLedAIResult);
@@ -2086,7 +2089,34 @@ procedure TLedMainForm.AIApply(Sender: TObject; ATurn: Integer;
 var
   V: TLedEdit;
   Tab: TLedTab;
+  Doc: TLedDocument;
 begin
+  { Somewhere else entirely: a document of its own, untitled and unsaved,
+    which is where an answer worth keeping goes when it does not belong in
+    the file being edited. }
+  if AKind = lapNewDocument then
+  begin
+    Doc := FDocs.NewDocument;
+    AddTab(Doc);
+    if (ActiveTab <> nil) and (ActiveTab.ActiveView <> nil) then
+    begin
+      { As an edit, not by replacing the lines wholesale: setting Lines
+        directly is how a document is loaded, and a loaded document is not
+        modified.  An answer put somewhere new is unsaved work like any
+        other, and the tab has to say so. }
+      V := ActiveTab.ActiveView;
+      V.BeginUndoBlock;
+      try
+        V.SelectAll;
+        V.SelText := AText;
+      finally
+        V.EndUndoBlock;
+      end;
+      RefreshTabCaption(ActiveTab);
+    end;
+    Exit;
+  end;
+
   Tab := ActiveTab;
   if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
   V := Tab.ActiveView;

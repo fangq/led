@@ -2816,6 +2816,162 @@ begin
   P.Clear;
 end;
 
+{ What a model thinks on its way to an answer is worth reading and must
+  never be mistaken for the answer.  qwen3 and its relatives produce more
+  of it than they produce answer. }
+procedure TestThinkingIsKeptAndCanBeRead(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  B: TLedAIBubble;
+  R: TLedAIResult;
+  D: TLedAIDelta;
+begin
+  Say('what the model thought is kept, and can be read');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.BeginReply;
+  { Through the door a backend's words come through, so that what decides
+    where a kind of delta goes is what is being checked. }
+  D := Default(TLedAIDelta);
+  D.Kind := ladThinking;
+  D.Text := 'The user wrote "teh", which is a typo for "the". ';
+  P.AddDelta(D);
+  D.Text := 'I should fix it and change nothing else.';
+  P.AddDelta(D);
+  D.Kind := ladText;
+  D.Text := 'The cat sat.';
+  P.AddDelta(D);
+
+  { And once through the form, which is the seam a backend's words really
+    cross: the pane is what sorts them, and the form is a pass-through. }
+  D.Kind := ladThinking;
+  D.Text := '  (and this arrived through the form)';
+  F.AIDelta(nil, D);
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+
+  B := P.Turn(P.TurnCount - 1);
+  Check('the thinking was kept', Pos('typo', B.Thinking) > 0);
+  Check('all of it', Pos('nothing else', B.Thinking) > 0);
+  Check('including what came through the form',
+    Pos('through the form', B.Thinking) > 0);
+  { The whole point of keeping the two apart: the answer is what can reach
+    a file, and the working is not. }
+  CheckEq('and it is not in the answer', 'The cat sat.', B.Text);
+  Check('it is not shown until it is asked for', not B.ThinkingShown);
+
+  B.ShowThinking(True);
+  Pump;
+  Check('and then it is', B.ThinkingShown);
+  B.ShowThinking(False);
+  Pump;
+  Check('and can be put away again', not B.ThinkingShown);
+  P.Clear;
+end;
+
+{ An answer worth keeping usually does not belong in the file being edited. }
+procedure TestAnAnswerCanBecomeADocumentOfItsOwn(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+  Tabs: Integer;
+begin
+  Say('an answer can be opened as a document of its own');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  Tabs := F.TabCount;
+
+  P.BeginReply;
+  P.AddWords('# Notes'#10#10'Something worth keeping.');
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+
+  Check('the turn offers somewhere else to put it: ' +
+    P.Turn(P.TurnCount - 1).ButtonNames,
+    P.Turn(P.TurnCount - 1).PressButton('New document'));
+  Pump;
+  CheckEqInt('there is a new tab', Tabs + 1, F.TabCount);
+  Check('with the answer in it',
+    Pos('Something worth keeping.', F.ActiveView.Lines.Text) > 0);
+  Check('and it counts as unsaved work', F.ActiveTab.Document.Modified);
+
+  F.CloseActiveTab(False);
+  Pump;
+  P.Clear;
+end;
+
+{ The button that changes a file says what it will do to it. }
+procedure TestTheApplyButtonNamesWhatItWillDo(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+begin
+  Say('the button that changes a file says which part of it');
+
+  P := F.AIPane;
+  if (P = nil) or (F.ActiveView = nil) then Exit;
+
+  P.Clear;
+  P.PickAttach(laaSelection);
+  P.BeginReply;
+  P.AddWords('a replacement');
+  R := Default(TLedAIResult);
+  R.Replaces := True;
+  P.EndReply(R);
+  Pump;
+  CheckEq('a selection', 'Replace the selection',
+    P.Turn(P.TurnCount - 1).ApplyCaption);
+
+  P.Clear;
+  P.PickAttach(laaDocument);
+  P.BeginReply;
+  P.AddWords('a replacement');
+  P.EndReply(R);
+  Pump;
+  CheckEq('a whole file', 'Replace the file',
+    P.Turn(P.TurnCount - 1).ApplyCaption);
+
+  { Clearing puts the choice of what to attach back where it started, so
+    the next check finds the pane as it would be found after a Clear. }
+  P.Clear;
+  CheckEq('and a cleared pane attaches nothing again',
+    IntToStr(Ord(laaNothing)), IntToStr(Ord(P.Attach)));
+end;
+
+{ What is happening this second belongs next to the question that caused
+  it, not at the top of the pane where a reader waiting for an answer is
+  not looking. }
+procedure TestTheStatusSitsAboveWhereYouType(F: TLedMainForm);
+var
+  P: TLedAIPane;
+begin
+  Say('the status line sits between the conversation and the question box');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  F.Dock.ShowPane('ai');
+  Pump; Pump;
+
+  Check(Format('below the conversation (%d > %d)',
+    [P.StatusControl.Top, P.Transcript.Top]),
+    P.StatusControl.Top > P.Transcript.Top);
+  Check(Format('above the box you type in (%d < %d)',
+    [P.StatusControl.Top, P.InputControl.Top]),
+    P.StatusControl.Top < P.InputControl.Top);
+  Check(Format('which is itself above the send row (%d < %d)',
+    [P.InputControl.Top, P.SendBar.Top]),
+    P.InputControl.Top < P.SendBar.Top);
+
+  F.Dock.HidePane('ai');
+  Pump;
+end;
+
 { Reported: the two halves of the conversation look alike, so a transcript
   has to be read to be navigated. }
 procedure TestTheTwoSidesOfTheConversationLookDifferent(F: TLedMainForm);
@@ -2839,6 +2995,18 @@ begin
   if P.TurnCount < 2 then Exit;
   Check('and they are not drawn the same colour',
     P.Turn(0).Colour <> P.Turn(1).Colour);
+  { Neither is labelled, so the shape has to say it: the reader's turn is
+    set in from the left and the model's is not. }
+  Check(Format('the reader''s turn is indented and the model''s is not ' +
+    '(%d > %d)', [P.Turn(0).Left, P.Turn(1).Left]),
+    P.Turn(0).Left > P.Turn(1).Left);
+  Check('and the model''s turn is drawn on the pane itself',
+    P.Turn(1).Colour = P.Transcript.Color);
+
+  { And only one of them is drawn as a box: an outline around every answer
+    is the wall of boxes the headings were removed to be rid of. }
+  Check('the reader''s turn is a box', P.Turn(0).Boxed);
+  Check('and the model''s is not', not P.Turn(1).Boxed);
   P.Clear;
 end;
 
@@ -2921,6 +3089,7 @@ procedure TestTheAIPaneDrawsCodeItCanRead(F: TLedMainForm);
 var
   P: TLedAIPane;
   Res: TLedAIResult;
+  B: TLedAIBubble;
   R: TWinControl;
   Doc: TIpHtmlMeasure;
   Bmp: TBitmap;
@@ -2969,6 +3138,15 @@ begin
       Doc.Free;
     end;
   end;
+
+  { The code is wrapped at a number of characters, and that number has to
+    be one that fits at the size the code is drawn in.  Measured two points
+    small, twenty-three characters were thought to fit where nineteen do,
+    and every line ran off the right-hand edge with a scrollbar under it. }
+  B := P.Turn(P.TurnCount - 1);
+  Check(Format('the columns it wraps at fit the room there is: ' +
+    '%d x %d <= %d', [B.CodeFits, B.FixedCharWidth, B.LayoutRoom]),
+    B.CodeFits * B.FixedCharWidth <= B.LayoutRoom);
 
   Page := P.Turn(P.TurnCount - 1).RenderedPage;
   { IPro cannot draw a <pre> at all -- it runs the lines together -- so a
@@ -13178,6 +13356,10 @@ begin
   TestTheModelShownIsTheModelAsked(F);
   WithNoModelBehindIt(F, @TestTheAIPaneShowsAnAnswerAsItArrives);
   WithNoModelBehindIt(F, @TestTheReadersOwnWordsAreShown);
+  WithNoModelBehindIt(F, @TestTheStatusSitsAboveWhereYouType);
+  WithNoModelBehindIt(F, @TestThinkingIsKeptAndCanBeRead);
+  WithNoModelBehindIt(F, @TestAnAnswerCanBecomeADocumentOfItsOwn);
+  WithNoModelBehindIt(F, @TestTheApplyButtonNamesWhatItWillDo);
   WithNoModelBehindIt(F, @TestClearingWhileItThinksLeavesItReady);
   WithNoModelBehindIt(F, @TestTheTwoSidesOfTheConversationLookDifferent);
   WithNoModelBehindIt(F, @TestTheWheelScrollsTheConversation);

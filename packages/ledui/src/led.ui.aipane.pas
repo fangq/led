@@ -44,7 +44,8 @@ uses
   Clipbrd, LCLType,
   IpHtml, Ipfilebroker,
   LCLIntf,
-  Led.Core.AI, Led.Core.Markdown, Led.Core.Prefs,
+  {$IFDEF WINDOWS}Windows,{$ENDIF}
+  Led.Core.AI, Led.Core.Markdown, Led.Core.Prefs, Led.Core.NBImage,
   Led.Syn.Factory,
   Led.UI.PageStyle, Led.UI.NBPane, Led.UI.DPI, Led.UI.Focus;
 
@@ -53,7 +54,10 @@ type
   TLedAIAttach = (laaNothing, laaSelection, laaDocument);
 
   { What the reader wants done with a reply. }
-  TLedAIApply = (lapInsert, lapReplaceSelection, lapReplaceDocument);
+  TLedAIApply = (lapInsert, lapReplaceSelection, lapReplaceDocument,
+                 { Opened as a document of its own, which is the answer to
+                   "I want to keep this but not here". }
+                 lapNewDocument);
 
   TLedAIAskEvent = procedure(Sender: TObject; const APrompt: string;
     ATask: TLedAITask; AAttach: TLedAIAttach) of object;
@@ -75,7 +79,6 @@ type
     FIndex: Integer;
     FRole: TLedAIRole;
     FText: string;              // the raw Markdown, whole and uncut
-    FHead: TLabel;
     FLive: TMemo;               // what was said, as plain text
     FRender: TLedNBProse;       // an assistant's turn, once it has settled
     FProvider: TIpFileDataProvider;
@@ -83,20 +86,34 @@ type
     FReplaces: Boolean;
     FCut: Boolean;
     FLayingOut: Boolean;
+    { What the button that puts this back into the file should be called:
+      the consequence, not the word "apply". }
+    FApplyName: string;
     FPage: string;        // the HTML handed to the renderer
     FPageWidth: Integer;  // ...and the width it was measured at
-    procedure MakeHead;
+    FThought: string;     // what the model said while working up to it
+    FThinkBox: TMemo;     // ...shown, when the reader asks to see it
+    FThinkBtn: TButton;
+    FButtons: TList;      // in the order they were made, for FlowButtons
     procedure MakeLive;
     procedure ChildWheel(Sender: TObject; AShift: TShiftState;
       AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
     procedure HookRenderChildren;
     function Fill: TColor;
+    function Padding: Integer;
     function InnerWidth: Integer;
+    function LayoutWidth(AWidth: Integer): Integer;
+    function FlowButtons(AWidth: Integer): Integer;
+    function CodeColumns(AWidth: Integer): Integer;
+    function ImageSize(const AURL: string;
+      out AWidth, AHeight: Integer): Boolean;
     procedure MakeRender;
     procedure ProvideImage(Sender: TIpHtmlNode; const AURL: string;
       var APicture: TPicture);
     procedure MakeButtons;
     procedure CopyClicked(Sender: TObject);
+    procedure NewDocClicked(Sender: TObject);
+    procedure ThinkClicked(Sender: TObject);
     procedure InsertClicked(Sender: TObject);
     procedure ApplyClicked(Sender: TObject);
     function Page(AWidth: Integer): string;
@@ -109,15 +126,36 @@ type
     { Adds to a turn still being written. }
     procedure Grow(const AText: string);
     { Stops being a box of text and becomes a page.  Once. }
-    procedure Settle(AReplaces, ACut: Boolean);
+    procedure Settle(AReplaces, ACut: Boolean; const AApplyName: string = '');
     procedure Relayout;
     property Text: string read FText;
     property Role: TLedAIRole read FRole;
     { For the self-test: whether this turn has been laid out as a page, and
       what page it was given. }
+    { The width the renderer lays a page out in, and how many characters of
+      code fit across it.  Published because the two have to agree: more
+      columns than fit is every line of an answer's code running off the
+      edge. }
+    function LayoutRoom: Integer;
+    function CodeFits: Integer;
+    function FixedCharWidth: Integer;
     function Rendered: Boolean;
-    { Whether this turn offers to go back into the file. }
+    { Whether this turn is drawn as a box. }
+    function Boxed: Boolean;
+    { Whether this turn offers to go back into the file, and what the
+      button that does it says it will do. }
     function OffersApply: Boolean;
+    function ApplyCaption: string;
+    { What this turn offers to do with itself, and doing it the way a
+      reader does: by pressing the button. }
+    function ButtonNames: string;
+    function PressButton(const ACaption: string): Boolean;
+    { What the model said while working up to its answer, and whether it is
+      on show. }
+    procedure Thought(const AText: string);
+    procedure ShowThinking(AOn: Boolean);
+    function Thinking: string;
+    function ThinkingShown: Boolean;
     function RenderedPage: string;
     function LiveText: string;
     function ShownText: string;
@@ -184,6 +222,8 @@ type
     { The four things a backend says. }
     procedure BeginReply;
     procedure AddWords(const AText: string);
+    procedure AddThinking(const AText: string);
+    procedure AddDelta(const ADelta: TLedAIDelta);
     procedure EndReply(const AResult: TLedAIResult);
     procedure Failed(const AWhy: string);
 
@@ -207,13 +247,20 @@ type
     function StopEnabled: Boolean;
     function StatusText: string;
     function Attach: TLedAIAttach;
+    function ApplyName: string;
     procedure PickAttach(AKind: TLedAIAttach);
     function Task: TLedAITask;
     procedure PickTask(ATask: TLedAITask);
     procedure ApplyTurn(ATurn: Integer; AKind: TLedAIApply);
     function InputControl: TWinControl;
+    { The two strips below the conversation, so a check can say they are in
+      the order a reader reads them in. }
+    function StatusControl: TControl;
+    function SendBar: TControl;
+    function Transcript: TControl;
     { Where the conversation is scrolled to, and how far there is to go. }
     function ScrollPos: Integer;
+    procedure ScrollTo(APos: Integer);
     function ScrollRange: Integer;
     function BackendName: string;
     function ModelName: string;
@@ -256,6 +303,14 @@ const
   parent yet has no handle, and asking it for a canvas during its own
   constructor makes one -- which is how the window came to hang before it
   was ever shown.  A bitmap has a canvas of its own and needs nobody. }
+{ How big prose in an answer is drawn.  Said in one place because the
+  measurement and the panel have to agree: a page measured at one size and
+  drawn at another comes out the wrong height. }
+function ProseSize: Integer;
+begin
+  Result := 10;
+end;
+
 { The face the reader edits in, which is the one a code block belongs in. }
 function FixedFace: string;
 var
@@ -439,7 +494,6 @@ begin
   BevelOuter := bvNone;
   Color := LedPageColours.Page;
   ParentColor := False;
-  MakeHead;
   { Both sides get one.  The reader's own words were kept and never shown,
     which made their half of the conversation a row of empty headings. }
   MakeLive;
@@ -447,9 +501,14 @@ begin
   Relayout;
 end;
 
-{ The colour this turn is drawn on.  The reader's own words are picked out:
-  a transcript where both halves are the same colour is a wall of text that
-  has to be read to be navigated. }
+{ The colour this turn is drawn on.
+
+  Which of the two said something is told by shape rather than by a word in
+  front of it: the reader's turns are a rounded box, indented, in a colour
+  picked out from the page, and the model's are simply the page.  Most of a
+  transcript is the model talking, so most of a transcript should look like
+  the pane it is in; labelling every one of them "Assistant" spends a line
+  saying what is already obvious. }
 function TLedAIBubble.Fill: TColor;
 var
   C: TLedPageColours;
@@ -460,11 +519,9 @@ begin
       to stand out against the page and still be readable on it. }
     Result := LedMixColours(C.Page, C.Link, 86)
   else
-    Result := C.CodeBg;
+    Result := C.Page;
 end;
 
-{ Rounded, and drawn here rather than left to the panel, because a panel is
-  a rectangle and a conversation drawn in rectangles reads as a table. }
 procedure TLedAIBubble.Paint;
 var
   R: TRect;
@@ -475,6 +532,7 @@ begin
     scroll box and not whatever was underneath. }
   Canvas.Brush.Color := FPane.FRoll.Color;
   Canvas.FillRect(R);
+  if not Boxed then Exit;
 
   Round_ := LedScale96(10);
   Canvas.Brush.Color := Fill;
@@ -482,18 +540,21 @@ begin
   Canvas.RoundRect(R.Left, R.Top, R.Right, R.Bottom, Round_, Round_);
 end;
 
-procedure TLedAIBubble.MakeHead;
+{ How far in from the edge a turn sits.  A box needs room around its words
+  for the rounding to be a rounding; the model's text is the page and needs
+  none. }
+{ Whether this turn is drawn as a box at all.  Only the reader's are: most
+  of a transcript is the model talking, and an outline around every answer
+  is the wall of boxes the headings were removed to be rid of. }
+function TLedAIBubble.Boxed: Boolean;
 begin
-  FHead := TLabel.Create(Self);
-  FHead.Parent := Self;
-  FHead.Align := alNone;
-  FHead.AutoSize := False;
-  FHead.Height := LedScale96(16);
-  FHead.Transparent := True;
-  FHead.Font.Style := [fsBold];
-  FHead.Font.Color := LedPageColours.Muted;
-  if FRole = larUser then FHead.Caption := 'You'
-  else FHead.Caption := 'Assistant';
+  Result := FRole = larUser;
+end;
+
+function TLedAIBubble.Padding: Integer;
+begin
+  if Boxed then Result := LedScale96(8)
+  else Result := LedScale96(2);
 end;
 
 procedure TLedAIBubble.MakeLive;
@@ -569,7 +630,7 @@ begin
   FRender.DataProvider := FProvider;
   FRender.OnWheelPassedUp := @ChildWheel;
   FRender.DefaultTypeFace := Screen.SystemFont.Name;
-  FRender.DefaultFontSize := 10;
+  FRender.DefaultFontSize := ProseSize;
   { The editor's own face for anything fixed-width.  The pane's font is the
     menu font, and a code block in an answer drawn in the menu font is not
     a code block -- which is what it looked like. }
@@ -587,45 +648,116 @@ procedure TLedAIBubble.MakeButtons;
   begin
     Result := TButton.Create(Self);
     Result.Parent := FBar;
-    Result.Align := alLeft;
+    { Placed by FlowButtons, in rows.  Aligned left they came out in the
+      reverse of the order they were made in, and the ones that did not fit
+      were simply not there -- which at this width was most of them. }
+    Result.Align := alNone;
+    FButtons.Add(Result);
     { A width worked out here rather than AutoSize.  A button that sizes
       itself, on a strip whose height feeds the bubble's height, is a loop
       the LCL notices and throws out of: "InvalidatePreferredSize loop
       detected". }
     Result.AutoSize := False;
     Result.Width := TextRoom(Font, ACaption) + LedScale96(20);
-    Result.BorderSpacing.Right := LedScale96(4);
+    Result.Height := LedScale96(24);
     Result.Caption := ACaption;
     Result.OnClick := AOn;
   end;
 
 begin
   if FBar <> nil then Exit;
+  FButtons := TList.Create;
   FBar := TPanel.Create(Self);
   FBar.Parent := Self;
   FBar.Align := alNone;
   FBar.BevelOuter := bvNone;
   FBar.Color := Fill;
   FBar.ParentColor := False;
-  { A height of its own rather than AutoSize.  A strip that sizes itself to
-    its buttons, inside a bubble whose own height is worked out from the
-    strip, is a loop -- and the LCL says so: "InvalidatePreferredSize loop
-    detected". }
-  FBar.Height := LedScale96(26);
+  FBar.Height := LedScale96(24);
 
   Add('Copy', @CopyClicked);
   Add('Insert at caret', @InsertClicked);
+  { Somewhere to put an answer that is worth keeping and does not belong in
+    the file being edited -- which is most of them. }
+  Add('New document', @NewDocClicked);
 
-  { The one that changes a file says which file, and says nothing at all
-    when it cannot be offered honestly: a whole-document replacement built
-    from part of a document is silent truncation. }
+  { The one that changes a file says nothing at all when it cannot be
+    offered honestly: a whole-document replacement built from part of a
+    document is silent truncation. }
   if FReplaces and not FCut then
-    Add('Apply', @ApplyClicked);
+    Add(FApplyName, @ApplyClicked);
+
+  { Only when there is something to see. }
+  if FThought <> '' then FThinkBtn := Add('Thinking', @ThinkClicked);
 end;
 
 procedure TLedAIBubble.CopyClicked(Sender: TObject);
 begin
   Clipboard.AsText := FText;
+end;
+
+procedure TLedAIBubble.NewDocClicked(Sender: TObject);
+begin
+  if Assigned(FPane.FOnApply) then
+    FPane.FOnApply(FPane, FIndex, FText, lapNewDocument);
+end;
+
+{ Thinking is kept whether or not anybody looks at it, and shown only when
+  they ask.  It is usually longer than the answer and it is not the answer:
+  a pane that showed it by default would bury what was asked for. }
+procedure TLedAIBubble.Thought(const AText: string);
+begin
+  FThought := FThought + AText;
+end;
+
+procedure TLedAIBubble.ThinkClicked(Sender: TObject);
+begin
+  ShowThinking(FThinkBox = nil);
+end;
+
+procedure TLedAIBubble.ShowThinking(AOn: Boolean);
+begin
+  if AOn = (FThinkBox <> nil) then Exit;
+  if AOn then
+  begin
+    FThinkBox := TMemo.Create(Self);
+    FThinkBox.Parent := Self;
+    FThinkBox.Align := alNone;
+    FThinkBox.ReadOnly := True;
+    FThinkBox.ScrollBars := ssNone;
+    FThinkBox.WordWrap := True;
+    FThinkBox.BorderStyle := bsNone;
+    FThinkBox.Color := LedMixColours(Fill, LedPageColours.Text, 94);
+    { Set apart from the answer by more than its position: it is the
+      model's working, and it must not read as something to act on. }
+    FThinkBox.Font.Color := LedPageColours.Muted;
+    FThinkBox.Font.Style := [fsItalic];
+    FThinkBox.Text := FThought;
+    FThinkBox.OnMouseWheel := @ChildWheel;
+  end
+  else
+    FreeAndNil(FThinkBox);
+
+  if FThinkBtn <> nil then
+  begin
+    if FThinkBox <> nil then FThinkBtn.Caption := 'Hide thinking'
+    else FThinkBtn.Caption := 'Thinking';
+    { Measured again for the new caption.  A button keeps the width it was
+      given, so the longer of the two words was cut in half. }
+    FThinkBtn.Width := TextRoom(Font, FThinkBtn.Caption) + LedScale96(20);
+  end;
+  Relayout;
+  FPane.Restack;
+end;
+
+function TLedAIBubble.Thinking: string;
+begin
+  Result := FThought;
+end;
+
+function TLedAIBubble.ThinkingShown: Boolean;
+begin
+  Result := FThinkBox <> nil;
 end;
 
 procedure TLedAIBubble.InsertClicked(Sender: TObject);
@@ -666,17 +798,95 @@ begin
   else if FRender <> nil then Result := FText;
 end;
 
+{ An answer as a page, by the same route the Markdown preview takes.
+
+  Not a shorter one.  Everything the preview does to a page it does because
+  the renderer needed it: a picture nobody has fetched cannot be drawn while
+  the page is being laid out, a picture wider than the pane loses its
+  right-hand side, a long line of code in a <pre> runs off the edge because
+  this renderer will not wrap one, and a page whose inline runs are not
+  split takes 2700 ms to lay out where the split one takes 22.  An answer
+  full of Markdown is the same problem as a document full of it. }
 function TLedAIBubble.Page(AWidth: Integer): string;
 var
   C: TLedPageColours;
   Html: string;
 begin
   C := LedPageColours;
-  Html := LedMarkdownToHTML(FText);
-  { IPro cannot draw a <pre> at all, so the fenced blocks are rewritten into
-    coloured <code> -- the same path the notebook's cells take. }
-  Html := LedPageColourCode(Html, C.Text, C.CodeBg);
-  Result := LedPageHead('', C) + Html + LedPageTail;
+  { With the line ids the preview asks for: they cost nothing here and they
+    are what a click on a block could be traced back with. }
+  Html := LedMarkdownToHTML(FText, True);
+  { Nothing here fetches anything, so every remote picture is replaced by a
+    line saying so -- which is what passing no hook means. }
+  Html := LedNBHideRemoteImages(Html);
+  Html := LedNBFitImages(Html, LayoutWidth(AWidth), @ImageSize);
+  Result := LedPageHead('', C, 8) + Html + LedPageTail;
+  Result := LedSplitInlineRuns(LedWrapPreLines(Result, CodeColumns(AWidth)));
+  { IPro cannot draw a <pre> at all, and a fenced block that names its
+    language goes uncoloured without this -- the same treatment the
+    notebook's cells and the preview's pages get. }
+  Result := LedPageColourCode(Result, C.Text, C.CodeBg);
+end;
+
+{ The width the renderer actually has to lay a page out in.
+
+  Three things come out of the panel's width before the text sees any of
+  it: the renderer's own margin on each side, and the vertical scrollbar,
+  which anything long enough to need one takes out of the middle.  Getting
+  this wrong is not a rounding error -- measure wide and the page wraps
+  into more lines than it was given room for, which is the scrollbar it was
+  trying to avoid, and then a horizontal one underneath it. }
+function TLedAIBubble.LayoutWidth(AWidth: Integer): Integer;
+var
+  Margin: Integer;
+begin
+  Margin := LedScale96(8);
+  if FRender <> nil then Margin := FRender.MarginWidth;
+  Result := AWidth - 2 * Margin - GetSystemMetrics(SM_CXVSCROLL);
+  { A little more off, because the wrap is in characters and the last one
+    on a line must still fit whole. }
+  Dec(Result, LedScale96(4));
+  if Result < LedScale96(60) then Result := LedScale96(60);
+end;
+
+{ How many characters of code fit across, for the wrapping above.  Measured
+  in the face and size the code will be drawn in, because those are the
+  characters that have to fit. }
+function TLedAIBubble.CodeColumns(AWidth: Integer): Integer;
+var
+  B: TBitmap;
+  CharW: Integer;
+begin
+  Result := 16;
+  B := TBitmap.Create;
+  try
+    B.Canvas.Font.Name := FixedFace;
+    { At the size the code is actually drawn at, which is the page's own
+      size and not a size smaller.  Measured two points small, twenty-three
+      characters were thought to fit where nineteen do, and every line of
+      an answer's code ran off the right-hand edge. }
+    B.Canvas.Font.Size := ProseSize;
+    { Over twenty characters, because one of them rounds badly. }
+    CharW := B.Canvas.TextWidth(StringOfChar('0', 20)) div 20;
+    if CharW < 1 then Exit;
+    Result := LayoutWidth(AWidth) div CharW;
+    { Narrower than this and the wrapping is worse than the overflow it is
+      there to prevent. }
+    if Result < 16 then Result := 16;
+  finally
+    B.Free;
+  end;
+end;
+
+{ A picture's size, for LedNBFitImages.  Nothing is fetched, so nothing has
+  one: every picture is left at its natural size and the fitting pass has
+  nothing to do.  The hook is here because the function asks for one. }
+function TLedAIBubble.ImageSize(const AURL: string;
+  out AWidth, AHeight: Integer): Boolean;
+begin
+  AWidth := 0;
+  AHeight := 0;
+  Result := False;
 end;
 
 { How tall the page is at the width it will be drawn at.
@@ -708,12 +918,16 @@ begin
         drawn in another comes out the wrong height, and too little room is
         a bubble with a scrollbar in it. }
       Doc.DefaultTypeFace := Screen.SystemFont.Name;
-      Doc.DefaultFontSize := 10;
+      Doc.DefaultFontSize := ProseSize;
       Doc.FixedTypeface := FixedFace;
       Doc.OnGetImageX := @ProvideImage;
       Doc.LoadFromStream(Stream);
-      H := Doc.PageHeightAt(Surface.Canvas, AWidth - LedScale96(16));
-      if H > 0 then Result := H + LedScale96(28);
+      H := Doc.PageHeightAt(Surface.Canvas, LayoutWidth(AWidth));
+      { Two lines of slack.  The throwaway layout and the renderer's own
+        agree closely and not exactly, and the two costs are not
+        comparable: a little too much room is white space, a little too
+        little is a scrollbar inside a bubble. }
+      if H > 0 then Result := H + TextTall(Font) * 2;
     except
       { A page that will not lay out gets the default rather than taking the
         pane down with it. }
@@ -728,10 +942,13 @@ begin
   if Result > 30000 then Result := 30000;
 end;
 
-procedure TLedAIBubble.Settle(AReplaces, ACut: Boolean);
+procedure TLedAIBubble.Settle(AReplaces, ACut: Boolean;
+  const AApplyName: string);
 begin
   FReplaces := AReplaces;
   FCut := ACut;
+  FApplyName := AApplyName;
+  if FApplyName = '' then FApplyName := 'Apply';
   { The words stay in FText; only the plain box goes, replaced by the page
     that was built from them. }
   FreeAndNil(FLive);
@@ -754,9 +971,37 @@ end;
 
 { The room inside the rounded edge: what every child is given, and what the
   page is measured against. }
+{ The buttons, left to right and on to the next row when the next one will
+  not fit.  A docked pane is about two hundred points across and the things
+  a reader can do with an answer do not fit across it in one line; hiding
+  the ones that do not fit is not an answer, because Copy was one of
+  them. }
+function TLedAIBubble.FlowButtons(AWidth: Integer): Integer;
+var
+  i, X, Y, Gap, RowH: Integer;
+  B: TButton;
+begin
+  Gap := LedScale96(4);
+  RowH := LedScale96(24);
+  X := 0;
+  Y := 0;
+  for i := 0 to FButtons.Count - 1 do
+  begin
+    B := TButton(FButtons[i]);
+    if (X > 0) and (X + B.Width > AWidth) then
+    begin
+      X := 0;
+      Inc(Y, RowH + Gap);
+    end;
+    B.SetBounds(X, Y, Min(B.Width, AWidth), RowH);
+    Inc(X, B.Width + Gap);
+  end;
+  Result := Y + RowH;
+end;
+
 function TLedAIBubble.InnerWidth: Integer;
 begin
-  Result := Width - LedScale96(8) * 2;
+  Result := Width - Padding * 2;
   if Result < LedScale96(40) then Result := LedScale96(40);
 end;
 
@@ -769,9 +1014,10 @@ begin
   if FLayingOut then Exit;
   FLayingOut := True;
   try
-    { Room for the rounded edge to show.  Children placed by hand rather
-      than aligned, so that the corners are not painted over. }
-    Pad := LedScale96(8);
+    { Room for the rounded edge to show, where there is one.  Children are
+      placed by hand rather than aligned, so that the corners are not
+      painted over. }
+    Pad := Padding;
     Inner := InnerWidth;
 
     { A pane made narrower wraps the answer into more lines, so the page is
@@ -784,8 +1030,6 @@ begin
     end;
 
     Y := Pad;
-    FHead.SetBounds(Pad, Y, Inner, LedScale96(16));
-    Inc(Y, FHead.Height + LedScale96(2));
 
     if (FLive <> nil) and FLive.Visible then
     begin
@@ -812,8 +1056,18 @@ begin
     if FBar <> nil then
     begin
       Inc(Y, LedScale96(2));
-      FBar.SetBounds(Pad, Y, Inner, FBar.Height);
+      FBar.SetBounds(Pad, Y, Inner, FlowButtons(Inner));
       Inc(Y, FBar.Height);
+    end;
+
+    if FThinkBox <> nil then
+    begin
+      Inc(Y, LedScale96(4));
+      FThinkBox.SetBounds(Pad, Y, Inner,
+        Max(LedScale96(16),
+            TextBlockHeight(FThinkBox.Font, FThinkBox.Text,
+              Inner - LedScale96(8)) + TextTall(FThinkBox.Font)));
+      Inc(Y, FThinkBox.Height);
     end;
 
     Height := Y + Pad;
@@ -822,9 +1076,65 @@ begin
   end;
 end;
 
+function TLedAIBubble.LayoutRoom: Integer;
+begin
+  Result := LayoutWidth(InnerWidth);
+end;
+
+function TLedAIBubble.CodeFits: Integer;
+begin
+  Result := CodeColumns(InnerWidth);
+end;
+
+function TLedAIBubble.FixedCharWidth: Integer;
+var
+  B: TBitmap;
+begin
+  B := TBitmap.Create;
+  try
+    B.Canvas.Font.Name := FixedFace;
+    B.Canvas.Font.Size := ProseSize;
+    Result := B.Canvas.TextWidth(StringOfChar('0', 20)) div 20;
+  finally
+    B.Free;
+  end;
+end;
+
 function TLedAIBubble.Rendered: Boolean;
 begin
   Result := FRender <> nil;
+end;
+
+function TLedAIBubble.ButtonNames: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  if FButtons = nil then Exit;
+  for i := 0 to FButtons.Count - 1 do
+  begin
+    if Result <> '' then Result := Result + '|';
+    Result := Result + TButton(FButtons[i]).Caption;
+  end;
+end;
+
+function TLedAIBubble.PressButton(const ACaption: string): Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  if FButtons = nil then Exit;
+  for i := 0 to FButtons.Count - 1 do
+    if TButton(FButtons[i]).Caption = ACaption then
+    begin
+      TButton(FButtons[i]).Click;
+      Exit(True);
+    end;
+end;
+
+function TLedAIBubble.ApplyCaption: string;
+begin
+  Result := FApplyName;
 end;
 
 function TLedAIBubble.OffersApply: Boolean;
@@ -835,7 +1145,7 @@ begin
   if FBar = nil then Exit;
   for i := 0 to FBar.ControlCount - 1 do
     if (FBar.Controls[i] is TButton) and
-       (TButton(FBar.Controls[i]).Caption = 'Apply') then
+       (TButton(FBar.Controls[i]).Caption = FApplyName) then
       Exit(True);
 end;
 
@@ -917,17 +1227,13 @@ begin
   FStop.Enabled := False;
   FClear := MakeButton(FTop, 'Clear', @ClearClicked, alRight);
 
-  FStatus := TLabel.Create(Self);
-  FStatus.Parent := Self;
-  FStatus.Align := alTop;
-  FStatus.AutoSize := False;
-  FStatus.Height := LedScale96(16);
-  FStatus.BorderSpacing.Around := LedScale96(2);
-  FStatus.Font.Color := LedPageColours.Muted;
-  FStatus.Caption := 'ready';
-
   FBottom := TPanel.Create(Self);
   FBottom.Parent := Self;
+  { Controls aligned to the bottom are stacked by their Top, and three of
+    them made in a row do not land in the order they were made in.  Said
+    out loud: the send row lowest, the box you type in above it, the status
+    line above that. }
+  FBottom.Top := 30000;
   FBottom.Align := alBottom;
   FBottom.BevelOuter := bvNone;
   FBottom.Height := LedScale96(30);
@@ -954,11 +1260,26 @@ begin
 
   FInput := TMemo.Create(Self);
   FInput.Parent := Self;
+  FInput.Top := 20000;
   FInput.Align := alBottom;
   FInput.Height := LedScale96(60);
   FInput.ScrollBars := ssAutoVertical;
   FInput.WordWrap := True;
   FInput.OnKeyDown := @InputKey;
+
+  { Above the box you type in, not at the top of the pane.  It says what is
+    happening this second -- thinking, how long for, what the last answer
+    cost -- and that belongs where the reader is looking when they are
+    waiting for it, which is the question they just sent. }
+  FStatus := TLabel.Create(Self);
+  FStatus.Parent := Self;
+  FStatus.Top := 10000;
+  FStatus.Align := alBottom;
+  FStatus.AutoSize := False;
+  FStatus.Height := LedScale96(16);
+  FStatus.BorderSpacing.Around := LedScale96(2);
+  FStatus.Font.Color := LedPageColours.Muted;
+  FStatus.Caption := 'ready';
 
   FRoll := TScrollBox.Create(Self);
   FRoll.Parent := Self;
@@ -1036,7 +1357,7 @@ end;
   tells it how far there is to scroll. }
 procedure TLedAIPane.Restack;
 var
-  i, Y, W: Integer;
+  i, Y, W, Left_, Wide: Integer;
   B: TLedAIBubble;
 begin
   if (FTurns = nil) or (FRoll = nil) then Exit;
@@ -1046,9 +1367,22 @@ begin
   for i := 0 to FTurns.Count - 1 do
   begin
     B := TLedAIBubble(FTurns[i]);
-    B.SetBounds(LedScale96(4), Y, W, B.Height);
+    { The reader's turns are set in from the left, which is the other half
+      of saying who is speaking without a word for it.  Not so far in that
+      a question has to wrap twice as often as the answer to it. }
+    if B.Role = larUser then
+    begin
+      Left_ := LedScale96(24);
+      Wide := W - Left_ + LedScale96(4);
+    end
+    else
+    begin
+      Left_ := LedScale96(2);
+      Wide := W;
+    end;
+    B.SetBounds(Left_, Y, Wide, B.Height);
     B.Relayout;
-    B.SetBounds(LedScale96(4), Y, W, B.Height);
+    B.SetBounds(Left_, Y, Wide, B.Height);
     Inc(Y, B.Height + LedScale96(6));
   end;
 
@@ -1180,6 +1514,11 @@ begin
   FThinking := False;
   FThinkTimer.Enabled := False;
   FStop.Enabled := False;
+  { A cleared pane is a fresh start, including what it will attach: a
+    choice made for the last conversation should not quietly govern the
+    next one.  Back to following the selection, which is where it began. }
+  FAttachPinned := False;
+  NoteSelection(FHasSelection);
   FStatus.Caption := 'ready';
   Restack;
 end;
@@ -1253,6 +1592,31 @@ begin
   ScrollToEnd;
 end;
 
+{ What the model is thinking, as it thinks it.  Kept against the turn and
+  not shown: it is usually longer than the answer, and a pane that showed
+  it by default would bury the thing that was asked for. }
+{ Everything a backend says, sorted here rather than by the form.
+
+  Which kind of delta goes where is this pane's business -- the answer into
+  the answer, the working into the working, a tool into a note -- and
+  putting that decision in the form put it where nothing could check it. }
+procedure TLedAIPane.AddDelta(const ADelta: TLedAIDelta);
+begin
+  case ADelta.Kind of
+    ladText: AddWords(ADelta.Text);
+    ladThinking: AddThinking(ADelta.Text);
+    ladTool:
+      AddWords(LineEnding + '[' + ADelta.Name + ']' + LineEnding);
+  end;
+end;
+
+procedure TLedAIPane.AddThinking(const AText: string);
+begin
+  if FLive = nil then Exit;
+  FLive.Thought(AText);
+  if FThinking then FStatus.Caption := 'thinking...';
+end;
+
 procedure TLedAIPane.EndReply(const AResult: TLedAIResult);
 begin
   FThinking := False;
@@ -1267,10 +1631,22 @@ begin
 
   if FLive <> nil then
   begin
-    FLive.Settle(AResult.Replaces, AResult.ContextWasCut);
+    FLive.Settle(AResult.Replaces, AResult.ContextWasCut, ApplyName);
     FLive := nil;
   end;
   ScrollToEnd;
+end;
+
+{ What putting this answer back would actually do, in words, so the button
+  says the consequence rather than "apply". }
+function TLedAIPane.ApplyName: string;
+begin
+  case Attach of
+    laaDocument: Result := 'Replace the file';
+    laaSelection: Result := 'Replace the selection';
+  else
+    Result := 'Apply';
+  end;
 end;
 
 procedure TLedAIPane.Failed(const AWhy: string);
@@ -1433,9 +1809,29 @@ begin
   AttachPicked(nil);
 end;
 
+function TLedAIPane.StatusControl: TControl;
+begin
+  Result := FStatus;
+end;
+
+function TLedAIPane.SendBar: TControl;
+begin
+  Result := FBottom;
+end;
+
+function TLedAIPane.Transcript: TControl;
+begin
+  Result := FRoll;
+end;
+
 function TLedAIPane.ScrollPos: Integer;
 begin
   Result := FRoll.VertScrollBar.Position;
+end;
+
+procedure TLedAIPane.ScrollTo(APos: Integer);
+begin
+  if FRoll.HandleAllocated then FRoll.VertScrollBar.Position := APos;
 end;
 
 function TLedAIPane.ScrollRange: Integer;
