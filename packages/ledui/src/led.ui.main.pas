@@ -1988,34 +1988,33 @@ var
   Seq: Integer;
   Tab: TLedTab;
 begin
+  R := Default(TLedAIRequest);
+  R.Task := ATask;
+  R.Instruction := APrompt;
+  AINeedContext(Sender, AAttach, R.Context, R.ContextName, R.Language);
+  R.Replaces := LedAIReplaces(ATask, AAttach <> laaNothing);
+  R.Standalone := R.Replaces;
+
+  { What this turn is about, remembered before anything else can go wrong,
+    so that a reply arriving a minute from now cannot be applied to a
+    document that has moved on.  The text, not just the offsets: an edit
+    that kept the same length would otherwise pass unnoticed. }
+  Tab := ActiveTab;
+  FAIAttach := AAttach;
+  FAIWas := R.Context;
+  if Tab <> nil then FAIDoc := Tab.Document else FAIDoc := nil;
+
   if FAI = nil then
   begin
     FAIPane.Failed('there is nothing installed to ask');
     Exit;
   end;
 
-  R := Default(TLedAIRequest);
-  R.Task := ATask;
-  R.Instruction := APrompt;
-  AINeedContext(Sender, AAttach, R.Context, R.ContextName, R.Language);
-  { A question about a piece of a file expects that piece back; a
-    conversation does not. }
-  R.Replaces := (AAttach <> laaNothing) and (ATask <> laskChat) and
-                (ATask <> laskExplain) and (ATask <> laskSummarise);
-  R.Standalone := R.Replaces;
-
-  { Remembered so that a reply arriving a minute from now cannot be applied
-    to a document that has moved on.  The text, not just the offsets: an
-    edit that kept the same length would otherwise pass unnoticed. }
-  Tab := ActiveTab;
   { Where a backend that may act in the project is allowed to act: beside
     the file being edited, and not wherever LED happened to be started. }
   if (FAI is TLedAIClaude) and (Tab <> nil) and
      (Tab.Document.FileName <> '') then
     TLedAIClaude(FAI).WorkDir := ExtractFilePath(Tab.Document.FileName);
-  FAIAttach := AAttach;
-  FAIWas := R.Context;
-  if Tab <> nil then FAIDoc := Tab.Document else FAIDoc := nil;
 
   { Read again here rather than only when the backend was made: the reader
     may have picked another model since. }
@@ -2108,6 +2107,11 @@ begin
     end;
   end;
 
+  { One undo puts back what was there, and there is a check that says so.
+    SynEdit happens to group a single SelText on its own today, so taking
+    this block away does not fail that check -- it is here so that the
+    contract survives the apply path ever doing two things instead of one,
+    which the whole-file case already comes close to. }
   V.BeginUndoBlock;
   try
     if (AKind = lapReplaceSelection) and (FAIAttach = laaDocument) then

@@ -2451,6 +2451,207 @@ begin
   Check('the page says something', Pos('Hello', Page) > 0);
 end;
 
+type
+  { What the pane asked for, caught before it reaches a backend.  A class
+    because the event is a method pointer. }
+  TLedAIAskCatcher = class
+    Prompt: string;
+    Task: TLedAITask;
+    Attach: TLedAIAttach;
+    Asked: Integer;
+    procedure Note(Sender: TObject; const APrompt: string;
+      ATask: TLedAITask; AAttach: TLedAIAttach);
+  end;
+
+procedure TLedAIAskCatcher.Note(Sender: TObject; const APrompt: string;
+  ATask: TLedAITask; AAttach: TLedAIAttach);
+begin
+  Prompt := APrompt;
+  Task := ATask;
+  Attach := AAttach;
+  Inc(Asked);
+end;
+
+{ Asking for a piece of the file in front of you to be rewritten, and
+  putting the answer back.  The reason the pane exists at all, as much as
+  the conversation is. }
+procedure TestAskingForATransformOfTheSelection(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  Catch: TLedAIAskCatcher;
+  WasAsk: TLedAIAskEvent;
+  V: TLedEdit;
+  R: TLedAIResult;
+  Was, WasOn: string;
+  HadOn: Boolean;
+begin
+  Say('a transform is asked for about the selected text');
+
+  P := F.AIPane;
+  if (P = nil) or (F.ActiveView = nil) then Exit;
+  V := F.ActiveView;
+  P.Clear;
+
+  V.Lines.Text := 'teh cat sat'#10'on teh mat'#10;
+  V.SelStart := 1;
+  V.SelEnd := Length('teh cat sat') + 1;
+  Check('there is something selected', V.SelAvail);
+  P.NoteSelection(True);
+
+  { Switched off, so that pressing Send goes all the way through the form
+    -- which is what records what the turn is about -- without a model
+    being asked anything. }
+  HadOn := LedPrefs.HasKey(LedPrefAIEnabled);
+  WasOn := LedPrefs.GetStr(LedPrefAIEnabled, '');
+  LedPrefs.SetBool(LedPrefAIEnabled, False);
+  F.AIRefresh;
+
+  Catch := TLedAIAskCatcher.Create;
+  WasAsk := P.OnAsk;
+  try
+    P.PickTask(laskProofread);
+    CheckEq('what is attached follows the selection',
+      IntToStr(Ord(laaSelection)), IntToStr(Ord(P.Attach)));
+
+    { Once through a catcher, to read what was asked for... }
+    P.OnAsk := @Catch.Note;
+    P.TypePrompt('go on then');
+    P.PressEnter([]);
+    Pump;
+    CheckEqInt('the question was asked once', 1, Catch.Asked);
+    CheckEq('as a proof-reading', LedAITaskName(laskProofread),
+      LedAITaskName(Catch.Task));
+    CheckEq('about the selection', IntToStr(Ord(laaSelection)),
+      IntToStr(Ord(Catch.Attach)));
+  finally
+    P.OnAsk := WasAsk;
+    Catch.Free;
+  end;
+
+  { ...and once for real, so the form records what this turn is about.
+    Nothing is asked: there is no backend while this runs. }
+  P.Clear;
+  P.TypePrompt('proof-read it');
+  P.PressEnter([]);
+  Pump;
+
+  { A reply to a transform offers to go back into the file.  A reply to a
+    conversation does not: there is nothing it was about. }
+  P.BeginReply;
+  P.AddWords('The cat sat');
+  R := Default(TLedAIResult);
+  R.Replaces := True;
+  P.EndReply(R);
+  Pump;
+  Check('the answer offers to be put back',
+    P.Turn(P.TurnCount - 1).OffersApply);
+
+  Was := V.Lines.Text;
+  { Still nothing has happened to the document: the offer is a button. }
+  CheckEq('and has not put itself back', Was, V.Lines.Text);
+
+  P.ApplyTurn(P.TurnCount - 1, lapReplaceSelection);
+  Pump;
+  CheckEq('applying it replaces the selected text',
+    'The cat sat'#10'on teh mat'#10, V.Lines.Text);
+
+  V.Undo;
+  Pump;
+  CheckEq('and one undo puts back what was there',
+    'teh cat sat'#10'on teh mat'#10, V.Lines.Text);
+
+  { The whole file, which is the dangerous one: it is two operations --
+    select everything, then replace it -- and if they are not one undo
+    block the reader presses Ctrl+Z, sees half of it come back, and thinks
+    the undo failed. }
+  P.Clear;
+  V.Lines.Text := 'teh cat sat'#10'on teh mat'#10;
+  V.SelStart := 1;
+  V.SelEnd := 1;
+  P.NoteSelection(False);
+  P.PickAttach(laaDocument);
+  P.TypePrompt('proof-read the file');
+  P.PressEnter([]);
+  Pump;
+
+  P.BeginReply;
+  P.AddWords('The cat sat'#10'on the mat'#10);
+  R := Default(TLedAIResult);
+  R.Replaces := True;
+  P.EndReply(R);
+  Pump;
+
+  P.ApplyTurn(P.TurnCount - 1, lapReplaceSelection);
+  Pump;
+  CheckEq('the whole file is replaced', 'The cat sat'#10'on the mat'#10,
+    V.Lines.Text);
+  V.Undo;
+  Pump;
+  CheckEq('and one undo puts the whole of it back',
+    'teh cat sat'#10'on teh mat'#10, V.Lines.Text);
+
+  { And a reply that was about text which has since changed is refused
+    rather than applied to whatever happens to be there now.  This is the
+    one that matters: a reply can arrive a minute after it was asked for,
+    and by then the caret has moved. }
+  P.Clear;
+  P.PickAttach(laaSelection);
+  V.SelStart := 1;
+  V.SelEnd := Length('teh cat sat') + 1;
+  P.NoteSelection(True);
+  P.TypePrompt('proof-read it');
+  P.PressEnter([]);
+  Pump;
+
+  V.SelStart := 1;
+  V.SelEnd := Length('teh cat sat') + 1;
+  V.SelText := 'something else';      { the reader edits while it thinks }
+  V.SelStart := 1;
+  V.SelEnd := Length('something else') + 1;
+  Pump;
+
+  P.BeginReply;
+  P.AddWords('The cat sat');
+  R := Default(TLedAIResult);
+  R.Replaces := True;
+  P.EndReply(R);
+  Pump;
+
+  Was := V.Lines.Text;
+  P.ApplyTurn(P.TurnCount - 1, lapReplaceSelection);
+  Pump;
+  CheckEq('a stale answer is not applied', Was, V.Lines.Text);
+  Check('and it says why: ' + P.StatusText,
+    Pos('changed', P.StatusText) > 0);
+
+  P.Clear;
+  P.PickTask(laskChat);
+  if HadOn then LedPrefs.SetStr(LedPrefAIEnabled, WasOn)
+  else LedPrefs.Remove(LedPrefAIEnabled);
+  F.AIRefresh;
+end;
+
+procedure TestAChatReplyIsNotOfferedAsAReplacement(F: TLedMainForm);
+var
+  P: TLedAIPane;
+  R: TLedAIResult;
+begin
+  Say('a conversation is not offered as a replacement');
+
+  P := F.AIPane;
+  if P = nil then Exit;
+  P.Clear;
+  P.BeginReply;
+  P.AddWords('A pipe is a file you read.');
+  R := Default(TLedAIResult);
+  R.Replaces := False;
+  P.EndReply(R);
+  Pump;
+  Check('nothing offers to overwrite anything',
+    not P.Turn(P.TurnCount - 1).OffersApply);
+  P.Clear;
+end;
+
 { The pane shows a model's name; the backend has to be asking with that one.
   Without it the two agree only by accident, and a reader looking at a pane
   that plainly names a model is told that none has been chosen. }
@@ -12702,6 +12903,8 @@ begin
   TestEditKeysGoToTheFocusedBox(F);
   TestTheAIPaneShowsAnAnswerAsItArrives(F);
   TestTheModelShownIsTheModelAsked(F);
+  TestAskingForATransformOfTheSelection(F);
+  TestAChatReplyIsNotOfferedAsAReplacement(F);
   TestTheAIPaneDrawsCodeItCanRead(F);
   TestTheAIQuestionBoxKeepsItsKeys(F);
   TestEnterSendsAndShiftEnterDoesNot(F);

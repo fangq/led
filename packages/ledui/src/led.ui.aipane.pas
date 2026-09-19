@@ -105,6 +105,8 @@ type
     { For the self-test: whether this turn has been laid out as a page, and
       what page it was given. }
     function Rendered: Boolean;
+    { Whether this turn offers to go back into the file. }
+    function OffersApply: Boolean;
     function RenderedPage: string;
     function LiveText: string;
   end;
@@ -120,6 +122,7 @@ type
     FClear: TButton;
     FSend: TButton;
     FAttach: TComboBox;
+    FTask: TComboBox;
     FInput: TMemo;
     FBottom: TPanel;
     FTurns: TList;
@@ -181,6 +184,9 @@ type
     function StatusText: string;
     function Attach: TLedAIAttach;
     procedure PickAttach(AKind: TLedAIAttach);
+    function Task: TLedAITask;
+    procedure PickTask(ATask: TLedAITask);
+    procedure ApplyTurn(ATurn: Integer; AKind: TLedAIApply);
     function InputControl: TWinControl;
     function BackendName: string;
     function ModelName: string;
@@ -617,6 +623,18 @@ begin
   Result := FRender <> nil;
 end;
 
+function TLedAIBubble.OffersApply: Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  if FBar = nil then Exit;
+  for i := 0 to FBar.ControlCount - 1 do
+    if (FBar.Controls[i] is TButton) and
+       (TButton(FBar.Controls[i]).Caption = 'Apply') then
+      Exit(True);
+end;
+
 function TLedAIBubble.RenderedPage: string;
 begin
   Result := '';
@@ -699,7 +717,19 @@ begin
   FBottom.BevelOuter := bvNone;
   FBottom.Height := LedScale96(30);
 
-  FAttach := MakeCombo(FBottom, 2, 150);
+  { What is being asked for.  A conversation by default; the rest are
+    transforms, and a transform is the only kind of answer the pane will
+    offer to put back into a file. }
+  FTask := MakeCombo(FBottom, 2, 110);
+  FTask.Items.Add(LedAITaskName(laskChat));
+  FTask.Items.Add(LedAITaskName(laskProofread));
+  FTask.Items.Add(LedAITaskName(laskRewrite));
+  FTask.Items.Add(LedAITaskName(laskExplain));
+  FTask.Items.Add(LedAITaskName(laskSummarise));
+  FTask.Items.Add(LedAITaskName(laskComment));
+  FTask.ItemIndex := 0;
+
+  FAttach := MakeCombo(FBottom, 116, 150);
   FAttach.Items.Add('Nothing attached');
   FAttach.Items.Add('The selected text');
   FAttach.Items.Add('The whole file');
@@ -824,7 +854,7 @@ begin
   Said := FInput.Text;
   if Trim(Said) = '' then Exit;
   FInput.Clear;
-  Ask(Said);
+  Ask(Said, Task);
 end;
 
 procedure TLedAIPane.StopClicked(Sender: TObject);
@@ -1060,6 +1090,42 @@ end;
 function TLedAIPane.StatusText: string;
 begin
   Result := FStatus.Caption;
+end;
+
+function TLedAIPane.Task: TLedAITask;
+begin
+  Result := laskChat;
+  case FTask.ItemIndex of
+    1: Result := laskProofread;
+    2: Result := laskRewrite;
+    3: Result := laskExplain;
+    4: Result := laskSummarise;
+    5: Result := laskComment;
+  end;
+end;
+
+procedure TLedAIPane.PickTask(ATask: TLedAITask);
+var
+  i: Integer;
+begin
+  for i := 0 to FTask.Items.Count - 1 do
+    if FTask.Items[i] = LedAITaskName(ATask) then
+    begin
+      FTask.ItemIndex := i;
+      Exit;
+    end;
+end;
+
+{ What the button on a finished turn does, reached the same way a check
+  reaches it: through the pane. }
+procedure TLedAIPane.ApplyTurn(ATurn: Integer; AKind: TLedAIApply);
+var
+  B: TLedAIBubble;
+begin
+  B := Turn(ATurn);
+  if B = nil then Exit;
+  if Assigned(FOnApply) then
+    FOnApply(Self, ATurn, LedAIUnfence(B.Text), AKind);
 end;
 
 function TLedAIPane.Attach: TLedAIAttach;

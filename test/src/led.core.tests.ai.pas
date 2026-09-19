@@ -41,6 +41,8 @@ type
     procedure AReplacementTaskAsksForTheTextAndNothingElse;
     procedure ATaskThatExplainsDoesNotAskForAReplacement;
     procedure EveryTaskHasWordsOfItsOwn;
+    procedure OnlyATransformIsMeantToGoBack;
+    procedure AQuestionAboutNothingReplacesNothing;
 
     { how much is sent }
     procedure TextTooBigIsCutAtALineBoundary;
@@ -217,6 +219,27 @@ begin
   finally
     Seen.Free;
   end;
+end;
+
+procedure TTestAI.OnlyATransformIsMeantToGoBack;
+begin
+  AssertTrue('proof-reading is', LedAIReplaces(laskProofread, True));
+  AssertTrue('rewriting is', LedAIReplaces(laskRewrite, True));
+  AssertTrue('commenting code is', LedAIReplaces(laskComment, True));
+  { Prose about a paragraph is not a replacement for it.  Offering to paste
+    it over the paragraph is offering to replace somebody's text with a
+    description of it. }
+  AssertFalse('explaining is not', LedAIReplaces(laskExplain, True));
+  AssertFalse('summarising is not', LedAIReplaces(laskSummarise, True));
+  AssertFalse('and a conversation is not', LedAIReplaces(laskChat, True));
+end;
+
+procedure TTestAI.AQuestionAboutNothingReplacesNothing;
+begin
+  { Nothing was sent, so there is nowhere for an answer to go. }
+  AssertFalse('nothing attached, nothing to replace',
+    LedAIReplaces(laskProofread, False));
+  AssertFalse('', LedAIReplaces(laskRewrite, False));
 end;
 
 { ----- how much is sent ------------------------------------------------- }

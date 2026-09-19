@@ -256,6 +256,14 @@ type
       read FOnPermission write FOnPermission;
   end;
 
+{ Whether an answer to this is meant to go back where the text came from.
+
+  A question about nothing has nowhere to put an answer, and explaining or
+  summarising a paragraph produces prose about it rather than a replacement
+  for it -- offering to paste that over the paragraph would be offering to
+  replace somebody's text with a description of it. }
+function LedAIReplaces(ATask: TLedAITask; AHasContext: Boolean): Boolean;
+
 { The name of a task, for a menu or a transcript. }
 function LedAITaskName(ATask: TLedAITask): string;
 
@@ -452,6 +460,12 @@ begin
 end;
 
 { ----- the part with no I/O in it --------------------------------------- }
+
+function LedAIReplaces(ATask: TLedAITask; AHasContext: Boolean): Boolean;
+begin
+  Result := AHasContext and
+    (ATask in [laskProofread, laskRewrite, laskComment, laskCustom]);
+end;
 
 function LedAITaskName(ATask: TLedAITask): string;
 begin
