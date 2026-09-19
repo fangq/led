@@ -7359,6 +7359,7 @@ begin
   { On screen first: a windowed pane has no box for a cell nobody has
     scrolled to, and no box means no boundary to put the bar at. }
   B := CellBox(Pane, 1);
+  Check('the cell the bar goes under has a box', B <> nil);
   Pane.ShowAddBarUnder(1);
   Pump;
   Check('the bar appears at the boundary it was asked for',
@@ -7367,6 +7368,25 @@ begin
   Check(Format('it sits at the foot of that cell (%d against %d)',
     [Pane.AddBar.Top, B.Top + B.Height]),
     Abs(Pane.AddBar.Top - (B.Top + B.Height)) <= LedScale96(12));
+
+  { Asked for under a cell the pane has not built.  This is what a relayout
+    leaves behind -- every height re-estimated, the same scroll position
+    covering a different set of cells -- and the request used to be dropped
+    on the floor, which showed up as a bar that sometimes did not appear. }
+  Pane.AddBar.Visible := False;
+  Pane.ScrollToCell(Doc.NBCellCount - 1);
+  Pump;
+  Check('the first cell is out of the window now', Pane.BoxOf(1) = nil);
+  Pane.ShowAddBarUnder(1);
+  Pump;
+  Check('the bar still appears for a cell that had no box',
+    Pane.AddBar.Visible);
+  CheckEqInt('under the cell that was asked for', 1, Pane.AddBar.Cell);
+
+  Pane.AddBar.Visible := False;
+  B := CellBox(Pane, 1);
+  Pane.ShowAddBarUnder(1);
+  Pump;
 
   Pane.AddBar.AddCode.Click;
   Pump; Pump;

@@ -1844,6 +1844,22 @@ var
   B: TLedNBCellBox;
 begin
   B := BoxOf(ACell);
+  { A cell with no box has no boundary to put the bar at.  Asked for by
+    number, though, the answer is to build it rather than to do nothing:
+    the pane keeps boxes only for the cells the viewport covers, and a
+    relayout throws away every measured height and re-estimates, so the
+    same scroll position can come back covering a different set of cells.
+    Between asking for a cell and asking for the bar under it, the box can
+    therefore have gone -- and a request that quietly evaporates is worse
+    than a scroll nobody asked for.
+
+    The pointer's own path never reaches this: hovering hands the box
+    straight to PlaceAddBar, because the pointer is over it. }
+  if B = nil then
+  begin
+    ScrollToCell(ACell);
+    B := BoxOf(ACell);
+  end;
   if B = nil then Exit;
   PlaceAddBar(B);
 end;
