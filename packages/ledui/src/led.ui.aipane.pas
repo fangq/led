@@ -43,8 +43,12 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Clipbrd, LCLType,
   IpHtml, Ipfilebroker,
+  { LCLIntf and LCLType for GetSystemMetrics and SM_CXVSCROLL, and not the
+    Windows unit for them: on Windows that unit declares a TBitmap of its
+    own -- the API's BITMAP record -- which shadows the one in Graphics and
+    has no Create.  The preview pane asks for the same metric through the
+    LCL, on every platform, for the same reason. }
   LCLIntf,
-  {$IFDEF WINDOWS}Windows,{$ENDIF}
   Led.Core.AI, Led.Core.Markdown, Led.Core.Prefs, Led.Core.NBImage,
   Led.Syn.Factory,
   Led.UI.PageStyle, Led.UI.NBPane, Led.UI.DPI, Led.UI.Focus;
