@@ -1016,7 +1016,11 @@ procedure TLedAIPane.SetAvailable(AOn: Boolean; const AWhy: string);
 begin
   FSend.Enabled := AOn;
   FInput.Enabled := AOn;
-  if not AOn then FStatus.Caption := AWhy;
+  { Said either way.  Only clearing the line when something goes wrong
+    leaves "switched off" on the screen after it has been switched back
+    on -- which reads as a setting that did not take. }
+  if AOn then FStatus.Caption := 'ready'
+  else FStatus.Caption := AWhy;
 end;
 
 procedure TLedAIPane.NoteSelection(AHas: Boolean);

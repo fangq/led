@@ -622,7 +622,6 @@ type
     function BuildProject(AThenDebug: Boolean): Boolean;
     procedure BuildFinished(ATool: TLedTool; AExitCode: Integer;
       const ACollected: string);
-    procedure PrefsApplied(Sender: TObject);
     procedure InstancePoll(Sender: TObject);
     procedure InstanceOpenRequest(const APayload: string);
     function SearchView: TLedEdit;
@@ -778,6 +777,10 @@ type
     property AIPane: TLedAIPane read FAIPane;
     { Picks the backend up again after a preference has changed. }
     procedure AIRefresh;
+    { Everything a changed preference has to reach.  Public because that is
+      the path a check has to drive: a setting that takes effect only at
+      the next start is a setting that did not take effect. }
+    procedure PrefsApplied(Sender: TObject);
     { The model the backend will actually ask with.  Published so a check
       can say that it is the one the pane is showing. }
     function AIModelAsked: string;
@@ -1056,6 +1059,10 @@ begin
   LedClearInheritedPaneLock(LedPrefs);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
+  { Which model LED talks to, and what it may do, are preferences like any
+    other: changed here they take effect now rather than at the next
+    start. }
+  AIRefresh;
   FDock.OnPaneShown := @PaneShown;
 
   { Dropping files on the window opens them.  Set here rather than in the
@@ -2430,6 +2437,10 @@ begin
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
+  { Which model LED talks to, and what it may do, are preferences like any
+    other: changed here they take effect now rather than at the next
+    start. }
+  AIRefresh;
   { The output pane is not a document, so the loop below never reaches it. }
   LedApplyThemeToEditor(LedCurrentTheme, FOutput);
   Tabs := TFPList.Create;

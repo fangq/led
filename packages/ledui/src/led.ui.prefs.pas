@@ -121,7 +121,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..50] of TLedPrefItem = (
+  PrefItems: array[0..61] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -274,7 +274,47 @@ const
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'Tools'; Kind: pkCustom; Key: '@tools';
      Caption: ''; DefStr: '';
-     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: '')
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+
+    { The AI pane.  Off is one setting away, and what Claude Code is allowed
+      to do in the project is spelled out rather than being a switch,
+      because there are four real answers and the middle two are the
+      interesting ones. }
+    (Category: 'AI'; Kind: pkHeading; Key: '';
+     Caption: 'Talking to a model'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkBool; Key: 'AI/enabled';
+     Caption: 'Offer the AI pane'; DefStr: '';
+     DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkChoice; Key: 'AI/backend';
+     Caption: 'Ask'; DefStr: 'ollama';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'ollama,claude'),
+    (Category: 'AI'; Kind: pkInt; Key: 'AI/max_context_kb';
+     Caption: 'Most of a file to send, in KB'; DefStr: '';
+     DefInt: 64; MinInt: 1; MaxInt: 8192; Choices: ''),
+    (Category: 'AI'; Kind: pkHeading; Key: '';
+     Caption: 'A model on this machine'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/ollama_url';
+     Caption: 'Server (blank for http://localhost:11434)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/ollama_model';
+     Caption: 'Model'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkHeading; Key: '';
+     Caption: 'Claude Code'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/claude_model';
+     Caption: 'Model (blank for its own default)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/claude_path';
+     Caption: 'Program (blank for the claude on the PATH)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    { chat: nothing at all.  ask: it plans and changes nothing.  edits: it
+      writes files without asking.  full: it also runs commands. }
+    (Category: 'AI'; Kind: pkChoice; Key: 'AI/claude_tools';
+     Caption: 'What it may do in the project'; DefStr: 'chat';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'chat,ask,edits,full')
   );
 
 { Anchoring by side rather than by a measured offset.  akRight and akBottom

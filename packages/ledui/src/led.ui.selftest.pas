@@ -2631,6 +2631,39 @@ begin
   F.AIRefresh;
 end;
 
+{ A preference the reader changes has to reach the pane without a restart,
+  and the off switch is the one that matters most: somebody turning this
+  feature off means now. }
+procedure TestTurningTheAIPaneOffTakesEffectAtOnce(F: TLedMainForm);
+var
+  Had: Boolean;
+  Was: string;
+begin
+  Say('switching the AI pane off takes effect at once');
+
+  if F.AIPane = nil then Exit;
+  Had := LedPrefs.HasKey(LedPrefAIEnabled);
+  Was := LedPrefs.GetStr(LedPrefAIEnabled, '');
+  try
+    LedPrefs.SetBool(LedPrefAIEnabled, False);
+    F.PrefsApplied(nil);
+    Pump;
+    CheckEq('the pane says so', 'the AI pane is switched off',
+      F.AIPane.StatusText);
+    CheckEq('and there is nothing to ask', '', F.AIModelAsked);
+
+    LedPrefs.SetBool(LedPrefAIEnabled, True);
+    F.PrefsApplied(nil);
+    Pump;
+    Check('turning it back on brings it back',
+      F.AIPane.StatusText <> 'the AI pane is switched off');
+  finally
+    if Had then LedPrefs.SetStr(LedPrefAIEnabled, Was)
+    else LedPrefs.Remove(LedPrefAIEnabled);
+    F.PrefsApplied(nil);
+  end;
+end;
+
 procedure TestAChatReplyIsNotOfferedAsAReplacement(F: TLedMainForm);
 var
   P: TLedAIPane;
@@ -4184,8 +4217,9 @@ begin
 
     { medit had eight preference pages and LED had three, which is the gap
       this counts.  Plugins are not one of them: LED has no dynamic plugin
-      loading to configure. }
-    CheckEqInt('every preference page is present', 6, Dlg.PageCount);
+      loading to configure.  The seventh is LED's own: what it may say to a
+      model, and what a model may do in your project. }
+    CheckEqInt('every preference page is present', 7, Dlg.PageCount);
     Check('and the list pages built their contents', Dlg.ListPagesReady);
 
     { Laid out before the dialog has its real size, so every anchor that
@@ -12905,6 +12939,7 @@ begin
   TestTheModelShownIsTheModelAsked(F);
   TestAskingForATransformOfTheSelection(F);
   TestAChatReplyIsNotOfferedAsAReplacement(F);
+  TestTurningTheAIPaneOffTakesEffectAtOnce(F);
   TestTheAIPaneDrawsCodeItCanRead(F);
   TestTheAIQuestionBoxKeepsItsKeys(F);
   TestEnterSendsAndShiftEnterDoesNot(F);
