@@ -305,6 +305,7 @@ type
     FPics: TLedNBPictures;     // the pictures they have already decoded
     FAddBar: TLedNBAddBar;     // the buttons at whichever boundary is near
     FHoverTimer: TTimer;       // asks where the pointer is; see TLedNBAddBar
+    FHoverPolling: Boolean;    // ...unless somebody else is saying where
     FOnInsert: TLedNBInsertEvent;
     FOnDelete: TLedNBCellEvent;
     FFirst: Integer;           // the first cell built, or -1
@@ -452,8 +453,12 @@ type
     { The buttons at a cell boundary.  Public so a check can press them:
       they appear on a hover, and a scripted run has no pointer. }
     property AddBar: TLedNBAddBar read FAddBar;
+    { Where the pointer is, said by whoever knows.  The timer says it from
+      the mouse; a scripted run says it directly, and turns the timer off
+      first so that the two do not argue. }
+    procedure HoverAt(const APoint: TPoint);
+    property HoverPolling: Boolean read FHoverPolling write FHoverPolling;
     { Shows the bar under ACell, as hovering near that boundary does. }
-    procedure ShowAddBarUnder(ACell: Integer);
     { Builds the cells again and leaves the reader where they were, with
       ATopCell back at the top.  For a change in the notebook's shape -- a
       cell added or taken out -- which needs everything rebuilt and is not a
@@ -1447,6 +1452,7 @@ begin
   FHoverTimer.Interval := 120;
   FHoverTimer.Enabled := True;
   FHoverTimer.OnTimer := @HoverTick;
+  FHoverPolling := True;
 
   { Pictures arrive after the page they belong to has been drawn, on a
     thread of their own, so the pane looks in rather than being called. }
@@ -1752,6 +1758,16 @@ end;
   The whole bottom quarter of a cell counts, up to a limit -- a very tall
   cell should not be a bar that follows the pointer half way up it. }
 procedure TLedNotebookPane.HoverTick(Sender: TObject);
+begin
+  { The timer's whole job is to say where the pointer is.  A scripted run
+    has no pointer, and a poll that runs anyway takes away whatever the
+    script just put on the screen a tenth of a second later -- which is a
+    check that passes or fails on timer phase. }
+  if not FHoverPolling then Exit;
+  HoverAt(ScreenToClient(Mouse.CursorPos));
+end;
+
+procedure TLedNotebookPane.HoverAt(const APoint: TPoint);
 var
   P: TPoint;
   i, Edge, Reach: Integer;
@@ -1763,7 +1779,7 @@ begin
     Exit;
   end;
 
-  P := ScreenToClient(Mouse.CursorPos);
+  P := APoint;
   { The bar itself counts as being at its own boundary, or moving the
     pointer onto a button would take the button away. }
   if FAddBar.Visible and (P.x >= FAddBar.Left) and
@@ -1837,31 +1853,6 @@ begin
     FollowToCell(ATopCell);
     Inc(Tries);
   end;
-end;
-
-procedure TLedNotebookPane.ShowAddBarUnder(ACell: Integer);
-var
-  B: TLedNBCellBox;
-begin
-  B := BoxOf(ACell);
-  { A cell with no box has no boundary to put the bar at.  Asked for by
-    number, though, the answer is to build it rather than to do nothing:
-    the pane keeps boxes only for the cells the viewport covers, and a
-    relayout throws away every measured height and re-estimates, so the
-    same scroll position can come back covering a different set of cells.
-    Between asking for a cell and asking for the bar under it, the box can
-    therefore have gone -- and a request that quietly evaporates is worse
-    than a scroll nobody asked for.
-
-    The pointer's own path never reaches this: hovering hands the box
-    straight to PlaceAddBar, because the pointer is over it. }
-  if B = nil then
-  begin
-    ScrollToCell(ACell);
-    B := BoxOf(ACell);
-  end;
-  if B = nil then Exit;
-  PlaceAddBar(B);
 end;
 
 procedure TLedNotebookPane.AddCodeClicked(Sender: TObject);

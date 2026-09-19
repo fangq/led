@@ -7352,85 +7352,88 @@ begin
 
     Hovering near the foot of a cell offers "+ Code", "+ Text" and "Delete
     Above" -- a notebook front end's own gesture, and the only way to add a
-    cell from the pane at all.  A scripted run has no pointer, so the bar is
-    asked for by name and its buttons are pressed. }
+    cell from the pane at all.
+
+    A scripted run has no pointer, so it says where one would be and stops
+    the pane asking the mouse.  Both halves matter: the poll runs every
+    120 ms and puts the bar away when the pointer is not near a boundary,
+    so a check that placed the bar and then pumped the loop was a check
+    that passed or failed on which side of a timer tick it landed. }
   Was := Doc.NBCellCount;
   Shown := Doc.Notebook.CellSource(1);
-  { On screen first: a windowed pane has no box for a cell nobody has
-    scrolled to, and no box means no boundary to put the bar at. }
-  B := CellBox(Pane, 1);
-  Check('the cell the bar goes under has a box', B <> nil);
-  Pane.ShowAddBarUnder(1);
-  Pump;
-  Check('the bar appears at the boundary it was asked for',
-    Pane.AddBar.Visible);
-  CheckEqInt('and knows which cell it is under', 1, Pane.AddBar.Cell);
-  Check(Format('it sits at the foot of that cell (%d against %d)',
-    [Pane.AddBar.Top, B.Top + B.Height]),
-    Abs(Pane.AddBar.Top - (B.Top + B.Height)) <= LedScale96(12));
+  Pane.HoverPolling := False;
+  try
+    { On screen first: a windowed pane has no box for a cell nobody has
+      scrolled to, and no box means no boundary to hover near. }
+    B := CellBox(Pane, 1);
+    Check('the cell the bar goes under has a box', B <> nil);
 
-  { Asked for under a cell the pane has not built.  This is what a relayout
-    leaves behind -- every height re-estimated, the same scroll position
-    covering a different set of cells -- and the request used to be dropped
-    on the floor, which showed up as a bar that sometimes did not appear. }
-  Pane.AddBar.Visible := False;
-  Pane.ScrollToCell(Doc.NBCellCount - 1);
-  Pump;
-  Check('the first cell is out of the window now', Pane.BoxOf(1) = nil);
-  Pane.ShowAddBarUnder(1);
-  Pump;
-  Check('the bar still appears for a cell that had no box',
-    Pane.AddBar.Visible);
-  CheckEqInt('under the cell that was asked for', 1, Pane.AddBar.Cell);
+    { Nowhere near it: no bar. }
+    Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + LedScale96(4)));
+    Check('the middle of a cell is not a boundary', not Pane.AddBar.Visible);
 
-  Pane.AddBar.Visible := False;
-  B := CellBox(Pane, 1);
-  Pane.ShowAddBarUnder(1);
-  Pump;
+    { And near its foot, which is the gesture. }
+    Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
+    Check('the bar appears at the boundary it was hovered at',
+      Pane.AddBar.Visible);
+    CheckEqInt('and knows which cell it is under', 1, Pane.AddBar.Cell);
+    Check(Format('it sits at the foot of that cell (%d against %d)',
+      [Pane.AddBar.Top, B.Top + B.Height]),
+      Abs(Pane.AddBar.Top - (B.Top + B.Height)) <= LedScale96(12));
 
-  Pane.AddBar.AddCode.Click;
-  Pump; Pump;
-  CheckEqInt('+ Code adds a cell', Was + 1, Doc.NBCellCount);
-  Check('a code cell', Doc.Notebook.CellKind(2) = nbkCode);
-  Check('and an empty one', Doc.Notebook.CellSource(2) = '');
-  { Below the cell the bar was under and not above it: the cell it was under
-    still holds what it held, and the new one is the next along. }
-  CheckEq('the cell the bar was under is untouched', Shown,
-    Doc.Notebook.CellSource(1));
-  Check('the document is modified, because the file has a cell more',
-    Doc.Modified);
-  Check('the buffer has a header for it',
-    Doc.NBSourceLineOf(2) > 0);
+    { And it is still there a pointer-poll later.  Longer than the poll's
+      own 120 ms on purpose: this is the check that was failing, and it
+      failed because the poll ran between placing the bar and looking at
+      it.  Waiting past a tick is what makes that deterministic rather
+      than a matter of which side of one the run landed on. }
+    Sleep(200);
+    Pump;
+    Check('and it is still there a pointer-poll later',
+      Pane.AddBar.Visible);
 
-  CellBox(Pane, 2);
-  Pane.ShowAddBarUnder(2);
-  Pump;
-  CheckEqInt('the bar is under the cell just added', 2, Pane.AddBar.Cell);
-  Pane.AddBar.AddText.Click;
-  Pump; Pump;
-  CheckEqInt('+ Text adds one too', Was + 2, Doc.NBCellCount);
-  Check('a prose cell this time', Doc.Notebook.CellKind(3) = nbkMarkdown);
-  Check('with no outputs, which prose does not have',
-    Doc.Notebook.CellOutputs(3) = nil);
+    Pane.AddBar.AddCode.Click;
+    Pump; Pump;
+    CheckEqInt('+ Code adds a cell', Was + 1, Doc.NBCellCount);
+    Check('a code cell', Doc.Notebook.CellKind(2) = nbkCode);
+    Check('and an empty one', Doc.Notebook.CellSource(2) = '');
+    { Below the cell the bar was under and not above it: the cell it was
+      under still holds what it held, and the new one is the next along. }
+    CheckEq('the cell the bar was under is untouched', Shown,
+      Doc.Notebook.CellSource(1));
+    Check('the document is modified, because the file has a cell more',
+      Doc.Modified);
+    Check('the buffer has a header for it',
+      Doc.NBSourceLineOf(2) > 0);
+
+    B := CellBox(Pane, 2);
+    Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
+    CheckEqInt('the bar is under the cell just added', 2, Pane.AddBar.Cell);
+    Pane.AddBar.AddText.Click;
+    Pump; Pump;
+    CheckEqInt('+ Text adds one too', Was + 2, Doc.NBCellCount);
+    Check('a prose cell this time', Doc.Notebook.CellKind(3) = nbkMarkdown);
+    Check('with no outputs, which prose does not have',
+      Doc.Notebook.CellOutputs(3) = nil);
 
   { Delete Above takes out the cell the bar is under.  Both of the cells
     just added are empty, so nothing is asked: the window only asks before
     losing something. }
-  CellBox(Pane, 3);
-  Pane.ShowAddBarUnder(3);
-  Pump;
-  Pane.AddBar.DeleteAbove.Click;
-  Pump; Pump;
-  CheckEqInt('Delete Above takes one out', Was + 1, Doc.NBCellCount);
-  Check('and it was the one the bar was under: the prose cell has gone',
-    Doc.Notebook.CellKind(2) = nbkCode);
-
-  CellBox(Pane, 2);
-  Pane.ShowAddBarUnder(2);
-  Pump;
-  Pane.AddBar.DeleteAbove.Click;
-  Pump; Pump;
-  CheckEqInt('and again', Was, Doc.NBCellCount);
+    B := CellBox(Pane, 3);
+    Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
+    Pane.AddBar.DeleteAbove.Click;
+    Pump; Pump;
+    CheckEqInt('Delete Above takes one out', Was + 1, Doc.NBCellCount);
+    Check('and it was the one the bar was under: the prose cell has gone',
+      Doc.Notebook.CellKind(2) = nbkCode);
+    B := CellBox(Pane, 2);
+    Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
+    Pane.AddBar.DeleteAbove.Click;
+    Pump; Pump;
+    CheckEqInt('and again', Was, Doc.NBCellCount);
+  finally
+    { Back to asking the mouse, which is what a reader's pointer needs. }
+    Pane.HoverPolling := True;
+  end;
 
   { ---- typing here arrives there ---- }
   B := CellBox(Pane, 3);
@@ -8004,9 +8007,12 @@ begin
   CheckEqInt('the reader is looking at cell 40', 40,
     Doc.NBCellOfLine(V.TopLine - 1));
 
-  CellBox(Pane, 40);
-  Pane.ShowAddBarUnder(40);
-  Pump;
+  { Hovered at, with the pointer poll off, for the reason given where the
+    bar is first checked: the poll takes the bar away a tenth of a second
+    after anything else puts it there. }
+  Pane.HoverPolling := False;
+  B := CellBox(Pane, 40);
+  Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
   Pane.AddBar.AddCode.Click;
   Pump; Pump;
   CheckEqInt('a cell was added', Was + 1, Doc.NBCellCount);
@@ -8015,11 +8021,11 @@ begin
     [V.TopLine, Line]), 40, Doc.NBCellOfLine(V.TopLine - 1));
 
   { And taking one out leaves them where they are too. }
-  CellBox(Pane, 41);
-  Pane.ShowAddBarUnder(41);
-  Pump;
+  B := CellBox(Pane, 41);
+  Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
   Pane.AddBar.DeleteAbove.Click;
   Pump; Pump;
+  Pane.HoverPolling := True;
   CheckEqInt('the cell went', Was, Doc.NBCellCount);
   CheckEqInt('the pane stayed', 40, Pane.TopCell);
   CheckEqInt('and the buffer stayed', 40,
