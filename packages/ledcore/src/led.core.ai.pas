@@ -197,6 +197,13 @@ type
     FOnError: TLedAIErrorProc;
     FOnState: TLedAIStateProc;
     FOnPermission: TLedAIPermissionProc;
+    { Whether anybody is still listening to that turn.  One place, used by
+      everything that would speak on a turn's behalf: a backend that stops a
+      request cannot stop what is already on its way back, so the only thing
+      that can be made instant is what LED will still repeat.  Written once
+      because two copies of it cover for one another, and a check cannot
+      then tell whether either works. }
+    function Current(ASeq: Integer): Boolean;
     procedure SetState(AState: TLedAIState);
     procedure Emit(const ADelta: TLedAIDelta);
     procedure Finish(const AResult: TLedAIResult);
@@ -392,18 +399,23 @@ begin
   if Assigned(FOnState) then FOnState(Self, AState);
 end;
 
+function TLedAIBackend.Current(ASeq: Integer): Boolean;
+begin
+  Result := ASeq = FSeq;
+end;
+
 procedure TLedAIBackend.Emit(const ADelta: TLedAIDelta);
 begin
   { A delta from a turn that has been given up on is not shown.  This is the
     whole of what makes Stop instant: the socket may still be delivering an
     answer nobody wants, and it goes nowhere. }
-  if ADelta.Seq <> FSeq then Exit;
+  if not Current(ADelta.Seq) then Exit;
   if Assigned(FOnDelta) then FOnDelta(Self, ADelta);
 end;
 
 procedure TLedAIBackend.Finish(const AResult: TLedAIResult);
 begin
-  if AResult.Seq <> FSeq then Exit;
+  if not Current(AResult.Seq) then Exit;
   SetState(laiIdle);
   if Assigned(FOnDone) then FOnDone(Self, AResult);
 end;
@@ -411,7 +423,7 @@ end;
 procedure TLedAIBackend.Fail(ASeq: Integer; const AWhy: string);
 begin
   FLastError := AWhy;
-  if ASeq <> FSeq then Exit;
+  if not Current(ASeq) then Exit;
   SetState(laiIdle);
   if Assigned(FOnError) then FOnError(Self, ASeq, AWhy);
 end;
