@@ -75,6 +75,7 @@ type
     procedure StoppingEndsTheTurnAndDropsTheRest;
     procedure StoppingDropsWhatArrivedButWasNotShownYet;
     procedure ASecondQuestionIsRefusedWhileTheFirstIsRunning;
+    procedure AnOldConversationIsTrimmedBeforeItIsSent;
     procedure AServerThatRefusesIsReportedNotSwallowed;
     procedure AServerThatIsNotThereIsReportedQuickly;
     procedure ModelsAreListedFromTheServer;
@@ -680,6 +681,45 @@ begin
   AssertTrue('and it says why: ' + FAI.LastError,
     Pos('answering', FAI.LastError) > 0);
   PumpUntilDone(20000);
+end;
+
+procedure TTestAIOllama.AnOldConversationIsTrimmedBeforeItIsSent;
+var
+  R: TLedAIRequest;
+  Seq, i: Integer;
+  HadKB: Boolean;
+  WasKB: string;
+begin
+  { The server keeps nothing, so every turn carries the whole conversation
+    with it.  An afternoon's chat eventually exceeds the model's context
+    window -- and long before that, every question costs seconds of reading
+    before a word comes back. }
+  PointAtTheFakeServer(FakePort);
+  HadKB := LedPrefs.HasKey(LedPrefAIMaxContextKB);
+  WasKB := LedPrefs.GetStr(LedPrefAIMaxContextKB, '');
+  try
+    LedPrefs.SetInt(LedPrefAIMaxContextKB, 1);      { one KB of history }
+    for i := 1 to 20 do
+      FChat.Add(larUser, StringOfChar('x', 500));
+    FChat.Add(larUser, 'the newest thing anybody said');
+
+    R := Default(TLedAIRequest);
+    R.Instruction := 'and now this';
+    AssertTrue('asked', FAI.Ask(R, Seq));
+    PumpUntilDone(20000);
+
+    { What actually went down the socket, which is the only thing that
+      settles this. }
+    AssertTrue(Format('the old turns were left behind (%d bytes sent)',
+      [Length(GFake.LastBody)]), Length(GFake.LastBody) < 4000);
+    AssertTrue('the newest one was not',
+      Pos('the newest thing anybody said', GFake.LastBody) > 0);
+    AssertTrue('nor was the question',
+      Pos('and now this', GFake.LastBody) > 0);
+  finally
+    if HadKB then LedPrefs.SetStr(LedPrefAIMaxContextKB, WasKB)
+    else LedPrefs.Remove(LedPrefAIMaxContextKB);
+  end;
 end;
 
 procedure TTestAIOllama.AServerThatRefusesIsReportedNotSwallowed;

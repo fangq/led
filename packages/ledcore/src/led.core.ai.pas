@@ -167,12 +167,9 @@ type
     { The role rides in the string list's own object slot.  A second list
       kept in step with the first is a second list to get out of step. }
     FTexts: TStringList;
-    FSystem: string;
   public
     constructor Create;
     destructor Destroy; override;
-    { Always first, and only ever one. }
-    procedure SetSystem(const AText: string);
     procedure Add(ARole: TLedAIRole; const AText: string);
     procedure Clear;
     function Count: Integer;
@@ -182,11 +179,6 @@ type
       than ABytes.  The system message is never dropped, and neither is the
       last turn: a conversation trimmed to nothing is not a conversation. }
     procedure TrimTo(ABytes: Integer);
-    { The conversation as a document, for a reader who wants to keep it.  The
-      pane opens it as a new tab and LED's own Save does the rest -- which is
-      why nothing here writes to disk. }
-    function ToMarkdown: string;
-    property SystemText: string read FSystem;
   end;
 
   { What every backend looks like from the pane. }
@@ -330,11 +322,6 @@ begin
   inherited Destroy;
 end;
 
-procedure TLedAIChat.SetSystem(const AText: string);
-begin
-  FSystem := AText;
-end;
-
 procedure TLedAIChat.Add(ARole: TLedAIRole; const AText: string);
 begin
   FTexts.AddObject(AText, TObject(PtrUInt(Ord(ARole))));
@@ -374,25 +361,6 @@ begin
   begin
     Dec(Total, Length(FTexts[0]));
     FTexts.Delete(0);
-  end;
-end;
-
-function TLedAIChat.ToMarkdown: string;
-var
-  i: Integer;
-  Head: string;
-begin
-  Result := '';
-  for i := 0 to FTexts.Count - 1 do
-  begin
-    case Role(i) of
-      larUser: Head := '## You';
-      larAssistant: Head := '## Assistant';
-    else
-      Head := '## System';
-    end;
-    Result := Result + Head + LineEnding + LineEnding +
-      FTexts[i] + LineEnding + LineEnding;
   end;
 end;
 

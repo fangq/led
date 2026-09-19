@@ -667,6 +667,13 @@ begin
   if Length(Req.Context) > Limit then
     Req.Context := LedAICutContext(Req.Context, Limit, FWasCut);
 
+  { The server keeps nothing, so every turn carries the whole conversation
+    with it.  Left alone that grows without limit: an afternoon's chat
+    eventually exceeds the model's context window, and long before that
+    every question costs seconds of reading before a word comes back.  The
+    oldest turns go first, and never the question being asked. }
+  if (not Req.Standalone) and (FChat <> nil) then FChat.TrimTo(Limit);
+
   Inc(FSeq);
   ASeq := FSeq;
   FAnswer := '';

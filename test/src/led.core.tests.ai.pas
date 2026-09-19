@@ -67,7 +67,6 @@ type
     procedure WhatWasSaidComesBackInOrder;
     procedure TrimmingDropsTheOldestTurnFirst;
     procedure TrimmingNeverDropsTheQuestionBeingAsked;
-    procedure ATranscriptNamesWhoSaidWhat;
   end;
 
 implementation
@@ -425,26 +424,6 @@ begin
     C.Add(larUser, StringOfChar('a', 1000));
     C.TrimTo(10);
     AssertEquals('it is still there', 1, C.Count);
-  finally
-    C.Free;
-  end;
-end;
-
-procedure TTestAI.ATranscriptNamesWhoSaidWhat;
-var
-  C: TLedAIChat;
-  M: string;
-begin
-  C := TLedAIChat.Create;
-  try
-    C.Add(larUser, 'what is a pipe?');
-    C.Add(larAssistant, 'a file you read.');
-    M := C.ToMarkdown;
-    AssertTrue('the reader is named', Pos('## You', M) > 0);
-    AssertTrue('and so is the model', Pos('## Assistant', M) > 0);
-    AssertTrue('the question is in it', Pos('what is a pipe?', M) > 0);
-    AssertTrue('the answer is after it',
-      Pos('what is a pipe?', M) < Pos('a file you read.', M));
   finally
     C.Free;
   end;
