@@ -10493,6 +10493,81 @@ begin
   Check('and when', Pos(FormatDateTime('yyyy-mm-dd', Now), Now_) > 0);
 end;
 
+{ Reported: scrolling a document, the preview follows at one line and jumps
+  to the top of the page at the next.
+
+  The line it jumped at was the blank after a "---".  A rule becomes an
+  <hr>, an element with no children, and the renderer works out where an
+  element is by asking its children where they drew: with none, the answer
+  is an empty rectangle, and being asked to show an empty rectangle takes
+  the page to its top left corner.  Every "---" in a document is therefore
+  a place where the preview stops following. }
+procedure TestPreviewDoesNotFallOffARule(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+  i, Before, AtRule, AfterRule: Integer;
+begin
+  Say('a rule in the text does not send the preview to the top');
+  if F.Preview = nil then Exit;
+
+  P := TempName('ruled.md');
+  L := TStringList.Create;
+  try
+    for i := 1 to 12 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      L.Add('Paragraph ' + IntToStr(i) + ', with enough words to take up a');
+      L.Add('line or two of the pane it is drawn in.');
+      L.Add('');
+      { The thing that breaks it, between every pair of sections. }
+      L.Add('---');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  F.Preview.RenderNow;
+  Pump;
+
+  { The paragraph of the sixth section, then the rule under it, then the
+    blank line after the rule -- which is the line the reader was on. }
+  Tab.ActiveView.TopLine := 38;
+  Pump; Pump;
+  Before := F.Preview.ScrollPos;
+  Check(Format('the preview followed the text down (%d)', [Before]),
+    Before > 0);
+
+  Tab.ActiveView.TopLine := 41;
+  Pump; Pump;
+  AtRule := F.Preview.ScrollPos;
+  Check(Format('the rule itself does not send it to the top (%d)',
+    [AtRule]), AtRule > 0);
+
+  Tab.ActiveView.TopLine := 42;
+  Pump; Pump;
+  AfterRule := F.Preview.ScrollPos;
+  Check(Format('nor does the line after it (%d)', [AfterRule]),
+    AfterRule > 0);
+  { And it stays with the block the reader is in rather than wandering. }
+  CheckEqInt('and it stays with the block above the rule', Before, AtRule);
+
+  F.Dock.HidePane('preview');
+  Pump;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+end;
+
 procedure TestPreviewKeepsItsPlaceAcrossARedraw(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -13657,6 +13732,7 @@ begin
   TestPreviewLineMapping(F);
   TestPreviewClickKeepsPage(F);
   TestAFaultIsWrittenDown(F);
+  TestPreviewDoesNotFallOffARule(F);
   TestPreviewKeepsItsPlaceAcrossARedraw(F);
   TestPreviewCapsABigDocument(F);
   TestColumnPasteWithHighlighter(F);

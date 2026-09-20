@@ -480,6 +480,40 @@ begin
   if ALine > 0 then FWantedLine := ALine;
 end;
 
+{ Whether the tag this id sits on is one that can be scrolled to.
+
+  Reported as: the preview follows the text at one line and jumps to the top
+  of the page at the next, and the line it jumped at was the blank after a
+  "---".
+
+  A rule becomes an <hr>, and an <hr> has no children.  The renderer works
+  out where an element is by asking its children where they drew, so for one
+  with none the answer is an empty rectangle -- and being asked to show an
+  empty rectangle takes the page to its top left corner.  Every rule in a
+  document is therefore a place where the preview stops following.
+
+  So a rule is not collected, and the nearest block before it answers
+  instead: the block above a rule is the one the reader is reading, since a
+  rule sits between two things.  The same goes for any other element that
+  carries no text of its own. }
+function IdIsOnSomethingDrawn(const APage: string; AAt: Integer): Boolean;
+var
+  i, Stop: Integer;
+  Tag: string;
+begin
+  { Back to the '<' that opened this tag, then forward over its name. }
+  i := AAt;
+  while (i > 1) and (APage[i] <> '<') and (APage[i] <> '>') do Dec(i);
+  Result := True;
+  if (i < 1) or (APage[i] <> '<') then Exit;
+  Inc(i);
+  Stop := i;
+  while (Stop <= Length(APage)) and
+        (APage[Stop] in ['a'..'z', 'A'..'Z', '0'..'9']) do Inc(Stop);
+  Tag := LowerCase(Copy(APage, i, Stop - i));
+  Result := (Tag <> 'hr') and (Tag <> 'br') and (Tag <> 'img');
+end;
+
 procedure TLedPreviewPane.CollectLineIds(const APage: string);
 const
   Marker = ' id="L';
@@ -501,7 +535,8 @@ begin
     { Strictly rising, so the array can be searched rather than scanned.  An
       id out of order would be a converter bug; dropping it here is better
       than a binary search that quietly lies. }
-    if (N > 0) and ((Count_ = 0) or (N > FLineIds[Count_ - 1])) then
+    if (N > 0) and ((Count_ = 0) or (N > FLineIds[Count_ - 1])) and
+       IdIsOnSomethingDrawn(APage, P) then
     begin
       if Count_ = Length(FLineIds) then
         SetLength(FLineIds, Count_ * 2 + 32);
@@ -549,8 +584,9 @@ begin
     text view scrolls past, and each move repaints the page. }
   if N = FSyncedLine then Exit;
   FSyncedLine := N;
-  { Same reasoning as PageTop: this makes the renderer lay the page out to
-    find the block, and a page mid-layout can raise from inside it. }
+  { Asking the renderer to show the block, which also makes it lay the page
+    out if it has not yet.  What it must never be given is a block with
+    nowhere to be -- see CollectLineIds. }
   try
     FHtml.MakeAnchorVisible('L' + IntToStr(N));
   except
