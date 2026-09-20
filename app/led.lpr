@@ -20,7 +20,7 @@ uses
   Interfaces, Forms, Classes, SysUtils,
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
   Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons,
-  Led.UI.EditKeys,
+  Led.UI.EditKeys, Led.UI.ErrLog,
   Led.UI.XError;
 
 { Returns the process exit code.  Written as a function rather than using
@@ -119,6 +119,9 @@ begin
     { Before any window: the editing keys have to be claimed ahead of the
       shortcut lookup, or a dialog's text box loses them to the main
       window's actions.  See Led.UI.EditKeys. }
+    { Before the first form: a fault while one is being built should leave a
+      trace as readily as one an hour in. }
+    LedInstallErrorLog;
     LedInstallEditKeyGuard;
     Application.CreateForm(TLedMainForm, LedMainForm);
     { The window icon, from the PNG copy of the artwork embedded by

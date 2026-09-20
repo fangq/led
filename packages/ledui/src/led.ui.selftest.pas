@@ -30,7 +30,7 @@ uses
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
   Led.Core.NBFormat, Led.Core.NBView, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
-  Led.UI.AIPane, Led.Core.AI,
+  Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
   Led.UI.BJEdit,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -10444,6 +10444,55 @@ end;
   back, and it sits at the beginning until they scroll far enough to leave
   the block they were in.  The pane remembers where the text was and goes
   back there itself. }
+{ A fault in a pane should leave a trace.
+
+  The LCL answers an unhandled exception with a dialog that names the
+  message and nothing else: "List index (0) out of bounds" says neither
+  which list nor who asked it.  The reader is shown the same dialog as
+  before -- what to do about a fault is theirs -- but it is written down
+  first, with the stack, where a report can pick it up. }
+procedure TestAFaultIsWrittenDown(F: TLedMainForm);
+var
+  Was, Now_: string;
+  L: TStringList;
+begin
+  Say('a fault leaves a trace in the log');
+
+  Was := '';
+  if FileExists(LedErrorLogFile) then
+  begin
+    L := TStringList.Create;
+    try
+      L.LoadFromFile(LedErrorLogFile);
+      Was := L.Text;
+    finally
+      L.Free;
+    end;
+  end;
+
+  LedNoteError('EListError', 'List index (0) out of bounds',
+    '  $00000000004D1234  SOMEWHERE,  line 42 of led.ui.nowhere.pas');
+
+  Check('the log is there now', FileExists(LedErrorLogFile));
+  if not FileExists(LedErrorLogFile) then Exit;
+  L := TStringList.Create;
+  try
+    L.LoadFromFile(LedErrorLogFile);
+    Now_ := L.Text;
+  finally
+    L.Free;
+  end;
+
+  Check('it grew by what was noted', Length(Now_) > Length(Was));
+  Check('it says what the fault was',
+    Pos('List index (0) out of bounds', Now_) > 0);
+  Check('and its class', Pos('EListError', Now_) > 0);
+  Check('and where it came from',
+    Pos('led.ui.nowhere.pas', Now_) > 0);
+  { Dated, because "it happened once last week" is half the report. }
+  Check('and when', Pos(FormatDateTime('yyyy-mm-dd', Now), Now_) > 0);
+end;
+
 procedure TestPreviewKeepsItsPlaceAcrossARedraw(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -13607,6 +13656,7 @@ begin
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
   TestPreviewClickKeepsPage(F);
+  TestAFaultIsWrittenDown(F);
   TestPreviewKeepsItsPlaceAcrossARedraw(F);
   TestPreviewCapsABigDocument(F);
   TestColumnPasteWithHighlighter(F);
