@@ -4923,6 +4923,27 @@ begin
   Last := AFileName;
 end;
 
+{ Every row in the browser's tree bar the root, as one padded string, so
+  `Pos('a.c ', ...)` answers "is it there".  The same walk the icon checks
+  do, named because the filter and Hidden checks each need it again after a
+  reload has replaced every node. }
+function BrowserRowNames(F: TLedMainForm): string;
+var
+  Node: TTreeNode;
+begin
+  Result := '';
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while Node <> nil do
+  begin
+    { A directory's path comes back with a trailing separator, so the name
+      has to be taken from the path with it stripped. }
+    if Node.Parent <> nil then
+      Result := Result + ExtractFileName(ExcludeTrailingPathDelimiter(
+        F.Browser.Tree.GetPathFromNode(Node))) + ' ';
+    Node := Node.GetNext;
+  end;
+end;
+
 procedure TestFileBrowser(F: TLedMainForm);
 var
   Fresh: TLedFileBrowser;
@@ -5349,6 +5370,87 @@ begin
     F.Browser.IconFor(BrowseDir + PathDelim + 'd.pdf'));
   CheckEqInt('and an object file reads as binary', 6,
     F.Browser.IconFor(BrowseDir + PathDelim + 'e.o'));
+
+  { The filter chooses which files are shown.  Reported as "the filter does
+    not seem to work": picking a mask set a field that only the code making
+    new rows ever read, and the rows were already made.
+
+    Driven through FilterBy, which is what the combo's OnChange now calls,
+    and asserted on what is in the tree afterwards rather than on the mask
+    that was stored. }
+  F.Browser.FilterBy('*.md;*.txt');
+  Pump; Pump;
+  Names := BrowserRowNames(F);
+  Say('  (filtered to md/txt: ' + Names + ')');
+  Check('the filter keeps the names it matches: ' + Names,
+    (Pos('b.md ', Names) > 0) and (Pos('c.txt ', Names) > 0));
+  Check('and drops the ones it does not: ' + Names,
+    (Pos('a.c ', Names) = 0) and (Pos('d.pdf ', Names) = 0) and
+    (Pos('e.o ', Names) = 0));
+  { A filter is about which files to look at, not which folders exist. }
+  Check('folders are not filtered out: ' + Names, Pos('sub ', Names) > 0);
+
+  F.Browser.FilterBy('');
+  Pump; Pump;
+  Names := BrowserRowNames(F);
+  Check('and clearing it brings them back: ' + Names,
+    (Pos('a.c ', Names) > 0) and (Pos('e.o ', Names) > 0));
+
+  { The Hidden box.  Reported as: ticking it raises Invalid pathname:
+    "/home/users/fangq/fangq" -- the top row carries the folder's name
+    alone, and the LCL's refresh reads that text back as a path.  The root
+    the pane is on is what says whether it survived; the hidden file itself
+    says the box did something. }
+  L := TStringList.Create;
+  try
+    L.Add('x');
+    L.SaveToFile(BrowseDir + PathDelim + '.quiet');
+  finally
+    L.Free;
+  end;
+
+  RootRaised := '';
+  try
+    F.Browser.ShowHidden(True);
+    Pump; Pump;
+  except
+    on E: Exception do RootRaised := E.ClassName + ': ' + E.Message;
+  end;
+  Check('ticking Hidden does not raise: ' + RootRaised, RootRaised = '');
+  { The tree's own root, not just the pane's: the refresh invalidates the
+    LCL's FRoot before it reads the row, so a raise part way through leaves
+    the tree rooted on nothing while the pane still believes in the folder. }
+  CheckEq('and the tree is still rooted on the folder it was on', BrowseDir,
+    ExcludeTrailingPathDelimiter(F.Browser.Tree.Root));
+  Names := BrowserRowNames(F);
+  { A leading dot is what "hidden" means on Unix and nothing at all on
+    Windows, so only the raise and the root above are asserted there. }
+  {$IFDEF UNIX}
+  Check('the hidden file is shown: ' + Names, Pos('.quiet ', Names) > 0);
+  {$ENDIF}
+
+  RootRaised := '';
+  try
+    F.Browser.ShowHidden(False);
+    Pump; Pump;
+  except
+    on E: Exception do RootRaised := E.ClassName + ': ' + E.Message;
+  end;
+  Check('unticking it does not raise either: ' + RootRaised, RootRaised = '');
+  CheckEq('and it is still rooted there afterwards', BrowseDir,
+    ExcludeTrailingPathDelimiter(F.Browser.Tree.Root));
+  Names := BrowserRowNames(F);
+  {$IFDEF UNIX}
+  Check('and the hidden file is gone again: ' + Names, Pos('.quiet ', Names) = 0);
+  {$ENDIF}
+
+  { Back to the short label after all that reloading: the row's text is what
+    the refresh reads, so it has to be put back and taken off again in the
+    right order. }
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  if Node <> nil then
+    CheckEq('the top row shows the folder name after a reload',
+      ExtractFileName(ExcludeTrailingPathDelimiter(BrowseDir)), Node.Text);
 
   if DirectoryExists(BrowseDir) then DeleteDirectory(BrowseDir, False);
 

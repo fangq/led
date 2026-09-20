@@ -86,6 +86,7 @@ type
       ACollapsed: Boolean);
     procedure IconiseNodes;
     procedure IconiseChildren(ANode: TTreeNode);
+    procedure PathBackOnRootRow;
     function IconForPath(const APath: string; AIsDir: Boolean): Integer;
     function PassesFilter(const AName: string): Boolean;
     procedure NavResize(Sender: TObject);
@@ -143,6 +144,16 @@ type
       write SetSortFoldersFirst;
     property CaseSensitiveSort: Boolean read FCaseSensitiveSort
       write SetCaseSensitiveSort;
+
+    { The two controls on the bar below the tree, driven as a click drives
+      them.  Public because both went wrong in ways that only show when the
+      control is used rather than read: the Hidden box re-rooted the tree
+      from the label on its top row, and the filter wrote a field that
+      nothing went on to act on. }
+    procedure ShowHidden(AOn: Boolean);
+    procedure FilterBy(const AMask: string);
+    { Which names the tree is currently letting through; '' is everything. }
+    property Mask: string read FMask;
 
     { The one tree.  Public so a check can read what is in it. }
     property Tree: TShellTreeView read FTree;
@@ -346,9 +357,13 @@ begin
       clicked; repeating it here only pushed the first few folders off the
       right-hand edge of a narrow pane.
 
-      Safe to retitle: TCustomShellTreeView builds a path from each node's
-      own FullFilename, not from the text shown in it, so nothing downstream
-      reads what is written here. }
+      Reading a path back out of the tree is safe: TCustomShellTreeView
+      builds one from each node's own record, not from the text shown in it.
+      Refreshing is not.  TCustomShellTreeView.Refresh re-roots the whole
+      tree from the top row's *text* -- `FRoot := #0; SetRoot(ANode.Text)`
+      -- so once that text is a bare name it is resolved against the working
+      directory.  Anything that can reach Refresh has to put the path back
+      first; see PathBackOnRootRow. }
     Node := FTree.Items.GetFirstNode;
     if Node <> nil then
     begin
@@ -371,6 +386,31 @@ begin
   finally
     FTree.EndUpdate;
   end;
+end;
+
+{ Puts the real path back on the top row, undoing the short label above.
+
+  Reported as: ticking Hidden raises
+
+      Invalid pathname: "/home/users/fangq/fangq"
+
+  Assigning ObjectTypes runs TCustomShellTreeView.SetObjectTypes, which calls
+  Refresh(nil), which rebuilds the tree by reading the top row's text and
+  passing it to SetRoot.  The row said 'fangq' rather than
+  /home/users/fangq, so SetRoot expanded it against the process's working
+  directory -- the reader's home -- and raised on a folder that was never
+  there.  SetObjectTypes guards its SetPath but not its Refresh, so the
+  exception came all the way out.
+
+  The label comes back by itself: whatever reloads next ends in
+  IconiseNodes. }
+procedure TLedFileBrowser.PathBackOnRootRow;
+var
+  Node: TTreeNode;
+begin
+  if (FTree = nil) or (FRoot = '') then Exit;
+  Node := FTree.Items.GetFirstNode;
+  if (Node <> nil) and (Node.Text <> FRoot) then Node.Text := FRoot;
 end;
 
 function TLedFileBrowser.DrawsOwnChevron: Boolean;
@@ -809,7 +849,11 @@ begin
   { TShellListView sorts by name and always groups folders first; the two
     settings are held here and applied on reload so the ordering is at least
     honest about what it is doing. }
-  FTree.ObjectTypes := FTree.ObjectTypes;   // force a re-read
+  { There used to be a `FTree.ObjectTypes := FTree.ObjectTypes` here, meant
+    to force a re-read.  SetObjectTypes returns at once when the value has
+    not changed, so it never did anything -- and had it done, it would have
+    taken the refresh path that PathBackOnRootRow exists to survive.
+    Reload is what re-reads. }
   IconiseNodes;
   Reload;
 end;
@@ -1112,23 +1156,60 @@ procedure TLedFileBrowser.FilterChange(Sender: TObject);
 begin
   { The list has a real mask; index 0 is "everything". }
   if FFilter.ItemIndex <= 0 then
-    FMask := ''
+    FilterBy('')
   else
-    FMask := FFilter.Text;
+    FilterBy(FFilter.Text);
+end;
+
+{ Reported as: the filter does not seem to work.
+
+  It did not.  Picking from the list set the mask and stopped there, and the
+  mask is only ever read while a folder's children are being made -- in
+  IconiseChildren, from OnExpanded.  The rows on screen had been made
+  already, so nothing about them changed, and a filter chosen before opening
+  a folder was the only one that appeared to do anything.
+
+  Reloading is what re-enumerates: the root is built and expanded again, and
+  every row that appears passes through the filter on its way in. }
+procedure TLedFileBrowser.FilterBy(const AMask: string);
+begin
+  if FMask = AMask then Exit;
+  FMask := AMask;
+  if FRoot <> '' then Reload;
 end;
 
 procedure TLedFileBrowser.HiddenChange(Sender: TObject);
 begin
-  if FShowHidden.Checked then
-  begin
-    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden];
-    FTree.ObjectTypes := FTree.ObjectTypes + [otHidden];
-  end
+  ShowHidden(FShowHidden.Checked);
+end;
+
+procedure TLedFileBrowser.ShowHidden(AOn: Boolean);
+var
+  Want: TObjectTypes;
+begin
+  if FTree = nil then Exit;
+  Want := FTree.ObjectTypes;
+  if AOn then
+    Include(Want, otHidden)
   else
+    Exclude(Want, otHidden);
+  { Keep the box and the tree saying the same thing when this is called from
+    somewhere other than the box itself.  Without unhooking, assigning
+    Checked comes straight back round through HiddenChange. }
+  if FShowHidden.Checked <> AOn then
   begin
-    FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
-    FTree.ObjectTypes := FTree.ObjectTypes - [otHidden];
+    FShowHidden.OnChange := nil;
+    try
+      FShowHidden.Checked := AOn;
+    finally
+      FShowHidden.OnChange := @HiddenChange;
+    end;
   end;
+  if Want = FTree.ObjectTypes then Exit;
+  { Assigning this refreshes the tree, and the refresh reads the top row's
+    text as a path.  See PathBackOnRootRow for what that cost. }
+  PathBackOnRootRow;
+  FTree.ObjectTypes := Want;
   Reload;
 end;
 
