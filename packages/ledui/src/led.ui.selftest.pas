@@ -1920,6 +1920,117 @@ begin
   Pump;
 end;
 
+{ What a pane leaves behind when it is closed, and where it comes back to.
+
+  Two things were reported together and they are the same mistake seen from
+  two sides: AnchorDocking keeps nothing about a pane once it is closed.  The
+  room it was using goes to whichever pane it was sitting next to, and
+  reopening it puts it back on the edge it was registered for rather than the
+  edge the user had dragged it to. }
+procedure TestPaneRoomAndPlace(F: TLedMainForm);
+var
+  Right: array[0..2] of string = ('symbols', 'preview', 'debug');
+  i, W0, S0, S1, P0, C0, C1: Integer;
+  LayoutFile: string;
+begin
+  Say('pane room and place');
+
+  W0 := F.Width;
+  for i := 0 to 2 do
+  begin
+    F.Dock.HidePane(Right[i]);
+    Pump;
+  end;
+  F.Dock.HidePane('output');
+  F.Dock.HidePane('files');
+  Pump; Pump;
+
+  { Two panes down one edge, then one of them closed.  What the other one
+    does with the space is the whole check: it used to take it. }
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  S0 := F.Dock.PaneSize('symbols');
+  P0 := F.Dock.PaneSize('preview');
+  C0 := F.Dock.Center.Width;
+  Check('two panes are open on the edge', (S0 > 0) and (P0 > 0));
+
+  F.Dock.HidePane('preview');
+  Pump; Pump;
+  S1 := F.Dock.PaneSize('symbols');
+  C1 := F.Dock.Center.Width;
+  Say(Format('  (symbols %d -> %d, editor %d -> %d, closed pane was %d)',
+    [S0, S1, C0, C1, P0]));
+  { Within a splitter's width: the sizes are re-asserted by moving splitters,
+    which land on whole steps of what the layout can give. }
+  CheckGt('closing one pane leaves the other the width it had',
+    S0 - LedScale96(12), S1);
+  CheckGt('and no wider', S1 - LedScale96(12), S0);
+  { And the room has to have gone somewhere -- to the editor, which is what
+    it came off when the pane was opened. }
+  CheckGt('and the room it gave up goes back to the editor',
+    C0 + P0 div 2, C1);
+
+  F.Dock.HidePane('symbols');
+  Pump; Pump;
+
+  { Where a pane comes back to.  Reported of the terminal, checked on the
+    output pane: both are registered along the bottom, and the terminal is
+    only registered at all where there is a pseudo-terminal to be had. }
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  Check('the output pane opens along the bottom',
+    F.Dock.PaneEdge('output') = ledBottom);
+
+  Check('and can be moved to the right edge',
+    F.Dock.MovePaneTo('output', ledRight));
+  Pump; Pump;
+  Check('where it then is', F.Dock.PaneEdge('output') = ledRight);
+
+  F.Dock.HidePane('output');
+  Pump; Pump;
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  Check('a pane closed on one edge comes back to that edge, not to the one ' +
+    'it was registered for', F.Dock.PaneEdge('output') = ledRight);
+
+  { And it still knows after a restart.  A pane that is open is in the saved
+    layout and comes back from it; a pane that is closed is in that layout
+    nowhere at all, so where it was is written down beside it. }
+  LayoutFile := TempName('paneplace.xml');
+  F.Dock.HidePane('output');
+  Pump;
+  F.Dock.SaveLayout(LayoutFile);
+  Check('the layout was written', FileExists(LayoutFile));
+
+  { Back to the bottom, as a build that had never seen the file would have
+    it, so loading is what has to supply the answer. }
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  F.Dock.MovePaneTo('output', ledBottom);
+  Pump; Pump;
+  F.Dock.HidePane('output');
+  Pump;
+
+  Check('and it loads back', F.Dock.LoadLayout(LayoutFile));
+  Pump; Pump;
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  Check('a pane closed on an edge is still on that edge after a restart',
+    F.Dock.PaneEdge('output') = ledRight);
+  DeleteFile(LayoutFile);
+
+  { Put it back where the rest of the suite expects it. }
+  F.Dock.MovePaneTo('output', ledBottom);
+  Pump; Pump;
+  Check('and moving it home again sticks',
+    F.Dock.PaneEdge('output') = ledBottom);
+  F.Dock.HidePane('output');
+  F.Width := W0;
+  Pump; Pump;
+end;
+
 { The tab strip's close button, the window's minimum size, and the band that
   marks the active terminal -- the three medit details that could be had the
   same way on every platform.  The fourth, a coloured line along the top of
@@ -13864,6 +13975,7 @@ begin
   TestDockEdges(F);
   TestPaneSizes(F);
   TestPaneSizeMemory(F);
+  TestPaneRoomAndPlace(F);
   WriteLn;
   TestTabsAndFileRoundTrip(F);
   WriteLn;

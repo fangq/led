@@ -41,6 +41,16 @@ type
     FEdge: TLedDockEdge;
     FContent: TControl;
     FIconName: string;
+    { Where this pane was the last time anybody looked, and whether it was
+      on screen then.  Edge is where it was registered and never changes --
+      it is what the View menu and the rails are built from, and what a
+      layout reset puts the pane back to.  This is where the user has since
+      put it, which is where it should come back to when it is opened again.
+      Read and written by TLedDockHost, which is the only thing in a
+      position to know either; private rather than published because a pane
+      does not decide this about itself. }
+    FLastEdge: TLedDockEdge;
+    FWasOpen: Boolean;
   public
     constructor CreatePane(AOwner: TComponent; const AId, ACaption: string;
       AEdge: TLedDockEdge; AControl: TControl; const ASuffix: string = '');
@@ -136,6 +146,8 @@ type
     function GrowWindowFor(AEdge: TLedDockEdge; AWanted: Integer): Integer;
     procedure SizeEdgePanes(AEdge: TLedDockEdge; AMayGrow: Boolean);
     procedure DockPane(APane: TLedPaneForm);
+    function EdgeOfPane(APane: TLedPaneForm): TLedDockEdge;
+    procedure ReconcilePanes;
     procedure MasterCreateControl(Sender: TObject; aName: string;
       var AControl: TControl; DoDisableAutoSizing: Boolean);
   public
@@ -164,6 +176,19 @@ type
       self-test, which has no other way to see that a pane has been squeezed
       down to a strip. }
     function PaneSize(const AId: string): Integer;
+
+    { Which edge a pane is on now -- not the one it was registered for.  A
+      pane the user has dragged somewhere else is on the edge they dragged
+      it to, and when it is closed that is the answer this keeps giving,
+      because it is where reopening it should put it. }
+    function PaneEdge(const AId: string): TLedDockEdge;
+
+    { Docks a pane against AEdge, which is what dropping it there does.  The
+      dock offers no way to do this by hand -- the drag is the way -- but a
+      check has no mouse, and a drop is the only route to the behaviour
+      being checked: that a pane moved to another edge comes back to that
+      edge and not to the one it was registered for. }
+    function MovePaneTo(const AId: string; AEdge: TLedDockEdge): Boolean;
 
     { Records what every open pane currently measures as the size its edge
       should come back at.  Called when a splitter drag ends -- see
@@ -401,6 +426,9 @@ begin
   inherited CreateNew(AOwner);
   FPaneId := AId;
   FEdge := AEdge;
+  { Until it has been anywhere else, where it was last is where it belongs. }
+  FLastEdge := AEdge;
+  FWasOpen := False;
   FContent := AControl;
   FIconName := AId;    { overridden by AddPane where the id names no icon }
 
@@ -956,7 +984,12 @@ begin
   for i := 0 to FPanes.Count - 1 do
   begin
     Pane := TLedPaneForm(FPanes[i]);
-    if Pane.Edge <> AEdge then Continue;
+    { Where the pane is, not where it was registered: a pane dragged to
+      another edge is sized with the ones it now sits beside, and against
+      the size that edge was dragged to.  The remembered answer is used
+      rather than a fresh measurement because this runs while the layout is
+      still moving, and a half-placed site measures as anywhere at all. }
+    if Pane.FLastEdge <> AEdge then Continue;
     Site := DockMaster.GetAnchorSite(Pane);
     if (Site = nil) or (Site.Parent = nil) then Continue;
     if not (Site.AnchorSide[Side].Control is TAnchorDockSplitter) then Continue;
@@ -1068,6 +1101,96 @@ begin
   end;
 end;
 
+{ Which edge a docked pane is sitting on, read off the layout rather than
+  taken from where the pane was registered.
+
+  AnchorDocking has no notion of an edge -- a pane is wherever it was
+  dropped -- so the only honest answer is where it is in relation to the
+  editor.  Measured in screen coordinates because the two controls are at
+  different depths in the dock tree: a pane can be a direct child of the
+  dock panel or nested inside another site, and their Lefts are then not
+  about the same origin.
+
+  A pane that is closed or floating has no position to read, so it keeps the
+  last answer given.  That is the whole point of remembering it: the moment
+  the question matters -- reopening a pane -- is exactly when there is
+  nothing left to measure. }
+function TLedDockHost.EdgeOfPane(APane: TLedPaneForm): TLedDockEdge;
+var
+  Site: TAnchorDockHostSite;
+  S, C: TPoint;
+  SW, SH, CW, CH: Integer;
+begin
+  Result := APane.FLastEdge;
+  if (FCenter = nil) or (not FCenter.IsVisible) then Exit;
+  Site := DockMaster.GetAnchorSite(APane);
+  if (Site = nil) or (Site.Parent = nil) or (not Site.IsVisible) then Exit;
+
+  S := Site.ClientToScreen(Point(0, 0));
+  C := FCenter.ClientToScreen(Point(0, 0));
+  SW := Site.Width; SH := Site.Height;
+  CW := FCenter.Width; CH := FCenter.Height;
+
+  { Side to side first: a pane on the left or right overlaps the editor
+    vertically, so the vertical tests cannot tell it apart from the editor's
+    own band, while these two can. }
+  if S.X + SW <= C.X then
+    Result := ledLeft
+  else if S.X >= C.X + CW then
+    Result := ledRight
+  else if S.Y + SH <= C.Y then
+    Result := ledTop
+  else if S.Y >= C.Y + CH then
+    Result := ledBottom;
+  { Anything else -- a pane overlapping the editor on both axes -- is a
+    layout this cannot name, and the remembered answer stands. }
+end;
+
+{ Notices where the panes are and what has just gone.
+
+  Two things come out of it.  A pane that is on screen has its edge written
+  down, so that closing it later still knows where it was.  A pane that has
+  just left takes its edge with it, and that edge is sized again -- because
+  AnchorDocking hands a closed pane's room to whatever was next to it, and
+  the neighbour is not what the room came from.
+
+  Reported as: two panes stacked down one edge, close one, and the other
+  doubles in width.  The space belongs to the editor; re-asserting the sizes
+  is what gives it back.
+
+  Called from the idle pass and from every route that opens or closes a
+  pane, because the idle pass is not one a check ever reaches. }
+procedure TLedDockHost.ReconcilePanes;
+var
+  i: Integer;
+  Pane: TLedPaneForm;
+  Lost: set of TLedDockEdge;
+  E: TLedDockEdge;
+begin
+  if csDestroying in ComponentState then Exit;
+  Lost := [];
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    if PaneVisible(Pane.PaneId) then
+    begin
+      Pane.FLastEdge := EdgeOfPane(Pane);
+      Pane.FWasOpen := True;
+    end
+    else if Pane.FWasOpen then
+    begin
+      Pane.FWasOpen := False;
+      Include(Lost, Pane.FLastEdge);
+    end;
+  end;
+
+  { Without leave to grow the window: a pane has just been given up, so
+    there is more room than a moment ago, not less. }
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    if E in Lost then
+      SizeEdgePanes(E, False);
+end;
+
 procedure TLedDockHost.DockPane(APane: TLedPaneForm);
 var
   Site: TAnchorDockHostSite;
@@ -1075,7 +1198,14 @@ var
 begin
   { First appearance: put it on the edge it was registered for, against the
     editor area.  Afterwards AnchorDocking remembers where it was, so this
-    only runs once per pane per layout.
+    only runs once per pane per layout -- until the pane is closed, which
+    takes it out of the layout altogether and brings this round again.
+
+    Which is why it is the remembered edge that is docked to and not the
+    registered one.  Reported as: drag the terminal to the right edge, hide
+    it, click it again, and it comes back along the bottom.  AnchorDocking
+    keeps nothing about a site it has closed, so the only record of where
+    the pane was is the one kept here.
 
     Docked before it is shown, not after.  ShowControl makes the pane
     visible, and a pane that is not in the layout yet is visible as a
@@ -1087,8 +1217,8 @@ begin
   Site := DockMaster.GetAnchorSite(APane);
   if (Site <> nil) and (Site.Parent = nil) then
   begin
-    DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.Edge]);
-    SizeEdgePanes(APane.Edge, True);
+    DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.FLastEdge]);
+    SizeEdgePanes(APane.FLastEdge, True);
     { The other edges too, because a window that has just grown hands the new
       room to whichever control the anchors favour -- which is not necessarily
       the edge that asked for it.  Left alone, opening a pane on the right
@@ -1096,14 +1226,14 @@ begin
       without leave to grow, so this cannot turn into a window that keeps
       getting bigger. }
     for E := Low(TLedDockEdge) to High(TLedDockEdge) do
-      if E <> APane.Edge then
+      if E <> APane.FLastEdge then
         SizeEdgePanes(E, False);
 
     { And again once AnchorDocking has finished moving its own splitters --
       see SettleSizes.  Removing an outstanding one first, so a run of docks
       queues one settle rather than a queue of them. }
     Application.RemoveAsyncCalls(Self);
-    Application.QueueAsyncCall(@SettleSizes, PtrInt(APane.Edge));
+    Application.QueueAsyncCall(@SettleSizes, PtrInt(APane.FLastEdge));
   end;
   DockMaster.ShowControl(APane.Name, True);
 end;
@@ -1141,6 +1271,12 @@ begin
     a check that opened a pane and then asked could see it. }
   GuardCentreHeader;
 
+  { Where it landed, written down now rather than waited for: the pane is on
+    screen and the layout has settled, which is the one moment this can be
+    read.  It is also what marks the pane open, so closing it is noticed as
+    a change rather than as the state it was always in. }
+  ReconcilePanes;
+
   if Assigned(FOnPaneShown) then
     FOnPaneShown(AId);
 end;
@@ -1152,6 +1288,11 @@ var
 begin
   Pane := PaneById(AId);
   if Pane = nil then Exit;
+  { Where it is, before there is nothing left to ask.  Closing the site
+    takes it out of the layout, and then the only answer available is the
+    one written down here. }
+  Pane.FLastEdge := EdgeOfPane(Pane);
+
   Site := DockMaster.GetAnchorSite(Pane);
   { Closing the site is what the header's close button does, so hiding a pane
     from the menu leaves exactly the state closing it by hand would. }
@@ -1159,6 +1300,11 @@ begin
     Site.CloseSite
   else
     Pane.Hide;
+
+  { And the room it gave up goes back to the editor rather than to whichever
+    pane happened to be next to it.  Straight away, not on the next idle:
+    a check never idles, and neither does a burst of closes. }
+  ReconcilePanes;
 end;
 
 function TLedDockHost.PaneVisible(const AId: string): Boolean;
@@ -1363,6 +1509,11 @@ begin
     and already stands down during a drag, so it is the right place. }
   GuardCentreHeader;
 
+  { The same pass the rails need: a pane closed by its header button comes
+    through nothing else, so this is where that is noticed -- both for where
+    the pane was and for giving its room back. }
+  ReconcilePanes;
+
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
   begin
     if FRails[E] = nil then Continue;
@@ -1450,14 +1601,14 @@ begin
     Pane := TLedPaneForm(FPanes[i]);
     Site := DockMaster.GetAnchorSite(Pane);
     if (Site = nil) or (Site.Parent = nil) or (not Site.Visible) then Continue;
-    if Pane.Edge in [ledLeft, ledRight] then
+    if Pane.FLastEdge in [ledLeft, ledRight] then
       Size := Site.Width
     else
       Size := Site.Height;
     { The same floor SetEdgeSize keeps.  A pane dragged shut is a pane the
       user wants out of the way, not a size to bring back. }
     if Size >= LedScale96(40) then
-      FUserSize[Pane.Edge] := Size;
+      FUserSize[Pane.FLastEdge] := Size;
   end;
 end;
 
@@ -1514,10 +1665,64 @@ begin
   if Pane = nil then Exit;
   Site := DockMaster.GetAnchorSite(Pane);
   if (Site = nil) or (Site.Parent = nil) then Exit;
-  if Pane.Edge in [ledLeft, ledRight] then
+  if Pane.FLastEdge in [ledLeft, ledRight] then
     Result := Site.Width
   else
     Result := Site.Height;
+end;
+
+function TLedDockHost.PaneEdge(const AId: string): TLedDockEdge;
+var
+  Pane: TLedPaneForm;
+begin
+  Result := ledLeft;
+  Pane := PaneById(AId);
+  if Pane = nil then Exit;
+  Result := EdgeOfPane(Pane);
+end;
+
+function TLedDockHost.MovePaneTo(const AId: string;
+  AEdge: TLedDockEdge): Boolean;
+var
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  E: TLedDockEdge;
+begin
+  Result := False;
+  Pane := PaneById(AId);
+  if Pane = nil then Exit;
+  Site := DockMaster.GetAnchorSite(Pane);
+  if Site = nil then Exit;
+
+  { Out of the layout before it goes back into it.  AnchorDocking refuses to
+    dock a site into something it is already inside --
+
+      if TargetSite.IsParentOf(SrcSite) then
+        raise Exception.Create(...TargetSite.IsParentOf(SrcSite));
+
+    -- and a docked pane is inside the dock panel by definition.  A drag does
+    the same two steps: the site is torn out and floated as the pointer
+    leaves, and docked again where it is dropped. }
+  if Site.Parent <> nil then
+  begin
+    DockMaster.ManualFloat(Pane);
+    Site := DockMaster.GetAnchorSite(Pane);
+    if Site = nil then Exit;
+  end;
+
+  DockMaster.ManualDock(Site, FSite, EdgeAlign[AEdge]);
+  Pane.FLastEdge := AEdge;
+  Pane.FWasOpen := True;
+  DockMaster.ShowControl(Pane.Name, True);
+
+  { Both edges: the one it has joined wants sizing, and the one it has left
+    now has a gap in it that its own panes must not spread into -- which is
+    the same thing closing a pane does, for the same reason. }
+  SizeEdgePanes(AEdge, True);
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    if E <> AEdge then
+      SizeEdgePanes(E, False);
+  Result := True;
 end;
 
 function TLedDockHost.EdgeHasPanes(AEdge: TLedDockEdge): Boolean;
@@ -1558,7 +1763,7 @@ begin
   Site := DockMaster.GetAnchorSite(Pane);
   if Site = nil then Exit;
   if Site.Parent <> nil then Exit(True);     // already docked
-  DockMaster.ManualDock(Site, FSite, EdgeAlign[Pane.Edge]);
+  DockMaster.ManualDock(Site, FSite, EdgeAlign[Pane.FLastEdge]);
   Result := Site.Parent <> nil;
 end;
 
@@ -1734,12 +1939,27 @@ end;
 procedure TLedDockHost.SaveLayout(const AFileName: string);
 var
   Cfg: TXMLConfigStorage;
+  i: Integer;
+  Pane: TLedPaneForm;
 begin
   if not FReady then Exit;
   Cfg := TXMLConfigStorage.Create(AFileName, False);
   try
     DockMaster.SaveLayoutToConfig(Cfg);
     DockMaster.SaveSettingsToConfig(Cfg);
+
+    { Where each pane was last seen, written alongside AnchorDocking's own
+      layout rather than inside it.  A pane that is open is in that layout
+      and comes back where it was without help; a pane that is closed is in
+      it nowhere at all, and this is the only thing that remembers a
+      terminal the user moved to the right edge before shutting it. }
+    for i := 0 to FPanes.Count - 1 do
+    begin
+      Pane := TLedPaneForm(FPanes[i]);
+      Cfg.SetValue('LedPanes/' + Pane.PaneId + '/LastEdge',
+        LedDockEdgeName[Pane.FLastEdge]);
+    end;
+
     Cfg.WriteToDisk;
   finally
     Cfg.Free;
@@ -1750,6 +1970,9 @@ function TLedDockHost.LoadLayout(const AFileName: string): Boolean;
 var
   Cfg: TXMLConfigStorage;
   i: Integer;
+  E: TLedDockEdge;
+  Pane: TLedPaneForm;
+  Where: string;
 begin
   Result := False;
   if not FileExists(AFileName) then Exit;
@@ -1758,6 +1981,18 @@ begin
     try
       DockMaster.LoadSettingsFromConfig(Cfg);
       Result := DockMaster.LoadLayoutFromConfig(Cfg, True);
+      { Read back before the panes are looked at, so a pane that was closed
+        when LED last shut still opens where it was then.  An unknown or
+        missing name leaves the registered edge standing, which is what a
+        layout written by an older build has. }
+      for i := 0 to FPanes.Count - 1 do
+      begin
+        Pane := TLedPaneForm(FPanes[i]);
+        Where := Cfg.GetValue('LedPanes/' + Pane.PaneId + '/LastEdge', '');
+        for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+          if LedDockEdgeName[E] = Where then
+            Pane.FLastEdge := E;
+      end;
     finally
       Cfg.Free;
     end;
