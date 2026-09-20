@@ -490,10 +490,37 @@ end;
 procedure TLedDockHeader.PopupMenuPopup(Sender: TObject);
 var
   Root, Item: TMenuItem;
+  Menu: TPopupMenu;
   i: Integer;
   StyleName: string;
 begin
   inherited PopupMenuPopup(Sender);
+
+  { Close first.  AnchorDocking adds it last, below undocking, merging, the
+    header's position and one "enlarge" entry per side -- so the one thing a
+    reader opens this menu for sits at the bottom of a list of things they
+    rarely want.
+
+    Moved rather than made again: it is AnchorDocking's own item, with the
+    caption and the handler it gave it, so a close from the menu is the same
+    close as the button on the header.  Taking a menu item out does not free
+    it -- Delete unparents and drops the handle -- so it can be put back at
+    the front. }
+  if Sender is TPopupMenu then
+  begin
+    Menu := TPopupMenu(Sender);
+    for i := 0 to Menu.Items.Count - 1 do
+      if SameText(Menu.Items[i].Name, 'CloseMenuItem') then
+      begin
+        if i > 0 then
+        begin
+          Item := Menu.Items[i];
+          Menu.Items.Remove(Item);
+          Menu.Items.Insert(0, Item);
+        end;
+        Break;
+      end;
+  end;
 
   { AddPopupMenuItem finds-or-creates by name, so rebuilding the same items
     on every popup is what it is for and costs nothing. }

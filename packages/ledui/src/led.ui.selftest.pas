@@ -2341,6 +2341,70 @@ end;
 
   Asserted on the site rather than on the pane, because the site is the
   window that gets mapped: the pane itself is never realised. }
+type
+  { PopupMenuPopup is protected, and building the menu is what is being
+    checked. }
+  TLedHeaderPoke = class(TAnchorDockHeader);
+
+{ The menu on a pane's grabber opens with Close at the top.
+
+  AnchorDocking adds it last, under undocking, merging, where the header
+  sits, and one "enlarge" entry per side -- which puts the entry a reader
+  opens the menu for at the bottom of a list of ones they rarely want. }
+procedure TestThePaneMenuOpensWithClose(F: TLedMainForm);
+var
+  Pane: TLedPaneForm;
+  Site: TWinControl;
+  Header: TAnchorDockHeader;
+  Menu: TPopupMenu;
+  i, CloseAt: Integer;
+  Names: string;
+begin
+  Say('the menu on a pane grabber opens with Close');
+
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  Site := nil;
+  Pane := F.Dock.FindPane('files');
+  Check('the pane is there', Pane <> nil);
+  if Pane = nil then Exit;
+  if Pane.Parent is TAnchorDockHostSite then
+    Site := TWinControl(Pane.Parent);
+  Check('and it is in a site with a header', Site <> nil);
+  if Site = nil then Exit;
+
+  Header := TAnchorDockHostSite(Site).Header;
+  Check('the site has a grabber', Header <> nil);
+  if (Header = nil) or (Header.PopupMenu = nil) then
+  begin
+    Say('  (no menu on this header; nothing to order)');
+    Exit;
+  end;
+
+  Menu := Header.PopupMenu;
+  TLedHeaderPoke(Header).PopupMenuPopup(Menu);
+  Pump;
+
+  Names := '';
+  CloseAt := -1;
+  for i := 0 to Menu.Items.Count - 1 do
+  begin
+    if Names <> '' then Names := Names + '|';
+    Names := Names + Menu.Items[i].Name;
+    if SameText(Menu.Items[i].Name, 'CloseMenuItem') then CloseAt := i;
+  end;
+
+  Check('the menu offers Close: ' + Names, CloseAt >= 0);
+  if CloseAt < 0 then Exit;
+  CheckEqInt('and it is the first thing in it', 0, CloseAt);
+  { Still AnchorDocking's own item, so it still closes the pane. }
+  Check('and it still does something',
+    Assigned(Menu.Items[0].OnClick));
+
+  F.Dock.HidePane('files');
+  Pump;
+end;
+
 procedure TestPaneIsBuiltOffScreen(F: TLedMainForm);
 var
   Probe: TPanel;
@@ -13693,6 +13757,7 @@ begin
   WithNoModelBehindIt(F, @TestEnterSendsAndShiftEnterDoesNot);
   WithNoModelBehindIt(F, @TestTheAIPaneNeverWritesToTheDocumentByItself);
   TestACodeBlockCanBeTakenOutOfAnAnswer(F);
+  TestThePaneMenuOpensWithClose(F);
   TestPaneIsBuiltOffScreen(F);
   TestDockEdges(F);
   TestPaneSizes(F);
