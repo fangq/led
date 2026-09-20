@@ -615,10 +615,50 @@ installation.
 ## Troubleshooting
 
 **Chinese, Japanese or Korean text sits lower than the Latin text beside it.**
-Your editor font has no CJK glyphs, so the toolkit substitutes one whose
-letters sit differently. Choose a font that covers what you read —
-`Noto Sans Mono CJK SC`, `Noto Sans Mono CJK JP`, `WenQuanYi Micro Hei Mono` or
-`Sarasa Mono` — in **Preferences ▸ View ▸ Editor font**.
+Your editor font has no CJK glyphs, so the toolkit substitutes another font for
+them — and the substitute's letters sit differently. The editor draws one
+character at a time, each aligned to the top of the row rather than to a shared
+baseline, so a substitute with a taller ascent has its baseline pushed down.
+Fira Code, which LED ships with, has an ascent of 0.923 em; Noto Sans CJK, the
+usual substitute, has 1.160 em. The difference is the drop: about four pixels
+at 12 pt.
+
+Two ways out.
+
+*Use one font for everything.* Choose a monospace family that covers what you
+read — `Noto Sans Mono CJK SC`, `Noto Sans Mono CJK JP`, `WenQuanYi Micro Hei
+Mono` or `Sarasa Mono` — in **Preferences ▸ View ▸ Editor font**. With nothing
+to substitute there is no second ascent, and `Sarasa Mono` is drawn so that a
+CJK character is exactly twice a Latin one, which lines the columns up as well.
+
+*Or keep the font you like and change what stands in for it.* On Linux the
+substitute is chosen by fontconfig, which LED has no say in — but you do. Put
+this in `~/.config/fontconfig/conf.d/99-led-cjk.conf` and restart LED:
+
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <match target="pattern">
+    <test name="family"><string>Fira Code</string></test>
+    <edit name="family" mode="append" binding="weak">
+      <string>WenQuanYi Micro Hei Mono</string>
+    </edit>
+  </match>
+</fontconfig>
+```
+
+`append` with a weak binding puts the CJK font *after* your own in the chain,
+so Latin text is untouched and only the characters Fira Code cannot draw go
+elsewhere. WenQuanYi Micro Hei Mono is used because its ascent — 0.937 em — is
+near enough Fira Code's that the baselines agree: measured at 12 pt, the CJK
+baseline moves from 19 px back to the 15 px the Latin text is on. Name whatever
+family you have set as the editor font in the `<test>`, and whatever CJK font
+you have in the `<edit>`. This is a setting for your whole desktop, not for
+LED alone.
+
+Neither route changes how wide a CJK character is drawn, which is not quite
+twice a Latin one unless the font was made for the pairing.
 
 **LED exits over `ssh -X` with a `BadAccess` error.** It no longer does — LED
 recognises this one and carries on. For the curious: ssh forwards the X

@@ -244,7 +244,7 @@ An honest list, so nothing here is mistaken for an oversight.
 
 | Feature | Status |
 |---|---|
-| CJK text sits below the Latin baseline | when the editor font lacks CJK glyphs, GTK's fallback font has a larger ascent and SynEdit draws each run from the row top rather than a shared baseline.  `TheTextDrawer.NewTextOut` is not virtual and the drawer is not replaceable, so a fix means vendoring it.  A monospace font with CJK coverage avoids the fallback entirely |
+| CJK text sits below the Latin baseline | when the editor font lacks CJK glyphs, GTK's fallback font has a larger ascent and SynEdit draws each run from the row top rather than a shared baseline.  `TheTextDrawer.NewTextOut` is not virtual and the drawer is not replaceable, so a fix means vendoring it.  A monospace font with CJK coverage avoids the fallback entirely, and a fontconfig rule naming a CJK font whose ascent matches keeps the editor font and moves the baseline back -- both in README's troubleshooting |
 | File browser sort options | `SortFoldersFirst` and `CaseSensitiveSort` are properties but TShellListView always groups folders first and sorts case-insensitively, so neither takes effect yet |
 | Toolbar style | medit offered icons / text / both as a submenu; LED's toolbar is icons with tooltips, and `ToolbarStyle` has no counterpart |
 | GTK input-method and Unicode menus | `InputMethods` and `SpecialChars` expose GTK machinery the LCL does not surface; not portable rather than not done |
