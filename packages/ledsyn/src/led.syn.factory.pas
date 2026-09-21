@@ -122,7 +122,8 @@ uses
   SynHighlighterPerl, SynHighlighterSQL, SynHighlighterUNIXShellScript,
   SynHighlighterIni, SynHighlighterDiff, SynHighlighterBat,
   SynHighlighterTeX, SynHighlighterVB, SynHighlighterPo,
-  SynHighlighterLFM, SynHighlighterAny;
+  SynHighlighterLFM, SynHighlighterAny,
+  Led.Syn.JSON, Led.Syn.YAML;
 
 type
   TLangMap = record
@@ -139,7 +140,7 @@ const
   { medit grammar id -> the SynEdit highlighter that comes closest.  Only the
     languages Lazarus actually ships are here; everything else waits for the
     grammar converter. }
-  LangMap: array[0..27] of TLangMap = (
+  LangMap: array[0..29] of TLangMap = (
     (LangId: 'pascal';      Cls: TSynPasSyn),
     (LangId: 'objc';        Cls: TSynCppSyn),
     (LangId: 'c';           Cls: TSynCppSyn),
@@ -167,7 +168,13 @@ const
     (LangId: 'dosbatch';    Cls: TSynBatSyn),
     (LangId: 'latex';       Cls: TSynTeXSyn),
     (LangId: 'gettext-translation'; Cls: TSynPoSyn),
-    (LangId: 'lfm';         Cls: TSynLFMSyn)
+    (LangId: 'lfm';         Cls: TSynLFMSyn),
+    { LED's own, and the reason they outrank their grammars: both fold, so
+      the rule below takes them, and both were written because the grammar
+      was too slow to read a large file with and did not colour what a
+      reader of that file looks for.  See Led.Syn.JSON. }
+    (LangId: 'json';        Cls: TLedJSONSyn),
+    (LangId: 'yaml';        Cls: TLedYAMLSyn)
   );
 
   { SynEdit attribute stored name -> the shared def: scope a theme colours.

@@ -6860,6 +6860,203 @@ begin
   end;
 end;
 
+{ JSON and YAML: what they are coloured as, and how fast that is.
+
+  Reported as: a 26 MB .json takes half a minute to open, and neither
+  language looks like it does in medit.  Both came of being coloured by a
+  converted grammar -- a backtracking regular-expression engine, run over
+  every line -- whose JSON rules ended in a catch-all that matched every
+  brace, comma and colon one character at a time and scoped it as an error.
+  So the file was slow to open, its punctuation was drawn in the error
+  colour, its strings were scoped to something no scheme defines and were
+  not drawn in any colour at all, and a key looked exactly like a value.
+
+  Led.Syn.JSON and Led.Syn.YAML read the line instead.  What is checked
+  here is the two things the reader sees: which scope each piece of a line
+  gets, and that scanning a couple of megabytes is not something anybody
+  waits for. }
+procedure TestJSONAndYAMLColour(F: TLedMainForm);
+var
+  Doc: TLedDocument;
+  V: TLedEdit;
+  S: string;
+  HL: TSynCustomHighlighter;
+  Big: TStringList;
+  Rec, Line: string;
+  i, Bytes: Integer;
+  T0, Took: QWord;
+begin
+  Say('json and yaml colouring');
+
+  S := '{"name": "a\tb", "n": 42, "f": 1.5, "ok": true, "z": null}';
+
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Doc.SetLanguage('json');
+  Doc.Master.Lines.Text := S;
+  Pump;
+  V := Doc.Views[0];
+
+  Check('json is coloured by LED''s own highlighter, not the grammar',
+    Doc.Master.Highlighter.ClassName = 'TLedJSONSyn');
+
+  CheckEq('a key is an identifier', 'def.identifier',
+    ScopeAt(V, 1, Pos('"name"', S)));
+  CheckEq('a string value is a string', 'def.string',
+    ScopeAt(V, 1, Pos('"a', S)));
+  CheckEq('an escape inside it is its own scope', 'def.special-char',
+    ScopeAt(V, 1, Pos('\t', S)));
+  CheckEq('an integer is a decimal', 'def.decimal',
+    ScopeAt(V, 1, Pos('42', S)));
+  CheckEq('a fraction is a float', 'def.floating-point',
+    ScopeAt(V, 1, Pos('1.5', S)));
+  CheckEq('true is a literal', 'def.statement',
+    ScopeAt(V, 1, Pos('true', S)));
+  CheckEq('and so is null', 'def.statement',
+    ScopeAt(V, 1, Pos('null', S)));
+  { The reported one: a comma is punctuation.  The grammar called it an
+    error and the theme drew it red. }
+  CheckEq('a comma is punctuation, not an error', 'Symbol',
+    ScopeAt(V, 1, Pos(', "n"', S)));
+  CheckEq('and so is a brace', 'Symbol', ScopeAt(V, 1, 1));
+  { A key and a value are the distinction a reader of JSON is looking for,
+    and the grammar gave them the same scope. }
+  Check('a key and a string value are not the same colour',
+    ScopeAt(V, 1, Pos('"name"', S)) <> ScopeAt(V, 1, Pos('"a', S)));
+
+  { And it folds.  Checked on a nested document and by what is left on
+    screen, rather than by asking whether the class can fold in principle:
+    a highlighter that opens a block too many, or never closes one, folds
+    just as eagerly and hides the wrong lines.  Both were tried, and a
+    check on a single flat object could not tell either of them from this.
+
+      0  {
+      1    "a": {
+      2      "b": 1
+      3    },
+      4    "c": 2
+      5  }
+
+    Everything folded, the reader is left with the first line and the brace
+    that closes it. }
+  Doc.Master.Lines.Text :=
+    '{' + LineEnding +
+    '  "a": {' + LineEnding +
+    '    "b": 1' + LineEnding +
+    '  },' + LineEnding +
+    '  "c": 2' + LineEnding +
+    '}';
+  Pump;
+  LedFoldAll(V);
+  Pump;
+  Say(Format('    folded: view line 2 is text line %d',
+    [V.ViewLineToTextIndex(2)]));
+  CheckEqInt('folding a nested object leaves the line that closes it', 5,
+    V.ViewLineToTextIndex(2));
+  { Put it back for what follows.  There is no check on the way back: a
+    fold that opens too many blocks, and one that closes none, both unfold
+    to exactly this, so an assertion here would be one nothing can fail. }
+  LedUnfoldAll(V);
+  Pump;
+
+  { YAML, the same way. }
+  Doc.SetLanguage('yaml');
+  Doc.Master.Lines.Text :=
+    '# note' + LineEnding +
+    'key: "text"' + LineEnding +
+    'n: 42' + LineEnding +
+    'ok: true' + LineEnding +
+    'ref: &base' + LineEnding +
+    'block: |' + LineEnding +
+    '  raw: not a key' + LineEnding +
+    'after: done';
+  Pump;
+  V := Doc.Views[0];
+  Check('yaml is coloured by LED''s own highlighter too',
+    Doc.Master.Highlighter.ClassName = 'TLedYAMLSyn');
+
+  CheckEq('a comment is a comment', 'def.comment', ScopeAt(V, 1, 1));
+  CheckEq('a map key is an identifier', 'def.identifier', ScopeAt(V, 2, 1));
+  CheckEq('a quoted scalar is a string', 'def.string', ScopeAt(V, 2, 6));
+  CheckEq('a number is a decimal', 'def.decimal', ScopeAt(V, 3, 4));
+  CheckEq('a boolean is a literal', 'def.statement', ScopeAt(V, 4, 5));
+  CheckEq('an anchor has its own scope', 'def.type', ScopeAt(V, 5, 6));
+  { The text under a block scalar is text, whatever it looks like: the line
+    below reads exactly like a key and a value, and is neither. }
+  CheckEq('a block scalar is all string', 'def.string', ScopeAt(V, 7, 3));
+  CheckEq('and the line after it is a key again', 'def.identifier',
+    ScopeAt(V, 8, 1));
+
+  { Folding by indentation, checked the same way and for the same reason:
+    a block that is never closed swallows everything under it, and looks
+    from a flat document exactly like one that works.
+
+      0  a:
+      1    b:
+      2      c: 1
+      3  d: 2
+
+    Everything folded, what is left is the two lines at the margin. }
+  Doc.Master.Lines.Text := 'a:' + LineEnding + '  b:' + LineEnding +
+    '    c: 1' + LineEnding + 'd: 2';
+  Pump;
+  LedFoldAll(V);
+  Pump;
+  CheckEqInt('folding by indentation leaves the next line at the margin', 3,
+    V.ViewLineToTextIndex(2));
+  LedUnfoldAll(V);
+  Pump;
+
+  { And the speed, which is the other half of the report.  Scanned the way
+    SynEdit scans -- line by line, carrying the range.
+
+    The shape of the text is the point, not its size.  What was slow was not
+    JSON in general: the grammar read short tidy lines at hundreds of
+    megabytes a second, and the reported file at 1.9.  What it cannot do is
+    a long line with an array in it -- its array rule has no patterns
+    inside, so it hunts for the closing bracket again from every character
+    of the array's body.  Measured on the shape below: 2.0 MB a second
+    through the grammar, 420 through this.  So the lines here are long and
+    each holds an array, which is what a converted GitHub events file is
+    made of.
+
+    The budget is a quarter of a second for four megabytes.  This reads
+    that in eight milliseconds, so a machine thirty times slower than this
+    one still passes; the grammar takes nine hundred, so it fails wherever
+    it runs.  Measured both ways rather than guessed: the first budget
+    written here was half a second, and the grammar came in at 444 ms and
+    passed. }
+  Big := TStringList.Create;
+  try
+    Rec := '{"id":42,"commits":[{"sha":"789005bcb62a14bad6fbd4e9c8503f' +
+           '550c32b853","message":"a commit message here","ok":true}]}';
+    Line := '[' + Rec;
+    for i := 2 to 160 do Line := Line + ',' + Rec;
+    Line := Line + ']';
+    for i := 1 to 220 do
+      Big.Add(Line);
+    Bytes := Length(Big.Text);
+    HL := LedHighlighterFor('json');
+    T0 := GetTickCount64;
+    HL.ResetRange;
+    for i := 0 to Big.Count - 1 do
+    begin
+      HL.SetLine(Big[i], i);
+      while not HL.GetEol do HL.Next;
+    end;
+    Took := GetTickCount64 - T0;
+    Say(Format('    scanned %d KiB of json in %d ms', [Bytes div 1024, Took]));
+    Check(Format('four megabytes of json scans in a quarter of a second ' +
+      '(%d ms)', [Took]), Took < 250);
+  finally
+    Big.Free;
+  end;
+
+  F.CloseActiveTab(True);
+  Pump;
+end;
+
 { What the offset markup would paint at a column, asked the way the painter
   asks it: through the markup's own GetMarkupAttributeAtRowCol. }
 function MarkupColourAt(V: TLedEdit; ARow, ACol: Integer): TColor;
@@ -13986,6 +14183,7 @@ begin
   TestClipboardUnderGrab(F);
   WriteLn;
   TestLanguageAndTheme(F);
+  TestJSONAndYAMLColour(F);
   WriteLn;
   TestGlobRulesAndEncodingPrompt(F);
   WriteLn;
