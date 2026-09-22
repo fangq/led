@@ -418,8 +418,8 @@ begin
   { The id is how a check tells the note reached the renderer rather than
     only the string that was handed to it. }
   Result := Format('<hr><p id="ledcut"><i>Previewing the first %d KB ' +
-    'of %d KB.  Laying out a page costs more than the square of its size, ' +
-    'so the whole of this one would take far longer than this did; ' +
+    'of %d KB.  Laying out a page costs more than its size would suggest, ' +
+    'so the rest is left out rather than kept waiting for; ' +
     'raise %s to see more.</i></p>',
     [AShown div 1024, AWhole div 1024, LedPrefPreviewMaxKB]);
 end;
@@ -909,7 +909,7 @@ begin
     written before LED had themes. }
   Colours := LedPageColours;
   Shown := LedPreviewCut(FPendingText,
-    LedPrefs.GetInt(LedPrefPreviewMaxKB, 16) * 1024, Cut);
+    LedPrefs.GetInt(LedPrefPreviewMaxKB, LedPreviewDefaultKB) * 1024, Cut);
   if FIsWiki then
     Body := LedWikiToHTML(Shown, True)
   else
@@ -929,7 +929,8 @@ begin
   try
     { Both adjustments are for the renderer rather than for the document:
       see LedWrapPreLines and LedSplitInlineRuns. }
-    Page := LedSplitInlineRuns(LedWrapPreLines(Page, CodeColumns));
+    Page := LedSplitInlineRuns(LedFlattenHeadings(
+      LedWrapPreLines(Page, CodeColumns)));
     { The same treatment the notebook's cells get, and for the same reasons:
       the renderer draws in its own colours unless told otherwise, so a page
       on a dark theme was black text on a black background with its tables

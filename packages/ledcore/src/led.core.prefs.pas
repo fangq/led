@@ -102,12 +102,38 @@ const
   LedPrefRecoveryInterval = 'Editor/recovery_interval';
 
   { How much of a document the Markdown/wiki preview lays out, in kilobytes.
-    The renderer's layout is worse than quadratic in the size of the page, so
-    this is a ceiling on waiting rather than on memory: at the default a big
-    document previews in about a second, at four times that it is a minute.
-    0 means "all of it, however long that takes".  See LedPreviewCut for the
-    measurements behind the number. }
+    A ceiling on waiting rather than on memory: the renderer's cost is not
+    linear in the size of the page.  0 means "all of it, however long that
+    takes".  See LedPreviewDefaultKB for what the number is worth. }
   LedPrefPreviewMaxKB     = 'Editor/preview_max_kb';
+
+  { How much of a document is previewed when nobody has said otherwise.
+
+    It was 16 KB, which is what a reader reported as too small, and the
+    reason it was that small has been fixed: almost all of the cost was the
+    headings, and LedFlattenHeadings writes them in elements the renderer
+    can afford.  Measured before and after, on the same 32 KB document with
+    a heading every four hundred bytes: 2,049 ms and 43.  This README, 33 KB
+    with thirty-four headings, twenty-four code fences and a hundred table
+    rows: 10 ms either way.
+
+    So the number is now four times what it was, and for an ordinary
+    document the whole of it costs almost nothing: this README twice over,
+    66 KB, previews in 19 ms, and four times over, 133 KB, in 37.  At the
+    old 16 KB a reader was waiting a second for a sixth of that.
+
+    What is still expensive is a fenced code block in the middle of prose:
+    110 of them in 32 KB lay out in 800 ms, where the same document without
+    them takes 66.  That is the renderer's own flow handling and not
+    anything LED writes -- rewriting the block as a monospaced paragraph, or
+    wrapping it in a table, or dropping the syntax colouring inside it, each
+    made no difference.  A document built like that is why this is a
+    preference and not a constant: 64 KB of it is about three seconds.
+
+    Why not higher, then, when ordinary documents are this cheap: because
+    the ceiling this sets is on the bad case, and at 128 KB the bad case is
+    nine seconds. }
+  LedPreviewDefaultKB     = 64;
 
 implementation
 

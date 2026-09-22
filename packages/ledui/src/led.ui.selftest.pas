@@ -11180,6 +11180,176 @@ begin
     LedPrefs.Remove(LedPrefPreviewMaxKB);
 end;
 
+{ A heading is written as a paragraph for the renderer's sake -- see
+  LedFlattenHeadings -- and this is the check that the page did not change
+  shape when it stopped changing speed.
+
+  Measured rather than looked at: the same document is laid out twice, once
+  with real headings and once as the preview now writes them, by a
+  measuring document of the kind the notebook uses to size its prose cells.
+  A heading that came out at a different size, or lost its bold, or gained
+  a line of space, would move the total. }
+procedure TestFlattenedHeadingsLookTheSame(F: TLedMainForm);
+var
+  Doc: TIpHtmlMeasure;
+  Stream: TStringStream;
+  Colours: TLedPageColours;
+  Body, PageA, PageB: string;
+  HA, HB, Width_, i, j: Integer;
+
+  { On a bitmap's canvas, as the AI pane's own measurement is: a form's
+    canvas is not the surface a page is laid out on and does not have to
+    carry the font this is measuring in. }
+  function HeightOf(const APage: string): Integer;
+  var
+    Bmp: TBitmap;
+  begin
+    Result := -1;
+    Doc := TIpHtmlMeasure.Create;
+    Bmp := TBitmap.Create;
+    Stream := TStringStream.Create(APage);
+    try
+      try
+        Doc.DefaultTypeFace := Screen.SystemFont.Name;
+        Doc.DefaultFontSize := 10;
+        Doc.LoadFromStream(Stream);
+        Result := Doc.PageHeightAt(Bmp.Canvas, Width_);
+      except
+        Result := -1;
+      end;
+    finally
+      Stream.Free;
+      Bmp.Free;
+      Doc.Free;
+    end;
+  end;
+
+begin
+  Say('flattened headings');
+
+  Width_ := LedScale96(400);
+  Colours := LedPageColours;
+  { Five of each level, so that a heading given the wrong size moves the
+    total by more than a rounding: with six headings a wrong size was six
+    pixels, which no honest tolerance would catch. }
+  Body := '';
+  for i := 1 to 5 do
+    for j := 1 to 6 do
+      Body := Body + Format('<h%d>Heading %d</h%d>' + LineEnding +
+        '<p>Some prose under it, long enough to take a line.</p>' +
+        LineEnding, [j, j, j]);
+
+  PageA := LedPageHead('t', Colours, 12) + Body + LedPageTail;
+  PageB := LedPageHead('t', Colours, 12) + LedFlattenHeadings(Body) +
+    LedPageTail;
+
+  Check('the two pages are not the same text', PageA <> PageB);
+  HA := HeightOf(PageA);
+  HB := HeightOf(PageB);
+  Say(Format('    thirty headings: <hN> %d px, flattened %d px', [HA, HB]));
+  Check('both pages measure', (HA > 0) and (HB > 0));
+  { Within a few pixels over thirty headings.  The type is the renderer's
+    own -- the flattened form asks for the very entry in its font table
+    that <hN> would have picked -- so the sizes and the weight are exact;
+    what is left is the space around a heading, where a paragraph's margin
+    and a header's do not quite agree.  Measured: eight pixels in eighteen
+    hundred.
+
+    Tight on purpose.  A size one step wrong on each heading comes to about
+    thirty pixels here, and at a looser tolerance that passed -- which is
+    how this check was written the first time. }
+  Check(Format('and they come out the same height (%d vs %d)', [HA, HB]),
+    Abs(HA - HB) <= LedScale96(16));
+end;
+
+{ How much of a long document is previewed, and how long that takes.
+
+  Both halves of the report: the limit was 16 KB, which a reader said was too
+  little, and the reason it was that low was that a heading cost thirteen
+  milliseconds -- so a document with a heading every few lines took a second
+  a kilobyte-and-a-half.  With the headings written as paragraphs (see
+  LedFlattenHeadings) the same page lays out in a fortieth of the time, and
+  the limit is four times what it was.
+
+  Driven through the preview pane itself rather than a measuring document:
+  those are two different layouts, and the one the reader waits for is this
+  one.  Measured on the pane, the page below comes back in about 150 ms; the
+  budget is two seconds, which is loose enough for a slow machine and still
+  fails if a heading goes back to costing what it did -- that page took
+  eight seconds before. }
+procedure TestThePreviewShowsMoreThanItDid(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  P, Was: string;
+  L: TStringList;
+  HadOne, Rendered: Boolean;
+  i, Took: Integer;
+  T0: QWord;
+begin
+  Say('how much of a document the preview shows');
+  if F.Preview = nil then Exit;
+
+  { The reader's own limit is put back at the end; what is checked here is
+    the default, so nothing may be set. }
+  HadOne := LedPrefs.HasKey(LedPrefPreviewMaxKB);
+  Was := LedPrefs.GetStr(LedPrefPreviewMaxKB, '');
+  LedPrefs.Remove(LedPrefPreviewMaxKB);
+
+  CheckGt('the default limit is well above the 16 KB that was reported', 16,
+    LedPreviewDefaultKB);
+
+  P := TempName('longer.md');
+  L := TStringList.Create;
+  try
+    { About 40 KB: over the old limit, under the new one, with a heading
+      every few lines -- the shape that used to be slow. }
+    for i := 1 to 400 do
+    begin
+      L.Add('## Section ' + IntToStr(i));
+      L.Add('');
+      L.Add('Some prose in section ' + IntToStr(i) + ', long enough to ' +
+        'take a line of the pane and to give the layout real text rather ' +
+        'than a wall of little elements.');
+      L.Add('');
+    end;
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab <> nil then
+  begin
+    F.actTogglePreviewExecute(nil);
+    Pump;
+    T0 := GetTickCount64;
+    Rendered := F.Preview.RenderNow;
+    { And the paint, because that is where the renderer lays the page out:
+      the call above only hands it the page, and timed on its own it comes
+      back in no measurable time at all while the reader is still waiting.
+      The benchmark times the pair for the same reason. }
+    Pump;
+    Took := GetTickCount64 - T0;
+    Say(Format('    40 KB with 400 headings previewed in %d ms', [Took]));
+    Check('a 40 KB document previews', Rendered);
+    { The reported complaint, as a check: it is not cut off. }
+    Check('and all of it is shown, not the first 16 KB',
+      not F.Preview.PageHasElement('ledcut'));
+    Check(Format('and it does not keep the reader waiting (%d ms)', [Took]),
+      Took < 2000);
+
+    F.Dock.EdgeVisible[ledRight] := False;
+    Pump;
+    Tab.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  DeleteFile(P);
+
+  if HadOne then LedPrefs.SetStr(LedPrefPreviewMaxKB, Was);
+end;
+
 procedure TestWikiMarkup(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -14212,6 +14382,8 @@ begin
   TestPreviewDoesNotFallOffARule(F);
   TestPreviewKeepsItsPlaceAcrossARedraw(F);
   TestPreviewCapsABigDocument(F);
+  TestFlattenedHeadingsLookTheSame(F);
+  TestThePreviewShowsMoreThanItDid(F);
   TestColumnPasteWithHighlighter(F);
   TestColumnPasteAcrossTabs(F);
   TestRecoveryJournalPass(F);

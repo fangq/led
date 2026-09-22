@@ -1112,6 +1112,10 @@ begin
   FFitWidth := AWidth;
   Html := LedNBFitImages(Html, AWidth, @ImageSize);
   Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
+  { The renderer's headings are expensive out of all proportion -- see
+    LedFlattenHeadings -- and a notebook lays every prose cell out twice,
+    once to measure it and once to draw it. }
+  Html := LedFlattenHeadings(Html);
   { The page around it is the shared one -- see Led.UI.PageStyle -- so that
     a cell and a Markdown file are drawn the same way. }
   Result := LedPageHead('', C) + Html + LedPageTail;

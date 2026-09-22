@@ -48,6 +48,11 @@ type
     procedure SplittingLeavesPreformattedTextAlone;
     procedure SplittingKeepsTheAttributesOfATag;
     procedure SplittingPutsAWholeRunOfSpacesOutside;
+    procedure FlatteningWritesAHeadingAsAParagraph;
+    procedure FlatteningPicksTheSizeTheRendererWouldHave;
+    procedure FlatteningKeepsTheLineId;
+    procedure FlatteningLeavesEverythingElseAlone;
+    procedure FlatteningHandlesEveryLevel;
     procedure LineIdsAreOffUnlessAskedFor;
     procedure LineIdsMarkEveryBlock;
     procedure AParagraphBelongsToItsFirstLine;
@@ -371,6 +376,57 @@ begin
     span holding nothing but a space. }
   AssertEquals('<b>two</b>  <b>words</b>',
     LedSplitInlineRuns('<b>two  words</b>'));
+end;
+
+{ --- flattening headings --------------------------------------------------- }
+
+procedure TTestMarkdown.FlatteningWritesAHeadingAsAParagraph;
+begin
+  { Bold and larger, which is all a heading is to look at -- and cheap,
+    which is what <h2> is not.  See LedFlattenHeadings for the measurements. }
+  AssertEquals('<p><b><font size="4">Title</font></b></p>',
+    LedFlattenHeadings('<h2>Title</h2>'));
+end;
+
+procedure TTestMarkdown.FlatteningPicksTheSizeTheRendererWouldHave;
+begin
+  { IPro sizes a header from its own table by index abs(level - 6), and
+    <font size="n"> selects from that same table by n, so these are the
+    sizes the page had before: 24, 18, 14, 12, 10, 8 points. }
+  AssertEquals('5', Copy(LedFlattenHeadings('<h1>x</h1>'),
+    Pos('size="', LedFlattenHeadings('<h1>x</h1>')) + 6, 1));
+  AssertEquals('0', Copy(LedFlattenHeadings('<h6>x</h6>'),
+    Pos('size="', LedFlattenHeadings('<h6>x</h6>')) + 6, 1));
+end;
+
+procedure TTestMarkdown.FlatteningKeepsTheLineId;
+begin
+  { The id is how the preview scrolls to the line the reader is on; losing
+    it would leave the page unable to follow the text. }
+  AssertEquals('<p id="L7"><b><font size="4">T</font></b></p>',
+    LedFlattenHeadings('<h2 id="L7">T</h2>'));
+end;
+
+procedure TTestMarkdown.FlatteningLeavesEverythingElseAlone;
+begin
+  AssertEquals('<p>words <b>bold</b> <hr></p>',
+    LedFlattenHeadings('<p>words <b>bold</b> <hr></p>'));
+  { An h in a word, and a tag whose name merely starts with h. }
+  AssertEquals('<html>h1 hello</html>',
+    LedFlattenHeadings('<html>h1 hello</html>'));
+end;
+
+procedure TTestMarkdown.FlatteningHandlesEveryLevel;
+var
+  i: Integer;
+  H: string;
+begin
+  for i := 1 to 6 do
+  begin
+    H := LedFlattenHeadings(Format('<h%d>x</h%d>', [i, i]));
+    AssertHas(Format('level %d opens a paragraph', [i]), H, '<p><b><font');
+    AssertHas(Format('level %d closes it', [i]), H, '</font></b></p>');
+  end;
 end;
 
 { --- source line ids ------------------------------------------------------- }

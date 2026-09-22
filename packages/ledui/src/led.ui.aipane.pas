@@ -825,7 +825,8 @@ begin
   Html := LedNBHideRemoteImages(Html);
   Html := LedNBFitImages(Html, LayoutWidth(AWidth), @ImageSize);
   Result := LedPageHead('', C, 8) + Html + LedPageTail;
-  Result := LedSplitInlineRuns(LedWrapPreLines(Result, CodeColumns(AWidth)));
+  Result := LedSplitInlineRuns(LedFlattenHeadings(
+    LedWrapPreLines(Result, CodeColumns(AWidth))));
   { IPro cannot draw a <pre> at all, and a fenced block that names its
     language goes uncoloured without this -- the same treatment the
     notebook's cells and the preview's pages get. }

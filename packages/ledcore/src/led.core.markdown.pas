@@ -98,6 +98,36 @@ function LedWrapPreLines(const AHtml: string; AColumns: Integer): string;
   the difference, so those are left whole. }
 function LedSplitInlineRuns(const AHtml: string): string;
 
+{ Headings, in the elements this renderer can afford.
+
+  Reported as: the preview stops after 15 KB, which is too little.  It stops
+  because laying a page out was expensive, and what made it expensive was
+  mostly the headings.
+
+  Measured on 32 KB of identical prose, one paragraph repeated, varying only
+  how many headings were between the paragraphs: none 17 ms, sixteen 232 ms,
+  a hundred and fifty-one 2,049 ms.  That is about 13 ms per heading, and it
+  is the <hN> element itself: the same document with every <h2> rewritten as
+  <p><b><font size="4"> laid out in 24 ms -- eighty-six times faster, same
+  text, same size, same weight, same style sheet.  A font size on its own is
+  not the cost, and neither is the bold: <font size> and a CSS font-size both
+  come out at 25 ms.  It is TIpHtmlNodeHeader.
+
+  So a heading is written as the paragraph it looks like.  The size is the
+  one the renderer would have used itself -- its own table is
+  (8,10,12,14,18,24,36) and a header of level N picks index abs(N-6), which
+  is exactly what <font size="abs(N-6)"> selects -- so nothing about the page
+  changes except how long it takes to appear.
+
+  Attributes are carried over, the id above all: it is what the preview
+  scrolls to when it follows the text.
+
+  For the renderer, not for the document: anything that writes HTML out for
+  somebody else -- printing, export -- wants real headings, and gets them,
+  because this is applied where the page is handed to IPro and nowhere
+  else. }
+function LedFlattenHeadings(const AHtml: string): string;
+
 implementation
 
 function LedPreviewCut(const AText: string; ALimitBytes: Integer;
@@ -159,6 +189,51 @@ begin
     Inc(i);
   end;
   Result := LowerCase(Result);
+end;
+
+function LedFlattenHeadings(const AHtml: string): string;
+var
+  i, TagEnd, Level: Integer;
+  Name_, Attrs: string;
+  Slash: Boolean;
+begin
+  Result := '';
+  i := 1;
+  while i <= Length(AHtml) do
+  begin
+    if AHtml[i] <> '<' then
+    begin
+      Result := Result + AHtml[i];
+      Inc(i);
+      Continue;
+    end;
+
+    TagEnd := i;
+    while (TagEnd <= Length(AHtml)) and (AHtml[TagEnd] <> '>') do Inc(TagEnd);
+    if TagEnd > Length(AHtml) then TagEnd := Length(AHtml);
+    Name_ := TagNameAt(AHtml, i, TagEnd, Slash);
+
+    if (Length(Name_) = 2) and (Name_[1] = 'h') and
+       (Name_[2] in ['1'..'6']) then
+    begin
+      Level := Ord(Name_[2]) - Ord('0');
+      if Slash then
+        Result := Result + '</font></b></p>'
+      else
+      begin
+        { Whatever the heading carried -- in practice the line id. }
+        Attrs := Copy(AHtml, i + 1 + Length(Name_),
+                      TagEnd - i - 1 - Length(Name_));
+        Result := Result + '<p' + Attrs + '><b><font size="' +
+          IntToStr(Abs(Level - 6)) + '">';
+      end;
+      i := TagEnd + 1;
+      Continue;
+    end;
+
+    Result := Result + Copy(AHtml, i, TagEnd - i + 1);
+    i := TagEnd + 1;
+  end;
 end;
 
 function LedSplitInlineRuns(const AHtml: string): string;
