@@ -1112,9 +1112,16 @@ begin
   FFitWidth := AWidth;
   Html := LedNBFitImages(Html, AWidth, @ImageSize);
   Html := LedNBColourCode(Html, FDoc.Master.Font.Name, C.Text, C.CodeBg);
-  { The renderer's headings are expensive out of all proportion -- see
-    LedFlattenHeadings -- and a notebook lays every prose cell out twice,
-    once to measure it and once to draw it. }
+  { The same headings the preview writes, so that one heading in a notebook
+    cell and the same heading in a Markdown file are the same ink -- which
+    is what the shared page above is for.
+
+    Not for the speed, though it is where LedFlattenHeadings came from.
+    Measured on this pane: two hundred prose cells, 361 ms with this line
+    and 368 without; twenty cells of twenty-five headings each, 212 and
+    214.  The cost it avoids needs a long flow after the heading, and this
+    pane never has one -- it builds only the cells on screen, each its own
+    small page, for the reason given where TLedNotebookPane is declared. }
   Html := LedFlattenHeadings(Html);
   { The page around it is the shared one -- see Led.UI.PageStyle -- so that
     a cell and a Markdown file are drawn the same way. }
