@@ -55,11 +55,29 @@ function LedXErrorsIgnored: Integer;
   provoke the real error to check that it is survived. }
 function LedXShmOpcode: Integer;
 
+{ Tells the gtk2 widget set not to probe the window manager's frame.
+
+  Creating the main form's handle, the LCL shows a throwaway 75 by 32 window
+  (TDummyWidget, half opaque, asked for at the middle of the screen) and
+  waits for the window manager to decorate it, to learn how thick the
+  frame is.  The window manager puts it where it likes -- on a desktop,
+  often the corner the main window is about to occupy -- and it sits there
+  for most of a second before the real window appears: the square that
+  flashed at every start.  The LCL skips the probe when the command line
+  carries --disableaccurateframe, so that is added to the arguments here,
+  after the program has read its own.  What it costs is the frame size the
+  probe would have measured, which only refines where a restored window is
+  put by the thickness of its title bar.
+
+  Call after the command line has been parsed and before the main form is
+  created.  Does nothing on a platform without X. }
+procedure LedSkipFrameProbe;
+
 implementation
 
 {$IFDEF LED_X11}
 uses
-  ctypes, x, xlib;
+  ctypes, x, xlib, Led.Core.Paths;
 
 var
   FPrev: TXErrorHandler = nil;
@@ -78,7 +96,7 @@ begin
     { Said once.  A broken display refuses every segment, and one line per
       refusal would be the whole session. }
     if FIgnored = 1 then
-      WriteLn(StdErr, 'led: the X server refused shared memory ' +
+      WriteLn(StdErr, LedAppId + ': the X server refused shared memory ' +
         '(MIT-SHM), which is what happens over ssh X forwarding; ' +
         'drawing without it');
     Exit;
@@ -138,6 +156,34 @@ begin
   Result := -1;
 end;
 
+{$ENDIF}
+
+{$IF DEFINED(UNIX) and not DEFINED(DARWIN)}
+var
+  { The arguments with the one added: argv points here from then on, so it
+    lives as long as the program does. }
+  GArgs: array of PChar;
+
+procedure LedSkipFrameProbe;
+const
+  Opt: PChar = '--disableaccurateframe';
+var
+  i: Integer;
+begin
+  for i := 1 to argc - 1 do
+    if string(argv[i]) = string(Opt) then Exit;
+  SetLength(GArgs, argc + 2);
+  for i := 0 to argc - 1 do
+    GArgs[i] := argv[i];
+  GArgs[argc] := Opt;
+  GArgs[argc + 1] := nil;
+  argv := PPChar(@GArgs[0]);
+  Inc(argc);
+end;
+{$ELSE}
+procedure LedSkipFrameProbe;
+begin
+end;
 {$ENDIF}
 
 end.

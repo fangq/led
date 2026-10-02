@@ -122,6 +122,9 @@ begin
     { Before the first form: a fault while one is being built should leave a
       trace as readily as one an hour in. }
     LedInstallErrorLog;
+    { Before the main form: the LCL otherwise flashes a small window to
+      measure the window manager's frame.  See Led.UI.XError. }
+    LedSkipFrameProbe;
     LedInstallEditKeyGuard;
     Application.CreateForm(TLedMainForm, LedMainForm);
     { The window icon, from the PNG copy of the artwork embedded by
