@@ -24,6 +24,11 @@ uses
   Led.UI.Icons;
 
 const
+  { The preset that means "do not filter".  Named because the filter box is
+    read by what its entry says rather than by where the entry sits, and a
+    fork supplying presets of its own has to be able to include this one. }
+  LedFilterAll = 'All files';
+
   { The tree's own small image list, in the order it is built.  A position in
     here is what a node's ImageIndex is, so the order is load-bearing --
     'folder' first because a directory takes it without consulting the
@@ -56,6 +61,9 @@ type
   TLedFileBrowser = class(TPanel)
   private
     FCrumbs: TPanel;
+    { The trail as text: a double click on the bar swaps it for this, to
+      type or paste a path into. }
+    FPathEdit: TEdit;
     FTree: TShellTreeView;
     FIcons: TImageList;
     FFilter: TComboBox;
@@ -78,6 +86,7 @@ type
     FHintNode: TTreeNode;
     FCrumbWidth: Integer;
     FOnOpenFile: TLedOpenFileEvent;
+    FOnRootChanged: TLedOpenFileEvent;
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
@@ -90,6 +99,11 @@ type
     function IconForPath(const APath: string; AIsDir: Boolean): Integer;
     function PassesFilter(const AName: string): Boolean;
     procedure NavResize(Sender: TObject);
+    procedure CrumbsDblClick(Sender: TObject);
+    procedure PathEditKeyDown(Sender: TObject; var Key: Word;
+      Shift: TShiftState);
+    procedure PathEditExit(Sender: TObject);
+    procedure EndPathEdit;
     procedure SortTree;
     procedure ListDblClick(Sender: TObject);
     procedure TreeDblClick(Sender: TObject);
@@ -108,6 +122,8 @@ type
     procedure UpdateNav;
     procedure PushHistory(const APath: string);
     procedure ApplySort;
+    function CompareNodes(ANode1, ANode2: TTreeNode): Integer;
+    procedure SortChildren(ANode: TTreeNode);
     procedure SetSortFoldersFirst(AValue: Boolean);
     procedure SetCaseSensitiveSort(AValue: Boolean);
     function SelectedPath: string;
@@ -117,6 +133,16 @@ type
     { FHistory is a list of this pane's own making rather than a child
       component, so it is freed here; everything else is Create(Self). }
     destructor Destroy; override;
+    { What the filter box offers, and which of them is picked to begin
+      with -- the first.
+
+      Settable because the presets are a statement about what this program
+      is for: LED's are the languages it was written to edit, and a
+      language environment's are the files a session makes.  A fork
+      supplying its own here is one call; editing the list in place would
+      put its vocabulary in an upstream file. }
+    procedure SetFilterPresets(const AItems: array of string);
+
     procedure SetRoot(const APath: string);
     { Populates on first use.  TShellTreeView will not populate before its
       control is realized, so the owner calls this when the pane is first
@@ -177,6 +203,16 @@ type
       buttons that run off the right-hand edge -- and they need different
       fixes. }
     function CrumbCount: Integer;
+    { The trail as an edit box, as a double click on the bar makes it.
+      Enter goes to what was typed -- a full path, one relative to where
+      the pane is, or one starting with ~ -- and Escape or leaving the box
+      goes back to the trail.  A path that is not a folder keeps the box
+      open, marked, for the reader to correct.  EnterPath is that Enter,
+      for a check to make without a keyboard. }
+    procedure BeginPathEdit;
+    function EnterPath(const APath: string): Boolean;
+    function PathEditing: Boolean;
+    property PathEdit: TEdit read FPathEdit;
     function CrumbsWidth: Integer;
     function CrumbBarWidth: Integer;
     { The glyph on a navigation button, and the button under it.  Exposed
@@ -193,12 +229,34 @@ type
       speed button has no handle of its own to paint. }
     function NavButton(AIndex: Integer): TSpeedButton;
     property OnOpenFile: TLedOpenFileEvent read FOnOpenFile write FOnOpenFile;
+
+    { The pane moved to another folder -- by a crumb, by Up, Home, Back or
+      Forward, by a double click on a directory, or by anything else, because
+      all of them go through SetRoot and nothing else sets FRoot.
+
+      Nothing in the editor listens: where a file list is pointed is not the
+      editor's business.  It is the matlab IDE's, where this pane *is* the
+      current folder -- `pwd` answers from it, `cd` moves it, and a script
+      beside it is on the path -- and one event is cheaper than the fork
+      watching a private field on a timer. }
+    property OnRootChanged: TLedOpenFileEvent
+      read FOnRootChanged write FOnRootChanged;
   end;
 
 implementation
 
 uses
-  Clipbrd, Led.UI.Dpi;
+  Clipbrd, LCLType, Led.UI.Dpi;
+
+const
+  { The editor's own presets: the languages LED was written to edit, with
+    everything first because an editor opens whatever it is pointed at. }
+  LedDefaultFilters: array[0..4] of string = (
+    LedFilterAll,
+    '*.c;*.h;*.cpp;*.hpp',
+    '*.pas;*.pp;*.inc;*.lfm',
+    '*.py',
+    '*.md;*.txt');
 
 function TLedSplitter.Target: TControl;
 begin
@@ -578,6 +636,19 @@ begin
   FCrumbs.BevelOuter := bvNone;
   FCrumbs.Caption := '';
   FCrumbs.OnResize := @NavResize;
+  FCrumbs.OnDblClick := @CrumbsDblClick;
+  FCrumbs.Hint := 'Double-click to type a path';
+  FCrumbs.ShowHint := True;
+
+  { Owned by the pane, not the bar: BuildCrumbs frees everything the bar
+    owns, and counts what it holds. }
+  FPathEdit := TEdit.Create(Self);
+  FPathEdit.Visible := False;
+  FPathEdit.Parent := Self;
+  FPathEdit.Top := FCrumbs.Top;
+  FPathEdit.Align := alTop;
+  FPathEdit.OnKeyDown := @PathEditKeyDown;
+  FPathEdit.OnExit := @PathEditExit;
 
   { Just the filter row, at the foot.  It used to sit inside a container 228
     pixels tall -- the height the file list wanted before the pane became one
@@ -594,12 +665,7 @@ begin
   FFilter := TComboBox.Create(Self);
   FFilter.Parent := Bar;
   FFilter.Left := 2; FFilter.Top := 2; FFilter.Width := 140;
-  FFilter.Items.Add('All files');
-  FFilter.Items.Add('*.c;*.h;*.cpp;*.hpp');
-  FFilter.Items.Add('*.pas;*.pp;*.inc;*.lfm');
-  FFilter.Items.Add('*.py');
-  FFilter.Items.Add('*.md;*.txt');
-  FFilter.ItemIndex := 0;
+  SetFilterPresets(LedDefaultFilters);
   FFilter.Style := csDropDownList;
   FFilter.OnChange := @FilterChange;
 
@@ -613,8 +679,9 @@ begin
     theme -- which is how every other icon in the application is made, and
     the only way they look the same on all three platforms. }
   FIcons := TImageList.Create(Self);
-  FIcons.Width := LedScale96(16);
-  FIcons.Height := LedScale96(16);
+  { The same twenty the toolbar uses; see TLedMainForm.BuildIcons. }
+  FIcons.Width := LedScale96(20);
+  FIcons.Height := LedScale96(20);
   { clBtnText, not clDefault: clDefault resolves to black, and the tree is
     painted in the *editor's* colours, so on a dark scheme every icon without
     a colour of its own was black on near-black.  Rebuilt with the tree's own
@@ -728,6 +795,33 @@ begin
   SetRoot(ADefault);
 end;
 
+procedure TLedFileBrowser.SetFilterPresets(const AItems: array of string);
+var
+  i: Integer;
+begin
+  if Length(AItems) = 0 then
+    Exit;
+  FFilter.Items.BeginUpdate;
+  try
+    FFilter.Items.Clear;
+    for i := Low(AItems) to High(AItems) do
+      FFilter.Items.Add(AItems[i]);
+  finally
+    FFilter.Items.EndUpdate;
+  end;
+  { Everything, whatever order the presets came in.
+
+    The caller decides what the list leads with -- a language environment
+    leads with its own files -- but not what the pane opens showing: a file
+    browser that starts with most of the folder hidden looks broken, and
+    the reader has no way of knowing that the thing they cannot find is
+    merely filtered out. }
+  FFilter.ItemIndex := FFilter.Items.IndexOf(LedFilterAll);
+  if FFilter.ItemIndex < 0 then
+    FFilter.ItemIndex := 0;
+  FilterChange(FFilter);
+end;
+
 procedure TLedFileBrowser.SetRoot(const APath: string);
 var
   Full: string;
@@ -751,6 +845,10 @@ begin
   { Moving through the history is not itself a place to come back to. }
   if not FNavigating then PushHistory(FRoot);
   UpdateNav;
+
+  { Last, so a listener that asks the pane where it is gets the answer it
+    has just finished arriving at rather than the one it is leaving. }
+  if Assigned(FOnRootChanged) then FOnRootChanged(FRoot);
 end;
 
 procedure TLedFileBrowser.PushHistory(const APath: string);
@@ -983,6 +1081,44 @@ end;
   single node standing for the root folder -- every name the user actually
   reads is one of its children.  So sort those, and let OnExpanded take the
   deeper levels as they open. }
+{ Folders first, then files, each group by name.
+
+  AlphaSort is what this used, and it sorts on the node's text and nothing
+  else -- so a folder called `docs` landed between `build.sh` and
+  `install.sh` and the reader had to pick the directories out of the middle
+  of the file list.  Every file manager, and medit's own browser, groups
+  them; SortFoldersFirst was here to say so and was read by nothing, which
+  is why the setting existed and the order did not follow it.
+
+  CaseSensitiveSort is the other half of the same omission: it was stored,
+  offered as a property, and never reached the comparison either. }
+function TLedFileBrowser.CompareNodes(ANode1, ANode2: TTreeNode): Integer;
+var
+  Dir1, Dir2: Boolean;
+begin
+  if FSortFoldersFirst then
+  begin
+    Dir1 := (ANode1 is TShellTreeNode) and TShellTreeNode(ANode1).IsDirectory;
+    Dir2 := (ANode2 is TShellTreeNode) and TShellTreeNode(ANode2).IsDirectory;
+    if Dir1 <> Dir2 then
+    begin
+      if Dir1 then Result := -1 else Result := 1;
+      Exit;
+    end;
+  end;
+
+  if FCaseSensitiveSort then
+    Result := CompareStr(ANode1.Text, ANode2.Text)
+  else
+    Result := CompareText(ANode1.Text, ANode2.Text);
+end;
+
+procedure TLedFileBrowser.SortChildren(ANode: TTreeNode);
+begin
+  if ANode <> nil then
+    ANode.CustomSort(@CompareNodes);
+end;
+
 procedure TLedFileBrowser.SortTree;
 var
   N: TTreeNode;
@@ -990,7 +1126,7 @@ begin
   N := FTree.Items.GetFirstNode;
   while N <> nil do
   begin
-    N.AlphaSort;
+    SortChildren(N);
     N := N.GetNextSibling;
   end;
 end;
@@ -1004,7 +1140,82 @@ procedure TLedFileBrowser.TreeExpanded(Sender: TObject; ANode: TTreeNode);
 begin
   if ANode = nil then Exit;
   IconiseChildren(ANode);
-  ANode.AlphaSort;
+  SortChildren(ANode);
+end;
+
+procedure TLedFileBrowser.CrumbsDblClick(Sender: TObject);
+begin
+  BeginPathEdit;
+end;
+
+procedure TLedFileBrowser.BeginPathEdit;
+begin
+  if FPathEdit.Visible then Exit;
+  FPathEdit.Text := FRoot;
+  FPathEdit.ParentColor := False;
+  FPathEdit.Color := clDefault;
+  FPathEdit.Top := FCrumbs.Top;
+  FCrumbs.Visible := False;
+  FPathEdit.Visible := True;
+  if FPathEdit.CanFocus then
+    FPathEdit.SetFocus;
+  FPathEdit.SelectAll;
+end;
+
+procedure TLedFileBrowser.EndPathEdit;
+begin
+  if not FPathEdit.Visible then Exit;
+  FCrumbs.Top := FPathEdit.Top;
+  FCrumbs.Visible := True;
+  FPathEdit.Visible := False;
+  { the trail was built at whatever width it had when it was hidden }
+  BuildCrumbs;
+end;
+
+function TLedFileBrowser.PathEditing: Boolean;
+begin
+  Result := FPathEdit.Visible;
+end;
+
+function TLedFileBrowser.EnterPath(const APath: string): Boolean;
+var
+  Target: string;
+begin
+  Target := Trim(APath);
+  if (Target = '~') or (Copy(Target, 1, 2) = '~' + PathDelim) then
+    Target := ExcludeTrailingPathDelimiter(GetUserDir) + Copy(Target, 2, MaxInt);
+  if Target <> '' then
+    Target := CreateAbsolutePath(Target, FRoot);
+  Result := (Target <> '') and DirectoryExists(Target);
+  if not Result then
+  begin
+    { left open and marked, so a typo is fixed rather than retyped }
+    if FPathEdit.Visible then
+      FPathEdit.Color := $C0C0FF;
+    Exit;
+  end;
+  EndPathEdit;
+  SetRoot(Target);
+end;
+
+procedure TLedFileBrowser.PathEditKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+  if Key = VK_RETURN then
+  begin
+    Key := 0;
+    EnterPath(FPathEdit.Text);
+  end
+  else if Key = VK_ESCAPE then
+  begin
+    Key := 0;
+    EndPathEdit;
+  end;
+end;
+
+procedure TLedFileBrowser.PathEditExit(Sender: TObject);
+begin
+  EndPathEdit;
 end;
 
 procedure TLedFileBrowser.CrumbClick(Sender: TObject);
@@ -1154,8 +1365,11 @@ end;
 
 procedure TLedFileBrowser.FilterChange(Sender: TObject);
 begin
-  { The list has a real mask; index 0 is "everything". }
-  if FFilter.ItemIndex <= 0 then
+  { By what the entry says, not by where it sits.  "Everything" was index 0
+    by construction, which held for exactly as long as one program supplied
+    the presets: the matlab fork puts its own first, and a first entry that
+    was a real mask was read as no mask at all and filtered nothing. }
+  if (FFilter.ItemIndex < 0) or (FFilter.Text = LedFilterAll) then
     FilterBy('')
   else
     FilterBy(FFilter.Text);
