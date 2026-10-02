@@ -16,7 +16,8 @@ unit Led.UI.Icons;
 interface
 
 uses
-  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls, Buttons;
+  Classes, SysUtils, Graphics, Controls, ImgList, ComCtrls, Buttons,
+  IntfGraphics, GraphType, FPimage;
 
 const
   LedWindowIconRes = 'LEDICONPNG';   { see packaging/windows/led.rc }
@@ -47,6 +48,18 @@ function LedIconAccent(const AName: string): TColor;
   the browser tree and the tab headers cannot drift apart. }
 function LedIconForFile(const AFileName: string): string;
 
+{ The artwork file for AName, or '' when there is none and the icon is
+  drawn instead.
+
+  **Both kinds live in one list and that is deliberate.**  The drawn icons
+  answer a real problem -- they need no artwork to license, they follow the
+  requested size exactly, and adding one is a case branch -- and they are
+  still what the file tree and the odd corner of the menus use.  What they
+  are not is a match for a modern toolbar, so the two dozen actions a reader
+  actually looks at came from a drawn set, and the rest still come from
+  here. }
+function LedIconArtwork(const AName: string): string;
+
 { Index of ANAme in the list built by LedBuildIconList, or -1. }
 function LedIconIndex(const AName: string): Integer;
 
@@ -64,6 +77,16 @@ function LedIconNames: TStringArray;
   intact.  Does nothing if the resource is missing, because a build without
   it should start with no icon rather than not start. }
 procedure LedApplyWindowIcon;
+
+{ The same, from a file, for a program whose artwork is not the one compiled
+  into led.res.
+
+  The fork ships its picture in the data directory rather than rebuilding
+  the resource: one .res is embedded in both binaries -- they are one
+  project with two project files -- so replacing what is in it would change
+  the editor's icon as well.  Falls back to the resource when the file is
+  not there. }
+procedure LedApplyWindowIconFile(const AFileName: string);
 
 { Gives ABar LED's own button painting: a wash under the pointer, a stronger
   one while a button is held or checked, and hairline separators.
@@ -105,7 +128,123 @@ function LedIconBitmap(const AName: string; AColour: TColor;
 implementation
 
 uses
-  Forms, LCLType;
+  Forms, LCLType, Led.Core.Paths;
+
+{ ---- the drawn set and the shipped one ---------------------------------- }
+
+{ The actions whose picture is a file in data/icons rather than a case
+  branch below.  Listed rather than probed so that a data directory the
+  reader has half-deleted shows the drawn icon instead of an empty square,
+  and so that "which of these is artwork" is answerable by reading. }
+const
+  ArtworkNames: array[0..26] of string = (
+    'new', 'open', 'save', 'undo', 'redo', 'cut', 'copy', 'paste',
+    'find', 'replace', 'run', 'stop', 'pause', 'debug',
+    'stepover', 'stepinto', 'stepout', 'terminal', 'help',
+    'symbols', 'browser', 'assistant',
+    'preview', 'notebook', 'output', 'project', 'breakpoint');
+
+function LedIconArtwork(const AName: string): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 0 to High(ArtworkNames) do
+    if ArtworkNames[i] = AName then
+    begin
+      Result := LedDataFile('icons' + PathDelim + AName + '.png');
+      if not FileExists(Result) then Result := '';
+      Exit;
+    end;
+end;
+
+{ Reads an icon file and resamples it to ASize, keeping its alpha.
+
+  The resampling is here rather than left to the widget set because a
+  toolbar icon is a twentieth of the artwork's area: StretchDraw on gtk2
+  point-samples, which on a 64-pixel drawing reduced to 20 throws away four
+  pixels in five and turns a smooth curve into a stack of steps.  Averaging
+  the whole source box per destination pixel costs a few thousand
+  multiplications once, at startup.
+
+  Alpha is weighted in and out again -- the sum is of colour times coverage,
+  divided by the coverage -- or a pixel next to a transparent one would be
+  dragged towards whatever colour happened to be stored under the
+  transparency. }
+function LoadIconArtwork(const AFile: string; ASize: Integer): TBitmap;
+var
+  Png: TPortableNetworkGraphic;
+  Src, Dst: TLazIntfImage;
+  Desc: TRawImageDescription;
+  x, y, sx, sy, x0, x1, y0, y1: Integer;
+  ar, ag, ab, aa: Int64;
+  n: Integer;
+  C: TFPColor;
+begin
+  Result := nil;
+  Png := TPortableNetworkGraphic.Create;
+  Src := nil;
+  Dst := nil;
+  try
+    try
+      Png.LoadFromFile(AFile);
+    except
+      { A file that is not a picture is not worth failing to start over:
+        the caller falls back to the drawn icon. }
+      Exit;
+    end;
+    Src := Png.CreateIntfImage;
+    if (Src = nil) or (Src.Width = 0) or (Src.Height = 0) then Exit;
+
+    Desc.Init_BPP32_B8G8R8A8_BIO_TTB(ASize, ASize);
+    Dst := TLazIntfImage.Create(0, 0);
+    Dst.DataDescription := Desc;
+    Dst.SetSize(ASize, ASize);
+
+    for y := 0 to ASize - 1 do
+    begin
+      y0 := (y * Src.Height) div ASize;
+      y1 := ((y + 1) * Src.Height) div ASize;
+      if y1 <= y0 then y1 := y0 + 1;
+      for x := 0 to ASize - 1 do
+      begin
+        x0 := (x * Src.Width) div ASize;
+        x1 := ((x + 1) * Src.Width) div ASize;
+        if x1 <= x0 then x1 := x0 + 1;
+
+        ar := 0; ag := 0; ab := 0; aa := 0; n := 0;
+        for sy := y0 to y1 - 1 do
+          for sx := x0 to x1 - 1 do
+          begin
+            C := Src.Colors[sx, sy];
+            ar := ar + Int64(C.Red) * C.Alpha;
+            ag := ag + Int64(C.Green) * C.Alpha;
+            ab := ab + Int64(C.Blue) * C.Alpha;
+            aa := aa + C.Alpha;
+            Inc(n);
+          end;
+
+        if (n = 0) or (aa = 0) then
+          C := FPColor(0, 0, 0, 0)
+        else
+        begin
+          C.Red   := Word(ar div aa);
+          C.Green := Word(ag div aa);
+          C.Blue  := Word(ab div aa);
+          C.Alpha := Word(aa div n);
+        end;
+        Dst.Colors[x, y] := C;
+      end;
+    end;
+
+    Result := TBitmap.Create;
+    Result.LoadFromIntfImage(Dst);
+  finally
+    Dst.Free;
+    Src.Free;
+    Png.Free;
+  end;
+end;
 
 const
   { The background the icons are drawn on and then masked out.  Magenta
@@ -114,7 +253,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..61] of string = (
+  IconNames: array[0..68] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -144,7 +283,14 @@ const
     'theme',
     { The AI pane.  Appended, like everything else here: an ImageIndex in
       the form file is an absolute position. }
-    'assistant'
+    'assistant',
+    { Four panes that had been making do with 'doc' or 'run' and now have a
+      picture of their own.  Appended for the same reason as everything
+      above: a position in this list is an ImageIndex in a form file. }
+    'preview', 'notebook', 'output', 'project',
+    { The notebook's cell buttons: a pencil for editing a text cell, and an
+      eraser for clearing a code cell's output.  Appended, as above. }
+    'edit', 'clearoutput', 'runcell'
   );
 
 
@@ -303,6 +449,29 @@ begin
   if ABar = nil then Exit;
   if GToolPainter = nil then GToolPainter := TLedToolPainter.Create;
   ABar.OnPaintButton := @GToolPainter.Paint;
+end;
+
+procedure LedApplyWindowIconFile(const AFileName: string);
+var
+  Png: TPortableNetworkGraphic;
+begin
+  if (AFileName <> '') and FileExists(AFileName) then
+  begin
+    Png := TPortableNetworkGraphic.Create;
+    try
+      try
+        Png.LoadFromFile(AFileName);
+        Application.Icon.Assign(Png);
+        Exit;
+      except
+        { Not a picture after all; the resource below is the better answer
+          to that than no icon. }
+      end;
+    finally
+      Png.Free;
+    end;
+  end;
+  LedApplyWindowIcon;
 end;
 
 procedure LedApplyWindowIcon;
@@ -632,6 +801,24 @@ begin
         P.Line(6.5, 2, 9.5, 2);
         P.Line(6.5, 6.5, 6.5, 12);
         P.Line(9.5, 6.5, 9.5, 12);
+      end;
+    { a pencil, point down at the lower left }
+    'edit':
+      begin
+        P.Poly([2.5, 13.5, 3, 10.5, 11, 2.5, 13.5, 5, 5.5, 13, 2.5, 13.5]);
+        P.Line(9.5, 4, 12, 6.5);
+        P.Poly([2.5, 13.5, 3, 10.5, 5.5, 13, 2.5, 13.5], True);
+      end;
+    { an eraser on the line it has just cleared }
+    { Run, in the notebook: an outline, in the one ink its neighbours -- the
+      pencil and the eraser -- are drawn in, rather than the toolbar's green }
+    'runcell':
+      P.Poly([4, 2.5, 13.5, 8, 4, 13.5, 4, 2.5]);
+    'clearoutput':
+      begin
+        P.Poly([1.5, 10, 8, 3.5, 13.5, 9, 8, 14.5, 5, 14.5, 1.5, 11, 1.5, 10]);
+        P.Line(4.5, 7, 10.5, 12.5);
+        P.Line(9.5, 14.5, 14.5, 14.5);
       end;
     'selectall':
       begin
@@ -1026,12 +1213,28 @@ function LedBuildIconList(AImages: TImageList; const ANames: array of string;
   AColour: TColor): TImageList;
 var
   Bmp: TBitmap;
+  Art: string;
   i: Integer;
 begin
   Result := AImages;
   AImages.Clear;
   for i := 0 to High(ANames) do
   begin
+    { Artwork first, where there is any: it carries its own colours and its
+      own alpha, so it goes in whole rather than through the mask below. }
+    Art := LedIconArtwork(ANames[i]);
+    if Art <> '' then
+    begin
+      Bmp := LoadIconArtwork(Art, AImages.Width);
+      if Bmp <> nil then
+        try
+          AImages.Add(Bmp, nil);
+          Continue;
+        finally
+          Bmp.Free;
+        end;
+    end;
+
     Bmp := TBitmap.Create;
     try
       { 24-bit, not 32.  AddMasked compares whole pixels, and a 32-bit
