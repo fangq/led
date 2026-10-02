@@ -9,7 +9,8 @@ unit Led.UI.Edit;
 interface
 
 uses
-  Classes, SysUtils, Controls, StdCtrls, Graphics, Menus, SynEdit, SynEditTypes,
+  Classes, SysUtils, Controls, Forms, StdCtrls, Graphics, Menus, SynEdit,
+  SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
   SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
@@ -21,6 +22,31 @@ uses
 {$I led.lazversion.inc}
 
 type
+  { "Which editor is the reader looking at?", asked of whoever owns the
+    notebooks.
+
+    The window knows: it is the active tab's view in the active tab group,
+    which is TLedMainForm.ActiveView.  Anything that is not the window has
+    no way to work that out -- a tab sheet behind another is still Visible
+    to the LCL, and with the window split there are two groups and only one
+    of them is the one being typed in.  The fork's Run guessed, by walking
+    the editor area for the first editor it could see, and ran a file the
+    reader was not looking at.
+
+    A hook rather than a reference to the form, for the reason every other
+    hook here is one: the fork's units do not name TLedMainForm, so an
+    upstream change to that form is not a change to them.  Set once by
+    whoever owns the notebooks; nil in anything that has none, and
+    LedActiveView then answers nil rather than guessing.
+
+    It takes the window it is being asked about, and is a plain function
+    rather than a method for that reason: this is a program that opens more
+    than one window, so a hook bound to one of them answers for the wrong
+    one -- which is exactly what happened, a Run in the first window
+    reaching for the editor in the last window created. }
+  TLedViewQuery = function(AForm: TCustomForm): TSynEdit;
+
+
   { A click in the gutter's mark column, which is how a breakpoint is set in
     every debugger anyone has used.  medit's plugin could not do this -- its
     own notes call it a known limitation -- because GtkTextView gives no
@@ -95,6 +121,11 @@ type
   TLedNBGuardEvent = function(Sender: TObject;
     ACommand: TSynEditorCommand): Boolean of object;
 
+  { Where the caret may stand in a notebook: the line asked for, or the
+    nearest one it may, going on the way it came from (AFrom). 1-based. }
+  TLedNBCaretEvent = function(Sender: TObject; ALine, AFrom: Integer): Integer
+    of object;
+
   TLedEdit = class(TSynEdit)
   private
     FDocument: TObject;   // the owning TLedDocument; typed loosely to avoid
@@ -103,6 +134,15 @@ type
     FBJDataMode: Boolean;
     FCurrentLineColour: TColor;
     FCurrentLineRow: Integer;
+    FRepaintQueued: Boolean;   // a whole-view repaint waits for the event to end
+    FPulledBack: Boolean;      // this click's caret was pulled back to the text
+    FPressLine: Integer;       // the caret's line when the button went down
+    { Sections: the marker a header line starts with ('' for none), and the
+      lines of the one the caret is in, as last painted }
+    FSectionMarker: string;
+    FSecFirst, FSecLast: Integer;
+    FOnRunSection: TNotifyEvent;
+    FShadeOccurrences: Boolean;
     FRuledLine: Integer;
     FFoldedLineColour: TColor;
     FHighlightWord: TSynEditMarkupHighlightAllCaret;
@@ -112,6 +152,9 @@ type
     FOnBJEdit: TLedBJOpenEvent;
     FNotebookMode: Boolean;
     FOnNBGuard: TLedNBGuardEvent;
+    FOnNBCaret: TLedNBCaretEvent;
+    FNBCaretFrom: Integer;
+    FInNBCaret: Boolean;
     FWrapPlugin: TLazSynEditLineWrapPlugin;
     FWrapOn: Boolean;
     FCompletion: TSynCompletion;
@@ -131,6 +174,14 @@ type
     function MarksColumn(out ALeft, AWidth: Integer): Boolean;
     procedure DrawDebugMarks;
     procedure DrawCurrentLineEdges;
+    procedure RepaintQueued(AData: PtrInt);
+    procedure QueueRepaint;
+    procedure SetSectionMarker(const AValue: string);
+    { The caret's section, worked out again before a paint; a change of it
+      asks for the whole view, since every line of both sections changes. }
+    procedure UpdateSection;
+    procedure DrawSectionRules;
+    function SectionTint: TColor;
     procedure SpecialLineMarkup(Sender: TObject; Line: Integer;
       var Special: Boolean; AMarkup: TSynSelectedColor);
     procedure ClampCaretToLineEnd;
@@ -171,6 +222,7 @@ type
       makes the "a line being edited is never truncated" invariant hold
       without every edit path having to remember it. }
     procedure StatusChanged(AChanges: TSynStatusChanges); override;
+    procedure DoOnStatusChange(Changes: TSynStatusChanges); override;
     { Clicking the marker reveals the next chunk, which is medit's gesture. }
     procedure MouseDown(AButton: TMouseButton; AShift: TShiftState;
       X, Y: Integer); override;
@@ -224,6 +276,26 @@ type
     property CurrentLineRow: Integer read FCurrentLineRow;
     { The tint behind a line whose block is folded shut.  Set from the theme
       by the document, as the guide colour is. }
+    { Sections, as matlab's %% marks them.  A line whose first text is the
+      marker begins one, which runs to the next such line or to the end.
+      The section holding the caret is tinted and every header gets a rule
+      above it; '' (the default) turns the whole thing off. }
+    property SectionMarker: string read FSectionMarker write SetSectionMarker;
+    { Ctrl+Enter, when something is listening: run the section here -- or,
+      in a notebook's code cell, the cell.  Taken before SynEdit, whose own
+      Ctrl+Enter inserts a line, and only when assigned, so an editor nobody
+      has given a meaning to keeps that. }
+    property OnRunSection: TNotifyEvent read FOnRunSection write FOnRunSection;
+    { Whether the other places the word at the caret appears are shaded.  On
+      by default; a notebook cell turns it off for good, which setting
+      HighlightWord.Enabled could not do -- a selection change turns that
+      back on (see StatusChanged). }
+    property ShadeOccurrences: Boolean read FShadeOccurrences write FShadeOccurrences;
+    function IsSectionHeader(const ALine: string): Boolean;
+    { The lines of the section holding ALine (1-based).  False when the text
+      has no header at all -- the whole file is then one section, which is
+      nothing to show. }
+    function SectionRange(ALine: Integer; out AFirst, ALast: Integer): Boolean;
     property FoldedLineColour: TColor
       read FFoldedLineColour write FFoldedLineColour;
     function LineIsFolded(ALine: Integer): Boolean;
@@ -262,6 +334,9 @@ type
     function SelectionIsReal: Boolean;
     property NotebookMode: Boolean read FNotebookMode write FNotebookMode;
     property OnNBGuard: TLedNBGuardEvent read FOnNBGuard write FOnNBGuard;
+    { a cell's header line is a separator, not text: the caret is kept off
+      it, onward in the direction it was moving }
+    property OnNBCaret: TLedNBCaretEvent read FOnNBCaret write FOnNBCaret;
     { The colour the vertical block guides are drawn in; the theme sets it. }
     property GuideColour: TColor read FGuideColour write FGuideColour;
     { SynEdit tracks the physical row/column of the last mouse click here,
@@ -342,7 +417,22 @@ type
     function FoldedView: TSynEditFoldedView;
   end;
 
+var
+  { See TLedViewQuery. }
+  LedActiveViewHook: TLedViewQuery = nil;
+
+{ The editor the reader is looking at in AForm, or nil when nothing can
+  say. }
+function LedActiveView(AForm: TCustomForm): TSynEdit;
+
 implementation
+
+function LedActiveView(AForm: TCustomForm): TSynEdit;
+begin
+  Result := nil;
+  if Assigned(LedActiveViewHook) and (AForm <> nil) then
+    Result := LedActiveViewHook(AForm);
+end;
 
 constructor TLedEdit.Create(AOwner: TComponent);
 var
@@ -372,6 +462,12 @@ var
 
 begin
   inherited Create(AOwner);
+  { No rules around the caret's line until something asks for them: a
+    TColor field starts at zero, which is black, and an editor that is not
+    one of a document's views -- a notebook cell's -- was never given the
+    theme's colour and drew two black lines round every line it edited. }
+  FCurrentLineColour := clNone;
+  FShadeOccurrences := True;
 
   Options := Options
     + [eoBracketHighlight,     // matching-bracket markup
@@ -990,11 +1086,137 @@ end;
 procedure TLedEdit.SpecialLineMarkup(Sender: TObject; Line: Integer;
   var Special: Boolean; AMarkup: TSynSelectedColor);
 begin
-  if FFoldedLineColour = clNone then Exit;
-  if not LineIsFolded(Line) then Exit;
+  if (FFoldedLineColour <> clNone) and LineIsFolded(Line) then
+  begin
+    Special := True;
+    AMarkup.Background := FFoldedLineColour;
+    Exit;
+  end;
+  { the section the caret is in, a shade off the page }
+  if (FSecFirst > 0) and (Line >= FSecFirst) and (Line <= FSecLast) then
+  begin
+    Special := True;
+    AMarkup.Background := SectionTint;
+    { The background only.  A special line takes the markup's foreground
+      too, which defaults to a selection's -- white text on the tint, gone
+      on a light theme -- where the syntax colours should stay. }
+    AMarkup.Foreground := clNone;
+    AMarkup.FrameColor := clNone;
+  end;
+end;
 
-  Special := True;
-  AMarkup.Background := FFoldedLineColour;
+function TLedEdit.IsSectionHeader(const ALine: string): Boolean;
+var
+  S: string;
+  N: Integer;
+begin
+  Result := False;
+  N := Length(FSectionMarker);
+  if N = 0 then Exit;
+  S := TrimLeft(ALine);
+  if Copy(S, 1, N) <> FSectionMarker then Exit;
+  { "%% title" and a bare "%%" begin a section; "%%%" does not, nor does
+    the marker with anything but a blank after it }
+  Result := (Length(S) = N) or (S[N + 1] in [' ', #9]);
+end;
+
+function TLedEdit.SectionRange(ALine: Integer; out AFirst, ALast: Integer): Boolean;
+var
+  i: Integer;
+  Above, Below: Boolean;
+begin
+  AFirst := 1;
+  ALast := Lines.Count;
+  Result := False;
+  if (FSectionMarker = '') or (Lines.Count = 0) then Exit;
+  if ALine < 1 then ALine := 1;
+  if ALine > Lines.Count then ALine := Lines.Count;
+  Above := False;
+  for i := ALine downto 1 do
+    if IsSectionHeader(Lines[i - 1]) then
+    begin
+      AFirst := i;
+      Above := True;
+      Break;
+    end;
+  Below := False;
+  for i := ALine + 1 to Lines.Count do
+    if IsSectionHeader(Lines[i - 1]) then
+    begin
+      ALast := i - 1;
+      Below := True;
+      Break;
+    end;
+  Result := Above or Below;
+end;
+
+procedure TLedEdit.SetSectionMarker(const AValue: string);
+begin
+  if FSectionMarker = AValue then Exit;
+  FSectionMarker := AValue;
+  FSecFirst := 0;
+  FSecLast := 0;
+  if HandleAllocated then Invalidate;
+end;
+
+{ Toward the text colour by a few percent: lighter on a dark page, darker
+  on a light one, and quiet either way. }
+function TLedEdit.SectionTint: TColor;
+var
+  A, B: TColor;
+begin
+  A := ColorToRGB(Color);
+  B := ColorToRGB(Font.Color);
+  Result := RGBToColor(
+    ((A and $FF) * 93 + (B and $FF) * 7) div 100,
+    (((A shr 8) and $FF) * 93 + ((B shr 8) and $FF) * 7) div 100,
+    (((A shr 16) and $FF) * 93 + ((B shr 16) and $FF) * 7) div 100);
+end;
+
+procedure TLedEdit.UpdateSection;
+var
+  F, L: Integer;
+begin
+  if not SectionRange(CaretY, F, L) then
+  begin
+    F := 0;
+    L := 0;
+  end;
+  if (F = FSecFirst) and (L = FSecLast) then Exit;
+  FSecFirst := F;
+  FSecLast := L;
+  { This paint may cover only part of the view -- a line being typed on --
+    and the tint has moved on lines it does not cover. }
+  QueueRepaint;
+end;
+
+{ A rule across the top of every header line, the division matlab draws
+  between one section and the next. }
+procedure TLedEdit.DrawSectionRules;
+var
+  FV: TSynEditFoldedView;
+  Row, TextIdx, X0: Integer;
+  A, B: TColor;
+begin
+  if FSectionMarker = '' then Exit;
+  if not (FoldedTextBuffer is TSynEditFoldedView) then Exit;
+  FV := TSynEditFoldedView(FoldedTextBuffer);
+  X0 := 0;
+  if Gutter.Visible then X0 := Gutter.Width;
+  A := ColorToRGB(Color);
+  B := ColorToRGB(Font.Color);
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := RGBToColor(
+    ((A and $FF) * 70 + (B and $FF) * 30) div 100,
+    (((A shr 8) and $FF) * 70 + ((B shr 8) and $FF) * 30) div 100,
+    (((A shr 16) and $FF) * 70 + ((B shr 16) and $FF) * 30) div 100);
+  for Row := 0 to LinesInWindow do
+  begin
+    TextIdx := FV.ScreenLineToTextIndex(Row);
+    if (TextIdx < 1) or (TextIdx >= Lines.Count) then Continue;
+    if IsSectionHeader(Lines[TextIdx]) then
+      Canvas.FillRect(X0, Row * LineHeight, ClientWidth, Row * LineHeight + 1);
+  end;
 end;
 
 { True when ALine, a 1-based text line, carries a block that is folded shut.
@@ -1366,7 +1588,9 @@ end;
 
 procedure TLedEdit.Paint;
 begin
+  UpdateSection;
   inherited Paint;
+  DrawSectionRules;
   DrawCurrentLineEdges;
   DrawBlockGuides;
   DrawLongLineMarkers;
@@ -1569,6 +1793,12 @@ end;
 
 procedure TLedEdit.KeyDown(var Key: Word; Shift: TShiftState);
 begin
+  if (Key = VK_RETURN) and (Shift = [ssCtrl]) and Assigned(FOnRunSection) then
+  begin
+    Key := 0;
+    FOnRunSection(Self);
+    Exit;
+  end;
   if FBJDataMode and (Key = VK_RETURN) and (Shift = []) then
   begin
     Key := 0;
@@ -1677,6 +1907,7 @@ end;
 
 destructor TLedEdit.Destroy;
 begin
+  Application.RemoveAsyncCalls(Self);
   FreeAndNil(FCompletion);
   { The wrap view belongs to the manager while wrapping is on and to nobody
     while it is off, so this is the one place it has to be freed by hand. }
@@ -1737,6 +1968,8 @@ end;
 
 procedure TLedEdit.MouseUp(AButton: TMouseButton; AShift: TShiftState;
   X, Y: Integer);
+var
+  Before: TPoint;
 begin
   inherited MouseUp(AButton, AShift, X, Y);
 
@@ -1759,7 +1992,12 @@ begin
     beside: the reported "selection resets when the pointer passes a fold
     mark". }
   if (AButton <> mbLeft) or (AShift * [ssCtrl, ssAlt] <> []) or
-     (SelectionMode = smColumn) then Exit;
+     (SelectionMode = smColumn) then
+  begin
+    if CaretY <> FPressLine then Invalidate;
+    FPulledBack := False;
+    Exit;
+  end;
   ClampSelectionToLineEnd;
   { The selection first and the caret second.  Moving a caret is how a
     selection is normally given up, so the order looks fragile -- but by here
@@ -1768,7 +2006,19 @@ begin
     move extends rather than abandons.  The check for a drag that ends out
     past a short line is what says so; it fails if the selection is clamped
     through its ordered ends instead of its own two. }
+  Before := CaretXY;
   ClampCaretToLineEnd;
+  { A click that moved the caret to another line, or pulled it back from past
+    the end of one, repaints the view whole once the button is up.  The
+    queued repaint of a change of line (see StatusChanged) can land between
+    press and release -- or be absorbed by SynEdit if it lands while the
+    press is still being handled -- and the release's own partial repaint
+    then leaves the current-line rules on the wrong line or on none.  Here,
+    after both, is the one place a click's repaint reliably sticks. }
+  if FPulledBack or (CaretXY.X <> Before.X) or (CaretXY.Y <> Before.Y) or
+     (CaretY <> FPressLine) then
+    Invalidate;
+  FPulledBack := False;
 end;
 
 procedure TLedEdit.RequestHover(const AExpr: string);
@@ -1815,6 +2065,9 @@ var
   TextIdx, Col, ZLeft, ZRight, Row: Integer;
   FV: TSynEditFoldedView;
 begin
+  { Where the caret was, so the release can tell whether this click moved it
+    to another line: see MouseUp. }
+  FPressLine := CaretY;
   { A click in the gutter's mark column sets or clears a breakpoint, which is
     how every debugger does it and which medit's own plugin lists as a thing
     it could not manage.  Taken before inherited, because the gutter's own
@@ -1864,8 +2117,10 @@ begin
   if (AButton = mbLeft) and (AShift * [ssCtrl, ssAlt] = []) and
      (SelectionMode <> smColumn) then
   begin
+    P := CaretXY;
     ClampCaretToLineEnd;
     ClampSelectionToLineEnd;
+    FPulledBack := (CaretXY.X <> P.X) or (CaretXY.Y <> P.Y);
   end;
 
   { SynEdit places a clicked caret through its own machinery rather than
@@ -1944,11 +2199,38 @@ begin
   Key := '';
 end;
 
+{ Off a notebook's cell separator: by keys it steps over, onward; by a click
+  it lands on the line after.  Here, where SynEdit reports a change once its
+  paint lock is released, and not in StatusChanged: a caret set from inside
+  the lock was put back by the edit that held it. }
+procedure TLedEdit.DoOnStatusChange(Changes: TSynStatusChanges);
+var
+  L: Integer;
+begin
+  inherited DoOnStatusChange(Changes);
+  if FNotebookMode and (scCaretY in Changes) and Assigned(FOnNBCaret) and
+     not FInNBCaret then
+  begin
+    L := FOnNBCaret(Self, CaretY, FNBCaretFrom);
+    if (L > 0) and (L <> CaretY) then
+    begin
+      FInNBCaret := True;
+      try
+        CaretXY := Point(1, L);
+      finally
+        FInNBCaret := False;
+      end;
+    end;
+    FNBCaretFrom := CaretY;
+  end;
+end;
+
 procedure TLedEdit.StatusChanged(AChanges: TSynStatusChanges);
 var
   A, B: Integer;
 begin
   inherited StatusChanged(AChanges);
+
   { The offset of the row the caret is on is drawn differently, so moving
     between rows changes the painting of two rows and neither of them knows
     it. }
@@ -1976,11 +2258,23 @@ begin
     once: each is a row nobody told to repaint.
 
     A selection takes the rules away entirely, so a selection appearing or
-    going is the same event. }
+    going is the same event.
+
+    The two lines are not enough on their own, and a change of line also
+    repaints the whole view once the event that moved the caret is over.  A
+    click moves the caret from inside SynEdit's own handling, which repaints
+    in bands of its choosing and absorbs an invalidation made while it is
+    still at work: clicking past the end of a line left no rules anywhere,
+    and clicking from one line to another left both ruled.  Queued, so it
+    lands after SynEdit is done, and coalesced, so a burst of moves repaints
+    once. }
   if AChanges * [scCaretY, scSelection] <> [] then
   begin
     if (FRuledLine > 0) and (FRuledLine <> CaretY) then
+    begin
       InvalidateLine(FRuledLine);
+      QueueRepaint;
+    end;
     FRuledLine := CaretY;
     InvalidateLine(FRuledLine);
   end;
@@ -1995,7 +2289,7 @@ begin
     page behind the selection.  Two answers to one question, one of them
     shouting. }
   if (scSelection in AChanges) and (FHighlightWord <> nil) then
-    FHighlightWord.Enabled := (not FHexMode) and
+    FHighlightWord.Enabled := FShadeOccurrences and (not FHexMode) and
       not (SelectionIsReal and (BlockBegin.Y <> BlockEnd.Y));
 
   if FLongLines = nil then Exit;
@@ -2010,6 +2304,19 @@ begin
     if B < A then begin A := BlockEnd.Y - 1; B := BlockBegin.Y - 1; end;
   end;
   FLongLines.SetLiveRange(A, B);
+end;
+
+procedure TLedEdit.QueueRepaint;
+begin
+  if FRepaintQueued then Exit;
+  FRepaintQueued := True;
+  Application.QueueAsyncCall(@RepaintQueued, 0);
+end;
+
+procedure TLedEdit.RepaintQueued(AData: PtrInt);
+begin
+  FRepaintQueued := False;
+  if HandleAllocated then Invalidate;
 end;
 
 function TLedEdit.VisibleLineCount: Integer;

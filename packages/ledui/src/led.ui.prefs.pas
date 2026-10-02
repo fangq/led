@@ -17,7 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, ComCtrls, Spin,
-  Grids, Dialogs, Graphics, LCLType, LConvEncoding,
+  Grids, Dialogs, Graphics, LCLType, LConvEncoding, Math,
   Led.Core.Prefs, Led.Core.Tools, Led.Core.Filters, Led.Core.Paths,
   Led.Syn.Theme, Led.Syn.Languages, Led.UI.Dpi;
 
@@ -39,6 +39,24 @@ type
     Choices: string;     // comma-separated; '@themes' means "the theme list"
   end;
 
+{ Rows contributed by a unit this dialog knows nothing about.
+
+  The table below is the whole preferences surface and adding a setting is
+  one line in it -- which is right as long as every setting belongs to the
+  editor.  The matlab fork's do not: a command window, a compiler and a
+  matrix back end are settings of a program built from these sources with
+  -dMIMA, and writing them into the array here would put a fork's vocabulary
+  in an upstream file and make the array's own length conditional.
+
+  So the dialog reads its rows through LedPrefItemCount/LedPrefItemAt, and
+  anything may add more before the dialog is built.  Registered rows come
+  after the editor's, which is also the order their categories appear in the
+  tree. }
+procedure LedRegisterPrefItems(const AItems: array of TLedPrefItem);
+function LedPrefItemCount: Integer;
+function LedPrefItemAt(AIndex: Integer): TLedPrefItem;
+
+type
   TLedPrefsDialog = class(TForm)
   private
     FTree: TTreeView;
@@ -47,6 +65,10 @@ type
     FControls: TStringList;     // pref key -> control
     FKinds: TStringList;        // pref key -> Ord(kind)
     FFontLabels: TStringList;   // pref key -> the label showing the font
+    { a row's caption and the control beside it, in pairs, and the check
+      boxes, whose caption is their own: what FitColumns lays out }
+    FRowPairs: TFPList;
+    FChecks: TFPList;
 
     { Languages page }
     FLangList: TComboBox;
@@ -65,6 +87,8 @@ type
     FTools: TLedTools;
     FToolLoading: Boolean;
     procedure Build;
+    procedure FitColumns;
+    procedure AddRow(ALabel: TLabel; AControl: TControl);
     function PageFor(const ACategory: string): TScrollBox;
 
     { The three pages whose content is a list rather than a set of scalars.
@@ -97,6 +121,12 @@ type
     OnApplied: TNotifyEvent;
     constructor CreateDialog(AOwner: TComponent);
     destructor Destroy; override;
+    { Every row whose caption does not fit -- running into the control
+      beside it, or wider than its check box -- as "page: caption" lines;
+      empty when the layout is right.  For the self-test. }
+    function LayoutProblems: TStringList;
+    { The category list, for the self-test. }
+    property CategoryTree: TTreeView read FTree;
     procedure LoadFromPrefs;
     procedure ApplyToPrefs;
 
@@ -116,12 +146,27 @@ type
 
 implementation
 
+var
+  { Grown by LedRegisterPrefItems, never shrunk: a page registered at
+    startup stays registered for the process. }
+  GExtraItems: array of TLedPrefItem = nil;
+
+procedure LedRegisterPrefItems(const AItems: array of TLedPrefItem);
+var
+  i, n: Integer;
+begin
+  n := Length(GExtraItems);
+  SetLength(GExtraItems, n + Length(AItems));
+  for i := 0 to High(AItems) do
+    GExtraItems[n + i] := AItems[i];
+end;
+
 const
   { The whole preferences surface.  Keys are medit's, so the vocabulary
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..61] of TLedPrefItem = (
+  PrefItems: array[0..69] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -175,6 +220,9 @@ const
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'View'; Kind: pkFont; Key: 'Editor/font';
      Caption: 'Editor font'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'View'; Kind: pkFont; Key: 'Editor/preview_font';
+     Caption: 'Notebook and preview text font (not code)'; DefStr: 'Sans';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'View'; Kind: pkChoice; Key: 'Editor/color_scheme';
      Caption: 'Colour scheme'; DefStr: 'medit';
@@ -288,18 +336,30 @@ const
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'AI'; Kind: pkChoice; Key: 'AI/backend';
      Caption: 'Ask'; DefStr: 'ollama';
-     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'ollama,claude'),
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'ollama,llama.cpp,claude'),
     (Category: 'AI'; Kind: pkInt; Key: 'AI/max_context_kb';
      Caption: 'Most of a file to send, in KB'; DefStr: '';
      DefInt: 64; MinInt: 1; MaxInt: 8192; Choices: ''),
     (Category: 'AI'; Kind: pkHeading; Key: '';
-     Caption: 'A model on this machine'; DefStr: '';
+     Caption: 'ollama'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'AI'; Kind: pkString; Key: 'AI/ollama_url';
-     Caption: 'Server (blank for http://localhost:11434)'; DefStr: '';
+     Caption: 'Server (blank: $OLLAMA_HOST, then http://localhost:11434)'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'AI'; Kind: pkString; Key: 'AI/ollama_model';
-     Caption: 'Model'; DefStr: '';
+     Caption: 'Model (e.g. qwen3:30b; ollama list shows them)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkHeading; Key: '';
+     Caption: 'llama.cpp server (llama-server, or any OpenAI-style /v1 server)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/llamacpp_url';
+     Caption: 'Server (blank: $LLAMA_SERVER_URL, then http://127.0.0.1:8080)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/llamacpp_model';
+     Caption: 'Model (blank: whatever the server has loaded)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/llamacpp_key';
+     Caption: 'API key, if started with --api-key (blank: $LLAMA_API_KEY)'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'AI'; Kind: pkHeading; Key: '';
      Caption: 'Claude Code'; DefStr: '';
@@ -310,12 +370,39 @@ const
     (Category: 'AI'; Kind: pkString; Key: 'AI/claude_path';
      Caption: 'Program (blank for the claude on the PATH)'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    { For Claude Code against a server of your own -- a llama.cpp build with
+      an Anthropic-style /v1/messages, reached through an ssh tunnel, say:
+      the three variables a wrapper script would export. }
+    (Category: 'AI'; Kind: pkString; Key: 'AI/claude_base_url';
+     Caption: 'Server, as ANTHROPIC_BASE_URL (blank: Anthropic, or the environment''s)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/claude_auth_token';
+     Caption: 'Token, as ANTHROPIC_AUTH_TOKEN (a local server ignores it)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'AI'; Kind: pkString; Key: 'AI/claude_context_tokens';
+     Caption: 'Context size, as CLAUDE_CODE_MAX_CONTEXT_TOKENS (match the server''s -c)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     { chat: nothing at all.  ask: it plans and changes nothing.  edits: it
       writes files without asking.  full: it also runs commands. }
     (Category: 'AI'; Kind: pkChoice; Key: 'AI/claude_tools';
      Caption: 'What it may do in the project'; DefStr: 'chat';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'chat,ask,edits,full')
   );
+
+function LedPrefItemCount: Integer;
+begin
+  Result := Length(PrefItems) + Length(GExtraItems);
+end;
+
+function LedPrefItemAt(AIndex: Integer): TLedPrefItem;
+begin
+  if AIndex < Length(PrefItems) then
+    Result := PrefItems[AIndex]
+  else if AIndex - Length(PrefItems) < Length(GExtraItems) then
+    Result := GExtraItems[AIndex - Length(PrefItems)]
+  else
+    Result := Default(TLedPrefItem);
+end;
 
 { Anchoring by side rather than by a measured offset.  akRight and akBottom
   remember the gap to the parent's edge as it stands at the moment the anchor
@@ -348,7 +435,10 @@ begin
   FControls := TStringList.Create;
   FKinds := TStringList.Create;
   FFontLabels := TStringList.Create;
+  FRowPairs := TFPList.Create;
+  FChecks := TFPList.Create;
   Build;
+  FitColumns;
 end;
 
 destructor TLedPrefsDialog.Destroy;
@@ -358,7 +448,126 @@ begin
   FControls.Free;
   FKinds.Free;
   FFontLabels.Free;
+  FRowPairs.Free;
+  FChecks.Free;
   inherited Destroy;
+end;
+
+procedure TLedPrefsDialog.AddRow(ALabel: TLabel; AControl: TControl);
+begin
+  FRowPairs.Add(ALabel);
+  FRowPairs.Add(AControl);
+end;
+
+{ How wide a caption draws in a control's font, measured on a bitmap so no
+  window has to exist yet. }
+function CaptionWidth(AControl: TControl; const AText: string): Integer;
+var
+  Bmp: TBitmap;
+begin
+  Bmp := TBitmap.Create;
+  try
+    Bmp.Canvas.Font.Assign(AControl.Font);
+    Result := Bmp.Canvas.TextWidth(AText);
+  finally
+    Bmp.Free;
+  end;
+end;
+
+{ The controls of every page start where its longest caption ends -- at 300
+  or further right, never over a caption -- a check box is as wide as what
+  it says, and the dialog grows to hold the widest page.  The rows were
+  placed at fixed offsets, which cut captions short under the control beside
+  them, and more so in a larger font. }
+procedure TLedPrefsDialog.FitColumns;
+const
+  Gap = 16;
+  Margin = 24;
+var
+  i, k, ColX, Need, Widest, Right, BoxW: Integer;
+  Page: TWinControl;
+  Lbl: TLabel;
+  Ctl: TControl;
+  Chk: TCheckBox;
+begin
+  Widest := 0;
+  for k := 0 to FCategories.Count - 1 do
+  begin
+    Page := TWinControl(FCategories.Objects[k]);
+    ColX := 300;
+    i := 0;
+    while i < FRowPairs.Count do
+    begin
+      Lbl := TLabel(FRowPairs[i]);
+      if Lbl.Parent = Page then
+        ColX := Max(ColX, Lbl.Left + CaptionWidth(Lbl, Lbl.Caption) + Gap);
+      Inc(i, 2);
+    end;
+
+    Right := 0;
+    i := 0;
+    while i < FRowPairs.Count do
+    begin
+      Lbl := TLabel(FRowPairs[i]);
+      Ctl := TControl(FRowPairs[i + 1]);
+      if Lbl.Parent = Page then
+      begin
+        Ctl.Left := ColX;
+        { a control pinned to the right edge stretches; the rest keep their
+          width and push the page wider }
+        if akRight in Ctl.Anchors then
+          Right := Max(Right, ColX + 200 + Margin)
+        else
+          Right := Max(Right, ColX + Ctl.Width + Margin);
+      end;
+      Inc(i, 2);
+    end;
+
+    for i := 0 to FChecks.Count - 1 do
+    begin
+      Chk := TCheckBox(FChecks[i]);
+      if Chk.Parent <> Page then
+        Continue;
+      { the box, the space after it, and the words }
+      BoxW := CaptionWidth(Chk, Chk.Caption) + 32;
+      Chk.Width := Max(Chk.Width, BoxW);
+      Right := Max(Right, Chk.Left + Chk.Width + Margin);
+    end;
+
+    Widest := Max(Widest, Right);
+  end;
+
+  { the tree, the widest page and a scroll bar; no wider than the screen }
+  Need := FTree.Width + Widest + 24;
+  if Need > Width then
+    Width := Min(Need, Screen.Width - 40);
+end;
+
+function TLedPrefsDialog.LayoutProblems: TStringList;
+var
+  i: Integer;
+  Lbl: TLabel;
+  Ctl: TControl;
+  Chk: TCheckBox;
+begin
+  Result := TStringList.Create;
+  i := 0;
+  while i < FRowPairs.Count do
+  begin
+    Lbl := TLabel(FRowPairs[i]);
+    Ctl := TControl(FRowPairs[i + 1]);
+    if Lbl.Left + CaptionWidth(Lbl, Lbl.Caption) > Ctl.Left then
+      Result.Add(Format('%s: "%s" runs into its control',
+        [FCategories[FCategories.IndexOfObject(Lbl.Parent)], Lbl.Caption]));
+    Inc(i, 2);
+  end;
+  for i := 0 to FChecks.Count - 1 do
+  begin
+    Chk := TCheckBox(FChecks[i]);
+    if CaptionWidth(Chk, Chk.Caption) + 20 > Chk.Width then
+      Result.Add(Format('%s: "%s" is cut short',
+        [FCategories[FCategories.IndexOfObject(Chk.Parent)], Chk.Caption]));
+  end;
 end;
 
 function TLedPrefsDialog.PageFor(const ACategory: string): TScrollBox;
@@ -394,7 +603,7 @@ var
   i, Y: Integer;
   Page: TScrollBox;
   Item: TLedPrefItem;
-  Lbl: TLabel;
+  Lbl, Cap: TLabel;
   Chk: TCheckBox;
   Spn: TSpinEdit;
   Edt: TEdit;
@@ -463,6 +672,8 @@ begin
   FTree.ScrollBars := ssAutoVertical;
   FTree.ShowRoot := False;
   FTree.ShowLines := False;
+  { a whole row highlights, and a click anywhere on it picks the page }
+  FTree.RowSelect := True;
   FTree.OnChange := @TreeChange;
 
   FPages := TPanel.Create(Self);
@@ -473,9 +684,9 @@ begin
 
   Tops := TStringList.Create;
   try
-    for i := Low(PrefItems) to High(PrefItems) do
+    for i := 0 to LedPrefItemCount - 1 do
     begin
-      Item := PrefItems[i];
+      Item := LedPrefItemAt(i);
       { Windows-only setting; the row does not exist elsewhere. }
       if Item.Key = 'Editor/dark_titlebar' then
       begin
@@ -505,6 +716,7 @@ begin
             Chk.Left := 24;
             Chk.Top := Y;
             Chk.Width := 420;
+            FChecks.Add(Chk);
             FControls.AddObject(Item.Key, Chk);
             FKinds.AddObject(Item.Key, TObject(PtrInt(Ord(Item.Kind))));
           end;
@@ -518,6 +730,7 @@ begin
             Spn.Parent := Page;
             Spn.Left := 300; Spn.Top := Y; Spn.Width := 80;
             Spn.MinValue := Item.MinInt; Spn.MaxValue := Item.MaxInt;
+            AddRow(Lbl, Spn);
             FControls.AddObject(Item.Key, Spn);
             FKinds.AddObject(Item.Key, TObject(PtrInt(Ord(Item.Kind))));
           end;
@@ -531,6 +744,7 @@ begin
             Edt.Parent := Page;
             Edt.Left := 300; Edt.Top := Y; Edt.Width := 300;
             PinRight(Edt, Page, asrRight, 24);
+            AddRow(Lbl, Edt);
             FControls.AddObject(Item.Key, Edt);
             FKinds.AddObject(Item.Key, TObject(PtrInt(Ord(Item.Kind))));
           end;
@@ -552,6 +766,7 @@ begin
               GetSupportedEncodings(Cbo.Items)
             else
               Cbo.Items.CommaText := Item.Choices;
+            AddRow(Lbl, Cbo);
             FControls.AddObject(Item.Key, Cbo);
             FKinds.AddObject(Item.Key, TObject(PtrInt(Ord(Item.Kind))));
           end;
@@ -569,9 +784,11 @@ begin
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Caption := Item.Caption;
             Lbl.Left := 24; Lbl.Top := Y + 4;
+            Cap := Lbl;
             Lbl := TLabel.Create(Self);
             Lbl.Parent := Page; Lbl.Left := 300; Lbl.Top := Y + 4;
             Lbl.Width := 200;
+            AddRow(Cap, Lbl);
             FFontLabels.AddObject(Item.Key, Lbl);
             Btn := TButton.Create(Self);
             Btn.Parent := Page; Btn.Caption := 'Choose...';
@@ -625,11 +842,26 @@ begin
   try
     { A raster font looks pixelated at any size but its native one -- keep
       the picker to fonts that actually scale. }
-    Dlg.Options := Dlg.Options + [fdFixedPitchOnly, fdTrueTypeOnly];
-    { The stored form is "Family Size", as medit wrote it. }
-    Dlg.Font.Name := Copy(Lbl.Caption, 1, LastDelimiter(' ', Lbl.Caption) - 1);
-    Dlg.Font.Size := StrToIntDef(
-      Copy(Lbl.Caption, LastDelimiter(' ', Lbl.Caption) + 1, MaxInt), 10);
+    Dlg.Options := Dlg.Options + [fdTrueTypeOnly];
+    { Fixed-pitch only for the editor's font, which is code. The notebook
+      and preview font is the one prose is set in, and offering only
+      monospaced faces for it meant it could only ever be a code font. }
+    if Key = 'Editor/font' then
+      Dlg.Options := Dlg.Options + [fdFixedPitchOnly];
+    { The stored form is "Family Size", as medit wrote it -- or a family
+      alone, which is what the preview font's default "Sans" is. }
+    if StrToIntDef(Copy(Lbl.Caption, LastDelimiter(' ', Lbl.Caption) + 1,
+         MaxInt), 0) > 0 then
+    begin
+      Dlg.Font.Name := Copy(Lbl.Caption, 1, LastDelimiter(' ', Lbl.Caption) - 1);
+      Dlg.Font.Size := StrToIntDef(
+        Copy(Lbl.Caption, LastDelimiter(' ', Lbl.Caption) + 1, MaxInt), 10);
+    end
+    else
+    begin
+      Dlg.Font.Name := Trim(Lbl.Caption);
+      Dlg.Font.Size := 10;
+    end;
     if Dlg.Execute then
       Lbl.Caption := Format('%s %d', [Dlg.Font.Name, Dlg.Font.Size]);
   finally
@@ -649,8 +881,8 @@ var
   var
     k: Integer;
   begin
-    for k := Low(PrefItems) to High(PrefItems) do
-      if PrefItems[k].Key = AKey then Exit(PrefItems[k]);
+    for k := 0 to LedPrefItemCount - 1 do
+      if LedPrefItemAt(k).Key = AKey then Exit(LedPrefItemAt(k));
     Result := Default(TLedPrefItem);
   end;
 
@@ -947,16 +1179,23 @@ end;
 
 procedure TLedPrefsDialog.LoadFilters;
 var
-  i: Integer;
+  i, W0, W1: Integer;
 begin
   if FFilterGrid = nil then Exit;
   LedFilters.LoadFromPrefs;
   FFilterGrid.RowCount := LedFilters.Count + 1;
+  W0 := 0;
+  W1 := 0;
   for i := 0 to LedFilters.Count - 1 do
   begin
     FFilterGrid.Cells[0, i + 1] := LedFilters[i].Definition;
     FFilterGrid.Cells[1, i + 1] := LedFilters[i].Config;
+    W0 := Max(W0, CaptionWidth(FFilterGrid, LedFilters[i].Definition));
+    W1 := Max(W1, CaptionWidth(FFilterGrid, LedFilters[i].Config));
   end;
+  { each column as wide as what it holds, so a filter is not cut short }
+  FFilterGrid.ColWidths[0] := EnsureRange(W0 + 16, 240, 520);
+  FFilterGrid.ColWidths[1] := EnsureRange(W1 + 16, 320, 640);
 end;
 
 procedure TLedPrefsDialog.FilterRowChanged(Sender: TObject);
@@ -1055,8 +1294,12 @@ begin
 
   Right := TPanel.Create(Self);
   Right.Parent := APage;
-  Right.Left := 234; Right.Top := 40;
+  Right.Top := 40;
   Right.Anchors := [akLeft, akTop];
+  { beside the list, wherever the list ends: it widens to its longest name }
+  Right.AnchorSideLeft.Control := FToolList;
+  Right.AnchorSideLeft.Side := asrRight;
+  Right.BorderSpacing.Left := 12;
   PinRight(Right, APage, asrRight, 12);
   PinBottom(Right, APage, asrBottom, 12);
   Right.BevelOuter := bvNone;
@@ -1099,7 +1342,7 @@ end;
 
 procedure TLedPrefsDialog.LoadTools;
 var
-  i: Integer;
+  i, W: Integer;
 begin
   if FToolList = nil then Exit;
   if FTools = nil then FTools := TLedTools.Create;
@@ -1110,8 +1353,14 @@ begin
   FToolLoading := True;
   try
     FToolList.Items.Clear;
+    W := 0;
     for i := 0 to FTools.Count - 1 do
+    begin
       FToolList.Items.AddObject(FTools[i].Name, FTools[i]);
+      W := Max(W, CaptionWidth(FToolList, FTools[i].Name));
+    end;
+    { wide enough for every name, within reason: a name is read, not guessed }
+    FToolList.Width := EnsureRange(W + 32, 210, 360);
     if FToolList.Items.Count > 0 then FToolList.ItemIndex := 0;
   finally
     FToolLoading := False;

@@ -19,8 +19,28 @@ const
   LedConfigDirEnv = 'LED_CONFIG_DIR';
   LedDataDirEnv   = 'LED_DATA_DIR';
 
-{ ~/.config/led, %APPDATA%\led, ~/Library/Application Support/led.
-  Created on first use. }
+{ Which application these paths belong to: 'led' here, 'mima' in the fork.
+
+  One binary's settings must not be another's.  The fork adds a command
+  window, a workspace browser and a docked layout of its own, and LED knows
+  nothing about any of them -- so a shared prefs.ini would have each writing
+  keys the other drops on its next save, and a shared layout would restore
+  panes that do not exist.  Both are installed on the same machine here, and
+  a user running one should not find the other rearranged.
+
+  Set once, before anything reads a path, because LedConfigDir resolves its
+  answer on first use and caches it.  The environment variable that overrides
+  it is derived from the same name, so the fork reads MIMA_CONFIG_DIR and LED
+  reads LED_CONFIG_DIR without either having to know about the other. }
+function LedAppId: string;
+procedure LedSetAppId(const AId: string);
+
+{ The environment variable that overrides LedConfigDir, named after the app:
+  LED_CONFIG_DIR here, MIMA_CONFIG_DIR in the fork. }
+function LedConfigDirEnvName: string;
+
+{ ~/.config/<appid>, %APPDATA%\<appid>,
+  ~/Library/Application Support/<appid>.  Created on first use. }
 function LedConfigDir: string;
 function LedConfigFile(const AName: string): string;
 
@@ -45,6 +65,23 @@ implementation
 var
   FConfigDir: string = '';
   FDataDir: string = '';
+  FAppId: string = 'led';
+
+function LedAppId: string;
+begin
+  Result := FAppId;
+end;
+
+procedure LedSetAppId(const AId: string);
+begin
+  if AId <> '' then
+    FAppId := AId;
+end;
+
+function LedConfigDirEnvName: string;
+begin
+  Result := UpperCase(FAppId) + '_CONFIG_DIR';
+end;
 
 procedure LedForceConfigDir(const ADirectory: string);
 begin
@@ -57,20 +94,23 @@ var
 begin
   if FConfigDir <> '' then Exit(FConfigDir);
 
-  Base := GetEnvironmentVariable(LedConfigDirEnv);
+  { UpperCase of the app id, so 'mima' reads MIMA_CONFIG_DIR: one rule rather
+    than a constant per application, and a fork that forgets to add one still
+    gets a variable of its own rather than LED's. }
+  Base := GetEnvironmentVariable(LedConfigDirEnvName);
   if Base = '' then
   begin
     {$IFDEF WINDOWS}
-    Base := IncludeTrailingPathDelimiter(GetEnvironmentVariable('APPDATA')) + 'led';
+    Base := IncludeTrailingPathDelimiter(GetEnvironmentVariable('APPDATA')) + FAppId;
     {$ELSE}
       {$IFDEF DARWIN}
       Base := IncludeTrailingPathDelimiter(GetEnvironmentVariable('HOME')) +
-        'Library/Application Support/led';
+        'Library/Application Support/' + FAppId;
       {$ELSE}
       Base := GetEnvironmentVariable('XDG_CONFIG_HOME');
       if Base = '' then
         Base := IncludeTrailingPathDelimiter(GetEnvironmentVariable('HOME')) + '.config';
-      Base := IncludeTrailingPathDelimiter(Base) + 'led';
+      Base := IncludeTrailingPathDelimiter(Base) + FAppId;
       {$ENDIF}
     {$ENDIF}
   end;

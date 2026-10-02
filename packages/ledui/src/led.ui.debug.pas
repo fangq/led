@@ -52,6 +52,71 @@ type
 
   TLedDebugCommandEvent = procedure(Sender: TObject;
     ACommand: TLedDebugCommand) of object;
+
+  { Somebody other than gdb answering the debug commands.
+
+    LED's debugger drives a gdb subprocess, which is the right answer for a
+    C program and no answer at all for a language whose interpreter is
+    already in this process.  The matlab fork has one of those, and it had
+    grown a menu of its own -- Run, Toggle Breakpoint, Step Over -- beside a
+    Debug menu offering the same seven verbs to gdb.  Two menus for one idea
+    is not a feature, and the shortcuts collided: F9 was bound twice, and
+    which one fired depended on which action list the LCL reached first.
+
+    So the verbs stay in one place and the *backend* is replaceable.  A hook
+    that answers True has handled the command and gdb is not consulted;
+    unassigned -- which is every LED build -- costs one test of a nil
+    pointer per command, on a path a human just clicked.
+
+    Four entry points rather than one, because three of the commands carry
+    the caret with them.  A file name may be empty: the fork can set a
+    breakpoint in a buffer that has never been saved, which gdb cannot, so
+    the hook is asked before the "save the file first" refusal rather than
+    after it. }
+  TLedDebugCommandHook = function(ACommand: TLedDebugCommand): Boolean of object;
+  TLedDebugLineHook = function(const AFileName: string;
+    ALine: Integer): Boolean of object;
+
+  { What the backend can do at this moment.
+
+    Greying a verb that cannot be done is the rule the Debug menu was
+    written to -- a Step that answers "the program is not running" is worse
+    than one that is plainly unavailable -- and the answers are gdb's: is
+    gdb installed, is the session alive, is it stopped.  A backend that is
+    an interpreter in this process has different answers to every one of
+    them, and left to gdb's it had a whole menu greyed out while the engine
+    sat there ready to run.
+
+    AHasDoc and AHasFile are passed in because the window already knows
+    them and the backend would have to go looking. }
+  TLedDebugState = record
+    CanBuild: Boolean;
+    CanStart: Boolean;
+    CanContinue: Boolean;
+    CanPause: Boolean;
+    CanStop: Boolean;
+    CanStep: Boolean;
+    CanBreak: Boolean;       // set or condition a breakpoint on this line
+    CanWatch: Boolean;
+  end;
+
+  TLedDebugStateHook = function(AHasDoc, AHasFile: Boolean): TLedDebugState
+    of object;
+
+  { A hover over a word while debugging: the host answers with
+    AView.ShowHoverValue and says True, or says False to let gdb try. }
+  TLedDebugHoverHook = function(AView: TLedEdit; const AExpr: string): Boolean
+    of object;
+
+  TLedDebugHooks = record
+    Command: TLedDebugCommandHook;
+    ToggleBreakpoint: TLedDebugLineHook;
+    BreakpointCondition: TLedDebugLineHook;
+    RunToCursor: TLedDebugLineHook;
+    State: TLedDebugStateHook;
+    Hover: TLedDebugHoverHook;
+  end;
+
   TLedDebugFrameEvent = procedure(Sender: TObject; ALevel: Integer) of object;
   TLedDebugTextEvent = procedure(Sender: TObject; const AText: string) of object;
   TLedDebugJumpEvent = procedure(Sender: TObject; const AFileName: string;
@@ -402,10 +467,28 @@ type
     property OnCommand: TLedDebugCommandEvent read FOnCommand write FOnCommand;
   end;
 
+var
+  { Whoever is answering the debug commands instead of gdb, or nothing.
+    Process-wide rather than a property on the form: the window's actions,
+    the pane's toolbar and the main toolbar all reach it, and threading it
+    through three of them as a parameter would be three signatures changed
+    for one nil test.  See TLedDebugHooks. }
+  LedDebugHooks: TLedDebugHooks;
+
+{ True when something other than gdb is driving.  The Debugger pane's gdb
+  chrome -- the launch configurations, the raw-command box -- is hidden then,
+  because it describes a session that does not exist. }
+function LedDebugTakenOver: Boolean;
+
 implementation
 
 uses
   LCLType, LazFileUtils, Led.UI.Icons;
+
+function LedDebugTakenOver: Boolean;
+begin
+  Result := Assigned(LedDebugHooks.Command);
+end;
 
 { --- TLedDebugPane --------------------------------------------------------- }
 

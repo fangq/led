@@ -18,10 +18,18 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
+  Led.UI.TabClose,
   Led.Core.Outline,
   Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude,
   fpjson,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
+  {$IFDEF MIMA}
+  { The fork's own addition, and the only one in this file: everything the
+    matlab side needs is behind MimaAttach, so rebasing on upstream LED is
+    a merge rather than a re-port -- and with the define off this file
+    compiles to exactly what upstream compiles to. }
+  Mima.UI.Host,
+  {$ENDIF}
   Led.UI.Dock, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Commands,
   Led.UI.AIPane,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
@@ -403,6 +411,7 @@ type
     procedure actCloseTabExecute(Sender: TObject);
     procedure actCycleViewsExecute(Sender: TObject);
     procedure actNewExecute(Sender: TObject);
+    procedure actNewNotebookExecute(Sender: TObject);
     procedure actOpenExecute(Sender: TObject);
     procedure actQuitExecute(Sender: TObject);
     procedure actSaveAsExecute(Sender: TObject);
@@ -556,6 +565,9 @@ type
       then says so again on every poll is reported once. }
     FLastKernelReport: string;
     FThemeButton: TToolButton;
+    { The execution controls, as a bar of their own sharing the main
+      toolbar's row.  See BuildDebugToolBar. }
+    FDebugBar: TToolBar;
     FDebugger: TLedDebugger;
     { A build asked for by the debugger rather than by the Tools menu, and
       whether a debug session should follow it. }
@@ -567,6 +579,10 @@ type
     { The notebook pane: the same file as the line view, shown as cells with
       the prose rendered and the pictures drawn. }
     FNBPane: TLedNotebookPane;
+    { One pane on the right for both: the preview of a Markdown or wiki file
+      and the cells of a notebook.  Which of the two is showing follows the
+      document in front -- see ChooseView. }
+    FViewPane: TPanel;
     { The document the panes were last built for.  Compared on idle, because
       knowing which document is active is not the same as being told. }
     FShownDoc: TObject;
@@ -579,9 +595,10 @@ type
     FCheckingDisk: Boolean;
     { One per tab group: the button at the right-hand end of the tab strip
       that closes the current tab. }
-    FTabClose: array[0..1] of TSpeedButton;
-    { The windowed host each of those sits in.  See PlaceTabCloseButtons. }
-    FTabCloseHost: array[0..1] of TPanel;
+    { The cross at the end of each tab strip.  See Led.UI.TabClose, which
+      is where the whole of it lives now -- the fork's figures are a page
+      control with the same strip and wanted the same button. }
+    FTabClose: array[0..1] of TLedTabClose;
     { Whether the clipboard holds something the Paste actions could use, and
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
@@ -596,6 +613,9 @@ type
     procedure PlaceTabCloseButtons;
     procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
+    procedure ChooseView;
+    function PreviewShowing: Boolean;
+    function NotebookShowing: Boolean;
     procedure PreviewJumpToLine(Sender: TObject; ALine: Integer);
     procedure PreviewScrolled(Sender: TObject; ALine: Integer);
     procedure SyncNotebookPaneToLine;
@@ -638,6 +658,7 @@ type
       list is read from data/themes at run time, and a menu written into the
       form would have to be kept in step with a directory. }
     procedure BuildThemeButton;
+    procedure BuildDebugToolBar;
     procedure ThemeMenuPopup(Sender: TObject);
     procedure ThemeButtonClick(Sender: TObject);
     procedure ThemeItemClick(Sender: TObject);
@@ -684,6 +705,8 @@ type
     procedure SetActiveBook(AIndex: Integer);
     procedure BookEnter(Sender: TObject);
     procedure TabStripHint(Sender: TObject; X, Y: Integer);
+    procedure AppShowHint(var HintStr: string; var CanShow: Boolean;
+      var HintInfo: THintInfo);
     procedure BookTabMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure BookTabMouseMove(Sender: TObject; Shift: TShiftState;
@@ -742,7 +765,9 @@ type
     function Confirm(const AMessage: string; ADefault: Boolean): Boolean;
     function ConfirmSaveDiscardCancel(const AMessage: string): Integer;
 
-    procedure OpenFiles(AFiles: TStrings);
+    { ARaw is the File menu's Open, which shows a file's bytes even where
+      LedOpenFileHook would act on them; see Led.UI.Document. }
+    procedure OpenFiles(AFiles: TStrings; ARaw: Boolean = False);
 
     { Public so the --self-test harness, and later the scripting API, can
       drive the window the same way a user would. }
@@ -791,6 +816,7 @@ type
     procedure RefreshNotebookPane;
     procedure RefreshOutline;
     procedure NBPaneRun(Sender: TObject; ACell: Integer);
+    procedure NBPaneRunFrom(Sender: TObject; ACell: Integer);
     procedure NBPaneInsert(Sender: TObject; ACell: Integer;
       AKind: TLedNBCellKind);
     procedure NBPaneDelete(Sender: TObject; ACell: Integer);
@@ -858,6 +884,9 @@ type
     function ActiveTab: TLedTab;
     function ActiveView: TLedEdit;
     function AddTab(ADoc: TLedDocument): TLedTab;
+    { See the body: brings the editor area to the front in a window where it
+      shares its place with something else. }
+    procedure RaiseEditors;
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
     { The tab strip's close button, for the self-test: it is placed from
@@ -894,6 +923,10 @@ var
   LedMainForm: TLedMainForm;
 
 implementation
+
+{ Forward: FormCreate installs it, and it is written where the other window
+  queries are.  See LedActiveViewHook. }
+function LedViewInForm(AForm: TCustomForm): TSynEdit; forward;
 
 {$R *.lfm}
 
@@ -932,7 +965,7 @@ end;
 procedure TLedMainForm.ReportError(const AMessage: string);
 begin
   if Silent then
-    WriteLn(StdErr, 'led: ', AMessage)
+    WriteLn(StdErr, LedAppId + ': ', AMessage)
   else
     MessageDlg(LedAppName, AMessage, mtError, [mbOK], 0);
 end;
@@ -941,7 +974,7 @@ function TLedMainForm.Confirm(const AMessage: string; ADefault: Boolean): Boolea
 begin
   if Silent then
   begin
-    WriteLn(StdErr, 'led: ', AMessage, ' -> ', BoolToStr(ADefault, 'yes', 'no'));
+    WriteLn(StdErr, LedAppId + ': ', AMessage, ' -> ', BoolToStr(ADefault, 'yes', 'no'));
     Exit(ADefault);
   end;
   Result := MessageDlg(LedAppName, AMessage, mtConfirmation, [mbYes, mbNo], 0) = mrYes;
@@ -951,7 +984,7 @@ function TLedMainForm.ConfirmSaveDiscardCancel(const AMessage: string): Integer;
 begin
   if Silent then
   begin
-    WriteLn(StdErr, 'led: ', AMessage, ' -> no');
+    WriteLn(StdErr, LedAppId + ': ', AMessage, ' -> no');
     Exit(mrNo);
   end;
   Result := MessageDlg(LedAppName, AMessage, mtConfirmation,
@@ -991,11 +1024,21 @@ procedure TLedMainForm.BuildIcons;
 var
   Size: Integer;
 begin
-  { The icons are drawn by code rather than loaded, so they can be generated
-    at whatever size the display calls for instead of being scaled up from
-    sixteen pixels and going soft.  Sixteen is the size they were designed
-    at, which is what LedScale96 takes. }
-  Size := LedScale96(16);
+  { Twenty-six rather than sixteen.
+
+    Sixteen is the grid the drawn icons were designed on and was the size
+    they were built at, which made a toolbar that read as small and faint
+    beside everything else on a modern desktop.  The buttons grew by about
+    a third and the pictures grew with them: an icon keeps roughly half the
+    button's height, which is the proportion the toolbar had at sixteen in
+    a thirty-two pixel button and is what stops a bigger button reading as
+    a bigger *gap*.
+
+    It costs nothing to ask for: the drawn icons are generated at whatever
+    size they are given, and the shipped artwork is 64 pixels square and
+    resampled down to it.  LedScale96 then takes it the rest of the way for
+    the display. }
+  Size := LedScale96(26);
   ImageList1.Width := Size;
   ImageList1.Height := Size;
   LedBuildIconList(ImageList1, LedIconNames, clBtnText);
@@ -1099,6 +1142,7 @@ begin
     reorder it worked only in a split view, which is the half nobody uses. }
   FBook.OnMouseDown := @BookTabMouseDown;
   FBook.OnMouseMove := @BookTabMouseMove;
+  Application.OnShowHint := @AppShowHint;
   FBook.OnMouseUp := @BookTabMouseUp;
   FBook.Images := ImageList1;
   FBook.PopupMenu := PopupTab;
@@ -1124,7 +1168,7 @@ begin
   FProject := TLedProjectPane.Create(Self);
   FProject.OnOpen := @BrowserOpenFile;
   FProject.LoadFrom(LedConfigFile('filelist.json'));
-  FDock.AddPane(ledLeft, 'project', 'Project', FProject, 'doc');
+  FDock.AddPane(ledLeft, 'project', 'Project', FProject, 'project');
 
   FSymbols := TLedOutlinePane.Create(Self);
   FSymbols.OnJump := @SymbolJump;
@@ -1134,7 +1178,7 @@ begin
     id would move the pane back to its default corner. }
   FDock.AddPane(ledRight, 'symbols', 'Outline', FSymbols, 'symbols');
   FDock.EdgeVisible[ledRight] := False;
-  FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'run');
+  FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'output');
 
   { The preview and the terminal used to be registered the first time their
     action ran, which meant a saved layout naming them was restored before
@@ -1148,19 +1192,34 @@ begin
     terminal starts no pseudo-terminal until it is first shown, and the
     preview renders nothing until asked -- so they are registered here with
     the rest, and LoadLayout finds everything it names. }
+  FViewPane := TPanel.Create(Self);
+  FViewPane.BevelOuter := bvNone;
+  FViewPane.Caption := '';
   FPreview := TLedPreviewPane.Create(Self);
+  FPreview.Parent := FViewPane;
+  FPreview.Align := alClient;
   FPreview.OnJumpToLine := @PreviewJumpToLine;
   FPreview.OnScrolledToLine := @PreviewScrolled;
-  FDock.AddPane(ledRight, 'preview', 'Preview', FPreview, 'doc');
 
   FNBPane := TLedNotebookPane.Create(Self);
+  FNBPane.Parent := FViewPane;
+  FNBPane.Align := alClient;
+  FNBPane.Visible := False;
   FNBPane.OnRunCell := @NBPaneRun;
+  FNBPane.OnRunFrom := @NBPaneRunFrom;
   FNBPane.OnScrolled := @NBPaneScrolled;
   FNBPane.OnInsertCell := @NBPaneInsert;
   FNBPane.OnDeleteCell := @NBPaneDelete;
   FNBPane.OnCellPicked := @NBCellPicked;
   FNBPane.Images := ImageList1;
-  FDock.AddPane(ledRight, 'notebook', 'Notebook', FNBPane, 'doc');
+  { A preview pane and a notebook pane side by side were two panes for one
+    question -- what the document looks like -- of which only one ever had
+    anything to say.  So one pane, 'preview', and the notebook's old id kept
+    as another name for it: the actions, the tests and a reader's habits
+    still say 'notebook'.  A saved layout that names Pane_notebook finds
+    nothing by that name and skips it, which is the right thing to do. }
+  FDock.AddPane(ledRight, 'preview', 'Preview', FViewPane, 'preview');
+  FDock.AddPaneAlias('notebook', 'preview');
 
   { Except where there is no pseudo-terminal to be had.  Registering it there
     would put a button on the rail for a pane that can only apologise. }
@@ -1221,6 +1280,11 @@ begin
   FAIPane.OnBackendChanged := @AIBackendChanged;
   FDock.AddPane(ledRight, 'ai', 'AI Chat', FAIPane, 'assistant');
 
+  {$IFDEF MIMA}
+  { The matlab engine, its command window and its workspace browser. }
+  MimaAttach(FDock, Self);
+  {$ENDIF}
+
   FAITimer := TTimer.Create(Self);
   FAITimer.Interval := 50;
   FAITimer.Enabled := False;
@@ -1247,7 +1311,7 @@ begin
   Position := poDesigned;
   LedPlaceWindowAtLaunch(Self);
 
-  { medit's use_tabs decided whether documents share a window through a tab
+  { medit's use_tabs
     strip.  LED always uses tabs -- one document per window is what New Window
     is for -- so the setting controls whether the strip is shown when there is
     only one document in it. }
@@ -1258,7 +1322,23 @@ begin
     for it, so a toolbar of twenty flat glyphs gave no sign which one a click
     would reach.  Measured before the change: moving the pointer onto a
     button altered thirty pixels of the window, all of them the cursor. }
+  { And what the window is looking at, for anything that is not the window.
+    See LedActiveViewHook: the fork's Run needs the editor in front and
+    cannot work it out from the control tree. }
+  LedActiveViewHook := @LedViewInForm;
+
+  { The one menu caption with the program's name written into it.  A
+    literal in the form file, so the fork's Help menu offered About LED
+    while every other name in the window said Mima; the identity is a
+    run-time answer and this is where it is asked. }
+  actAbout.Caption := '&About ' + LedAppName;
+
   LedStyleToolBar(ToolBar1);
+  { The debugger's buttons on the toolbar are the IDE's: LED keeps its
+    debugger on the Debug menu and its panes, as upstream does. }
+  {$IFDEF MIMA}
+  BuildDebugToolBar;
+  {$ENDIF}
   BuildThemeButton;
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
@@ -1445,7 +1525,9 @@ var
   First: string;
 begin
   { The preview pane, not the edge it shares with the symbol tree. }
-  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
+  if FPreview = nil then Exit;
+  ChooseView;
+  if not PreviewShowing then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
   if Doc.Master.Lines.Count > 0 then
@@ -1462,7 +1544,40 @@ begin
     if AImmediate then SyncPreviewToLine;
   end
   else
-    FPreview.ShowMessage_('This is not a Markdown or wiki file.');
+    FPreview.ShowMessage_('Nothing to preview: this is not a Markdown, wiki or notebook file.');
+end;
+
+{ The pane on the right shows the notebook's cells when the document in
+  front is a notebook, and the preview otherwise -- of a Markdown or wiki
+  file, or a line saying there is nothing to show.  Its header says which. }
+procedure TLedMainForm.ChooseView;
+var
+  WantNB: Boolean;
+  Pane: TLedPaneForm;
+begin
+  if (FPreview = nil) or (FNBPane = nil) then Exit;
+  WantNB := (ActiveTab <> nil) and ActiveTab.Document.IsNotebook;
+  if FNBPane.Visible <> WantNB then
+  begin
+    FNBPane.Visible := WantNB;
+    FPreview.Visible := not WantNB;
+  end;
+  Pane := FDock.FindPane('preview');
+  if Pane <> nil then
+    if WantNB then
+      Pane.Caption := 'Notebook'
+    else
+      Pane.Caption := 'Preview';
+end;
+
+function TLedMainForm.PreviewShowing: Boolean;
+begin
+  Result := (FPreview <> nil) and FPreview.Visible and FDock.PaneVisible('preview');
+end;
+
+function TLedMainForm.NotebookShowing: Boolean;
+begin
+  Result := (FNBPane <> nil) and FNBPane.Visible and FDock.PaneVisible('preview');
 end;
 
 { The minimap, on every tab at once and remembered.
@@ -1509,7 +1624,9 @@ end;
   pane nobody has opened should cost nothing at all. }
 procedure TLedMainForm.RefreshNotebookPane;
 begin
-  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if FNBPane = nil then Exit;
+  ChooseView;
+  if not NotebookShowing then Exit;
   if ActiveTab = nil then
   begin
     FNBPane.ShowDocument(nil);
@@ -1532,6 +1649,21 @@ begin
   if not ActiveTab.Document.NBRunCell(ACell, Why) then
   begin
     ReportError(Why);
+    Exit;
+  end;
+  UpdateStatusBar;
+end;
+
+{ Ctrl+Run, and Run's menu: from a cell to the end, or from the top. }
+procedure TLedMainForm.NBPaneRunFrom(Sender: TObject; ACell: Integer);
+var
+  Why: string;
+begin
+  if ActiveTab = nil then Exit;
+  if not ActiveTab.Document.NBRunFrom(ACell, Why) then
+  begin
+    { Nothing to run below here is not a failure worth a dialog }
+    if Why <> '' then ReportError(Why);
     Exit;
   end;
   UpdateStatusBar;
@@ -1614,8 +1746,7 @@ begin
   end;
   if not Gone then
   begin
-    { The only reason it can refuse: a notebook has to have a cell in it. }
-    ReportError('a notebook must have at least one cell');
+    ReportError('the cell could not be deleted');
     Exit;
   end;
   { The cell that went was above where the reader is looking, or was the
@@ -1636,14 +1767,14 @@ end;
   being clicked destroys the control that is processing the event. }
 procedure TLedMainForm.NBCellChanged(ADoc: TLedDocument; ACell: Integer);
 begin
-  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if not NotebookShowing then Exit;
   if (ADoc = nil) or (ActiveTab = nil) or (ADoc <> ActiveTab.Document) then Exit;
   Application.QueueAsyncCall(@NBCellDeferred, PtrInt(ACell));
 end;
 
 procedure TLedMainForm.NBCellDeferred(AData: PtrInt);
 begin
-  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if not NotebookShowing then Exit;
   FNBPane.RefreshCell(Integer(AData));
 end;
 
@@ -1837,8 +1968,11 @@ var
   Tab: TLedTab;
 begin
   Tab := ActiveTab;
-  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
-    Exit;
+  if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
+  if Assigned(LedDebugHooks.RunToCursor) and
+     LedDebugHooks.RunToCursor(Tab.Document.FileName,
+                               Tab.ActiveView.CaretY) then Exit;
+  if Tab.Document.FileName = '' then Exit;
   FDebugger.RunToCursor(Tab.Document.FileName, Tab.ActiveView.CaretY);
 end;
 
@@ -1852,12 +1986,18 @@ var
   Cond: string;
 begin
   Tab := ActiveTab;
-  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
+  if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
+  Line := Tab.ActiveView.CaretY;
+  { Before the refusal below rather than after it: a backend that is not gdb
+    may well be able to set a breakpoint in a buffer that has no file yet,
+    and the fork's can. }
+  if Assigned(LedDebugHooks.BreakpointCondition) and
+     LedDebugHooks.BreakpointCondition(Tab.Document.FileName, Line) then Exit;
+  if Tab.Document.FileName = '' then
   begin
     ReportError('Save the file before setting a breakpoint in it.');
     Exit;
   end;
-  Line := Tab.ActiveView.CaretY;
   Cond := FDebugger.BreakpointCondition(Tab.Document.FileName, Line);
   if Silent then Exit;      { no dialog during a scripted run }
   if not InputQuery('Breakpoint Condition',
@@ -1871,7 +2011,11 @@ var
   Tab: TLedTab;
 begin
   Tab := ActiveTab;
-  if (Tab = nil) or (Tab.Document.FileName = '') or (Tab.ActiveView = nil) then
+  if (Tab = nil) or (Tab.ActiveView = nil) then Exit;
+  if Assigned(LedDebugHooks.ToggleBreakpoint) and
+     LedDebugHooks.ToggleBreakpoint(Tab.Document.FileName,
+                                    Tab.ActiveView.CaretY) then Exit;
+  if Tab.Document.FileName = '' then
   begin
     ReportError('Save the file before setting a breakpoint in it.');
     Exit;
@@ -1905,6 +2049,7 @@ begin
       Exit;
     end;
     if TLedAIOllama.Available then Names.Add(TLedAIOllama.BackendName);
+    if TLedAILlamaCpp.Available then Names.Add(TLedAILlamaCpp.BackendName);
     if TLedAIClaude.Available then Names.Add(TLedAIClaude.BackendName);
 
     Want := FAIPane.BackendName;
@@ -1918,13 +2063,16 @@ begin
     FreeAndNil(FAI);
     if Want = TLedAIClaude.BackendName then
       FAI := TLedAIClaude.Create(FAIChat)
+    else if Want = TLedAILlamaCpp.BackendName then
+      FAI := TLedAILlamaCpp.Create(FAIChat)
     else if Want = TLedAIOllama.BackendName then
       FAI := TLedAIOllama.Create(FAIChat);
 
     if FAI = nil then
     begin
       FAIPane.SetAvailable(False,
-        'neither ollama nor claude is installed on this machine');
+        'no model to talk to: install ollama or llama.cpp, set a server in ' +
+        'Preferences > AI (or OLLAMA_HOST / LLAMA_SERVER_URL), or install claude');
       Exit;
     end;
 
@@ -1932,7 +2080,7 @@ begin
     FAI.OnDone := @AIDone;
     FAI.OnError := @AIFailed;
     if FAI.ModelList(Models, Why) then
-      FAIPane.SetModels(Models, LedPrefs.GetStr(LedPrefAIOllamaModel, ''))
+      FAIPane.SetModels(Models, LedPrefs.GetStr(FAI.ModelPrefKey, ''))
     else
     begin
       { A backend that chooses its own model -- claude does -- offers no
@@ -2029,8 +2177,8 @@ begin
   { Read again here rather than only when the backend was made: the reader
     may have picked another model since. }
   FAI.Model := FAIPane.ModelName;
-  if (FAI is TLedAIOllama) and (FAI.Model <> '') then
-    LedPrefs.SetStr(LedPrefAIOllamaModel, FAI.Model);
+  if (FAI.ModelPrefKey <> '') and (FAI.Model <> '') then
+    LedPrefs.SetStr(FAI.ModelPrefKey, FAI.Model);
 
   FAIChat.Add(larUser, APrompt);
   if not FAI.Ask(R, Seq) then
@@ -2386,12 +2534,20 @@ var
   Tab: TLedTab;
 begin
   Tab := ActiveTab;
-  if (Tab = nil) or (Tab.Document.FileName = '') then Exit;
+  if Tab = nil then Exit;
+  { The same door F9 goes through.  A host with a debugger of its own --
+    mima-ide's engine -- answers here, or a click in the gutter drew gdb's
+    mark over its own and set a breakpoint nothing would ever stop at. }
+  if Assigned(LedDebugHooks.ToggleBreakpoint) and
+     LedDebugHooks.ToggleBreakpoint(Tab.Document.FileName, ALine) then Exit;
+  if Tab.Document.FileName = '' then Exit;
   FDebugger.ToggleBreakpoint(Tab.Document.FileName, ALine);
 end;
 
 procedure TLedMainForm.DebugHover(Sender: TObject; const AExpr: string);
 begin
+  if Assigned(LedDebugHooks.Hover) and (Sender is TLedEdit) and
+     LedDebugHooks.Hover(TLedEdit(Sender), AExpr) then Exit;
   FDebugger.HoverExpression(TLedEdit(Sender), AExpr);
 end;
 
@@ -2399,6 +2555,13 @@ procedure TLedMainForm.DebugCommand(ACommand: TLedDebugCommand);
 var
   Tab: TLedTab;
 begin
+  { Something other than gdb may own these verbs -- the matlab fork's engine
+    is in this process and has its own idea of Run and Step.  Asked first
+    and asked once, so the menu, the toolbar and the Debugger pane's buttons
+    all reach the same backend.  See TLedDebugHooks. }
+  if Assigned(LedDebugHooks.Command) and LedDebugHooks.Command(ACommand) then
+    Exit;
+
   Tab := ActiveTab;
   if (Tab <> nil) and (Tab.Document.FileName <> '') then
     FDebugger.NoteActiveFile(Tab.Document.FileName);
@@ -2489,8 +2652,8 @@ begin
   end;
   { Both rendered panes take their colours -- and their fixed font -- from
     what has just been applied. }
-  if (FNBPane <> nil) and FDock.PaneVisible('notebook') then FNBPane.Reload;
-  if (FPreview <> nil) and FDock.PaneVisible('preview') then FPreview.Restyle;
+  if NotebookShowing then FNBPane.Reload;
+  if PreviewShowing then FPreview.Restyle;
   UpdateStatusBar;
 end;
 
@@ -2615,6 +2778,9 @@ begin
       Path := ExpandFileName(IncludeTrailingPathDelimiter(ACwd) + Arg.Path)
     else
       Path := ExpandFileName(Arg.Path);
+
+    if Assigned(LedOpenFileHook) and LedOpenFileHook(Path, False) then
+      Continue;
 
     Doc := FDocs.FindByFileName(Path);
     if (Doc <> nil) and ACmd.Reload then
@@ -2757,7 +2923,9 @@ begin
   L := TStringList.Create;
   try
     L.Add(TMenuItem(Sender).Hint);
-    OpenFiles(L);
+    { The list only holds files that were opened as documents, so one is
+      reopened as one. }
+    OpenFiles(L, True);
   finally
     L.Free;
   end;
@@ -3329,6 +3497,129 @@ begin
   PopulateThemeMenu;
 end;
 
+{ Run, stop, step, breakpoint: a bar of its own, on the main toolbar's row.
+
+  Its own bar rather than eight more buttons on ToolBar1, because these are
+  a mode and the others are not.  Editing buttons are always meaningful;
+  these are grey until something is running and they are the ones a reader
+  looks at while stepping, so they want a border of their own to aim at
+  rather than a position counted from the Replace button.  And it can be
+  shown, hidden or moved as one thing.
+
+  Nested *inside* ToolBar1, which is the whole reason it lands on the same
+  row.  TToolBar arranges every child whose Align is alNone in its own
+  button flow -- not only TToolButtons -- so a toolbar placed there is laid
+  out beside the buttons rather than on a second row underneath them, which
+  is what two top-aligned toolbars give and what costs a row of a window
+  that has an editor in it.  Align must be set explicitly: a TToolBar
+  defaults to alTop, and left alone it becomes an "obstacle" the parent
+  positions around instead of a member of the row.
+
+  Built in code rather than designed into the .lfm for the ordinary reason:
+  it is eight buttons whose actions already exist, and the .lfm is the file
+  a rebase fights over. }
+procedure TLedMainForm.BuildDebugToolBar;
+var
+  { Two running totals, and neither can be read off the bar as it is built.
+
+    Slot is the order of the row and nothing more: TToolBar sorts its flow
+    by Left and then lays the buttons out itself.  It cannot be
+    FDebugBar.Width, which is what BuildThemeButton uses -- that works on a
+    bar the LCL has already laid out and not on one being built, where
+    AutoSize has not run and Width is still the default.  Every button then
+    gets Left = 0, ten equal sort keys, and an order that is whatever the
+    sort happens to give.
+
+    Wide is how wide the bar has to end up.  Also not AutoSize's business:
+    the parent's WrapButtons takes a child that is not a TToolButton at its
+    current Width, so a nested bar keeps whatever it has -- 150 for a fresh
+    TToolBar, four button slots, which is why the bar first came out holding
+    three of its ten items with the rest stacked invisibly behind them. }
+  Slot, Wide, SepW: Integer;
+
+  { An action a fork has hidden is not given a slot at all, rather than a
+    slot holding an invisible button: the bar's width is counted here, once,
+    and a skipped button would leave its width as a gap at the end of the
+    row.  See MimaAttach, which drops the verbs that collapse onto another
+    one when the thing being debugged is an interpreter in this process. }
+  procedure Add(AAction: TBasicAction);
+  var
+    B: TToolButton;
+  begin
+    if (AAction is TCustomAction) and not TCustomAction(AAction).Visible then
+      Exit;
+    B := TToolButton.Create(Self);
+    B.Parent := FDebugBar;
+    B.Left := Slot;
+    Inc(Slot, 100);
+    B.Action := AAction;
+    B.ShowHint := True;
+    Inc(Wide, FDebugBar.ButtonWidth);
+  end;
+
+  procedure Sep;
+  var
+    B: TToolButton;
+  begin
+    B := TToolButton.Create(Self);
+    B.Parent := FDebugBar;
+    B.Left := Slot;
+    Inc(Slot, 100);
+    B.Style := tbsDivider;
+    B.Width := SepW;
+    Inc(Wide, SepW);
+  end;
+
+begin
+  Slot := 0;
+  Wide := 0;
+  SepW := LedScale96(9);
+  FDebugBar := TToolBar.Create(Self);
+  FDebugBar.Name := 'ToolBarDebug';
+  FDebugBar.Parent := ToolBar1;
+  FDebugBar.Align := alNone;
+  { AutoSize off, and that is what stops the buttons being cut off along
+    the bottom.
+
+    With it on, the parent takes the nested bar at its own preferred height
+    -- its buttons plus its edge borders -- and then lays its own buttons
+    out at *their* height, so the bar stood a couple of pixels taller than
+    the row it was in and the row clipped it.  With it off, WrapButtons
+    takes the width from the control (which is why the width is still set by
+    hand below) and the height from the parent's own ButtonHeight, so the
+    nested bar is exactly as tall as the row it sits in and its buttons have
+    the same room as their neighbours. }
+  FDebugBar.AutoSize := False;
+  FDebugBar.Left := ToolBar1.Width;
+  FDebugBar.Images := ImageList1;
+  FDebugBar.ButtonWidth := ToolBar1.ButtonWidth;
+  FDebugBar.ButtonHeight := ToolBar1.ButtonHeight;
+  FDebugBar.Height := ToolBar1.ButtonHeight;
+  { No edge borders: they are drawn inside the height the parent gives, so
+    they come off the buttons.  The dividers at either end do the same job
+    of setting the group apart and cost nothing vertically. }
+  FDebugBar.EdgeBorders := [];
+  FDebugBar.ParentShowHint := False;
+  FDebugBar.ShowHint := True;
+  LedStyleToolBar(FDebugBar);
+
+  Sep;
+  Add(actDebugStart);
+  Add(actDebugContinue);
+  Add(actDebugPause);
+  Add(actDebugStop);
+  Sep;
+  Add(actDebugStepOver);
+  Add(actDebugStepInto);
+  Add(actDebugStepOut);
+  Sep;
+  Add(actToggleBreakpoint);
+  { No divider after the last group: the theme button that follows brings
+    its own separator, and the two side by side read as a doubled rule. }
+
+  FDebugBar.Width := Wide + SepW;
+end;
+
 procedure TLedMainForm.BuildThemeButton;
 var
   Sep: TToolButton;
@@ -3428,8 +3719,8 @@ begin
   { And the notebook pane, whose every colour is the theme's: the page it
     draws on, the shade behind a code cell, the prose it renders.  The
     Markdown preview is the same page in the same colours. }
-  if (FNBPane <> nil) and FDock.PaneVisible('notebook') then FNBPane.Reload;
-  if (FPreview <> nil) and FDock.PaneVisible('preview') then FPreview.Restyle;
+  if NotebookShowing then FNBPane.Reload;
+  if PreviewShowing then FPreview.Restyle;
 end;
 
 { --- session -------------------------------------------------------------- }
@@ -3845,13 +4136,16 @@ begin
       belongs in the box you type a question into, and queued for the same
       reason the terminal is: the pane has no size yet while it is docking. }
     Application.QueueAsyncCall(@AIFocusDeferred, 0)
-  else if SameText(AId, 'preview') then
-    { The preview renders the document in front of you; shown from an edge
+  else if SameText(AId, 'preview') or SameText(AId, 'notebook') then
+  begin
+    { The pane renders the document in front of you; shown from an edge
       button it would otherwise sit blank until something else refreshed it.
-      Immediately, for the same reason: the pane is on screen now. }
-    RefreshPreview(True)
-  else if SameText(AId, 'notebook') then
+      Immediately, for the same reason: the pane is on screen now.  Both
+      refreshes, since which of its two views shows is the document's to
+      decide. }
+    RefreshPreview(True);
     RefreshNotebookPane;
+  end;
 end;
 
 
@@ -4052,6 +4346,33 @@ end;
 
   Set on the notebook, whose own mouse events only reach it where no page
   covers it -- which is the strip. }
+{ The path a tab notebook shows for its strip stays on the strip.
+
+  The LCL takes a hint's text from the control under the pointer, and when
+  that control's own hint is empty, from the nearest parent that has one
+  (GetControlShortHint) -- whether or not that parent is showing hints.  The
+  notebook's hint is the path of the tab under the pointer (TabStripHint),
+  and nothing clears it when the pointer moves from a tab into the page,
+  since the notebook sees no mouse there.  So an editor with hints on and
+  nothing of its own to say -- which is every editor once a debugger hover
+  has turned its hints on -- raised the file's path over the text.
+
+  Nothing else is changed: a hint borrowed from any other parent is shown as
+  the LCL means it to be. }
+procedure TLedMainForm.AppShowHint(var HintStr: string; var CanShow: Boolean;
+  var HintInfo: THintInfo);
+var
+  C: TControl;
+begin
+  C := HintInfo.HintControl;
+  if (C = nil) or (C is TPageControl) or (GetShortHint(C.Hint) <> '') then Exit;
+  repeat
+    C := C.Parent;
+  until (C = nil) or (GetShortHint(C.Hint) <> '');
+  if C is TPageControl then
+    CanShow := False;
+end;
+
 procedure TLedMainForm.TabStripHint(Sender: TObject; X, Y: Integer);
 var
   Book: TPageControl;
@@ -4499,22 +4820,19 @@ begin
   LedTryFocus(ActiveView);
 end;
 
-{ The close button at the right-hand end of the tab strip, as medit has.
-
-  One button per tab group rather than one per tab: that is what medit does,
-  and it is also the only shape that travels.  The LCL will not draw a tab
-  itself -- OwnerDraw and OnDrawTab are commented out of TPageControl and no
-  widgetset implements them -- and nboShowCloseButtons is declared but
-  unimplemented on gtk2, so a per-tab cross would exist on some platforms and
-  not others.  A button placed over the strip is drawn by LED on all of them.
+{ The close button at the right-hand end of each tab strip, as medit has.
+  Built and placed by Led.UI.TabClose; what is here is the two of them, one
+  per notebook, and which tab a click closes.
 
   It is a sibling of the page control, not a child: a TPageControl's children
   are its pages, and anything else parented to one is not reliably drawn over
-  the strip.  Created after the book, so it sits above it. }
+  the strip. }
 function TLedMainForm.TabCloseButton(AIndex: Integer): TSpeedButton;
 begin
-  if (AIndex < 0) or (AIndex > 1) then Exit(nil);
-  Result := FTabClose[AIndex];
+  Result := nil;
+  if (AIndex < 0) or (AIndex > 1) then Exit;
+  if FTabClose[AIndex] <> nil then
+    Result := FTabClose[AIndex].Button;
 end;
 
 procedure TLedMainForm.TabCloseClick(Sender: TObject);
@@ -4532,124 +4850,19 @@ end;
 
 procedure TLedMainForm.PlaceTabCloseButtons;
 var
-  i, Sz, Pad, Size, StripTop: Integer;
+  i: Integer;
   Book: TPageControl;
-  Btn: TSpeedButton;
-  Host: TPanel;
-  R: TRect;
 begin
   for i := 0 to 1 do
   begin
     Book := BookByIndex(i);
-    Btn := FTabClose[i];
-
-    { No strip, no button: with a single tab the strip is hidden, and there
-      is nothing to put a cross at the end of. }
-    if (Book = nil) or (not Book.ShowTabs) or (Book.PageCount = 0) or
-       (Book.Parent = nil) then
-    begin
-      if FTabCloseHost[i] <> nil then FTabCloseHost[i].Visible := False;
+    if (Book = nil) and (FTabClose[i] = nil) then
       Continue;
-    end;
-
-    if Btn = nil then
-    begin
-      { A windowed host, and the button inside it.
-
-        The button on its own did not work: TSpeedButton is a
-        TGraphicControl, which has no window of its own and is painted onto
-        whatever it is parented to.  Parented to the panel behind the
-        notebook it was drawn -- so it looked right, and a self-test that
-        called Btn.Click passed -- but every windowed control stacked above
-        that panel took the mouse first.  Asked what a click at the middle of
-        the button would actually reach, the LCL answered TLedEdit: the
-        editor, straight through the cross.
-
-        A TPanel is a TWinControl, so it owns that rectangle of the screen
-        and the clicks land in it; the button fills it and gets them from
-        there. }
-      Host := TPanel.Create(Self);
-      Host.BevelOuter := bvNone;
-      Host.Caption := '';
-      Host.FullRepaint := False;
-      FTabCloseHost[i] := Host;
-
-      Btn := TLedSpeedButton.Create(Self);
-      Btn.Parent := Host;
-      Btn.Align := alClient;
-      Btn.Flat := True;
-      Btn.ShowHint := True;
-      Btn.Hint := 'Close this tab';
-      Btn.Tag := i;
-      Btn.OnClick := @TabCloseClick;
-      Btn.Images := ImageList1;
-      Btn.ImageIndex := LedIconIndex('close');
-      { No icon to be had: the character says the same thing, and is better
-        than a blank square. }
-      if Btn.ImageIndex < 0 then Btn.Caption := 'x';
-      FTabClose[i] := Btn;
-    end;
-
-    Host := FTabCloseHost[i];
-
-    { Above the book, and in whatever the book's parent is now -- a split
-      moves the book into a splitter side and the button has to follow.
-      BringToFront on a windowed control is a real z-order change, which is
-      what puts it over the notebook rather than under it. }
-    Host.Parent := Book.Parent;
-    Host.BringToFront;
-
-    { Tabs along the top is the only arrangement this button knows where to
-      sit in; LED never sets anything else, but a skin that did should get no
-      button rather than one in the wrong place. }
-    if Book.TabPosition <> tpTop then
-    begin
-      Host.Visible := False;
-      Continue;
-    end;
-
-    { Where the strip is, and how tall.  Both come from TabRect, and its
-      origin needs converting rather than discarding.
-
-      gtk2 reports the rectangle relative to the page area, so a strip above
-      the page comes back with a negative top; reading that as a control
-      coordinate puts the button above the window, which is why this used to
-      take the height alone and place the button at the top of the control.
-      But the strip does not start at the top of the control -- there is a
-      notebook frame above it, 29 pixels of it on this desktop -- so a cross
-      placed there sits high of the tab it belongs to, which is what it did.
-
-      The conversion is the distance from the control to the page area,
-      which is the difference between the two origins.  A widgetset that
-      measures the rectangle from the control itself reports a positive top
-      and wants no conversion; the sign says which one this is. }
-    R := Book.TabRect(0);
-    Sz := R.Bottom - R.Top;
-    Pad := LedScale96(2);
-    if Sz >= LedScale96(12) then
-    begin
-      StripTop := Book.Top + R.Top;
-      if R.Top < 0 then
-        Inc(StripTop, Book.ClientOrigin.y - Book.ControlOrigin.y);
-    end
-    else
-    begin
-      { No rectangle to be had -- no handle yet, or a widgetset that does not
-        answer.  A strip is about this tall, and starts where the control
-        does; a button in roughly the right place beats none. }
-      Sz := LedScale96(16);
-      StripTop := Book.Top;
-    end;
-
-    { Square, inset by the same padding on all four sides, and centred on
-      the band rather than hung from the top of it. }
-    Size := Sz - Pad * 2;
-    if Size < LedScale96(8) then Size := LedScale96(8);
-
-    Host.SetBounds(Book.Left + Book.Width - Size - Pad * 2,
-                   StripTop + (Sz - Size) div 2, Size, Size);
-    Host.Visible := True;
-    Host.BringToFront;
+    if FTabClose[i] = nil then
+      FTabClose[i] := TLedTabClose.CreateFor(Self, ImageList1,
+        @TabCloseClick, 'Close this tab', i);
+    { nil hides it, which is what an unsplit leaves behind. }
+    FTabClose[i].Place(Book);
   end;
 end;
 
@@ -4703,14 +4916,35 @@ var
 begin
   if ToolBar1 = nil then Exit;
   W := 0;
-  for i := 0 to ToolBar1.ButtonCount - 1 do
-    if ToolBar1.Buttons[i].Visible then
-      Inc(W, ToolBar1.Buttons[i].Width);
+  { Every child the toolbar lays out in its row, not only the buttons.
+
+    ButtonCount is what this counted first and it counts TToolButtons, which
+    the debug bar is not: TToolBar arranges any child whose Align is alNone,
+    so a nested bar is in the row and was not in the floor -- and the
+    toolbar promptly wrapped to two rows at a width the window was still
+    willing to go to. }
+  for i := 0 to ToolBar1.ControlCount - 1 do
+    if ToolBar1.Controls[i].Visible and (ToolBar1.Controls[i].Align = alNone)
+    then
+      Inc(W, ToolBar1.Controls[i].Width);
   if W <= 0 then Exit;
 
   { The frame the window manager puts around the client area, plus a little
     slack so the last button is not flush against it. }
   Inc(W, (Width - ClientWidth) + LedScale96(8));
+
+  { ...but never so wide that the window cannot be put on the screen.  A
+    floor is there to stop the toolbar warping, and on a display too narrow
+    to hold the whole row a wrapped toolbar is the lesser of the two
+    problems -- a window with a minimum width larger than the monitor cannot
+    be sized at all.
+
+    The work area less a margin, not a fraction of it.  Three quarters was
+    arbitrary and it started refusing a toolbar that would have fitted: the
+    icons grew by a quarter, the row grew with them, and on a 1300-pixel
+    display the floor was clamped below what the buttons needed and the
+    toolbar wrapped at a width the screen could have shown. }
+  W := Min(W, Screen.WorkAreaWidth - LedScale96(40));
   Constraints.MinWidth := W;
 
   { Tall enough for the menu, the toolbar, a tab strip, a few lines of text
@@ -5075,6 +5309,29 @@ begin
     Result := Tab.ActiveView;
 end;
 
+{ The answer to "what is this window looking at", for anything that is not
+  a window.  See LedActiveViewHook -- one function for every window there
+  is, which is why it takes the window. }
+function LedViewInForm(AForm: TCustomForm): TSynEdit;
+begin
+  Result := nil;
+  if AForm is TLedMainForm then
+    Result := TLedMainForm(AForm).ActiveView;
+end;
+
+{ The editor area, in front, when something has just been put in it.
+
+  Only ever does anything in a fork where the editors are a *pane* that
+  shares its site with another: in this program the centre has no tabs in
+  front of it, so the raise is a no-op and EssentialPaneId is ''.  In Mima
+  the figures dock onto the editors, so opening a file while a plot was in
+  front added a tab nobody could see. }
+procedure TLedMainForm.RaiseEditors;
+begin
+  if (FDock <> nil) and (FDock.EssentialPaneId <> '') then
+    FDock.RaisePane(FDock.EssentialPaneId);
+end;
+
 function TLedMainForm.AddTab(ADoc: TLedDocument): TLedTab;
 var
   Sheet: TTabSheet;
@@ -5099,6 +5356,7 @@ begin
   ApplyTabVisibility;
   RefreshTabCaption(Result);
   ActiveBook.ActivePage := Sheet;
+  RaiseEditors;
   { During FormCreate the window is not visible yet, so this cannot succeed
     and must not be allowed to raise; FormShow focuses the editor once the
     window is up. }
@@ -5225,7 +5483,7 @@ procedure TLedMainForm.SyncPreviewToLine;
 var
   View: TLedEdit;
 begin
-  if (FPreview = nil) or not FDock.PaneVisible('preview') then Exit;
+  if not PreviewShowing then Exit;
   if FPreviewJumping then Exit;
   View := ActiveView;
   if View = nil then Exit;
@@ -5246,7 +5504,7 @@ var
   Doc: TLedDocument;
   Cell, Line: Integer;
 begin
-  if (FNBPane = nil) or (not FDock.PaneVisible('notebook')) then Exit;
+  if not NotebookShowing then Exit;
   if FNBSyncing then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
@@ -5502,8 +5760,10 @@ var
   i: Integer;
 begin
   if ADoc = nil then
-    Fmt := LedPrefs.GetStr('Editor/window_title_no_doc',
-      '%a - a lightweight editor')
+    { %t rather than the tagline written out: the same sources build the
+      editor and the matlab language IDE, and a literal here had the IDE describing
+      itself as a lightweight editor. }
+    Fmt := LedPrefs.GetStr('Editor/window_title_no_doc', '%a - %t')
   else
     Fmt := LedPrefs.GetStr('Editor/window_title', '%a - %f%s');
 
@@ -5524,6 +5784,7 @@ begin
       Inc(i);
       case Fmt[i] of
         'a': Result := Result + LedAppName;
+        't': Result := Result + LedAppTagline;
         'b': if ADoc <> nil then
                Result := Result + ExtractFileName(ADoc.DisplayName);
         'f': if ADoc <> nil then Result := Result + ADoc.DisplayName;
@@ -5629,6 +5890,7 @@ var
   Tab: TLedTab;
   HasDoc, CanPaste: Boolean;
   Why: string;
+  DState: TLedDebugState;
 begin
   { Cheap: a pointer comparison, and it does anything at all only on the pass
     after the document actually changed. }
@@ -5707,6 +5969,28 @@ begin
   { The debugger.  Everything is greyed unless it can actually be done: a
     Step that answers "the program is not running" is worse than one that is
     plainly unavailable, and gdb may not be installed at all. }
+  if Assigned(LedDebugHooks.State) then
+  begin
+    { Another backend is driving, and it is the one that knows what can be
+      done now -- gdb's answers describe a session that was never started.
+      See TLedDebugState. }
+    DState := LedDebugHooks.State(HasDoc,
+      (Tab <> nil) and (Tab.Document.FileName <> ''));
+    actBuildProject.Enabled := DState.CanBuild;
+    actDebugStart.Enabled := DState.CanStart;
+    actDebugContinue.Enabled := DState.CanContinue;
+    actDebugPause.Enabled := DState.CanPause;
+    actDebugStop.Enabled := DState.CanStop;
+    actDebugStepOver.Enabled := DState.CanStep;
+    actDebugStepInto.Enabled := DState.CanStep;
+    actDebugStepOut.Enabled := DState.CanStep;
+    actToggleBreakpoint.Enabled := DState.CanBreak;
+    actBreakpointCondition.Enabled := DState.CanBreak;
+    actAddWatchpoint.Enabled := DState.CanWatch;
+    actRunToCursor.Enabled := DState.CanStep;
+  end
+  else
+  begin
   actBuildProject.Enabled := HasDoc and (not FRunner.Running) and
                              (FDebugger.Project.ConfigCount > 0);
   actDebugStart.Enabled := LedGdbAvailable and HasDoc;
@@ -5724,6 +6008,7 @@ begin
   actAddWatchpoint.Enabled := LedGdbAvailable;
   actRunToCursor.Enabled := FDebugger.CanStep and (Tab <> nil) and
                             (Tab.Document.FileName <> '');
+  end;
   actToggleDebugPane.Checked := FDock.PaneVisible('debug');
   actToggleAIPane.Checked := FDock.PaneVisible('ai');
   actAskAI.Enabled := HasDoc and (FAI <> nil);
@@ -5735,7 +6020,11 @@ begin
   actToggleBreakPane.Checked := FDock.PaneVisible('breaks');
   actToggleSymbols.Checked := FDock.PaneVisible('symbols');
   actComplete.Enabled := HasDoc;
-  actPrint.Enabled := HasDoc and LedPrinterAvailable;
+  { Not whether a printer exists: asking enumerates them through CUPS, and
+    avahi with it, which is a third of a second here and seconds on a
+    network with printers to discover -- on the idle path, while the window
+    is first built.  Print says so itself when there is none. }
+  actPrint.Enabled := HasDoc;
   actTogglePreview.Enabled := True;
   actToggleMiniMap.Checked := LedPrefs.GetBool(LedPrefMiniMap, False);
   actShortcuts.Enabled := True;
@@ -5795,11 +6084,11 @@ begin
   begin
     if OpenDialog1.Files.Count > 0 then
       RememberDialogDir(OpenDialog1.Files[0]);
-    OpenFiles(OpenDialog1.Files);
+    OpenFiles(OpenDialog1.Files, True);
   end;
 end;
 
-procedure TLedMainForm.OpenFiles(AFiles: TStrings);
+procedure TLedMainForm.OpenFiles(AFiles: TStrings; ARaw: Boolean);
 var
   i: Integer;
   Doc: TLedDocument;
@@ -5808,6 +6097,9 @@ var
 begin
   for i := 0 to AFiles.Count - 1 do
   begin
+    { A file the host program acts on is not a document here. }
+    if Assigned(LedOpenFileHook) and LedOpenFileHook(AFiles[i], ARaw) then
+      Continue;
     Doc := nil;
     Retried := False;
     repeat
@@ -5930,6 +6222,7 @@ begin
 
   if (Tab.Sheet <> nil) and (Tab.Sheet.PageControl <> nil) then
     Tab.Sheet.PageControl.ActivePage := Tab.Sheet;
+  W.RaiseEditors;
   if W <> Self then
   begin
     if W.WindowState = wsMinimized then W.WindowState := wsNormal;
@@ -5977,6 +6270,67 @@ begin
     Tab.Document.Save;
 end;
 
+{ A new Jupyter notebook, which is a file before it is anything else.
+
+  Asked for by name rather than opened untitled, because what makes a
+  document a notebook here is that its name ends in .ipynb and its text
+  parses -- see TLedDocument.  An untitled buffer of notebook JSON would be
+  neither: the cells pane would show nothing and the editor would show a
+  reader the braces they were trying not to type. }
+{ A new notebook's text.  In mima it names mima's kernel, so its cells are
+  matlab from the first one; elsewhere it names none and runs on Python. }
+function NewNotebookText: string;
+{$IFDEF MIMA}
+var
+  NB: TLedNotebook;
+  Meta, Spec, Lang: TJSONObject;
+{$ENDIF}
+begin
+{$IFDEF MIMA}
+  NB := TLedNotebook.Create;
+  try
+    NB.InsertCell(0, nbkCode);
+    Meta := TJSONObject(NB.Root.Find('metadata'));
+    Spec := TJSONObject.Create;
+    Spec.Add('display_name', 'mima (matlab)');
+    Spec.Add('language', 'matlab');
+    Spec.Add('name', 'mima');
+    Meta.Add('kernelspec', Spec);
+    Lang := TJSONObject.Create;
+    Lang.Add('name', 'matlab');
+    Lang.Add('file_extension', '.m');
+    Meta.Add('language_info', Lang);
+    Result := NB.SaveToText;
+  finally
+    NB.Free;
+  end;
+{$ELSE}
+  Result := LedNBEmptyText;
+{$ENDIF}
+end;
+
+procedure TLedMainForm.actNewNotebookExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
+  Err: string;
+begin
+  { An untitled notebook, as New makes an untitled file: named when it is
+    first saved, not before there is anything in it.  Asking for the name
+    up front made the button a Save As. }
+  Doc := FDocs.NewDocument;
+  if not Doc.StartNotebook(NewNotebookText, Err) then
+  begin
+    ReportError('Could not start a notebook:'#10 + Err);
+    Exit;
+  end;
+  AddTab(Doc);
+
+  { The cells are the notebook; the editor behind them is its file.  A new
+    notebook with the pane closed is an empty JSON document, which is not
+    what the button says it makes. }
+  FDock.ShowPane('notebook');
+end;
+
 procedure TLedMainForm.actSaveAsExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -5984,11 +6338,21 @@ begin
   Tab := ActiveTab;
   if Tab = nil then Exit;
   if not Tab.Document.IsUntitled then
-    SaveDialog1.FileName := Tab.Document.FileName;
+    SaveDialog1.FileName := Tab.Document.FileName
+  { an untitled document is offered its own name: a notebook as a .ipynb }
+  else if Tab.Document.IsNotebook then
+    SaveDialog1.FileName := Tab.Document.DisplayName + '.ipynb'
+{$IFDEF MIMA}
+  else
+    SaveDialog1.FileName := Tab.Document.DisplayName + '.m'
+{$ENDIF};
   SaveDialog1.InitialDir := DialogStartDir;
   if SaveDialog1.Execute then
   begin
     RememberDialogDir(SaveDialog1.FileName);
+    { a notebook stays one: the extension is what reopens it as cells }
+    if Tab.Document.IsNotebook and not LedNBIsNotebookName(SaveDialog1.FileName) then
+      SaveDialog1.FileName := SaveDialog1.FileName + '.ipynb';
     Tab.Document.SaveToFile(SaveDialog1.FileName);
     RefreshTabCaption(Tab);
     UpdateStatusBar;
@@ -6533,11 +6897,18 @@ end;
 { The way back from a layout that dragging has made unusable.  AnchorDocking
   will happily leave a pane somewhere unreachable and offers no route back,
   so this closes every pane, redocks the editor and throws the saved layout
-  away -- the state of a first run. }
+  away -- the state of a first run.
+
+  Which in a program that arranges panes at startup is not an empty window:
+  the dock asks its owner to build the default back, and the fork's is a
+  file list, a workspace and a prompt.  The question asked here is worded
+  for both, because "close every pane" was a promise only one of them
+  keeps. }
 procedure TLedMainForm.actResetLayoutExecute(Sender: TObject);
 begin
   if Silent then Exit;
-  if not Confirm('Close every pane and return to the default layout?', False)
+  if not Confirm('Discard this pane arrangement and return to the default '
+    + 'layout?', False)
     then Exit;
   FDock.ResetLayout(LedConfigFile('layout.xml'));
   UpdateStatusBar;
@@ -6587,7 +6958,8 @@ procedure TLedMainForm.actHelpExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    'LED ' + LedVersion + ' -- a lightweight editor.' + LineEnding + LineEnding +
+    LedAppName + ' ' + LedVersion + ' -- ' + LedAppTagline + '.'
+      + LineEnding + LineEnding +
     'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
     LineEnding +
     'and every one of them can be changed there.' + LineEnding + LineEnding +
@@ -6599,7 +6971,7 @@ begin
   if Silent then Exit;
   ShowMessage(
     'Please report bugs with:' + LineEnding + LineEnding +
-    '  LED version:  ' + LedVersion + LineEnding +
+    '  ' + LedAppName + ' version:  ' + LedVersion + LineEnding +
     '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
       LineEnding +
     '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +

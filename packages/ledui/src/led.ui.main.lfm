@@ -326,6 +326,7 @@ object LedMainForm: TLedMainForm
     end
     object actToggleOutput: TAction
       Caption = '&Output Pane'
+      ImageIndex = 64
       OnExecute = actToggleOutputExecute
     end
     object actToggleTerminal: TAction
@@ -340,10 +341,12 @@ object LedMainForm: TLedMainForm
     end
     object actTogglePreview: TAction
       Caption = 'Markdown Pre&view'
+      ImageIndex = 62
       OnExecute = actTogglePreviewExecute
     end
     object actToggleNotebookPane: TAction
       Caption = '&Notebook Cells'
+      ImageIndex = 63
       OnExecute = actToggleNotebookPaneExecute
     end
     object actToggleMiniMap: TAction
@@ -361,6 +364,12 @@ object LedMainForm: TLedMainForm
     object actToggleBottomPane: TAction
       Caption = '&Bottom Pane'
       OnExecute = actToggleBottomPaneExecute
+    end
+    object actNewNotebook: TAction
+      Caption = 'New Note&book'
+      Hint = 'New Notebook|Create a Jupyter notebook and open it'
+      ImageIndex = 63
+      OnExecute = actNewNotebookExecute
     end
     object actNewWindow: TAction
       Caption = 'New &Window'
@@ -502,7 +511,7 @@ object LedMainForm: TLedMainForm
     end
     object actToggleBreakpoint: TAction
       Caption = 'Toggle &Breakpoint'
-      Hint = 'Or click the gutter beside the line'
+      Hint = 'Toggle Breakpoint|Stop when this line runs; clicking the gutter beside a line does the same'
       ImageIndex = 49
       ShortCut = 120
       OnExecute = actToggleBreakpointExecute
@@ -529,6 +538,7 @@ object LedMainForm: TLedMainForm
     end
     object actToggleProject: TAction
       Caption = '&Project Files'
+      ImageIndex = 65
       OnExecute = actToggleProjectExecute
     end
     object actAddToProject: TAction
@@ -596,6 +606,9 @@ object LedMainForm: TLedMainForm
       Caption = '&File'
       object mi_New: TMenuItem
         Action = actNew
+      end
+      object mi_NewNotebook: TMenuItem
+        Action = actNewNotebook
       end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow
@@ -1086,8 +1099,8 @@ object LedMainForm: TLedMainForm
     Top = 0
     Width = 1000
     AutoSize = True
-    ButtonHeight = 32
-    ButtonWidth = 36
+    ButtonHeight = 49
+    ButtonWidth = 44
     Caption = 'ToolBar1'
     EdgeBorders = [ebBottom]
     Images = ImageList1
@@ -1098,6 +1111,11 @@ object LedMainForm: TLedMainForm
       Left = 1
       Top = 2
       Action = actNew
+    end
+    object tbNewNotebook: TToolButton
+      Left = 13
+      Top = 2
+      Action = actNewNotebook
     end
     object tbSep1: TToolButton
       Left = 25
