@@ -50,7 +50,59 @@ type
       position to know either; private rather than published because a pane
       does not decide this about itself. }
     FLastEdge: TLedDockEdge;
+    { The size this pane was last dragged to, 0 until it has been: its own,
+      so a pane opening for the first time is not handed whatever size the
+      pane already on that edge was dragged to. }
+    FUserSize: Integer;
+    { Where this pane belongs when an edge cannot say it: beside another
+      pane, on a given side of it.
+
+      An edge is the dock's whole vocabulary for a default position, and it
+      is not enough for a pane stacked on another: the workspace browser
+      belongs under the file list, both of them are left of the client area,
+      and "ledLeft" is all EdgeOfPane can say about either.  Closing the
+      workspace and opening it again therefore docked it against the left of
+      the *window*, which put it beside the file list instead of under it --
+      reported exactly that way.
+
+      Registered, like the edge, by whoever placed the pane -- see
+      DockPaneAt -- and never inferred from the layout.  Inferring it was
+      tried and is wrong: two panes that merely ended up stacked on one edge
+      would be paired by it, and then a pane the user had moved elsewhere
+      and closed came back to its old neighbour instead of to where they
+      left it.
+
+      It yields to where the user actually put the pane, which is what
+      DockPane checks: the pairing is honoured only when the pane is coming
+      back to the edge its neighbour is on. }
+    FBeside: string;
+    FBesideSide: TLedDockEdge;
     FWasOpen: Boolean;
+    { A pane that must always have somewhere to be.
+
+      There is exactly one in a window and normally it is not a pane at all
+      -- it is the centre, which has no header and no close button because
+      closing the editor area would leave nothing.  SwapCentre moves that
+      standing to whichever pane the editors ended up in: it gains a header
+      to drag it by and its line in the View menu, and does *not* gain a
+      close button, because "where the text is" is not something a window
+      should be able to be without.  It has no rail button either -- see
+      BuildRail, where a button that can only ever be down is one a reader
+      cannot use for anything.
+
+      It is also skipped by the edge-level hide.  "Hide the top edge" is a
+      blunt instrument aimed at output strips, and pointing it at the
+      editors emptied the window -- found by LED's own docking checks, which
+      walk all four edges and had never had anything on the top one. }
+    FEssential: Boolean;
+    { A pane the program opens when it has something to put in it.
+
+      The figures pane is the one: a plot opens it, and between plots there
+      is nothing in it to go and look at.  A rail button for it is a button
+      that shows an empty pane, and on the top edge it was worse than
+      useless -- it was the only thing on that rail, so a strip of grey ran
+      the width of the window above the editors to hold it. }
+    FSelfOpening: Boolean;
   public
     constructor CreatePane(AOwner: TComponent; const AId, ACaption: string;
       AEdge: TLedDockEdge; AControl: TControl; const ASuffix: string = '');
@@ -60,6 +112,10 @@ type
     { Which icon the edge rail draws for this pane.  Defaults to the pane id,
       which is right for the panes whose id happens to name an icon. }
     property IconName: string read FIconName write FIconName;
+    { See FEssential.  Set by SwapCentre and by nothing else. }
+    property Essential: Boolean read FEssential;
+    { See FSelfOpening.  Set through TLedDockHost.SetSelfOpening. }
+    property SelfOpening: Boolean read FSelfOpening;
   end;
 
   { The dock's splitters.  TCustomSplitter already refuses to shrink either
@@ -107,6 +163,12 @@ type
     FSite: TAnchorDockPanel;
     FCenter: TPanel;
     FCenterForm: TLedPaneForm;
+    { What actually fills the client space.  The same thing as FCenter until
+      SwapCentre has been called, and the editor panel afterwards is a pane
+      like any other -- so the sizing arithmetic and "which edge is this
+      pane on" have to ask this rather than FCenter, which by then is one of
+      the things being measured. }
+    FCentreContent: TControl;
     FPanes: TFPList;               // of TLedPaneForm, in registration order
     FSuffix: string;               // '' for the first host, '_2', '_3', ...
     FReady: Boolean;
@@ -123,10 +185,13 @@ type
     FDraggingWanted: Boolean;
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
+    FAliases: TStringList;   { alias=id, for AddPaneAlias }
+    FOnDefaultLayout: TNotifyEvent;
     { The size the user last dragged each edge to, in device pixels; 0 until
       they have dragged one. }
     FUserSize: array[TLedDockEdge] of Integer;
     function WantedSize(AEdge: TLedDockEdge): Integer;
+    function PaneWanted(APane: TLedPaneForm; AEdge: TLedDockEdge): Integer;
     procedure ApplyDockPolicy;
     procedure GuardCentreHeader;
     function GetHeaderStyle: THeaderStyleName;
@@ -160,7 +225,17 @@ type
     function AddPane(AEdge: TLedDockEdge; const AId, ACaption: string;
       AControl: TControl; const AIconName: string = ''): TLedPaneForm;
     function FindPane(const AId: string): TLedPaneForm;
+    { Another name for a pane, for code and tests that still use it: every
+      call that takes a pane id resolves AAlias to AId. }
+    procedure AddPaneAlias(const AAlias, AId: string);
     procedure ShowPane(const AId: string);
+    { Show a pane *and* bring it to the front.
+
+      Two panes docked to one edge share a tabbed site, and a pane that is
+      visible but on a tab behind another is a pane nobody can see. Showing
+      is not raising, and when something happens that the user should look
+      at -- a figure being drawn -- it is raising that is wanted. }
+    procedure RaisePane(const AId: string);
     procedure HidePane(const AId: string);
     function PaneVisible(const AId: string): Boolean;
     procedure ToggleEdge(AEdge: TLedDockEdge);
@@ -170,6 +245,30 @@ type
       panes cannot be shown, and the menu should say so rather than offering
       a toggle that does nothing. }
     function EdgeHasPanes(AEdge: TLedDockEdge): Boolean;
+
+    { The pane that cannot be closed, or '' when the client space is still
+      what it was built as -- which is every LED build.  See
+      TLedPaneForm.Essential.  Answered rather than inferred because two
+      things outside this unit have to know: "hide this edge" must not empty
+      the window, and a check about how many lines fit in the editor has to
+      be able to ask the editor area for room. }
+    function EssentialPaneId: string;
+
+    { What arrangement a layout file was written for.
+
+      A layout is a list of pane names and splitter positions and carries no
+      hint that the *roles* have moved underneath it.  When the command
+      window took the client space and the editors moved into a pane of
+      their own, every name in an older layout still resolved to something
+      -- so the file loaded, put the console where the editors used to be,
+      failed to find a pane that no longer existed, and left a window nobody
+      could work in.  Restoring an arrangement that cannot be right is worse
+      than starting from the default, which is the rule the rest of this
+      already follows.
+
+      Written into the file by SaveLayout and compared by LoadLayout before
+      a single splitter is read. }
+    function LayoutSignature: string;
 
     { How wide a left or right pane is, or how tall a top or bottom one, as
       it currently sits in the layout; -1 when it is not docked.  For the
@@ -196,6 +295,20 @@ type
       is what keeps a size the user chose apart from one the window ran out
       of room for. }
     procedure NoteUserResize;
+
+    { Asks for AEdge's panes to be ASize from now on, in device pixels.
+
+      The same channel a splitter drag writes to, deliberately: EdgeSize
+      sets a site's height and AnchorDocking recomputes it from its
+      splitters on the next pass, so a size written that way lasts until
+      something else touches the layout.  This one is remembered, which is
+      what makes it a default rather than a nudge -- closing the pane and
+      opening it again brings it back at the same size.
+
+      For a layout the program chooses on the reader's first run.  Nothing
+      else should call it: a size the program keeps re-asserting is a size
+      the reader cannot change. }
+    procedure PreferEdgeSize(AEdge: TLedDockEdge; ASize: Integer);
 
     { Tears APane off into a window of its own, and puts it back.  This is
       what medit's detachable panes did, and what AnchorDocking gives for
@@ -232,6 +345,10 @@ type
       the pointer like every other toolbar in LED. }
     function RailButton(AEdge: TLedDockEdge; AIndex: Integer): TSpeedButton;
 
+    { Declare that a pane is opened by the program rather than by the reader,
+      and so wants no rail button.  See TLedPaneForm.FSelfOpening. }
+    procedure SetSelfOpening(const AId: string; AValue: Boolean);
+
     { Whether a pane can be torn off by dragging its header or its tab.  Those
       are the only two things AnchorDocking gates on this -- splitters, and so
       resizing a pane, are untouched. }
@@ -239,6 +356,53 @@ type
     procedure SetDragging(AValue: Boolean);
 
     property Center: TPanel read FCenter;
+
+    { What actually fills the client space.  The same thing as Center until
+      SwapCentre has been called and something else afterwards, which is the
+      distinction anything reasoning about "the room left over" has to make
+      -- including a check that opens a pane and asks where the space came
+      from. }
+    property CentreContent: TControl read FCentreContent;
+
+    { Gives the client space to AControl and turns what was in it into an
+      ordinary dockable pane on AEdge.
+
+      The dock's centre is the one pane with no header, no close button and
+      all the room left over.  For an editor that is right: the text is what
+      the window is for and everything else is arranged around it.  A
+      language environment is not shaped that way -- the command window is
+      where the session lives, and the editor is one of the things around it,
+      which is how matlab, octave and every REPL-first workbench read.
+
+      So this swaps the two roles without moving anything on screen: the
+      editor panel gains a header, a close button, a rail button and a line
+      in the View menu, and AControl inherits the client space and loses all
+      four.  Center keeps answering the same panel it always did, so
+      everything already parented into the editor area still is -- the
+      notebook, the split-view pair splitter and the find bar among them.
+
+      Returns the pane form the old centre became, and docks it straight
+      away: an editor nobody can see is not a layout, it is a bug. }
+    function SwapCentre(AControl: TControl; const ACentreCaption: string;
+      AEdge: TLedDockEdge; const AId, ACaption, AIconName: string): TLedPaneForm;
+
+    { Docks AId against the given side of ARelativeTo's site, which is what
+      dropping one pane onto another's edge does.
+
+      AddPane's own edge is measured against the client space, so two panes
+      registered for the same edge land beside each other or in a tab -- and
+      "the workspace browser under the file list" is neither.  There is no
+      route to it by hand but the drag, and a default layout has no mouse. }
+    function DockPaneAt(const AId, ARelativeTo: string;
+      AEdge: TLedDockEdge): Boolean;
+
+    { Docks AId *onto* ARelativeTo, which gives the two of them one site and
+      a tab each rather than a split.
+
+      AnchorDocking spells that alClient, and it is the shape a figure wants:
+      a plot belongs beside the file it came from, in the same part of the
+      window, not in a strip of its own taking room from everything else. }
+    function DockPaneOn(const AId, ARelativeTo: string): Boolean;
     property Images: TCustomImageList read FImages write SetImages;
     property DraggingAllowed: Boolean read GetDragging write SetDragging;
 
@@ -247,6 +411,12 @@ type
       the terminal above all, needs starting when it appears and not only
       when one particular menu item was the thing that showed it. }
     property OnPaneShown: TLedPaneNotify read FOnPaneShown write FOnPaneShown;
+
+    { Asked to build this program's default arrangement, after a reset has
+      closed everything and thrown the saved layout away.  Unset in the
+      editor, whose default is the bare window a reset already leaves. }
+    property OnDefaultLayout: TNotifyEvent
+      read FOnDefaultLayout write FOnDefaultLayout;
 
     { The pane header's appearance.  AnchorDocking ships Frame3D, Line, Lines,
       Points, ThemedCaption and ThemedButton; LED adds LedPlain.  Taste
@@ -296,6 +466,19 @@ implementation
 
 uses
   Led.UI.Icons, Led.Core.Prefs, Led.UI.Dpi;
+
+type
+  { A rail button, which has to remember which pane it stands for.
+
+    The id used to travel in Hint, because it was needed and the tooltip was
+    somewhere to keep it.  That made the tooltip read `symbols` and `ai` --
+    the dock's own vocabulary, shown to a reader who never sees it anywhere
+    else -- so the two are separate now and the tooltip says what the pane
+    is called. }
+  TLedRailButton = class(TLedSpeedButton)
+  public
+    PaneId: string;
+  end;
 
 { Toward white on a dark form, toward black on a light one, so "slightly
   brighter than its surroundings" holds for either.  Shared, because the
@@ -414,6 +597,11 @@ const
     below are the exception, because those are set before the startup sweep
     and AutoAdjustLayout scales them itself. }
   EdgeDefault: array[TLedDockEdge] of Integer = (220, 220, 150, 180);
+
+  { For the other half of a pairing: if this pane is below that one, that one
+    is above this one. }
+  OppositeEdge: array[TLedDockEdge] of TLedDockEdge =
+    (ledRight, ledLeft, ledBottom, ledTop);
 
 { TLedPaneForm }
 
@@ -638,6 +826,7 @@ begin
   BevelOuter := bvNone;
   Caption := '';
   FPanes := TFPList.Create;
+  FAliases := TStringList.Create;
   Inc(FHostSeq);
   if FHostSeq > 1 then FSuffix := '_' + IntToStr(FHostSeq) else FSuffix := '';
   FShowRails := True;
@@ -677,6 +866,7 @@ begin
 
   FCenterForm := TLedPaneForm.CreatePane(Self, 'editor', 'Editor',
     ledLeft, FCenter, FSuffix);
+  FCentreContent := FCenter;
 
   DockMaster.MakeDockPanel(FSite, admrpChild);
   DockMaster.OnCreateControl := @MasterCreateControl;
@@ -712,8 +902,16 @@ begin
     to grab and nothing to close, which is what the comment above FCenterForm
     already claimed and this now actually implements.  Panes still dock
     around it, because they dock to the site rather than to the header. }
-  DockMaster.MakeDockable(FCenterForm, True, True, False);
+  { Made dockable hidden, docked, and only then shown.  Shown first -- the
+    second argument True -- the site is a toplevel window for the moment
+    before the dock takes it, and a window manager that keeps windows on
+    screen maps it at the corner, whatever off-screen position it was
+    given: xfwm4 put this 229-pixel square at (0, 0) for 16 ms on every
+    start.  Docked first, it is a child of the main window by the time it is
+    visible, and never a window of its own. }
+  DockMaster.MakeDockable(FCenterForm, False, False, False);
   DockMaster.ManualDock(DockMaster.GetAnchorSite(FCenterForm), FSite, alClient);
+  DockMaster.GetAnchorSite(FCenterForm).Visible := True;
 
   { Only now does the centre have a site with a header on it -- ApplyDockPolicy
     ran before this and found nothing to guard. }
@@ -725,6 +923,7 @@ end;
 destructor TLedDockHost.Destroy;
 begin
   FPanes.Free;
+  FAliases.Free;
   inherited Destroy;
 end;
 
@@ -765,6 +964,154 @@ begin
   BuildRail(AEdge);
 end;
 
+function TLedDockHost.SwapCentre(AControl: TControl;
+  const ACentreCaption: string; AEdge: TLedDockEdge;
+  const AId, ACaption, AIconName: string): TLedPaneForm;
+var
+  Extent: Integer;
+begin
+  Result := nil;
+  if (AControl = nil) or (FCenterForm = nil) or (FCentreContent <> FCenter) then
+    Exit;
+
+  { The old centre first, because AddPane reparents it out of the centre
+    form -- and the centre form has to be empty before the new content is
+    put in it, or the two are briefly both alClient in the same parent and
+    the LCL picks one. }
+  Result := AddPane(AEdge, AId, ACaption, FCenter, AIconName);
+  { It inherits the standing the centre had: see TLedPaneForm.FEssential. }
+  Result.FEssential := True;
+
+  AControl.Parent := FCenterForm;
+  AControl.Align := alClient;
+  FCenterForm.FContent := AControl;
+  FCenterForm.Caption := ACentreCaption;
+  FCentreContent := AControl;
+
+  { A majority share of the room, rather than the edge's registered default.
+
+    That default is 150 pixels, which is right for an output strip and is
+    about seven lines of text -- and this pane is where the text is.  Left
+    at it, the fork opened with an editor seven lines tall and failed LED's
+    own checks about what fits on a page, which is the useful kind of test
+    failure: the checks were right and the layout was wrong.
+
+    Set through FUserSize rather than by sizing the site, so it behaves as a
+    default and not as an assertion: a layout restored from disk overwrites
+    it on the way in, and a splitter the reader drags overwrites it for
+    good. }
+  if AEdge in [ledLeft, ledRight] then
+    Extent := Width
+  else
+    Extent := Height;
+  { The dock is laid out after the form is built, so during construction
+    this is the designed size rather than the real one.  Either is a better
+    basis than 150; a nonsense one falls back to a plain guess. }
+  if Extent < LedScale96(320) then
+    Extent := LedScale96(640);
+  FUserSize[AEdge] := (Extent * 11) div 20;
+
+  { The centre site's header is re-hidden on every idle pass, and the caption
+    it was hiding has just changed.  Asked for now as well so a check that
+    swaps and looks in the same message does not see the old one. }
+  GuardCentreHeader;
+
+  { And on screen at once.  Every other pane waits to be asked for, because
+    a pane nobody opened should not open itself; an editor is not in that
+    class -- a window whose text area appears a second after it does looks
+    like a fault, and the tab the session restores would be created into
+    something invisible. }
+  ShowPane(AId);
+end;
+
+function TLedDockHost.DockPaneAt(const AId, ARelativeTo: string;
+  AEdge: TLedDockEdge): Boolean;
+var
+  Pane, Host: TLedPaneForm;
+  Site, Target: TAnchorDockHostSite;
+begin
+  Result := False;
+  Pane := PaneById(AId);
+  Host := PaneById(ARelativeTo);
+  if (Pane = nil) or (Host = nil) then Exit;
+
+  { The pane it is going next to has to be on screen first: AnchorDocking
+    splits an existing site, and a site with no parent is not one. }
+  if not PaneVisible(ARelativeTo) then
+    ShowPane(ARelativeTo);
+
+  Site := DockMaster.GetAnchorSite(Pane);
+  Target := DockMaster.GetAnchorSite(Host);
+  if (Site = nil) or (Target = nil) or (Target.Parent = nil) then Exit;
+
+  { The fourth argument is the whole difference between "beside this pane"
+    and "across the window".  AnchorDocking reads a nil TargetControl as
+    "add a sibling to the target's parent layout", which for a pane sitting
+    against the client area means splitting the client area -- so the
+    workspace browser asked for underneath the file list arrived underneath
+    everything, spanning the full width.  Naming the target control makes it
+    split that site instead, which is what dropping one pane on another
+    does. }
+  { Registered as well as done, so that closing the pane and opening it
+    again puts it back here rather than against the edge of the window.
+
+    Both ways round.  "The workspace is under the file list" is the same
+    fact as "the file list is above the workspace", and recording only the
+    first half meant closing the *file list* and opening it again put it
+    beside the workspace instead of over it -- the pane that had been moved
+    remembered, and the pane it had been moved against did not. }
+  Pane.FBeside := ARelativeTo;
+  Pane.FBesideSide := AEdge;
+  Host.FBeside := AId;
+  Host.FBesideSide := OppositeEdge[AEdge];
+
+  DockMaster.ManualDock(Site, Target, EdgeAlign[AEdge], Host);
+  DockMaster.ShowControl(Pane.Name, True);
+  { ManualDock answers nothing, so the only honest report is whether the
+    pane ended up on screen. }
+  Result := PaneVisible(AId);
+  if not Result then Exit;
+
+  { Where it is now is where reopening it should put it, and that is read
+    off the layout rather than taken from the edge it was registered for. }
+  ReconcilePanes;
+  GuardCentreHeader;
+  RebuildRails;
+  if Assigned(FOnPaneShown) then
+    FOnPaneShown(AId);
+end;
+
+function TLedDockHost.DockPaneOn(const AId, ARelativeTo: string): Boolean;
+var
+  Pane, Host: TLedPaneForm;
+  Site, Target: TAnchorDockHostSite;
+begin
+  Result := False;
+  Pane := PaneById(AId);
+  Host := PaneById(ARelativeTo);
+  if (Pane = nil) or (Host = nil) then Exit;
+
+  if not PaneVisible(ARelativeTo) then
+    ShowPane(ARelativeTo);
+
+  Site := DockMaster.GetAnchorSite(Pane);
+  Target := DockMaster.GetAnchorSite(Host);
+  if (Site = nil) or (Target = nil) or (Target.Parent = nil) then Exit;
+
+  { alClient is "make pages of the two of you" -- see ExecuteDock, which
+    answers alClient with DockSecondPage. }
+  DockMaster.ManualDock(Site, Target, alClient, Host);
+  DockMaster.ShowControl(Pane.Name, True);
+  Result := PaneVisible(AId);
+  if not Result then Exit;
+
+  ReconcilePanes;
+  GuardCentreHeader;
+  RebuildRails;
+  if Assigned(FOnPaneShown) then
+    FOnPaneShown(AId);
+end;
+
 function TLedDockHost.PaneById(const AId: string): TLedPaneForm;
 var
   i: Integer;
@@ -777,7 +1124,14 @@ begin
     RedockPane cannot rescue an editor that an older layout left floating. }
   if (FCenterForm <> nil) and SameText(FCenterForm.PaneId, AId) then
     Exit(FCenterForm);
+  if (FAliases <> nil) and (FAliases.IndexOfName(AId) >= 0) then
+    Exit(PaneById(FAliases.Values[AId]));
   Result := nil;
+end;
+
+procedure TLedDockHost.AddPaneAlias(const AAlias, AId: string);
+begin
+  FAliases.Values[AAlias] := AId;
 end;
 
 function TLedDockHost.FindPane(const AId: string): TLedPaneForm;
@@ -1028,7 +1382,7 @@ begin
   TotalWant := 0;
   for i := 0 to n - 1 do
   begin
-    Wants[i] := WantedSize(AEdge);
+    Wants[i] := PaneWanted(Panes[i], AEdge);
     Inc(TotalWant, Wants[i]);
   end;
 
@@ -1067,9 +1421,9 @@ begin
         Inc(Short, Max(0, Wants[i] - Sites[i].Height));
 
     if AEdge in [ledLeft, ledRight] then
-      Deficit := CentreFloor(AEdge) - FCenter.Width
+      Deficit := CentreFloor(AEdge) - FCentreContent.Width
     else
-      Deficit := CentreFloor(AEdge) - FCenter.Height;
+      Deficit := CentreFloor(AEdge) - FCentreContent.Height;
 
     Short := Short + Max(0, Deficit);
     if Short <= 0 then Break;
@@ -1088,9 +1442,9 @@ begin
     missing, so this is the last resort it reads as rather than the first
     thing tried. }
   if AEdge in [ledLeft, ledRight] then
-    Deficit := CentreFloor(AEdge) - FCenter.Width
+    Deficit := CentreFloor(AEdge) - FCentreContent.Width
   else
-    Deficit := CentreFloor(AEdge) - FCenter.Height;
+    Deficit := CentreFloor(AEdge) - FCentreContent.Height;
 
   if (Deficit > 0) and (TotalWant > Deficit) then
   begin
@@ -1122,14 +1476,14 @@ var
   SW, SH, CW, CH: Integer;
 begin
   Result := APane.FLastEdge;
-  if (FCenter = nil) or (not FCenter.IsVisible) then Exit;
+  if (FCentreContent = nil) or (not FCentreContent.IsVisible) then Exit;
   Site := DockMaster.GetAnchorSite(APane);
   if (Site = nil) or (Site.Parent = nil) or (not Site.IsVisible) then Exit;
 
   S := Site.ClientToScreen(Point(0, 0));
-  C := FCenter.ClientToScreen(Point(0, 0));
+  C := FCentreContent.ClientToScreen(Point(0, 0));
   SW := Site.Width; SH := Site.Height;
-  CW := FCenter.Width; CH := FCenter.Height;
+  CW := FCentreContent.Width; CH := FCentreContent.Height;
 
   { Side to side first: a pane on the left or right overlaps the editor
     vertically, so the vertical tests cannot tell it apart from the editor's
@@ -1193,7 +1547,8 @@ end;
 
 procedure TLedDockHost.DockPane(APane: TLedPaneForm);
 var
-  Site: TAnchorDockHostSite;
+  Site, Beside: TAnchorDockHostSite;
+  Host: TLedPaneForm;
   E: TLedDockEdge;
 begin
   { First appearance: put it on the edge it was registered for, against the
@@ -1217,7 +1572,28 @@ begin
   Site := DockMaster.GetAnchorSite(APane);
   if (Site <> nil) and (Site.Parent = nil) then
   begin
-    DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.FLastEdge]);
+    { Beside the pane it belongs beside, when it has one, that one is on
+      screen, and this pane is coming back to the edge that one is on.
+
+      The last condition is what keeps the pairing a default rather than a
+      rule: a reader who dragged the workspace over to the right edge and
+      closed it gets it back on the right, because the file list it is
+      paired with is not there.  An edge cannot say "under the file list" --
+      see TLedPaneForm.FBeside. }
+    Beside := nil;
+    Host := nil;
+    if APane.FBeside <> '' then
+    begin
+      Host := PaneById(APane.FBeside);
+      if (Host <> nil) and PaneVisible(Host.PaneId)
+         and (PaneEdge(Host.PaneId) = APane.FLastEdge) then
+        Beside := DockMaster.GetAnchorSite(Host);
+    end;
+
+    if (Beside <> nil) and (Beside.Parent <> nil) then
+      DockMaster.ManualDock(Site, Beside, EdgeAlign[APane.FBesideSide], Host)
+    else
+      DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.FLastEdge]);
     SizeEdgePanes(APane.FLastEdge, True);
     { The other edges too, because a window that has just grown hands the new
       room to whichever control the anchors favour -- which is not necessarily
@@ -1281,6 +1657,29 @@ begin
     FOnPaneShown(AId);
 end;
 
+procedure TLedDockHost.RaisePane(const AId: string);
+var
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  Page: TAnchorDockPage;
+begin
+  ShowPane(AId);
+  Pane := PaneById(AId);
+  if Pane = nil then Exit;
+
+  Site := DockMaster.GetAnchorSite(Pane);
+  if Site = nil then Exit;
+
+  { A tabbed site puts each pane on a TAnchorDockPage; selecting that page
+    is the only way to put this pane in front of the ones beside it. }
+  if Site.Parent is TAnchorDockPage then
+  begin
+    Page := TAnchorDockPage(Site.Parent);
+    if Page.Parent is TAnchorDockPageControl then
+      TAnchorDockPageControl(Page.Parent).PageIndex := Page.PageIndex;
+  end;
+end;
+
 procedure TLedDockHost.HidePane(const AId: string);
 var
   Pane: TLedPaneForm;
@@ -1288,6 +1687,12 @@ var
 begin
   Pane := PaneById(AId);
   if Pane = nil then Exit;
+  { The one pane that cannot be closed.  Its close button is hidden, so
+    this is not reachable by hand -- but every other route is: the View
+    menu, a rail button, "hide this edge", and the loop in ResetLayout that
+    closes everything.  Refusing here covers all of them at once, rather
+    than once per caller. }
+  if Pane.FEssential then Exit;
   { Where it is, before there is nothing left to ask.  Closing the site
     takes it out of the layout, and then the only answer available is the
     one written down here. }
@@ -1347,8 +1752,8 @@ end;
 
 procedure TLedDockHost.RailButtonClick(Sender: TObject);
 begin
-  if not (Sender is TSpeedButton) then Exit;
-  TogglePane(TSpeedButton(Sender).Hint);
+  if not (Sender is TLedRailButton) then Exit;
+  TogglePane(TLedRailButton(Sender).PaneId);
 end;
 
 { One button per pane registered for this edge, laid out along it.  The rail
@@ -1383,8 +1788,18 @@ begin
   begin
     Pane := TLedPaneForm(FPanes[i]);
     if Pane.Edge <> AEdge then Continue;
+    { A rail button exists to bring a closed pane back, and to show which
+      ones are open.  A pane that cannot be closed has nothing to offer
+      either way, and in the fork it was costing a row: the editors are
+      registered on the top edge, so the top rail became visible to hold one
+      button that did nothing, and a strip of empty grey ran the width of
+      the window under the toolbar.  Reported as exactly that. }
+    if Pane.FEssential then Continue;
+    { And one nobody opens by hand has nothing to offer either: the figures
+      pane arrives with a figure in it and is empty the rest of the time. }
+    if Pane.FSelfOpening then Continue;
 
-    Btn := TLedSpeedButton.Create(Rail);
+    Btn := TLedRailButton.Create(Rail);
     Btn.Parent := Rail;
     Btn.Width := Size + Pad * 2;
     Btn.Height := Size + Pad * 2;
@@ -1398,12 +1813,18 @@ begin
       Btn.Left := 0;
       Btn.Top := N * (Size + Pad * 2);
     end;
+    TLedRailButton(Btn).PaneId := Pane.PaneId;
     Btn.Flat := True;
     Btn.AllowAllUp := True;
     Btn.GroupIndex := 1000 + i;      { so Down can be toggled independently }
-    { The id travels in Hint: it is also the tooltip the user needs, and it
-      saves a parallel lookup table that could fall out of step. }
-    Btn.Hint := Pane.PaneId;
+    { The name the pane goes by everywhere else -- its header, its line in
+      the View menu -- rather than the id the dock files it under.  A
+      tooltip reading `symbols` where the pane says Outline, or `ai` where
+      it says AI Chat, is the program talking to itself in front of the
+      reader. }
+    Btn.Hint := Pane.Caption;
+    if Btn.Hint = '' then
+      Btn.Hint := Pane.PaneId;
     Btn.ShowHint := True;
     Btn.Images := FImages;
     Btn.ImageIndex := LedIconIndex(Pane.IconName);
@@ -1456,6 +1877,19 @@ end;
 { Reflect which panes are actually open.  Called after LED changes a pane
   itself; the main form also calls it on idle, because a pane closed with the
   header's own close button never comes through here. }
+procedure TLedDockHost.SetSelfOpening(const AId: string; AValue: Boolean);
+var
+  Pane: TLedPaneForm;
+begin
+  Pane := PaneById(AId);
+  if (Pane = nil) or (Pane.FSelfOpening = AValue) then
+    Exit;
+  Pane.FSelfOpening := AValue;
+  { The rail it would have been on is the one that has to be counted again:
+    an edge with nothing left on it hides, which is the whole point. }
+  BuildRail(Pane.Edge);
+end;
+
 function TLedDockHost.RailButton(AEdge: TLedDockEdge;
   AIndex: Integer): TSpeedButton;
 var
@@ -1590,6 +2024,52 @@ begin
     Result := LedScale96(EdgeDefault[AEdge]);
 end;
 
+{ One pane's size: what it was itself last dragged to; else what the
+  program asked of its edge (SwapCentre, PreferEdgeSize); else a fifth of
+  the window -- its width for a left or right pane, its height for a top or
+  bottom one.  The fifth is for a pane that has never been sized at all:
+  before, it took the size the pane already on that edge had been dragged
+  to, so a second pane on a wide edge opened just as wide. }
+function TLedDockHost.PaneWanted(APane: TLedPaneForm; AEdge: TLedDockEdge): Integer;
+var
+  Extent: Integer;
+begin
+  if (APane <> nil) and (APane.FUserSize > 0) then
+    Exit(APane.FUserSize);
+  if FUserSize[AEdge] > 0 then
+    Exit(FUserSize[AEdge]);
+  if AEdge in [ledLeft, ledRight] then
+    Extent := Width
+  else
+    Extent := Height;
+  { during construction the dock has its designed size, or none }
+  if Extent < LedScale96(320) then
+    Exit(LedScale96(EdgeDefault[AEdge]));
+  Result := Max(LedScale96(80), Extent div 5);
+  { Settled the first time and kept: a fifth of a window that grows to make
+    room for panes is a different number at every reopen, and a pane that
+    came back a few pixels different each time is the ratchet again. }
+  if APane <> nil then
+    APane.FUserSize := Result;
+end;
+
+procedure TLedDockHost.PreferEdgeSize(AEdge: TLedDockEdge; ASize: Integer);
+var
+  i: Integer;
+begin
+  { The same floor NoteUserResize and SetEdgeSize keep. }
+  if ASize < LedScale96(40) then Exit;
+  FUserSize[AEdge] := ASize;
+  { every pane on the edge, the ones dragged before included: this is a
+    request for the edge as a whole }
+  for i := 0 to FPanes.Count - 1 do
+    if TLedPaneForm(FPanes[i]).FLastEdge = AEdge then
+      TLedPaneForm(FPanes[i]).FUserSize := ASize;
+  { Without leave to grow the window: this is a proportion of the window
+    that exists, not a request for a bigger one. }
+  SizeEdgePanes(AEdge, False);
+end;
+
 procedure TLedDockHost.NoteUserResize;
 var
   i, Size: Integer;
@@ -1608,7 +2088,7 @@ begin
     { The same floor SetEdgeSize keeps.  A pane dragged shut is a pane the
       user wants out of the way, not a size to bring back. }
     if Size >= LedScale96(40) then
-      FUserSize[Pane.FLastEdge] := Size;
+      Pane.FUserSize := Size;
   end;
 end;
 
@@ -1723,6 +2203,25 @@ begin
     if E <> AEdge then
       SizeEdgePanes(E, False);
   Result := True;
+end;
+
+function TLedDockHost.EssentialPaneId: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 0 to FPanes.Count - 1 do
+    if TLedPaneForm(FPanes[i]).FEssential then
+      Exit(TLedPaneForm(FPanes[i]).PaneId);
+end;
+
+function TLedDockHost.LayoutSignature: string;
+begin
+  { Never empty, so the key is always in the file and a reader -- or a check
+    -- can see which arrangement a layout belongs to. }
+  Result := EssentialPaneId;
+  if Result = '' then
+    Result := 'centre';
 end;
 
 function TLedDockHost.EdgeHasPanes(AEdge: TLedDockEdge): Boolean;
@@ -1847,6 +2346,7 @@ end;
 procedure TLedDockHost.GuardCentreHeader;
 var
   Site: TAnchorDockHostSite;
+  i: Integer;
 begin
   if FCenterForm = nil then Exit;
   Site := DockMaster.GetAnchorSite(FCenterForm);
@@ -1861,6 +2361,21 @@ begin
   Site.Header.Visible := False;
   if Site.Header.CloseButton <> nil then
     Site.Header.CloseButton.Visible := False;
+
+  { And the close button of an essential pane, which is a different case: it
+    keeps its header, because a header is how a pane is dragged and being
+    draggable is the point of it being a pane.  Only the button goes.  Done
+    from here rather than once at SwapCentre because AnchorDocking rebuilds
+    a site's header whenever the layout changes around it, and the button
+    comes back with it. }
+  for i := 0 to FPanes.Count - 1 do
+    if TLedPaneForm(FPanes[i]).FEssential then
+    begin
+      Site := DockMaster.GetAnchorSite(TLedPaneForm(FPanes[i]));
+      if (Site <> nil) and (Site.Header <> nil)
+         and (Site.Header.CloseButton <> nil) then
+        Site.Header.CloseButton.Visible := False;
+    end;
 end;
 
 function TLedDockHost.GetHeaderStyle: THeaderStyleName;
@@ -1922,6 +2437,8 @@ begin
     back at whatever the layout being thrown away had them at. }
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
     FUserSize[E] := 0;
+  for i := 0 to FPanes.Count - 1 do
+    TLedPaneForm(FPanes[i]).FUserSize := 0;
 
   { The editor may have been floated by an older layout, or left somewhere
     unhelpful.  It has no header to drag back by, so put it back here. }
@@ -1934,6 +2451,17 @@ begin
     DeleteFile(AFileName);
 
   RebuildRails;
+
+  { ...and then whatever this program calls a default.
+
+    Closing every pane is LED's answer, because LED's default *is* nothing
+    but the editor.  A program that arranges panes at startup has a
+    different one, and Reset Pane Layout was handing its reader the
+    editor's instead -- which is not a reset, it is a different window.
+    Raised last, with the saved layout already gone, so what the callback
+    builds is what the next start will build too. }
+  if Assigned(FOnDefaultLayout) then
+    FOnDefaultLayout(Self);
 end;
 
 procedure TLedDockHost.SaveLayout(const AFileName: string);
@@ -1947,6 +2475,22 @@ begin
   try
     DockMaster.SaveLayoutToConfig(Cfg);
     DockMaster.SaveSettingsToConfig(Cfg);
+
+    { Which pane holds the editors, which is how a layout says what window
+      it was written for.
+
+      A layout is a list of pane names and splitter positions; it carries no
+      hint that the *roles* have changed underneath it.  When the command
+      window took the client space and the editors moved into a pane of
+      their own, every name in an older layout still resolved to something
+      -- so the file loaded, put the console where the editors used to be,
+      failed to find a pane that no longer exists, and left a window nobody
+      could work in.  Restoring an arrangement that cannot be right is worse
+      than starting from the default, which is the rule the rest of this
+      already follows.
+
+      See LayoutSignature. }
+    Cfg.SetValue('LedPanes/Layout', LayoutSignature);
 
     { Where each pane was last seen, written alongside AnchorDocking's own
       layout rather than inside it.  A pane that is open is in that layout
@@ -1979,6 +2523,12 @@ begin
   try
     Cfg := TXMLConfigStorage.Create(AFileName, True);
     try
+      { Written for this window, or not read at all.  A layout from before
+        the key existed reads as 'centre', which is what the editor has
+        always been -- so LED's own saved layouts still load and only an
+        arrangement that really has moved is discarded. }
+      if Cfg.GetValue('LedPanes/Layout', 'centre') <> LayoutSignature then
+        Exit(False);
       DockMaster.LoadSettingsFromConfig(Cfg);
       Result := DockMaster.LoadLayoutFromConfig(Cfg, True);
       { Read back before the panes are looked at, so a pane that was closed
@@ -2021,6 +2571,16 @@ begin
     stray one. }
   if PaneFloating('editor') then
     RedockPane('editor');
+
+  { And an essential pane the layout said nothing about.
+
+    A layout written before SwapCentre existed names the client site and
+    knows nothing about the pane the editors have since moved into -- so
+    restoring one left the window with no editor area at all, and no close
+    button anywhere to explain where it had gone.  Whatever else a layout
+    says, that pane comes back. }
+  if (EssentialPaneId <> '') and not PaneVisible(EssentialPaneId) then
+    ShowPane(EssentialPaneId);
 
   { The restored sizes are the ones the user dragged to last time, so they
     are what a pane closed and reopened in this session should come back at.

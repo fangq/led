@@ -87,6 +87,8 @@ begin
   FTree.Align := alClient;
   FTree.ReadOnly := True;
   FTree.ShowRoot := False;
+  { a click anywhere along a row picks it, not only on the text }
+  FTree.RowSelect := True;
   FTree.OnDblClick := @TreeDblClick;
 end;
 
