@@ -26,6 +26,7 @@ type
     FIni: TMemIniFile;
     FFileName: string;
     FDirty: Boolean;
+    FGeneration: Integer;
     procedure Split(const AKey: string; out ASection, AName: string);
   public
     constructor Create(const AFileName: string = '');
@@ -52,6 +53,15 @@ type
 
     property FileName: string read FFileName;
     property Dirty: Boolean read FDirty;
+
+    { Bumped by every write and by a reload.  A pane that has to re-read a
+      setting has no other way to find out one changed: the dialog raises a
+      single OnApplied that the main window already owns, and a pane in a
+      package the window does not know about cannot be added to it.  An
+      integer compared on a timer tick costs a field read; a notification
+      list would cost a registration and a removal at the right moments,
+      which is the part that gets forgotten. }
+    property Generation: Integer read FGeneration;
   end;
 
 { The process-wide preferences, loaded on first use. }
@@ -69,6 +79,9 @@ procedure LedClearInheritedPaneLock(APrefs: TLedPrefs);
 const
   { Key names carried over from medit so the vocabulary is unchanged. }
   LedPrefFont            = 'Editor/font';
+  { the proportional face of a notebook's text cells and the Markdown and
+    wiki preview, with an optional size: "Sans" or "DejaVu Serif 13" }
+  LedPrefPreviewFont     = 'Editor/preview_font';
   LedPrefColorScheme     = 'Editor/color_scheme';
   { Windows only; not part of medit's vocabulary. }
   LedPrefDarkTitlebar    = 'Editor/dark_titlebar';
@@ -230,6 +243,7 @@ begin
   Split(AKey, S, N);
   FIni.WriteString(S, N, AValue);
   FDirty := True;
+  Inc(FGeneration);
 end;
 
 procedure TLedPrefs.SetInt(const AKey: string; AValue: Int64);
@@ -257,6 +271,7 @@ begin
   Split(AKey, S, N);
   FIni.DeleteKey(S, N);
   FDirty := True;
+  Inc(FGeneration);
 end;
 
 procedure TLedPrefs.Load;
@@ -273,6 +288,7 @@ begin
     L.Free;
   end;
   FDirty := False;
+  Inc(FGeneration);
 end;
 
 procedure TLedPrefs.Save;

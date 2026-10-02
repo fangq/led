@@ -30,8 +30,9 @@ uses
   Led.Core.AppFont,
   Classes, SysUtils, Controls, Forms, Graphics;
 
-{ The PPI forms should be scaled to right now.  Recomputed on every call, with
-  no caching, so a desktop scale change is picked up live. }
+{ The PPI forms should be scaled to right now.  The desktop's scaling factor
+  is read once, since reading it runs a program, and LedRefreshScale reads it
+  again. }
 function LedDesiredPPI: Integer;
 
 { Scale one form from its current PPI to the desktop target.  Call for forms
@@ -214,11 +215,18 @@ uses
 { The desktop's integer window-scaling factor -- xfce's
   Gdk/WindowScalingFactor -- or 0 when it cannot be determined.  gtk2 ignores
   it, so read it directly and match what other applications do. }
+var
+  GScalingFactor: Integer = -1;  { the desktop's factor, once read; -1 before }
+
 function LedDesktopScalingFactor: Integer;
 {$IFDEF LINUX}
 var
   Outp: string;
 begin
+  { Kept: building the main window asks for the PPI several hundred times
+    before the startup sweep fixes it, and a run of xfconf-query each time
+    cost close to three seconds. }
+  if GScalingFactor >= 0 then Exit(GScalingFactor);
   Result := 0;
   Outp := '';
   try
@@ -230,6 +238,7 @@ begin
       desktops do not have one, and 0 means "assume 1". }
     Result := 0;
   end;
+  GScalingFactor := Result;
 end;
 {$ELSE}
 begin
@@ -606,6 +615,7 @@ function LedRefreshScale: Boolean;
 var
   D: Integer;
 begin
+  GScalingFactor := -1;
   D := LedDesiredPPI;
   Result := (D > 0) and (D <> GAppliedPPI);
   if Result then
