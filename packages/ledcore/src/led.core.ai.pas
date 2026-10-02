@@ -39,9 +39,27 @@ const
   { Whether the feature is offered at all.  A reader who does not want an
     editor that talks to a model says so once. }
   LedPrefAIEnabled       = 'AI/enabled';
-  LedPrefAIBackend       = 'AI/backend';           // 'ollama' | 'claude'
+  LedPrefAIBackend       = 'AI/backend';           // 'ollama' | 'llama.cpp' | 'claude'
+  { Where ollama listens.  Blank means $OLLAMA_HOST, as ollama's own client
+    reads it, and then http://localhost:11434. }
   LedPrefAIOllamaURL     = 'AI/ollama_url';
   LedPrefAIOllamaModel   = 'AI/ollama_model';
+  { A llama.cpp server -- llama-server, or anything speaking the same
+    OpenAI-style /v1/chat/completions: LM Studio, vLLM, a llama-swap proxy.
+    Blank URL means $LLAMA_SERVER_URL, then http://127.0.0.1:8080; blank
+    model means whatever the server has loaded; the key is sent as a Bearer
+    token when the server was started with --api-key, else $LLAMA_API_KEY. }
+  LedPrefAILlamaURL      = 'AI/llamacpp_url';
+  LedPrefAILlamaModel    = 'AI/llamacpp_model';
+  LedPrefAILlamaKey      = 'AI/llamacpp_key';
+  { Where Claude Code sends its requests, for a model served somewhere other
+    than Anthropic -- a llama.cpp server with an Anthropic-style /v1/messages,
+    say.  Passed to the claude process as ANTHROPIC_BASE_URL,
+    ANTHROPIC_AUTH_TOKEN and CLAUDE_CODE_MAX_CONTEXT_TOKENS; blank leaves
+    whatever the environment already says. }
+  LedPrefAIClaudeBaseURL = 'AI/claude_base_url';
+  LedPrefAIClaudeToken   = 'AI/claude_auth_token';
+  LedPrefAIClaudeContext = 'AI/claude_context_tokens';
   { qwen3 and its relatives think out loud before answering.  The thinking is
     interesting to read and disastrous to paste into a file, so it is kept
     apart from the answer either way; this only decides whether the model is
@@ -217,6 +235,9 @@ type
       whether it is there costs, when asking ctags its version deadlocked on
       a pipe nobody was reading. }
     class function Available: Boolean; virtual; abstract;
+    { The preference that remembers which model was chosen, or '' for a
+      backend that chooses its own. }
+    class function ModelPrefKey: string; virtual;
 
     { Asks.  False when there is nothing to ask with or when the last turn
       has not let go yet; LastError says which.  ASeq is the number the
@@ -365,6 +386,11 @@ begin
 end;
 
 { ----- the backend ------------------------------------------------------ }
+
+class function TLedAIBackend.ModelPrefKey: string;
+begin
+  Result := '';
+end;
 
 constructor TLedAIBackend.Create(AChat: TLedAIChat);
 begin

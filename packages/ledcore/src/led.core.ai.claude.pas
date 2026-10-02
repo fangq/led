@@ -107,6 +107,13 @@ type
   ATools is the preference: 'chat', 'ask', 'edits' or 'full'. }
 function LedAIClaudeArgs(const AModel, ATools, ASession: string): TStringList;
 
+{ The environment Claude Code is started with when the preferences point it
+  at another server -- ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS on top of this process's own, the way a
+  wrapper script exports them.  Left empty when none of the three is set,
+  which makes TProcess pass the environment on unchanged. }
+procedure LedAIClaudeEnvironment(AEnv: TStrings);
+
 { What claude may do, in words, for the pane to show.  Public because a
   reader about to let a program write to their project should be able to
   read what they have agreed to without opening the preferences. }
@@ -331,6 +338,28 @@ begin
   Result := GPath;
 end;
 
+procedure LedAIClaudeEnvironment(AEnv: TStrings);
+var
+  Base, Token, Ctx: string;
+  i: Integer;
+begin
+  AEnv.Clear;
+  Base := Trim(LedPrefs.GetStr(LedPrefAIClaudeBaseURL, ''));
+  Token := Trim(LedPrefs.GetStr(LedPrefAIClaudeToken, ''));
+  Ctx := Trim(LedPrefs.GetStr(LedPrefAIClaudeContext, ''));
+  if (Base = '') and (Token = '') and (Ctx = '') then
+    Exit;
+  for i := 1 to GetEnvironmentVariableCount do
+    AEnv.Add(GetEnvironmentString(i));
+  if Base <> '' then AEnv.Values['ANTHROPIC_BASE_URL'] := Base;
+  { claude insists on a token even for a server that ignores it }
+  if Token <> '' then
+    AEnv.Values['ANTHROPIC_AUTH_TOKEN'] := Token
+  else if (Base <> '') and (AEnv.Values['ANTHROPIC_AUTH_TOKEN'] = '') then
+    AEnv.Values['ANTHROPIC_AUTH_TOKEN'] := 'local';
+  if Ctx <> '' then AEnv.Values['CLAUDE_CODE_MAX_CONTEXT_TOKENS'] := Ctx;
+end;
+
 function TLedAIClaude.Ask(const ARequest: TLedAIRequest;
   out ASeq: Integer): Boolean;
 var
@@ -391,6 +420,9 @@ begin
   { Not poStderrToOutput: stdout is a protocol, and a notice printed by
     somebody's shell profile must not arrive in the middle of it. }
   FProcess.Options := [poUsePipes, poNoConsole];
+  { A server other than Anthropic's, when the preferences name one: the
+    process gets this one's environment with those variables set. }
+  LedAIClaudeEnvironment(FProcess.Environment);
 
   try
     FProcess.Execute;

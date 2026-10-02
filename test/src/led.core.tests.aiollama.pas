@@ -26,7 +26,7 @@ interface
 uses
   Classes, SysUtils, DateUtils, ssockets, fpcunit, testregistry, fphttpserver,
   fpjson,
-  Led.Core.AI, Led.Core.AI.Ollama, Led.Core.Prefs;
+  Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude, Led.Core.Prefs;
 
 type
   TTestAIOllama = class(TTestCase)
@@ -78,6 +78,13 @@ type
     procedure AnOldConversationIsTrimmedBeforeItIsSent;
     procedure AServerThatRefusesIsReportedNotSwallowed;
     procedure AServerThatIsNotThereIsReportedQuickly;
+
+    { llama.cpp, and Claude Code pointed at a server of one's own }
+    procedure AnOpenAIRequestNamesTheModelOnlyWhenThereIsOne;
+    procedure AnOpenAIChunkIsOneDeltaAndReasoningIsThinking;
+    procedure TheOpenAIStreamEndsAtDoneWithItsTimings;
+    procedure ALlamaCppServerStreamsItsAnswer;
+    procedure ClaudeIsPointedAtAServerByItsEnvironment;
     procedure ModelsAreListedFromTheServer;
   end;
 
@@ -119,6 +126,7 @@ type
     procedure Execute; override;
   public
     LastBody: string;
+    LastAuth: string;
     constructor Create;
     procedure Stop;
   end;
@@ -176,6 +184,47 @@ var
   i: Integer;
 begin
   LastBody := ARequest.Content;
+  LastAuth := ARequest.Authorization;
+
+  if Pos('/v1/models', ARequest.URI) > 0 then
+  begin
+    AResponse.Content := '{"object":"list","data":[{"id":"local-model"}]}';
+    AResponse.Code := 200;
+    AResponse.SendResponse;
+    Exit;
+  end;
+
+  { llama-server's stream: server-sent events, the timings on the last
+    chunk, then [DONE] }
+  if Pos('/v1/chat/completions', ARequest.URI) > 0 then
+  begin
+    Lines := TStringList.Create;
+    try
+      for i := 1 to FakeLines do
+        Lines.Add(Format('data: {"choices":[{"delta":{"content":"tok%d "},' +
+          '"finish_reason":null}]}', [i]));
+      Lines.Add('data: {"choices":[{"delta":{},"finish_reason":"stop"}],' +
+        '"timings":{"predicted_n":42,"predicted_ms":1400,"prompt_ms":100}}');
+      Lines.Add('data: [DONE]');
+      Body := '';
+      for i := 0 to Lines.Count - 1 do
+        Body := Body + Lines[i] + #10#10;
+      AResponse.Code := 200;
+      AResponse.ContentType := 'text/event-stream';
+      AResponse.ContentLength := Length(Body);
+      AResponse.SendHeaders;
+      Sock := TConnAccess(AResponse).Sock;
+      for i := 0 to Lines.Count - 1 do
+      begin
+        if i > 0 then Sleep(FakeGapMs div 2);
+        Line := Lines[i] + #10#10;
+        Sock.WriteBuffer(Line[1], Length(Line));
+      end;
+    finally
+      Lines.Free;
+    end;
+    Exit;
+  end;
 
   if Pos('/api/tags', ARequest.URI) > 0 then
   begin
@@ -780,6 +829,165 @@ begin
     AssertEquals('in the order the server gave', 'first:latest', Names[0]);
   finally
     Names.Free;
+  end;
+end;
+
+{ ----- llama.cpp: OpenAI's dialect -------------------------------------- }
+
+procedure TTestAIOllama.AnOpenAIRequestNamesTheModelOnlyWhenThereIsOne;
+var
+  R: TLedAIRequest;
+  Body: TJSONObject;
+begin
+  R := Default(TLedAIRequest);
+  R.Instruction := 'hello';
+  Body := BodyOf(LedAIOpenAIChatBody('qwen', FChat, R));
+  try
+    AssertEquals('the model', 'qwen', Body.Get('model', ''));
+    AssertTrue('streamed', Body.Get('stream', False));
+    AssertTrue('as messages', Body.Find('messages') is TJSONArray);
+  finally
+    Body.Free;
+  end;
+  Body := BodyOf(LedAIOpenAIChatBody('', FChat, R));
+  try
+    { llama-server answers with whatever it has loaded }
+    AssertNull('no model named when none was chosen', Body.Find('model'));
+  finally
+    Body.Free;
+  end;
+end;
+
+procedure TTestAIOllama.AnOpenAIChunkIsOneDeltaAndReasoningIsThinking;
+var
+  D: TLedAIDelta;
+  Final: Boolean;
+  Stats, Err: string;
+begin
+  AssertTrue('an event', LedAIOpenAIParseLine(
+    'data: {"choices":[{"delta":{"content":"hi "},"finish_reason":null}]}',
+    D, Final, Stats, Err));
+  AssertEquals('the words', 'hi ', D.Text);
+  AssertEquals('as the answer', Ord(ladText), Ord(D.Kind));
+  AssertFalse('not the end', Final);
+  AssertTrue('an event', LedAIOpenAIParseLine(
+    'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}',
+    D, Final, Stats, Err));
+  AssertEquals('thinking is kept apart', Ord(ladThinking), Ord(D.Kind));
+end;
+
+procedure TTestAIOllama.TheOpenAIStreamEndsAtDoneWithItsTimings;
+var
+  D: TLedAIDelta;
+  Final: Boolean;
+  Stats, Err: string;
+begin
+  AssertTrue('the last chunk', LedAIOpenAIParseLine(
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}],' +
+    '"timings":{"predicted_n":42,"predicted_ms":1400,"prompt_ms":100}}',
+    D, Final, Stats, Err));
+  AssertTrue('says what it cost: ' + Stats, Pos('42', Stats) > 0);
+  AssertTrue('in seconds: ' + Stats, Pos('1.5', Stats) > 0);
+  AssertTrue('and [DONE] ends the turn', LedAIOpenAIParseLine('data: [DONE]',
+    D, Final, Stats, Err) and Final);
+  AssertTrue('a refusal', LedAIOpenAIParseLine(
+    '{"error":{"message":"model not loaded"}}', D, Final, Stats, Err));
+  AssertTrue('in words: ' + Err, Pos('not loaded', Err) > 0);
+  AssertFalse('a comment is not an event', LedAIOpenAIParseLine(': ping',
+    D, Final, Stats, Err));
+  AssertFalse('nor is an event name', LedAIOpenAIParseLine('event: message',
+    D, Final, Stats, Err));
+end;
+
+procedure TTestAIOllama.ALlamaCppServerStreamsItsAnswer;
+var
+  L: TLedAILlamaCpp;
+  R: TLedAIRequest;
+  Seq, Waited: Integer;
+  HadURL, HadKey: Boolean;
+  WasURL, WasKey: string;
+  Names: TStringList;
+  Why: string;
+begin
+  FakeServer;
+  HadURL := LedPrefs.HasKey(LedPrefAILlamaURL);
+  WasURL := LedPrefs.GetStr(LedPrefAILlamaURL, '');
+  HadKey := LedPrefs.HasKey(LedPrefAILlamaKey);
+  WasKey := LedPrefs.GetStr(LedPrefAILlamaKey, '');
+  LedPrefs.SetStr(LedPrefAILlamaURL, Format('http://127.0.0.1:%d/', [FakePort]));
+  LedPrefs.SetStr(LedPrefAILlamaKey, 'secret');
+  L := TLedAILlamaCpp.Create(FChat);
+  try
+    L.OnDelta := @GotDelta;
+    L.OnDone := @GotDone;
+    L.OnError := @GotError;
+    R := Default(TLedAIRequest);
+    R.Instruction := 'say something';
+    { no model chosen: llama-server does not need one }
+    AssertTrue('asked without a model: ' + L.LastError, L.Ask(R, Seq));
+    Waited := 0;
+    repeat
+      L.Poll;
+      if FDone then Break;
+      Sleep(10);
+      Inc(Waited, 10);
+    until Waited > 20000;
+    AssertTrue('it finished: ' + FError, FDone and (FError = ''));
+    AssertEquals('the answer is all of it', 'tok1 tok2 tok3 tok4 tok5 ', Answer);
+    AssertTrue('with the timings llama-server sends: ' + FResult.Stats,
+      Pos('42', FResult.Stats) > 0);
+    AssertEquals('the key went as a Bearer token', 'Bearer secret',
+      FakeServer.LastAuth);
+
+    Names := TStringList.Create;
+    try
+      AssertTrue('the models are listed: ' + Why, L.ModelList(Names, Why));
+      AssertEquals('from /v1/models', 'local-model', Names[0]);
+    finally
+      Names.Free;
+    end;
+  finally
+    L.Free;
+    if HadURL then LedPrefs.SetStr(LedPrefAILlamaURL, WasURL)
+    else LedPrefs.Remove(LedPrefAILlamaURL);
+    if HadKey then LedPrefs.SetStr(LedPrefAILlamaKey, WasKey)
+    else LedPrefs.Remove(LedPrefAILlamaKey);
+  end;
+end;
+
+procedure TTestAIOllama.ClaudeIsPointedAtAServerByItsEnvironment;
+var
+  Env: TStringList;
+  Keys: array[0..2] of string;
+  Had: array[0..2] of Boolean;
+  Was: array[0..2] of string;
+  i: Integer;
+begin
+  Keys[0] := LedPrefAIClaudeBaseURL;
+  Keys[1] := LedPrefAIClaudeToken;
+  Keys[2] := LedPrefAIClaudeContext;
+  for i := 0 to 2 do
+  begin
+    Had[i] := LedPrefs.HasKey(Keys[i]);
+    Was[i] := LedPrefs.GetStr(Keys[i], '');
+    LedPrefs.Remove(Keys[i]);
+  end;
+  Env := TStringList.Create;
+  try
+    LedAIClaudeEnvironment(Env);
+    AssertEquals('nothing set: the environment is passed on as it is', 0, Env.Count);
+    LedPrefs.SetStr(LedPrefAIClaudeBaseURL, 'http://127.0.0.1:8090');
+    LedPrefs.SetStr(LedPrefAIClaudeContext, '262144');
+    LedAIClaudeEnvironment(Env);
+    AssertEquals('the server', 'http://127.0.0.1:8090', Env.Values['ANTHROPIC_BASE_URL']);
+    AssertTrue('a token, since claude insists on one',
+      Env.Values['ANTHROPIC_AUTH_TOKEN'] <> '');
+    AssertEquals('the context', '262144', Env.Values['CLAUDE_CODE_MAX_CONTEXT_TOKENS']);
+    AssertTrue('on top of this process''s own', Env.Values['PATH'] <> '');
+  finally
+    Env.Free;
+    for i := 0 to 2 do
+      if Had[i] then LedPrefs.SetStr(Keys[i], Was[i]) else LedPrefs.Remove(Keys[i]);
   end;
 end;
 

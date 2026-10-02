@@ -79,13 +79,23 @@ type
     FReplaces: Boolean;
     FWasCut: Boolean;
     FStoppedAt: TDateTime;
-    function BaseURL: string;
     procedure LetGoOfWorker;
+  protected
+    { What differs between ollama and a server speaking OpenAI's API: where
+      it is, where a chat goes, what a request says, how the stream reads,
+      what to authorise with, and whether a model has to be named. }
+    function BaseURL: string; virtual;
+    function ChatURL: string; virtual;
+    function ChatBody(const ARequest: TLedAIRequest): string; virtual;
+    function StreamFormat: Integer; virtual;
+    function AuthToken: string; virtual;
+    function NeedsModel: Boolean; virtual;
   public
     constructor Create(AChat: TLedAIChat); override;
     destructor Destroy; override;
     class function BackendName: string; override;
     class function Available: Boolean; override;
+    class function ModelPrefKey: string; override;
     function Ask(const ARequest: TLedAIRequest; out ASeq: Integer): Boolean;
       override;
     procedure Stop; override;
@@ -93,6 +103,45 @@ type
     procedure Shutdown; override;
     function ModelList(ANames: TStrings; out AWhy: string): Boolean; override;
   end;
+
+  { A llama.cpp server, or anything else answering OpenAI's
+    /v1/chat/completions: the same worker and the same queue as ollama, with
+    the request and the stream in that dialect.  The stream is server-sent
+    events -- `data: {...}` lines, then `data: [DONE]` -- rather than
+    NDJSON, and llama-server adds its timings to the last chunk. }
+  TLedAILlamaCpp = class(TLedAIOllama)
+  protected
+    function BaseURL: string; override;
+    function ChatURL: string; override;
+    function ChatBody(const ARequest: TLedAIRequest): string; override;
+    function StreamFormat: Integer; override;
+    function AuthToken: string; override;
+    function NeedsModel: Boolean; override;
+  public
+    class function BackendName: string; override;
+    class function Available: Boolean; override;
+    class function ModelPrefKey: string; override;
+    function ModelList(ANames: TStrings; out AWhy: string): Boolean; override;
+  end;
+
+{ The server a URL preference names, else the environment variable, else the
+  default -- without a trailing slash, and with http:// when the variable was
+  written the way ollama's OLLAMA_HOST usually is, as host:port. }
+function LedAIServerURL(const APref, AEnvVar, ADefault: string): string;
+
+{ The body of one OpenAI-style /v1/chat/completions request.  The model may be
+  empty: llama-server answers with whatever it has loaded. }
+function LedAIOpenAIChatBody(const AModel: string; AChat: TLedAIChat;
+  const ARequest: TLedAIRequest): string;
+
+{ One line of an OpenAI-style event stream.  False for a line that is not an
+  event (a comment, an `event:` line, a blank); AFinal at `data: [DONE]` or a
+  chunk with a finish reason and llama.cpp's timings. }
+function LedAIOpenAIParseLine(const ALine: string; out ADelta: TLedAIDelta;
+  out AFinal: Boolean; out AStats, AError: string): Boolean;
+
+{ The model ids from /v1/models. }
+function LedAIOpenAIParseModels(const AText: string; ANames: TStrings): Boolean;
 
 { The body of one /api/chat request: every message of the conversation, then
   the question.  A free function because a check can read it back with a JSON
@@ -149,12 +198,15 @@ type
     FSeq, FTimeoutMs: Integer;
     FCancelled: Integer;
     FEnded: Boolean;        // a done or an error has already been queued
+    FFormat: Integer;       // 0: ollama NDJSON, 1: OpenAI server-sent events
+    FStats: string;         // the last cost a line reported; llama.cpp says it before [DONE]
+    FAuth: string;          // a Bearer token, when the server wants one
     procedure PushText(AKind: TLedAIDeltaKind; const AText, AName: string);
   protected
     procedure Execute; override;
   public
     constructor Create(AQueue: TLedAIOllamaQueue; const AURL, ABody: string;
-      ASeq, ATimeoutMs: Integer);
+      ASeq, ATimeoutMs: Integer; AFormat: Integer = 0; const AAuth: string = '');
     destructor Destroy; override;
     { Called from the worker, on every chunk off the socket. }
     procedure Chunk(const AData: string);
@@ -304,8 +356,11 @@ end;
 { ----- the worker ------------------------------------------------------- }
 
 constructor TLedAIOllamaWorker.Create(AQueue: TLedAIOllamaQueue;
-  const AURL, ABody: string; ASeq, ATimeoutMs: Integer);
+  const AURL, ABody: string; ASeq, ATimeoutMs: Integer; AFormat: Integer;
+  const AAuth: string);
 begin
+  FFormat := AFormat;
+  FAuth := AAuth;
   FQueue := AQueue;
   FQueue.AddRef;
   FURL := AURL;
@@ -360,7 +415,14 @@ begin
   while FSplit.Next(Line) do
   begin
     if Trim(Line) = '' then Continue;
-    if not LedAIOllamaParseLine(Line, D, Final, Stats, Err) then
+    if FFormat = 1 then
+    begin
+      { an event stream carries comments and event names between the data;
+        they are not answers and not errors either }
+      if not LedAIOpenAIParseLine(Line, D, Final, Stats, Err) then
+        Continue;
+    end
+    else if not LedAIOllamaParseLine(Line, D, Final, Stats, Err) then
     begin
       { Not a message at all.  A proxy answering in HTML gets one notice, not
         a hundred. }
@@ -378,10 +440,12 @@ begin
       D.Seq := FSeq;
       FQueue.Push(D);
     end;
+    if Stats <> '' then
+      FStats := Stats;
     if Final then
     begin
       FEnded := True;
-      PushText(ladNotice, Stats, QueueDone);
+      PushText(ladNotice, FStats, QueueDone);
       Exit;
     end;
   end;
@@ -402,6 +466,8 @@ begin
         politely" -- the read fails and the answer is lost. }
       FClient.IOTimeout := FTimeoutMs;
       FClient.AddHeader('Content-Type', 'application/json');
+      if FAuth <> '' then
+        FClient.AddHeader('Authorization', 'Bearer ' + FAuth);
       FClient.RequestBody := Body;
       { Every code accepted, and the body read whatever it says.  Asking only
         for 200 would be tidier and would throw away the useful half of a
@@ -628,15 +694,58 @@ begin
   if GTried then Exit(GAvailable);
   GTried := True;
   GAvailable := (LedPrefs.GetStr(LedPrefAIOllamaURL, '') <> '') or
+    (GetEnvironmentVariable('OLLAMA_HOST') <> '') or
     (FindDefaultExecutablePath('ollama') <> '');
   Result := GAvailable;
 end;
 
-function TLedAIOllama.BaseURL: string;
+function LedAIServerURL(const APref, AEnvVar, ADefault: string): string;
 begin
-  Result := LedPrefs.GetStr(LedPrefAIOllamaURL, 'http://localhost:11434');
+  Result := Trim(LedPrefs.GetStr(APref, ''));
+  if (Result = '') and (AEnvVar <> '') then
+    Result := Trim(GetEnvironmentVariable(AEnvVar));
+  if Result = '' then
+    Result := ADefault;
+  if (Pos('://', Result) = 0) and (Result <> '') then
+    Result := 'http://' + Result;
   while (Result <> '') and (Result[Length(Result)] = '/') do
     SetLength(Result, Length(Result) - 1);
+end;
+
+function TLedAIOllama.BaseURL: string;
+begin
+  Result := LedAIServerURL(LedPrefAIOllamaURL, 'OLLAMA_HOST', 'http://localhost:11434');
+end;
+
+function TLedAIOllama.ChatURL: string;
+begin
+  Result := BaseURL + '/api/chat';
+end;
+
+function TLedAIOllama.ChatBody(const ARequest: TLedAIRequest): string;
+begin
+  Result := LedAIOllamaChatBody(FModel, FChat, ARequest,
+    LedPrefs.GetBool(LedPrefAIOllamaThink, False));
+end;
+
+function TLedAIOllama.StreamFormat: Integer;
+begin
+  Result := 0;
+end;
+
+function TLedAIOllama.AuthToken: string;
+begin
+  Result := '';
+end;
+
+function TLedAIOllama.NeedsModel: Boolean;
+begin
+  Result := True;
+end;
+
+class function TLedAIOllama.ModelPrefKey: string;
+begin
+  Result := LedPrefAIOllamaModel;
 end;
 
 function TLedAIOllama.Ask(const ARequest: TLedAIRequest;
@@ -654,8 +763,8 @@ begin
     Exit;
   end;
   if FModel = '' then
-    FModel := LedPrefs.GetStr(LedPrefAIOllamaModel, '');
-  if FModel = '' then
+    FModel := LedPrefs.GetStr(ModelPrefKey, '');
+  if (FModel = '') and NeedsModel then
   begin
     FLastError := 'no model has been chosen';
     Exit;
@@ -681,11 +790,10 @@ begin
   FStats := '';
   FReplaces := Req.Replaces;
 
-  Body := LedAIOllamaChatBody(FModel, FChat, Req,
-    LedPrefs.GetBool(LedPrefAIOllamaThink, False));
+  Body := ChatBody(Req);
 
-  FWorker := TLedAIOllamaWorker.Create(FQueue, BaseURL + '/api/chat', Body,
-    FSeq, LedPrefs.GetInt(LedPrefAITimeoutMs, 300000));
+  FWorker := TLedAIOllamaWorker.Create(FQueue, ChatURL, Body,
+    FSeq, LedPrefs.GetInt(LedPrefAITimeoutMs, 300000), StreamFormat, AuthToken);
   SetState(laiBusy);
   Result := True;
 end;
@@ -828,6 +936,266 @@ begin
     AWhy := 'ollama answered something that was not a list of models'
   else if ANames.Count = 0 then
     AWhy := 'ollama has no models installed';
+end;
+
+{ ----- the OpenAI dialect, for llama.cpp -------------------------------- }
+
+function LedAIOpenAIChatBody(const AModel: string; AChat: TLedAIChat;
+  const ARequest: TLedAIRequest): string;
+var
+  Root: TJSONObject;
+  Msgs: TJSONArray;
+  i: Integer;
+  Sys: string;
+
+  procedure AddMessage(const ARole, AText: string);
+  var
+    M: TJSONObject;
+  begin
+    M := TJSONObject.Create;
+    M.Add('role', ARole);
+    M.Add('content', AText);
+    Msgs.Add(M);
+  end;
+
+begin
+  Root := TJSONObject.Create;
+  try
+    Msgs := TJSONArray.Create;
+    Sys := ARequest.System;
+    if Sys = '' then Sys := LedAITaskSystem(ARequest.Task);
+    if Sys <> '' then AddMessage('system', Sys);
+    if (not ARequest.Standalone) and (AChat <> nil) then
+      for i := 0 to AChat.Count - 1 do
+        AddMessage(RoleName(AChat.Role(i)), AChat.Text(i));
+    AddMessage('user', LedAIBuildPrompt(ARequest));
+
+    if AModel <> '' then
+      Root.Add('model', AModel);
+    Root.Add('messages', Msgs);
+    Root.Add('stream', True);
+    { colder for a replacement than for a conversation, as for ollama }
+    if ARequest.Replaces then
+      Root.Add('temperature', 0.2)
+    else
+      Root.Add('temperature', 0.7);
+    Result := Root.AsJSON;
+  finally
+    Root.Free;
+  end;
+end;
+
+function LedAIOpenAIParseLine(const ALine: string; out ADelta: TLedAIDelta;
+  out AFinal: Boolean; out AStats, AError: string): Boolean;
+var
+  Payload, Why, Text: string;
+  Data, E: TJSONData;
+  Root, Choice, Delta, Timings: TJSONObject;
+  Choices: TJSONArray;
+  Tokens: Integer;
+  Ms: Double;
+begin
+  Result := False;
+  ADelta := Default(TLedAIDelta);
+  AFinal := False;
+  AStats := '';
+  AError := '';
+
+  Payload := Trim(ALine);
+  if Copy(Payload, 1, 5) = 'data:' then
+    Payload := Trim(Copy(Payload, 6, MaxInt))
+  else if Copy(Payload, 1, 1) <> '{' then
+    Exit;                  { a comment, an event name: not an event }
+
+  if Payload = '[DONE]' then
+  begin
+    Result := True;
+    AFinal := True;
+    Exit;
+  end;
+
+  Data := LedNBParseJSON(Payload, Why);
+  if Data = nil then Exit;
+  try
+    if not (Data is TJSONObject) then Exit;
+    Root := TJSONObject(Data);
+    Result := True;
+
+    { a refusal: {"error": {"message": ...}} or {"error": "..."} }
+    E := Root.Find('error');
+    if E <> nil then
+    begin
+      if E is TJSONObject then
+        AError := TJSONObject(E).Get('message', '')
+      else if E.JSONType = jtString then
+        AError := E.AsString;
+      if AError = '' then AError := 'the server refused the request';
+      Exit;
+    end;
+
+    E := Root.Find('choices');
+    if (E is TJSONArray) and (TJSONArray(E).Count > 0) and
+       (TJSONArray(E).Items[0] is TJSONObject) then
+    begin
+      Choices := TJSONArray(E);
+      Choice := TJSONObject(Choices.Items[0]);
+      if Choice.Find('delta') is TJSONObject then
+      begin
+        Delta := TJSONObject(Choice.Find('delta'));
+        { a reasoning model's thinking comes in a field of its own }
+        Text := '';
+        if (Delta.Find('reasoning_content') <> nil) and
+           (Delta.Find('reasoning_content').JSONType = jtString) then
+          Text := Delta.Get('reasoning_content', '');
+        if Text <> '' then
+        begin
+          ADelta.Kind := ladThinking;
+          ADelta.Text := Text;
+        end
+        else if (Delta.Find('content') <> nil) and
+                (Delta.Find('content').JSONType = jtString) then
+        begin
+          ADelta.Kind := ladText;
+          ADelta.Text := Delta.Get('content', '');
+        end;
+      end;
+    end;
+
+    { llama-server puts its timings on the last chunk }
+    if Root.Find('timings') is TJSONObject then
+    begin
+      Timings := TJSONObject(Root.Find('timings'));
+      Tokens := Timings.Get('predicted_n', 0);
+      Ms := Timings.Get('predicted_ms', 0.0) + Timings.Get('prompt_ms', 0.0);
+      if (Tokens > 0) and (Ms > 0) then
+        AStats := Format('%d tokens in %.1f s', [Tokens, Ms / 1000]);
+    end;
+  finally
+    Data.Free;
+  end;
+end;
+
+function LedAIOpenAIParseModels(const AText: string; ANames: TStrings): Boolean;
+var
+  Data, E: TJSONData;
+  Arr: TJSONArray;
+  i: Integer;
+  Why, Name: string;
+begin
+  Result := False;
+  ANames.Clear;
+  Data := LedNBParseJSON(AText, Why);
+  if Data = nil then Exit;
+  try
+    if not (Data is TJSONObject) then Exit;
+    E := TJSONObject(Data).Find('data');
+    if not (E is TJSONArray) then Exit;
+    Arr := TJSONArray(E);
+    for i := 0 to Arr.Count - 1 do
+      if Arr.Items[i] is TJSONObject then
+      begin
+        Name := TJSONObject(Arr.Items[i]).Get('id', '');
+        if Name <> '' then ANames.Add(Name);
+      end;
+    Result := True;
+  finally
+    Data.Free;
+  end;
+end;
+
+{ ----- the llama.cpp backend -------------------------------------------- }
+
+var
+  GLlamaTried: Boolean = False;
+  GLlamaAvailable: Boolean = False;
+
+class function TLedAILlamaCpp.BackendName: string;
+begin
+  Result := 'llama.cpp';
+end;
+
+class function TLedAILlamaCpp.Available: Boolean;
+begin
+  { A server someone named, in the preferences or the environment, or a
+    llama-server installed here.  Never by asking it: that is a network
+    call, and this is asked while the window is building. }
+  if GLlamaTried then Exit(GLlamaAvailable);
+  GLlamaTried := True;
+  GLlamaAvailable := (LedPrefs.GetStr(LedPrefAILlamaURL, '') <> '') or
+    (GetEnvironmentVariable('LLAMA_SERVER_URL') <> '') or
+    (FindDefaultExecutablePath('llama-server') <> '');
+  Result := GLlamaAvailable;
+end;
+
+class function TLedAILlamaCpp.ModelPrefKey: string;
+begin
+  Result := LedPrefAILlamaModel;
+end;
+
+function TLedAILlamaCpp.BaseURL: string;
+begin
+  Result := LedAIServerURL(LedPrefAILlamaURL, 'LLAMA_SERVER_URL', 'http://127.0.0.1:8080');
+end;
+
+function TLedAILlamaCpp.ChatURL: string;
+begin
+  Result := BaseURL + '/v1/chat/completions';
+end;
+
+function TLedAILlamaCpp.ChatBody(const ARequest: TLedAIRequest): string;
+begin
+  Result := LedAIOpenAIChatBody(FModel, FChat, ARequest);
+end;
+
+function TLedAILlamaCpp.StreamFormat: Integer;
+begin
+  Result := 1;
+end;
+
+function TLedAILlamaCpp.AuthToken: string;
+begin
+  Result := LedPrefs.GetStr(LedPrefAILlamaKey, '');
+  if Result = '' then
+    Result := GetEnvironmentVariable('LLAMA_API_KEY');
+end;
+
+function TLedAILlamaCpp.NeedsModel: Boolean;
+begin
+  { llama-server serves the model it was started with and answers to any
+    name, so there is nothing to choose unless the server offers several }
+  Result := False;
+end;
+
+function TLedAILlamaCpp.ModelList(ANames: TStrings; out AWhy: string): Boolean;
+var
+  Client: TFPHTTPClient;
+  Text, Key: string;
+begin
+  Result := False;
+  AWhy := '';
+  ANames.Clear;
+  Client := TFPHTTPClient.Create(nil);
+  try
+    try
+      Client.ConnectTimeout := 1000;
+      Client.IOTimeout := 2000;
+      Key := AuthToken;
+      if Key <> '' then
+        Client.AddHeader('Authorization', 'Bearer ' + Key);
+      Text := Client.Get(BaseURL + '/v1/models');
+    except
+      on E: Exception do
+      begin
+        AWhy := 'no llama.cpp server answered at ' + BaseURL;
+        Exit;
+      end;
+    end;
+  finally
+    Client.Free;
+  end;
+  Result := LedAIOpenAIParseModels(Text, ANames);
+  if not Result then
+    AWhy := 'the server at ' + BaseURL + ' answered something that was not a list of models';
 end;
 
 end.
