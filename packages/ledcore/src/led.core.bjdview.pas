@@ -26,8 +26,16 @@
 // is readable in full and neither should be turned into text.  An elided row
 // says what it is hiding, and knows how to produce it on request.
 //
-// Only Classes, SysUtils and the vendored bjdata unit: this is on ledcore's
-// path and the nogui CI job keeps it honest.
+// JData is read as well as BJData.  An annotated array -- an object whose
+// first key is _ArrayType_ -- is one row saying its class and size and
+// whether it is compressed, and a Mima<Kind> wrapper is one row of its kind
+// and size; both open like any other container.  A file that starts with a
+// JSON-Mmap table, as .pmat and .pfig files do, shows the table as a
+// collapsed first row and the document after it as a second root.
+//
+// Only Classes, SysUtils, the vendored bjdata unit and FPC's own zstream
+// (for a preview of a compressed payload): this is on ledcore's path and the
+// nogui CI job keeps it honest.
 
 unit Led.Core.BJDView;
 
@@ -37,7 +45,7 @@ unit Led.Core.BJDView;
 interface
 
 uses
-  Classes, SysUtils, bjdata;
+  Classes, SysUtils, bjdata, zstream;
 
 type
   { What a field of a rendered row holds.
@@ -74,6 +82,10 @@ type
     ChildCount: Int64;
     TextKind: TLedBJFieldKind;  // what the Text column is, decided as it was made
     Value: TBJValue;      // the cursor, for editing
+    { Inside a compressed JData array.  The keys beside the payload say how
+      to read it, so changing one of them in place would leave bytes that no
+      longer mean what they say; such a row is shown but not edited. }
+    Locked: Boolean;
   end;
   TLedBJRows = array of TLedBJRow;
 
@@ -88,6 +100,9 @@ const
     different thing from a hundred and worth a question. }
   LedBJAskAbove = 2000;
   LedBJMaxStringLen = 200;
+
+  { How many elements of a compressed array an opened row previews. }
+  LedBJPreviewElements = 8;
 
   { How far a row's columns are apart.  Fixed, so the markers line up down the
     page and the eye can run along one column. }
@@ -169,11 +184,32 @@ function LedBJTryWalk(const ARaw: string; out ARows: TLedBJRows;
   out AError: string; out AErrorOffset: PtrUInt;
   const AExpanded: TLedBJExpanded = nil): Boolean;
 
+{ What a JData annotated array or a Mima<Kind> wrapper is, in a few words:
+  'double 300x300, zlib compressed', 'logical 1x3', 'struct 1x1'.  False
+  when AValue is neither, and then AText is ''.  ACompressed says whether
+  the payload is in _ArrayZipData_. }
+function LedBJJDataText(const AValue: TBJValue; out AText: string;
+  out ACompressed: Boolean): Boolean;
+
+{ The first AMax elements of a compressed JData array, inflated from its
+  _ArrayZipData_ and printed as a list: '[0, 1, 2, ...]'.  Only as much of
+  the stream is inflated as those elements need, so asking about a large
+  array costs no more than asking about a small one.  False, with the reason
+  in AText, when AValue is not such an array or its stream does not
+  inflate. }
+function LedBJInflatePreview(const AValue: TBJValue; AMax: Integer;
+  out AText: string): Boolean;
+
 implementation
 
 const
-  BJDataExts: array[0..6] of string =
-    ('.bjd', '.bnii', '.bmsh', '.bnirs', '.beeg', '.bmeg', '.jdb');
+  { .pmat and .pfig are mima's data and figure files.  Opened by name they
+    are read as data by the program that knows them -- see the open hook in
+    Led.UI.Document -- and this list is what the File menu's Open uses to
+    show one as a structure instead. }
+  BJDataExts: array[0..8] of string =
+    ('.bjd', '.bnii', '.bmsh', '.bnirs', '.beeg', '.bmeg', '.jdb',
+     '.pmat', '.pfig');
 
 function LedBJIsBJDataName(const AFileName: string): Boolean;
 var
@@ -531,6 +567,319 @@ begin
   Result := True;
 end;
 
+{ --- JData ------------------------------------------------------------------ }
+
+{ The dimensions of a JData _ArraySize_ or a Mima record's size, '300x300'.
+  A writer may give them as a typed array, a plain one or a single number,
+  and as integers or as doubles; all of those are the same size. }
+function DimText(const AValue: TBJValue): Int64;
+begin
+  if AValue.Kind in [bjkInt, bjkUInt] then
+    Result := AValue.AsInt64
+  else
+    Result := Round(AValue.AsDouble);
+end;
+
+function DimsText(const AValue: TBJValue): string;
+var
+  It: TBJIterator;
+  i: Int64;
+begin
+  Result := '';
+  if AValue.IsNDArray then
+  begin
+    for i := 0 to AValue.ElementCount - 1 do
+    begin
+      if i > 0 then Result := Result + 'x';
+      Result := Result + IntToStr(AValue.ElemAsInt64(i));
+    end;
+  end
+  else if AValue.Kind = bjkArray then
+  begin
+    It := AValue.GetEnumerator;
+    while It.MoveNext do
+    begin
+      if not It.Current.IsNumber then Exit('?');
+      if Result <> '' then Result := Result + 'x';
+      Result := Result + IntToStr(DimText(It.Current));
+    end;
+  end
+  else if AValue.IsNumber then
+    Result := IntToStr(DimText(AValue));
+end;
+
+{ The first key of an object and its value.  Writers put _ArrayType_ first
+  and a Mima wrapper has one key only, so this is all the walk has to read
+  to know that an object is neither -- a Find on every object would scan
+  every key of every record in the file. }
+function FirstKey(const AValue: TBJValue; out AKey: string;
+  out AFirst: TBJValue): Boolean;
+var
+  It: TBJIterator;
+begin
+  AKey := '';
+  It := AValue.GetEnumerator;
+  Result := It.MoveNext;
+  if Result then
+  begin
+    AKey := It.Key;
+    AFirst := It.Current;
+  end;
+end;
+
+function IsTrue(const AValue: TBJValue): Boolean;
+begin
+  Result := AValue.IsValid and (AValue.Kind = bjkBoolean) and AValue.AsBoolean;
+end;
+
+function LedBJJDataText(const AValue: TBJValue; out AText: string;
+  out ACompressed: Boolean): Boolean;
+var
+  K, Kind: string;
+  First, Size, T: TBJValue;
+begin
+  AText := '';
+  ACompressed := False;
+  Result := False;
+  if (not AValue.IsValid) or (AValue.Kind <> bjkObject) or AValue.IsSoA then
+    Exit;
+  try
+    if not FirstKey(AValue, K, First) then Exit;
+
+    if K = '_ArrayType_' then
+    begin
+      Size := AValue.Find('_ArraySize_');
+      if (First.Kind <> bjkString) or not Size.IsValid then Exit;
+      if IsTrue(AValue.Find('_ArrayIsSparse_')) then AText := 'sparse ';
+      if IsTrue(AValue.Find('_ArrayIsComplex_')) then AText := AText + 'complex ';
+      AText := AText + First.AsString + ' ' + DimsText(Size);
+      if AValue.Find('_ArrayZipData_').IsValid then
+      begin
+        ACompressed := True;
+        T := AValue.Find('_ArrayZipType_');
+        if T.IsValid and (T.Kind = bjkString) then
+          AText := AText + ', ' + T.AsString + ' compressed'
+        else
+          AText := AText + ', compressed';
+      end;
+      Exit(True);
+    end;
+
+    { A Mima<Kind> wrapper: one key, naming the kind, over a record.  The
+      record's size is whos's, and an object's class is its own field. }
+    if (Length(K) > 4) and (Copy(K, 1, 4) = 'Mima') and
+       (First.Kind = bjkObject) and (AValue.Count = 1) then
+    begin
+      Kind := LowerCase(Copy(K, 5, MaxInt));
+      T := First.Find('class');
+      if T.IsValid and (T.Kind = bjkString) then
+        Kind := Kind + ' ' + T.AsString;
+      Size := First.Find('size');
+      if Size.IsValid then
+        Kind := Kind + ' ' + DimsText(Size);
+      AText := Kind;
+      Exit(True);
+    end;
+  except
+    on E: Exception do
+    begin
+      AText := '';
+      ACompressed := False;
+      Result := False;
+    end;
+  end;
+end;
+
+type
+  { A stream over bytes the caller owns, so the inflater reads the payload
+    where it lies in the file rather than from a copy of it. }
+  TBJPtrStream = class(TCustomMemoryStream)
+  public
+    constructor Create(AData: Pointer; ASize: PtrInt);
+  end;
+
+constructor TBJPtrStream.Create(AData: Pointer; ASize: PtrInt);
+begin
+  inherited Create;
+  SetPointer(AData, ASize);
+end;
+
+{ The bytes of one element of a JData class, or 0 for one not previewed. }
+function ElemBytes(const AType: string): Integer;
+begin
+  if (AType = 'double') or (AType = 'int64') or (AType = 'uint64') then
+    Result := 8
+  else if (AType = 'single') or (AType = 'int32') or (AType = 'uint32') then
+    Result := 4
+  else if (AType = 'int16') or (AType = 'uint16') then
+    Result := 2
+  else if (AType = 'int8') or (AType = 'uint8') or (AType = 'logical') then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+{ One element of the inflated bytes, as the class says to read it.  Moved
+  into a local first: the buffer is bytes, and an element need not sit on
+  its own alignment. }
+function ElemText(const AType: string; P: PByte): string;
+var
+  D: Double;
+  S: Single;
+  I64: Int64;
+  U64: QWord;
+  I32: LongInt;
+  U32: LongWord;
+  I16: SmallInt;
+  U16: Word;
+begin
+  if AType = 'double' then
+  begin
+    Move(P^, D, 8);
+    Result := BJFloatToStr(D);
+  end
+  else if AType = 'single' then
+  begin
+    Move(P^, S, 4);
+    Result := BJFloatToStr(S);
+  end
+  else if AType = 'int64' then
+  begin
+    Move(P^, I64, 8);
+    Result := IntToStr(I64);
+  end
+  else if AType = 'uint64' then
+  begin
+    Move(P^, U64, 8);
+    Result := IntToStr(U64);
+  end
+  else if AType = 'int32' then
+  begin
+    Move(P^, I32, 4);
+    Result := IntToStr(I32);
+  end
+  else if AType = 'uint32' then
+  begin
+    Move(P^, U32, 4);
+    Result := IntToStr(U32);
+  end
+  else if AType = 'int16' then
+  begin
+    Move(P^, I16, 2);
+    Result := IntToStr(I16);
+  end
+  else if AType = 'uint16' then
+  begin
+    Move(P^, U16, 2);
+    Result := IntToStr(U16);
+  end
+  else if AType = 'int8' then
+    Result := IntToStr(ShortInt(P^))
+  else if AType = 'logical' then
+  begin
+    if P^ <> 0 then Result := 'true' else Result := 'false';
+  end
+  else
+    Result := IntToStr(P^);
+end;
+
+function LedBJInflatePreview(const AValue: TBJValue; AMax: Integer;
+  out AText: string): Boolean;
+var
+  T, Z, M: TBJValue;
+  Cls: string;
+  W, Got, n, i, Shown: Integer;
+  Buf: array of Byte;
+  Src: TBJPtrStream;
+  Inf: TDecompressionStream;
+begin
+  Result := False;
+  AText := '';
+  if AMax < 1 then AMax := 1;
+  try
+    T := AValue.Find('_ArrayType_');
+    Z := AValue.Find('_ArrayZipData_');
+    if not (T.IsValid and (T.Kind = bjkString) and Z.IsValid) then
+    begin
+      AText := 'not a compressed JData array';
+      Exit;
+    end;
+    M := AValue.Find('_ArrayZipType_');
+    if M.IsValid and (M.Kind = bjkString) and (M.AsString <> 'zlib') then
+    begin
+      AText := M.AsString + ' is not inflated for a preview';
+      Exit;
+    end;
+    Cls := T.AsString;
+    W := ElemBytes(Cls);
+    if W = 0 then
+    begin
+      AText := 'no preview for ' + Cls;
+      Exit;
+    end;
+    if Z.DataPtr = nil then
+    begin
+      AText := 'the payload is not a typed array';
+      Exit;
+    end;
+
+    { One element more than is shown, so the list can say whether it
+      stops or ends. }
+    SetLength(Buf, (AMax + 1) * W);
+    Got := 0;
+    Src := TBJPtrStream.Create(Z.DataPtr, Z.DataSize);
+    try
+      Inf := TDecompressionStream.Create(Src);
+      try
+        repeat
+          n := Inf.Read(Buf[Got], Length(Buf) - Got);
+          if n > 0 then Inc(Got, n);
+        until (n <= 0) or (Got >= Length(Buf));
+      finally
+        Inf.Free;
+      end;
+    finally
+      Src.Free;
+    end;
+
+    Shown := Got div W;
+    if Shown > AMax then Shown := AMax;
+    AText := '[';
+    for i := 0 to Shown - 1 do
+    begin
+      if i > 0 then AText := AText + ', ';
+      AText := AText + ElemText(Cls, @Buf[i * W]);
+    end;
+    if Got div W > AMax then AText := AText + ', ...';
+    AText := AText + ']';
+    Result := True;
+  except
+    on E: Exception do
+    begin
+      AText := 'the payload does not inflate: ' + E.Message;
+      Result := False;
+    end;
+  end;
+end;
+
+{ Whether a root-level array is a JSON-Mmap table: its first entry is the
+  pair ["MmapVersion", ...]. }
+function IsMmapTable(const AValue: TBJValue): Boolean;
+var
+  E, K: TBJValue;
+begin
+  Result := False;
+  if AValue.Kind <> bjkArray then Exit;
+  try
+    E := AValue.Item(0);
+    if (not E.IsValid) or (E.Kind <> bjkArray) then Exit;
+    K := E.Item(0);
+    Result := K.IsValid and (K.Kind = bjkString) and K.TextEquals('MmapVersion');
+  except
+    on Ex: Exception do Result := False;
+  end;
+end;
+
 type
   { The walk records a failure rather than raising it.
 
@@ -553,6 +902,7 @@ type
     Failed: Boolean;
     ErrMsg: string;
     Expanded: TLedBJExpanded;
+    Locked: Boolean;      // walking inside a compressed JData array
     function IsExpanded(AOffset: PtrUInt): Boolean;
     procedure Add(const AKey: string; ADepth: Integer; const AValue: TBJValue);
     procedure Fail(E: Exception; ADepth: Integer);
@@ -620,6 +970,7 @@ begin
     default: a row with no value of its own carries a count, and a count is
     LED's. }
   Rows[Count].TextKind := bjfSummary;
+  Rows[Count].Locked := Locked;
   Inc(Count);
 end;
 
@@ -633,6 +984,9 @@ var
   InlineKind: TLedBJFieldKind;
   n: SizeInt;
   Taken: Integer;
+  JText, Preview: string;
+  Zipped, WasLocked: Boolean;
+  Child: Integer;
 begin
   Here := Count;
   Depth := ADepth;
@@ -657,6 +1011,68 @@ begin
       on E: Exception do begin Fail(E, ADepth); Exit; end;
     end;
     Rows[Here].Elided := True;
+    Exit;
+  end;
+
+  { A JSON-Mmap table in front of the document is an index of where the
+    document's values are, which a reader rarely wants to read: one row
+    saying what it is, closed until asked for. }
+  if (ADepth = 0) and IsMmapTable(AValue) and
+     not IsExpanded(Rows[Here].Offset) then
+  begin
+    try
+      n := AValue.Count;
+    except
+      on E: Exception do begin Fail(E, ADepth); Exit; end;
+    end;
+    Rows[Here].Text := Format('JSON-Mmap table, %d entries', [n]);
+    Rows[Here].Elided := True;
+    Rows[Here].CanExpand := True;
+    Rows[Here].ChildCount := n;
+    Exit;
+  end;
+
+  { A JData annotated array or a Mima<Kind> wrapper is one value to the
+    reader, so it is one row saying what it is, and opens like any other
+    container to show its keys.  Opening a compressed one is when its
+    payload is inflated, as far as the preview needs, and nowhere else. }
+  if (AValue.Kind = bjkObject) and LedBJJDataText(AValue, JText, Zipped) then
+  begin
+    Rows[Here].Text := JText;
+    if not IsExpanded(Rows[Here].Offset) then
+    begin
+      try
+        n := AValue.Count;
+      except
+        on E: Exception do begin Fail(E, ADepth); Exit; end;
+      end;
+      Rows[Here].Elided := True;
+      Rows[Here].CanExpand := True;
+      Rows[Here].ChildCount := n;
+      Exit;
+    end;
+
+    WasLocked := Locked;
+    if Zipped then Locked := True;
+    try
+      It := AValue.GetEnumerator;
+      while True do
+      begin
+        try
+          if not It.MoveNext then Break;
+        except
+          on E: Exception do begin Fail(E, ADepth + 1); Exit; end;
+        end;
+        Child := Count;
+        Walk(It.Key, ADepth + 1, It.Current);
+        if Failed then Exit;
+        if Zipped and (It.Key = '_ArrayZipData_') and
+           LedBJInflatePreview(AValue, LedBJPreviewElements, Preview) then
+          Rows[Child].Text := Rows[Child].Text + ', starts ' + Preview;
+      end;
+    finally
+      Locked := WasLocked;
+    end;
     Exit;
   end;
 
@@ -822,6 +1238,7 @@ function LedBJTryWalk(const ARaw: string; out ARows: TLedBJRows;
 var
   W: TWalker;
   Root: TBJValue;
+  At: PtrUInt;
 begin
   ARows := nil;
   AError := '';
@@ -836,12 +1253,37 @@ begin
   W.Failed := False;
   W.ErrMsg := '';
   W.Expanded := AExpanded;
+  W.Locked := False;
   Root := TBJValue.Create(W.Base, Length(ARaw));
 
   { Walk records its own failures, so the only thing left to catch here is a
-    fault it did not anticipate. }
+    fault it did not anticipate.
+
+    A file that opens with a JSON-Mmap table has more than one root: the
+    document follows the table, and values that outgrew their place follow
+    the document.  Each is walked as a root of its own.  Only then: finding
+    where a root ends means skipping over all of it, which for a large file
+    of small records is a second pass that a file with one root would pay
+    for nothing. }
   try
     W.Walk('', 0, Root);
+    if (not W.Failed) and IsMmapTable(Root) then
+    begin
+      At := Root.BytePos(W.Base) + Root.Size;
+      while (At < PtrUInt(Length(ARaw))) and not W.Failed do
+      begin
+        { the spare room an update in place leaves is no-ops }
+        while (At < PtrUInt(Length(ARaw))) and (ARaw[At + 1] = 'N') do
+          Inc(At);
+        if (At >= PtrUInt(Length(ARaw))) or
+           not (ARaw[At + 1] in ['{', '[']) then
+          Break;
+        Root := TBJValue.Create(W.Base + At, PtrUInt(Length(ARaw)) - At);
+        W.Walk('', 0, Root);
+        if W.Failed then Break;
+        At := Root.BytePos(W.Base) + Root.Size;
+      end;
+    end;
   except
     on E: Exception do W.Fail(E, W.Depth);
   end;

@@ -192,6 +192,15 @@ begin
     Exit;
   end;
 
+  { The keys of a compressed array say how its payload is read, and the
+    payload itself is deflated bytes: a change typed over either leaves a
+    value that no longer decodes. }
+  if ARow.Locked then
+  begin
+    AWhy := 'this is part of a compressed array, which is not edited in place';
+    Exit;
+  end;
+
   { A container is its children: there is no single value here to type over,
     and the rows underneath are where its contents are edited. }
   if ARow.Value.IsContainer then
