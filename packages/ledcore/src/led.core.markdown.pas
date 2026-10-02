@@ -161,12 +161,18 @@ end;
 
 { The tags whose spaces are indistinguishable inside and out.  Deliberately
   not <u>, <s>, <strike>, <ins> or <del>: their line runs through the space,
-  and breaking the span would break the line. }
+  and breaking the span would break the line.
+
+  <font> is one of them, and has to be: LedFlattenHeadings writes a heading
+  as <b><font size=..>, and with only the <b> closed and reopened at each
+  space the <font> was left inside a closed <b>, which the renderer ended
+  there -- the heading's first word came out at its size and the rest at the
+  prose's. }
 function IsFontOnlyTag(const AName: string): Boolean;
 begin
   case AName of
     'b', 'strong', 'i', 'em', 'code', 'tt', 'kbd', 'samp', 'var', 'cite',
-    'dfn', 'big', 'small': Result := True;
+    'dfn', 'big', 'small', 'font': Result := True;
   else
     Result := False;
   end;

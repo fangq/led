@@ -58,7 +58,7 @@ type
     procedure InsertingPushesTheRestDown;
     procedure PastTheEndIsAnAppend;
     procedure ACellCanBeTakenOut;
-    procedure TheLastCellCannotBeTakenOut;
+    procedure EveryCellCanBeTakenOut;
     procedure AnAddedCellSurvivesTheRoundTrip;
   end;
 
@@ -595,20 +595,24 @@ begin
   end;
 end;
 
-procedure TTestNBFormat.TheLastCellCannotBeTakenOut;
+procedure TTestNBFormat.EveryCellCanBeTakenOut;
 var
   NB: TLedNotebook;
-  Err: string;
+  Err, Saved: string;
 begin
   NB := TLedNotebook.Create;
   try
     AssertTrue(NB.LoadFromText(Fixture, Err));
-    while NB.CellCount > 1 do
-      AssertTrue('each one goes', NB.DeleteCell(0));
-    { A notebook with an empty cell list opens as a page with nothing to
-      type into, and getting back from there means editing the JSON. }
-    AssertFalse('and the last one stays', NB.DeleteCell(0));
-    AssertEquals('so there is always something there', 1, NB.CellCount);
+    while NB.CellCount > 0 do
+      AssertTrue('each one goes, the last included', NB.DeleteCell(0));
+    { An empty notebook is a notebook: the pane offers + Code and + Text at
+      its top to begin it again, so nothing needs to be kept back. }
+    AssertEquals('and none is left', 0, NB.CellCount);
+    AssertFalse('there is then nothing to delete', NB.DeleteCell(0));
+    Saved := NB.SaveToText;
+    AssertTrue('an empty notebook is written and read back',
+      NB.LoadFromText(Saved, Err));
+    AssertEquals('still empty', 0, NB.CellCount);
   finally
     NB.Free;
   end;

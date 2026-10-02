@@ -97,9 +97,9 @@ type
       has neither, and both have metadata, because a cell without it is not
       a valid notebook however cheerfully most tools read one. }
     function InsertCell(AIndex: Integer; AKind: TLedNBCellKind): Integer;
-    { Takes the cell at AIndex out.  False when there is no such cell, or
-      when it is the only one: a notebook with no cells at all is a file
-      nothing can show and nobody asked for. }
+    { Takes the cell at AIndex out.  False when there is no such cell.  The
+      last one may go: an empty notebook is valid, and the notebook pane
+      offers + Code and + Text at its top to begin it again. }
     function DeleteCell(AIndex: Integer): Boolean;
 
     { Which kernel the notebook was written against, from its metadata:
@@ -116,6 +116,17 @@ type
 { Whether a name is a notebook.  Only .ipynb: the format has no other
   extension, and guessing from content would open every JSON file as one. }
 function LedNBIsNotebookName(const AFileName: string): Boolean;
+
+{ A notebook with one empty code cell, as bytes: what New Notebook writes.
+
+  Here rather than in the form that offers the command, because what has to
+  be in the file for it to be a notebook at all is this unit's business --
+  and because the file it writes then round-trips to itself byte for byte,
+  the constructor and the writer being the same ones every save goes
+  through.  No kernelspec: a notebook that has never been run does not have
+  one, and the reader picking python3 by default is a rule that already
+  exists rather than a second one written here. }
+function LedNBEmptyText: string;
 
 { One string as a JSON string: quoted, with the escapes Python uses and no
   others.  Public because the kernel protocol is JSON too, and a command that
@@ -146,6 +157,19 @@ const
   KeyOutputs = 'outputs';
   KeyExecCount = 'execution_count';
   KeyMetadata = 'metadata';
+
+function LedNBEmptyText: string;
+var
+  NB: TLedNotebook;
+begin
+  NB := TLedNotebook.Create;
+  try
+    NB.InsertCell(0, nbkCode);
+    Result := NB.SaveToText;
+  finally
+    NB.Free;
+  end;
+end;
 
 function LedNBIsNotebookName(const AFileName: string): Boolean;
 begin
@@ -929,10 +953,8 @@ begin
   Result := False;
   if FCells = nil then Exit;
   if (AIndex < 0) or (AIndex >= FCells.Count) then Exit;
-  { Never the last one.  A notebook with an empty cell list opens as an
-    empty page with nothing to type into, and getting back from there means
-    editing the JSON by hand. }
-  if FCells.Count <= 1 then Exit;
+  { The last one too: an empty notebook is a notebook, and the pane offers
+    + Code and + Text at its top to start it again. }
   FCells.Delete(AIndex);
   Result := True;
 end;

@@ -68,6 +68,12 @@ function LedKernelParseEvent(const ALine: string; out AEvent: TLedKernelEvent;
 function LedKernelRunCommand(AId: Integer; const ACode: string): string;
 function LedKernelCommand(const AWhat: string): string;
 
+{ Whether a Jupyter kernel of that name is installed, looking where Jupyter
+  looks: JUPYTER_DATA_DIR, JUPYTER_PATH, the user's data directory and the
+  system ones.  Asked before starting one, so a missing kernel can be met
+  with something better than a failed start. }
+function LedKernelSpecInstalled(const AName: string): Boolean;
+
 { Where the helper is, and the Python to run it with.  The second is a
   preference because a machine can have several and only one of them has
   jupyter_client in it. }
@@ -126,6 +132,46 @@ begin
   { Its own directory: data/tools holds the external-tool definitions the
     tool runner reads, and a Python script is not one of those. }
   Result := LedDataFile('kernel' + PathDelim + 'ledkernel.py');
+end;
+
+function LedKernelSpecInstalled(const AName: string): Boolean;
+var
+  Dirs: TStringList;
+  I: Integer;
+  S: string;
+begin
+  Result := False;
+  Dirs := TStringList.Create;
+  try
+    S := GetEnvironmentVariable('JUPYTER_DATA_DIR');
+    if S <> '' then Dirs.Add(S);
+    Dirs.Delimiter := PathSeparator;
+    Dirs.StrictDelimiter := True;
+    S := GetEnvironmentVariable('JUPYTER_PATH');
+    if S <> '' then
+    begin
+      Dirs.DelimitedText := S + PathSeparator + Dirs.DelimitedText;
+    end;
+{$IFDEF WINDOWS}
+    S := GetEnvironmentVariable('APPDATA');
+    if S <> '' then Dirs.Add(S + '\jupyter');
+    S := GetEnvironmentVariable('PROGRAMDATA');
+    if S <> '' then Dirs.Add(S + '\jupyter');
+{$ELSE}
+    S := GetEnvironmentVariable('XDG_DATA_HOME');
+    if S <> '' then Dirs.Add(S + '/jupyter');
+    Dirs.Add(GetUserDir + '.local/share/jupyter');
+    Dirs.Add(GetUserDir + 'Library/Jupyter');
+    Dirs.Add('/usr/local/share/jupyter');
+    Dirs.Add('/usr/share/jupyter');
+{$ENDIF}
+    for I := 0 to Dirs.Count - 1 do
+      if (Dirs[I] <> '') and FileExists(IncludeTrailingPathDelimiter(Dirs[I]) +
+         'kernels' + PathDelim + AName + PathDelim + 'kernel.json') then
+        Exit(True);
+  finally
+    Dirs.Free;
+  end;
 end;
 
 function LedKernelPython: string;

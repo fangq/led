@@ -51,9 +51,16 @@ type
     function PageTop: Integer;
   end;
 
+  { OnMouseWheel is protected on TControl }
+  TLedPreviewWheelReach = class(TControl)
+  public
+    property OnMouseWheel;
+  end;
+
   TLedPreviewPane = class(TPanel)
   private
     FHtml: TIpHtmlPanel;
+    FBaseFontSize: Integer;      // the renderer's own size, before any zoom
     FProvider: TIpFileDataProvider;
     FNote: TLabel;
     FBaseDir: string;
@@ -104,6 +111,9 @@ type
     procedure HtmlClicked(Sender: TObject);
     procedure Render(Sender: TObject);
     procedure ApplyFixedFont;
+    procedure HookWheel(AControl: TWinControl);
+    procedure PageWheel(Sender: TObject; AShift: TShiftState;
+      AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
     function TruncationNote(AShown, AWhole: Integer): string;
     { Whether a picture on the web is in hand, and if not, why the page should
       say so in its place.  Asking for one starts the fetch. }
@@ -301,6 +311,7 @@ begin
   FHtml.Align := alClient;
   FHtml.DataProvider := FProvider;
   FHtml.Visible := False;
+  FBaseFontSize := FHtml.DefaultFontSize;
   ApplyFixedFont;
   { IPro lays a page out on the control's own canvas and then, by default,
     paints it into a bitmap it allocates for the purpose.  Nothing makes the
@@ -803,6 +814,39 @@ var
 begin
   LedParseFontSpec(LedPrefs.GetStr('Editor/font', ''), Face, Size);
   if Face <> '' then FHtml.FixedTypeface := Face;
+  { and the prose in the reader's notebook and preview face; a size only
+    when one was given with it }
+  FHtml.DefaultTypeFace := LedPreviewFace;
+  { from the renderer's own size each time, so the zoom does not compound }
+  FHtml.DefaultFontSize := LedPreviewPointSize(FBaseFontSize) + LedPageZoom;
+  if FHtml.DefaultFontSize < 4 then FHtml.DefaultFontSize := 4;
+end;
+
+{ Ctrl+wheel over the page: all of its text bigger or smaller, the same
+  step the notebook takes. The page draws into controls of its own, made
+  when it is given a page, so they are hooked after each render. }
+procedure TLedPreviewPane.HookWheel(AControl: TWinControl);
+var
+  I: Integer;
+begin
+  TLedPreviewWheelReach(AControl).OnMouseWheel := @PageWheel;
+  for I := 0 to AControl.ControlCount - 1 do
+    if AControl.Controls[I] is TWinControl then
+      HookWheel(TWinControl(AControl.Controls[I]))
+    else
+      TLedPreviewWheelReach(AControl.Controls[I]).OnMouseWheel := @PageWheel;
+end;
+
+procedure TLedPreviewPane.PageWheel(Sender: TObject; AShift: TShiftState;
+  AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
+var
+  D: Integer;
+begin
+  if not (ssCtrl in AShift) then Exit;
+  AHandled := True;
+  if AWheelDelta > 0 then D := 1 else if AWheelDelta < 0 then D := -1 else Exit;
+  if LedPageZoomBy(D) then
+    Restyle;
 end;
 
 { Where this document's pictures come from, and the three answers the
@@ -943,6 +987,7 @@ begin
     FHtml.VLinkColor := Colours.Link;
     FHtml.ALinkColor := Colours.Link;
     FHtml.SetHtmlFromStr(Page);
+    HookWheel(FHtml);
     { From the page as it was handed over: neither adjustment touches an id,
       but this is the string the control is actually holding. }
     CollectLineIds(Page);

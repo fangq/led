@@ -195,6 +195,12 @@ puts the cells beside the text: one box per cell, code in a real editor with
 its own highlighting, prose rendered as Markdown, and the outputs — text,
 tables, images and error tracebacks — under the cell that produced them.
 
+**File ▸ New Notebook** starts one: it asks where to put it, writes an empty
+notebook with a single code cell, opens it and shows the cells. It asks for a
+name because a notebook is a file before it is anything else — what makes a
+document a notebook here is that it is called `.ipynb` and that its contents
+parse as one.
+
 - **Run a cell** with `Ctrl+Enter`, run it and move on with `Shift+Enter`, or
   run the lot with `Ctrl+Shift+Enter`. **Interrupt** and **Restart** are in the
   Notebook menu.

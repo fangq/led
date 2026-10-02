@@ -29,14 +29,21 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Buttons,
-  Graphics, Forms, ImgList, LazUTF8, LCLType,
+  Graphics, Forms, ImgList, LazUTF8, LCLType, LCLIntf, Menus,
   IpHtml, Ipfilebroker,
-  SynEditHighlighter,
+  SynEdit, SynEditTypes, SynEditHighlighter,
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBImage, Led.Core.NBFetch,
   Led.Core.NBConvert, Led.Core.NBMagic, Led.Core.Markdown,
   Led.Syn.Factory, Led.Syn.Notebook, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.PageStyle, Led.UI.Pictures,
-  Led.UI.Document, Led.UI.Edit, Led.UI.Dpi;
+  Led.UI.Document, Led.UI.Edit, Led.UI.Dpi
+{$IFDEF MIMA}
+  { A mima figure arrives as a scene -- the whole tree, data included --
+    beside the png, and given that this pane can show a real control the
+    reader turns with the mouse rather than a picture of one. }
+  , Math, fpjson, jsonparser, Mmm.SceneView, Mima.UI.NBScene, Mmm.GuiWindow
+{$ENDIF}
+  ;
 
 type
   TLedNBCellEvent = procedure(Sender: TObject; ACell: Integer) of object;
@@ -55,11 +62,19 @@ type
   TLedNBCellEdit = class(TLedEdit)
   private
     FOnWheel: TMouseWheelEvent;
+    FLineBand: TColor;
   protected
     function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
       AMousePos: TPoint): Boolean; override;
+    procedure DoEnter; override;
+    procedure DoExit; override;
   public
     property OnWheelPassedUp: TMouseWheelEvent read FOnWheel write FOnWheel;
+    { The caret's line is banded only while the cell is being typed in.  A
+      page of cells each with its first line banded, as they came up, read as
+      every cell being the current one.  Call after the theme is applied: it
+      takes the band's colour from there. }
+    procedure BandOnlyWhenFocused;
   end;
 
   { The rendered prose of one cell.
@@ -94,6 +109,11 @@ type
     property OnMouseWheel;
     property OnDblClick;
     property OnMouseDown;
+  end;
+
+  TWinControlEvents = class(TWinControl)
+  public
+    property OnKeyDown;
   end;
 
   { One of the buttons at a cell boundary.
@@ -159,6 +179,12 @@ type
     FCell: Integer;
     FHead: TLabel;
     FRun: TSpeedButton;
+    FClear: TSpeedButton;     // a code cell's output, cleared
+    FRunMenu: TPopupMenu;     // Run's right-click: to the end, all, clear
+    FOnRunFrom: TLedNBCellEvent;
+    FOnClearAll: TLedNBCellEvent;
+    FPageShown: string;       // the page the prose last rendered
+    FOnClear: TLedNBCellEvent;
     { Prose is shown rendered, so it needs a way to be got at.  A button
       rather than only a click on the text: the renderer may keep a click
       for itself -- it has links to think about -- and a way in that depends
@@ -170,6 +196,7 @@ type
     FOnRun: TLedNBCellEvent;
     FOnEdited: TLedNBCellEvent;
     FEditing: Boolean;         // a markdown cell being typed into
+    FHovered: Boolean;         // the pointer is over this rendered prose cell
     { The editor's own notebook highlighter, and what it is told about the
       cell: the language to colour it in, and whether a line beginning % or !
       is one of IPython's magics -- which it is not in a cell that %%bash has
@@ -187,6 +214,18 @@ type
       out ALang: string): TLedNBLine;
     function EditLineText(ALine: Integer): string;
     procedure RunClicked(Sender: TObject);
+    procedure ClearClicked(Sender: TObject);
+    procedure RunOneClicked(Sender: TObject);
+    procedure RunToEndClicked(Sender: TObject);
+    procedure RunAllClicked(Sender: TObject);
+    procedure ClearAllClicked(Sender: TObject);
+    procedure EditTyped(Sender: TObject);
+    function ButtonsBottom: Integer;
+    procedure TellPane;
+  protected
+    procedure Paint; override;
+  private
+    procedure ProseKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure RenderClicked(Sender: TObject);
     procedure EditClicked(Sender: TObject);
     procedure EditExited(Sender: TObject);
@@ -214,12 +253,22 @@ type
     function HaveRemote(const AURL: string; out AWhy: string): Boolean;
     { The wheel, from a child that would otherwise swallow it, handed to the
       page the reader was trying to scroll. }
+{$IFDEF MIMA}
+    { a click on a GUI figure's control, sent to the kernel to run }
+    procedure GuiEvent(AHandle: Double; const AEvent, AUpdates: string);
+    { a GUI figure, as live controls in a panel under the cell }
+    function BuildGui(const AJson: string; var AY: Integer): Boolean;
+{$ENDIF}
     procedure ChildWheel(Sender: TObject; AShift: TShiftState;
       AWheelDelta: Integer; AMousePos: TPoint; var AHandled: Boolean);
     procedure BuildOutputs(var AY: Integer; AWidth: Integer);
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
     function ImageSize(const AURL: string; out AW, AH: Integer): Boolean;
     function Pictures: TLedPictureSource;
+    { The page's colour, shaded when the pointer is over it; and a rendered
+      page with that colour put in, which is how the renderer is told it. }
+    function HoverColour: TColor;
+    function HoverPage(const APage: string): string;
     function EmbeddedPicture(const AURL: string;
       out ABytes, AMime: string): Boolean;
 
@@ -258,7 +307,23 @@ type
     { Whether this cell is showing its source rather than its rendering. }
     property Editing: Boolean read FEditing;
     procedure SetEditing(AValue: Boolean);
+    { A rendered prose cell under the pointer is shaded a little, so the
+      reader can see which cell a double-click or Enter would open.  Nothing
+      on a code cell, whose own block already says where it is. }
+    procedure SetHovered(AValue: Boolean);
+    property Hovered: Boolean read FHovered;
     property OnRunCell: TLedNBCellEvent read FOnRun write FOnRun;
+    property OnClearCell: TLedNBCellEvent read FOnClear write FOnClear;
+    { Run from a cell to the end of the notebook: Ctrl+Run, and Run's menu,
+      which asks it from cell 0 for Run All }
+    property OnRunFrom: TLedNBCellEvent read FOnRunFrom write FOnRunFrom;
+    property RunMenu: TPopupMenu read FRunMenu;
+    property OnClearAll: TLedNBCellEvent read FOnClearAll write FOnClearAll;
+    { The editor made as tall as its text, with whatever is under it moved
+      down or up by the difference.  True when the box changed height. }
+    function FitEditor: Boolean;
+    property ClearButton: TSpeedButton read FClear;
+    property PageShown: string read FPageShown;
     property OnEdited: TLedNBCellEvent read FOnEdited write FOnEdited;
   end;
 
@@ -306,6 +371,7 @@ type
     FAddBar: TLedNBAddBar;     // the buttons at whichever boundary is near
     FHoverTimer: TTimer;       // asks where the pointer is; see TLedNBAddBar
     FHoverPolling: Boolean;    // ...unless somebody else is saying where
+    FHoverCell: Integer;       // the prose cell shaded for the pointer, or -1
     FOnInsert: TLedNBInsertEvent;
     FOnDelete: TLedNBCellEvent;
     FFirst: Integer;           // the first cell built, or -1
@@ -313,6 +379,10 @@ type
     FBar: TScrollBar;
     FNote: TLabel;
     FImages: TCustomImageList;
+    { The same icons at the size of a cell's own buttons.  The toolbar's are
+      26 pixels, and in an 18-pixel button their feet were cut off. }
+    FCellIcons: TImageList;
+    FOnRunFrom: TLedNBCellEvent;
     FOnRun: TLedNBCellEvent;
     FOnScrolled: TLedNBCellEvent;
     FOnPicked: TLedNBCellEvent;
@@ -331,13 +401,23 @@ type
     FImageTimer: TTimer;
     FLaidOutFor: Integer;      // the width the boxes were laid out for
     procedure CellRun(Sender: TObject; ACell: Integer);
+    procedure CellClear(Sender: TObject; ACell: Integer);
+    procedure CellRunFrom(Sender: TObject; ACell: Integer);
+    procedure CellClearAll(Sender: TObject; ACell: Integer);
+    { A box that changed its own height: recorded, and the ones under it
+      moved.  Public, since the box is what knows it grew. }
+    procedure CellGrew(ACell: Integer);
     procedure CellEdited(Sender: TObject; ACell: Integer);
     procedure ResizeSettled(Sender: TObject);
     procedure BarScrolled(Sender: TObject);
     procedure ReportTop;
     procedure CellPicked(ACell: Integer);
     procedure HoverTick(Sender: TObject);
+    { Shades the rendered prose cell under APoint and unshades the last one. }
+    procedure ShadeHovered(const APoint: TPoint);
     procedure PlaceAddBar(ABox: TLedNBCellBox);
+    procedure PlaceAddBarTop(AFirstTop: Integer);
+    procedure SetImages(AValue: TCustomImageList);
     procedure AddCodeClicked(Sender: TObject);
     procedure AddTextClicked(Sender: TObject);
     procedure DeleteAboveClicked(Sender: TObject);
@@ -366,6 +446,7 @@ type
     function LiveDoc: Boolean;
     function GetScrollPos: Integer;
     procedure SetScrollPos(AValue: Integer);
+    function ScrollLimit: Integer;
   protected
     procedure Resize; override;
     function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
@@ -389,6 +470,8 @@ type
       its height.  Does nothing for a cell that is not on screen: there is no
       box to redraw, and its height is taken again when it is next built. }
     procedure RefreshCell(ACell: Integer);
+    { Ctrl+wheel: every cell's text ADelta points bigger or smaller }
+    procedure ZoomText(ADelta: Integer);
 
     { The pictures the cells have already decoded.  Public so that a cell can
       reach it -- the cache belongs to the pane, not to a box, or scrolling
@@ -426,10 +509,12 @@ type
     property Document: TLedDocument read FDoc;
     { Where the cells take their button icons from.  The window's own list,
       so a notebook's Run button is the same glyph as the toolbar's. }
-    property Images: TCustomImageList read FImages write FImages;
+    property Images: TCustomImageList read FImages write SetImages;
+    property CellIcons: TImageList read FCellIcons;
     { Fired when a cell's Run button is pressed; the window runs it, because
       the kernel is the document's and the reporting is the window's. }
     property OnRunCell: TLedNBCellEvent read FOnRun write FOnRun;
+    property OnRunFrom: TLedNBCellEvent read FOnRunFrom write FOnRunFrom;
 
     { Which cell is at the top of the viewport, or -1 when there is no
       notebook.  What the text view follows when the two are kept in step. }
@@ -476,16 +561,23 @@ implementation
 const
   Pad = 6;
   LabelWidth = 76;
-  { The space between one cell and the next.  Wide enough for the buttons
-    that appear there on a hover: at four pixels -- which is all a reader
-    needs to see where one cell ends -- the bar had to be drawn over the
-    last line of one cell or the first line of the next, and both of those
-    are lines somebody clicks.  A notebook front end leaves the same room
-    for the same reason. }
-  CellGap = 24;
-  { The prose face.  Proportional, and at a size taken from the reader's own
-    editor font rather than fixed -- see ProseSize. }
-  ProseFace = 'Sans';
+  { The cell's buttons, side by side under its header: small enough that a
+    one-line cell holds them without cutting their bottoms off. }
+  ButtonSize = 18;
+  ButtonGap = 2;
+  { Code's distance from the edge of its shaded block, on every side: the
+    text ran into the edge of the shading, which read as cut off.  9 rather
+    than 6 since the block's corners are rounded, which takes a little of
+    the room at each corner back. }
+  CodeInset = 9;
+  { The radius of the code block's corners }
+  CodeRadius = 10;
+  { The space between one cell and the next: enough to see where one ends.
+    It was 24, room for the + Code / + Text bar, but a page of cells with a
+    bar's height of nothing between each read as sparse; the bar now sits
+    across the boundary on the hover that asks for it, and is gone again
+    when the pointer leaves. }
+  CellGap = 4;
   { Prose runs nearly the full width, the way it does in a notebook front
     end: a paragraph is read across the page, and the column a code cell
     needs for its execution count is room a paragraph should not give up.
@@ -513,7 +605,15 @@ begin
   Result := 10;
   if (ADoc <> nil) and (ADoc.Master.Font.Size > 0) then
     Result := ADoc.Master.Font.Size;
+{$IFNDEF MIMA}
   Result := Result + 3;
+{$ENDIF}
+  { a size given with the notebook and preview font wins, and Ctrl+wheel
+    moves it from there }
+  Result := LedPreviewPointSize(Result) + LedPageZoom;
+  if Result < 4 then Result := 4;
+  { mima-ide: the editor's own size, which is the baseline its reader
+    asked for -- the headings are larger by the page's own rules }
 end;
 
 { APoints bigger, whether the font says its size in points or in pixels.
@@ -556,6 +656,26 @@ end;
 function HtmlColour(AColour: TColor): string;
 begin
   Result := LedHtmlColour(AColour);
+end;
+
+procedure TLedNBCellEdit.BandOnlyWhenFocused;
+begin
+  FLineBand := LineHighlightColor.Background;
+  if not Focused then
+    LineHighlightColor.Background := clNone;
+end;
+
+procedure TLedNBCellEdit.DoEnter;
+begin
+  inherited DoEnter;
+  if FLineBand <> clNone then
+    LineHighlightColor.Background := FLineBand;
+end;
+
+procedure TLedNBCellEdit.DoExit;
+begin
+  LineHighlightColor.Background := clNone;
+  inherited DoExit;
 end;
 
 function TLedNBCellEdit.DoMouseWheel(AShift: TShiftState;
@@ -737,7 +857,9 @@ begin
   begin
     FRun := TSpeedButton.Create(Self);
     FRun.Parent := Self;
-    FRun.Hint := 'Run this cell';
+    FRun.Hint := 'Run this cell' + LineEnding +
+      'Ctrl+click: run it and every cell after it' + LineEnding +
+      'Right-click: more';
     FRun.ShowHint := True;
     FRun.Flat := True;
     { LED's own run icon, the one the toolbar and the debugger use, so this
@@ -746,27 +868,64 @@ begin
       a working button rather than a blank square. }
     FRun.Images := AImages;
     if AImages <> nil then
-      FRun.ImageIndex := LedIconIndex('run')
+      FRun.ImageIndex := LedIconIndex('runcell')
     else
       FRun.Caption := '>';
     FRun.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
-      LedScale96(22), LedScale96(22));
+      LedScale96(ButtonSize), LedScale96(ButtonSize));
     { A hand, because it is a button and the pane around it is a page: with
       the arrow it read as part of the drawing rather than something to
       press. }
     FRun.Cursor := crHandPoint;
     FRun.OnClick := @RunClicked;
+
+    { Right-click on Run: the other ways to run, and Clear Output, which is
+      also the eraser beside it but belongs with them in a menu. }
+    FRunMenu := TPopupMenu.Create(Self);
+    FRunMenu.Items.Add(NewItem('Run Cell', 0, False, True, @RunOneClicked, 0, 'nbRunCell'));
+    FRunMenu.Items.Add(NewItem('Run to the End', 0, False, True, @RunToEndClicked, 0, 'nbRunToEnd'));
+    FRunMenu.Items.Add(NewItem('Run All', 0, False, True, @RunAllClicked, 0, 'nbRunAll'));
+    FRunMenu.Items.Add(NewLine);
+    FRunMenu.Items.Add(NewItem('Clear Output', 0, False, True, @ClearClicked, 0, 'nbClearOut'));
+    FRunMenu.Items.Add(NewItem('Clear All Outputs', 0, False, True, @ClearAllClicked, 0, 'nbClearAll'));
+    FRun.PopupMenu := FRunMenu;
+
+    { Beside it, what Jupyter's Clear Output does: the output goes, and the
+      count beside the cell with it.  Greyed while there is nothing to clear. }
+    FClear := TSpeedButton.Create(Self);
+    FClear.Parent := Self;
+    FClear.Hint := 'Clear this cell''s output';
+    FClear.ShowHint := True;
+    FClear.Flat := True;
+    FClear.Images := AImages;
+    if AImages <> nil then
+      FClear.ImageIndex := LedIconIndex('clearoutput')
+    else
+      FClear.Caption := 'x';
+    FClear.SetBounds(LedScale96(Pad + ButtonSize + ButtonGap),
+      LedScale96(Pad + 18), LedScale96(ButtonSize), LedScale96(ButtonSize));
+    FClear.Cursor := crHandPoint;
+    FClear.OnClick := @ClearClicked;
   end
   else
   begin
+    { A pencil: edit the text.  Held down while it is being edited, and a
+      press then shows it rendered again. }
     FEditBtn := TSpeedButton.Create(Self);
     FEditBtn.Parent := Self;
-    FEditBtn.Caption := '...';
-    FEditBtn.Hint := 'Edit this cell as text (or double-click the text)';
+    FEditBtn.Images := AImages;
+    if AImages <> nil then
+      FEditBtn.ImageIndex := LedIconIndex('edit')
+    else
+      FEditBtn.Caption := '...';
+    FEditBtn.GroupIndex := 1000 + FCell;
+    FEditBtn.AllowAllUp := True;
+    FEditBtn.Hint := 'Edit this cell (or double-click it, or click it and press Enter)';
     FEditBtn.ShowHint := True;
     FEditBtn.Flat := True;
     FEditBtn.SetBounds(LedScale96(Pad), LedScale96(Pad + 18),
-      LedScale96(20), LedScale96(20));
+      LedScale96(ButtonSize), LedScale96(ButtonSize));
+    FEditBtn.Cursor := crHandPoint;
     FEditBtn.OnClick := @EditClicked;
   end;
 end;
@@ -779,6 +938,9 @@ begin
   if not AValue then Commit;
   FEditing := AValue;
   Rebuild(Width);
+  { A text cell is one height rendered and another as source, and the cells
+    under it have to know which. }
+  TellPane;
   if FEditing and (FEdit <> nil) and FEdit.CanFocus then FEdit.SetFocus;
 end;
 
@@ -801,6 +963,14 @@ var
 begin
   if not (Parent is TLedNotebookPane) then Exit;
   Page := TLedNotebookPane(Parent);
+  { Ctrl+wheel sizes the whole notebook's text, as it sizes the editor's }
+  if ssCtrl in AShift then
+  begin
+    if AWheelDelta > 0 then Page.ZoomText(1)
+    else if AWheelDelta < 0 then Page.ZoomText(-1);
+    AHandled := True;
+    Exit;
+  end;
   Notches := AWheelDelta div 120;
   if Notches = 0 then
     if AWheelDelta > 0 then Notches := 1 else Notches := -1;
@@ -810,9 +980,88 @@ end;
 
 procedure TLedNBCellBox.RunClicked(Sender: TObject);
 begin
+  { Ctrl+click runs on to the end of the notebook }
+  if ssCtrl in GetKeyShiftState then
+  begin
+    RunToEndClicked(Sender);
+    Exit;
+  end;
+  RunOneClicked(Sender);
+end;
+
+procedure TLedNBCellBox.RunOneClicked(Sender: TObject);
+begin
   { What is on screen is what runs, so the typing goes in first. }
   Commit;
   if Assigned(FOnRun) then FOnRun(Self, FCell);
+end;
+
+procedure TLedNBCellBox.RunToEndClicked(Sender: TObject);
+begin
+  Commit;
+  if Assigned(FOnRunFrom) then FOnRunFrom(Self, FCell);
+end;
+
+procedure TLedNBCellBox.ClearAllClicked(Sender: TObject);
+begin
+  Commit;
+  if Assigned(FOnClearAll) then FOnClearAll(Self, FCell);
+end;
+
+procedure TLedNBCellBox.RunAllClicked(Sender: TObject);
+begin
+  Commit;
+  if Assigned(FOnRunFrom) then FOnRunFrom(Self, 0);
+end;
+
+{ The shaded block the code sits in, CodeInset larger than the editor on
+  every side, in the editor's own colour so the two read as one. }
+procedure TLedNBCellBox.Paint;
+var
+  R: TRect;
+  M: Integer;
+begin
+  inherited Paint;
+  if (FEdit = nil) or not FEdit.Visible then Exit;
+  M := LedScale96(CodeInset);
+  R := Rect(FEdit.Left - M, FEdit.Top - M, FEdit.Left + FEdit.Width + M,
+    FEdit.Top + FEdit.Height + M);
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := FEdit.Color;
+  Canvas.Pen.Color := LedMixColours(FEdit.Color, LedNBColours.Text, 88);
+  Canvas.RoundRect(R, LedScale96(CodeRadius), LedScale96(CodeRadius));
+end;
+
+function TLedNBCellBox.HoverColour: TColor;
+begin
+  Result := LedNBColours.Page;
+  if FHovered and not FEditing then
+    Result := LedMixColours(Result, LedNBColours.Text, 93);
+end;
+
+function TLedNBCellBox.HoverPage(const APage: string): string;
+var
+  Page: TColor;
+begin
+  Result := APage;
+  Page := LedNBColours.Page;
+  if HoverColour = Page then Exit;
+  Result := StringReplace(APage, 'bgcolor="' + LedHtmlColour(Page) + '"',
+    'bgcolor="' + LedHtmlColour(HoverColour) + '"', []);
+end;
+
+procedure TLedNBCellBox.SetHovered(AValue: Boolean);
+begin
+  if FHovered = AValue then Exit;
+  FHovered := AValue;
+  if (FRender = nil) or (not FRender.Visible) or (FPageShown = '') then Exit;
+  { The same page again with the other colour: the same layout, so the cell
+    keeps its height and nothing below it moves. }
+  Color := HoverColour;
+  FRender.BgColor := HoverColour;
+  FRender.SetHtmlFromStr(HoverPage(FPageShown));
+  HookRenderChildren;
+  FRender.Invalidate;
 end;
 
 procedure TLedNBCellBox.Commit;
@@ -838,6 +1087,7 @@ begin
   begin
     FEditing := False;
     Rebuild(Width);
+    TellPane;
   end;
 end;
 
@@ -855,6 +1105,7 @@ end;
 function TLedNBCellBox.EditorHeight: Integer;
 var
   i, Cols, Rows, Len: Integer;
+  Wide: Boolean;
 begin
   Result := LedScale96(20);
   if FEdit = nil then Exit;
@@ -863,6 +1114,25 @@ begin
   if FEdit.CharWidth > 0 then
     Cols := (FEdit.ClientWidth - LedScale96(4)) div FEdit.CharWidth;
   if Cols < 8 then Cols := 8;
+
+  { unwrapped, a line is a row, and one wider than the cell brings the
+    horizontal scrollbar, which takes a row's worth of the box too }
+  if not FEdit.WrapEnabled then
+  begin
+    Rows := FEdit.Lines.Count;
+    if Rows < 1 then Rows := 1;
+    Wide := False;
+    for i := 0 to FEdit.Lines.Count - 1 do
+      if UTF8Length(FEdit.Lines[i]) > Cols then
+      begin
+        Wide := True;
+        Break;
+      end;
+    Result := Rows * FEdit.LineHeight + LedScale96(6);
+    if Wide then
+      Inc(Result, GetSystemMetrics(SM_CYHSCROLL));
+    Exit;
+  end;
 
   Rows := 0;
   for i := 0 to FEdit.Lines.Count - 1 do
@@ -899,21 +1169,57 @@ begin
   FEdit := TLedNBCellEdit.Create(Self);
   FEdit.Parent := Self;
   FEdit.Gutter.Visible := False;
-  FEdit.RightEdge := 0;
-  FEdit.ScrollBars := ssNone;
-  { Wrapped, because this pane is narrow and a box with no scrollbar of its
-    own would otherwise cut a long line off where nobody can see that it
-    continues.  The line view is where a long line is read unwrapped. }
-  FEdit.WrapEnabled := True;
+  { and no right margin line: at RightEdge 0 SynEdit draws it at column 0,
+    which is the pale rule that ran down the left edge of every cell's text }
+  FEdit.Options := FEdit.Options + [eoHideRightMargin];
+  { Prose is wrapped, because this pane is narrow and a paragraph reads on
+    down.  Code is not: a wrapped line of code reads as two statements, and
+    where it broke is where the pane happened to end.  So a code cell keeps
+    its lines whole and scrolls sideways, with a scrollbar only when a line
+    is wider than the cell. }
+  if FDoc.Notebook.CellKind(FCell) = nbkCode then
+  begin
+    FEdit.WrapEnabled := False;
+    FEdit.ScrollBars := ssAutoHorizontal;
+    { Ctrl+Enter runs the cell, as in every notebook front end }
+    FEdit.OnRunSection := @RunOneClicked;
+  end
+  else
+  begin
+    FEdit.ScrollBars := ssNone;
+    FEdit.WrapEnabled := True;
+  end;
+  { No caret out past the end of a line: the file editor has one because a
+    column selection needs it and pulls clicks back to the text, but a cell
+    has no column selection, so a click or a drag into the space beside a
+    line has nothing there to land on or select. }
+  FEdit.Options := FEdit.Options - [eoScrollPastEol];
+  { No shading of every other place the word under the caret appears: a
+    cell is a few lines, and in it the shading lit up half of them on every
+    click, which read as a selection nobody had made. }
+  FEdit.ShadeOccurrences := False;
+  if FEdit.HighlightWord <> nil then
+    FEdit.HighlightWord.Enabled := False;
   FEdit.Font.Assign(FDoc.Master.Font);
+  { with the notebook's Ctrl+wheel steps, which size code and prose together }
+  if LedPageZoom <> 0 then
+    BumpFont(FEdit.Font, LedPageZoom);
   { A size up from the editor's.  The pane is a reading view -- the cells are
     looked at rather than typed in all day -- and at the editor's own size the
     code in it came out smaller than the prose around it. }
+{$IFNDEF MIMA}
   BumpFont(FEdit.Font, 2);
+{$ENDIF}
+  { in mima-ide a cell is the editor's size: the same code at the same size
+    in both places, which is what its reader asked for }
   LedApplyThemeToEditor(LedCurrentTheme, FEdit);
   { On the code block's shade rather than the page's, which is what makes a
     cell read as a cell.  After the theme, so it is not overwritten by it. }
   FEdit.Color := LedNBColours.CodeBg;
+  { and no rules above and below the caret's line: a cell is a few lines on
+    its own shade, and the rules boxed each line in as it was edited }
+  FEdit.CurrentLineColour := clNone;
+  FEdit.BandOnlyWhenFocused;
 
   { Coloured by the language of this cell: prose as Markdown, code as what
     the cell's own magic says and only then as what the notebook says -- a
@@ -933,6 +1239,7 @@ begin
   FEdit.Highlighter := FHigh;
 
   FEdit.OnExit := @EditExited;
+  FEdit.OnChange := @EditTyped;
   FEdit.OnWheelPassedUp := @ChildWheel;
 end;
 
@@ -959,7 +1266,7 @@ begin
     size have to be given to the throwaway document that measures how tall a
     page comes out: a measurement taken in one font and drawn in another is
     how a paragraph of prose came to be given a single line of room. }
-  FRender.DefaultTypeFace := ProseFace;
+  FRender.DefaultTypeFace := LedPreviewFace;
   FRender.DefaultFontSize := ProseSize(FDoc);
   FRender.FixedTypeface := FDoc.Master.Font.Name;
   C := LedNBColours;
@@ -989,12 +1296,20 @@ procedure TLedNBCellBox.HookRenderChildren;
       TControlEvents(C).OnMouseWheel := @ChildWheel;
       TControlEvents(C).OnDblClick := @ChildDblClick;
       TControlEvents(C).OnMouseDown := @ChildMouseDown;
-      if C is TWinControl then Hook(TWinControl(C));
+      if C is TWinControl then
+      begin
+        TWinControlEvents(C).OnKeyDown := @ProseKeyDown;
+        Hook(TWinControl(C));
+      end;
     end;
   end;
 
 begin
-  if FRender <> nil then Hook(FRender);
+  if FRender <> nil then
+  begin
+    TWinControlEvents(FRender).OnKeyDown := @ProseKeyDown;
+    Hook(FRender);
+  end;
 end;
 
 { What the notebook highlighter is told about the box's own editor: one
@@ -1032,6 +1347,26 @@ begin
     TLedNotebookPane(Parent).LeaveEditing;
     TLedNotebookPane(Parent).CellPicked(FCell);
   end;
+  { a click on rendered text takes the keys, so Enter can open it }
+  if (FRender <> nil) and FRender.Visible and (Sender is TWinControl) and
+     TWinControl(Sender).CanFocus then
+    TWinControl(Sender).SetFocus;
+end;
+
+procedure TLedNBCellBox.ProseKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+  if (Key = VK_RETURN) and (Shift = []) and (not FEditing) and (FRender <> nil) then
+  begin
+    Key := 0;
+    SetEditing(True);
+  end;
+end;
+
+procedure TLedNBCellBox.ClearClicked(Sender: TObject);
+begin
+  Commit;
+  if Assigned(FOnClear) then FOnClear(Self, FCell);
 end;
 
 function TLedNBCellBox.HaveRemote(const AURL: string;
@@ -1158,7 +1493,7 @@ begin
         and the monospaced one too, which was left out: a block of code
         measured in the renderer's own 'Courier New', which no desktop here
         has, is not the height it is then drawn at. }
-      Doc.DefaultTypeFace := ProseFace;
+      Doc.DefaultTypeFace := LedPreviewFace;
       Doc.DefaultFontSize := ProseSize(FDoc);
       Doc.FixedTypeface := FDoc.Master.Font.Name;
       { And the pictures, through the same hook the panel uses.  Without it
@@ -1192,6 +1527,52 @@ begin
   if Result > 30000 then Result := 30000;
 end;
 
+{$IFDEF MIMA}
+procedure TLedNBCellBox.GuiEvent(AHandle: Double; const AEvent, AUpdates: string);
+begin
+  FDoc.NBGuiEvent(FCell, AHandle, AEvent, AUpdates);
+end;
+
+function TLedNBCellBox.BuildGui(const AJson: string; var AY: Integer): Boolean;
+var
+  Root, Fig: TJSONData;
+  Frame: TMmmGuiFrame;
+  H: Integer;
+begin
+  Result := False;
+  try
+    Root := GetJSON(AJson);
+  except
+    Exit;
+  end;
+  try
+    if Root.JSONType <> jtObject then Exit;
+    Fig := TJSONObject(Root).Find('Figure');
+    if (Fig = nil) or (Fig.JSONType <> jtObject) then Exit;
+    Frame := TMmmGuiFrame.CreateFor(Self, TJSONObject(Fig).Get('Handle', 0.0));
+    Frame.Parent := Self;
+    { a menu bar is a window's; here the menus are a row of buttons }
+    Frame.ShowMenuStrip := True;
+    { one grey line all round: a lowered bevel's light half is white, and
+      vanished against a white figure }
+    Frame.BevelOuter := bvLowered;
+    Frame.BevelColor := RGBToColor(200, 200, 200);
+    Frame.OnGuiEvent := @GuiEvent;
+    TControlEvents(Frame).OnMouseWheel := @ChildWheel;
+    { positions are measured up from the figure's own height, as a window
+      of it would measure them }
+    Frame.LoadContent(TJSONObject(Fig), 0);
+    H := Max(30, Frame.FigureHeight);
+    Frame.SetBounds(LedScale96(LabelWidth + Pad), AY,
+      Max(40, Frame.FigureWidth) + 2, H + Frame.BarsHeight + 2);
+    Inc(AY, Frame.Height + LedScale96(4));
+    Result := True;
+  finally
+    Root.Free;
+  end;
+end;
+{$ENDIF}
+
 { The pictures and the text a cell produced, as widgets under it. }
 procedure TLedNBCellBox.BuildOutputs(var AY: Integer; AWidth: Integer);
 var
@@ -1199,6 +1580,10 @@ var
   Flags: TLedNBFlags;
   i, Index_, Count: Integer;
   Bytes, Mime: string;
+{$IFDEF MIMA}
+  SceneJson: string;
+  Scene: TMmmSceneView;
+{$ENDIF}
   Img: TImage;
   Room, W, H: Integer;
   Note: TLabel;
@@ -1212,6 +1597,38 @@ begin
   { A picture per output that has one.  This is the thing the line view
     cannot do, and the reason this pane exists. }
   for Index_ := 0 to Count - 1 do
+  begin
+{$IFDEF MIMA}
+    { A GUI figure: its controls, live.  A click on one goes to the kernel,
+      which runs the callback and sends the figure back as it now is. }
+    if MimaGuiJsonOf(FDoc.Notebook, FCell, Index_, SceneJson) and
+       BuildGui(SceneJson, AY) then
+      Continue;
+    { A scene first, when there is one: it is the same figure the png
+      shows, but it still has its x, y, z and c data, so the control can
+      reproject it and the reader can rotate a surface.  The png in the
+      same output is then skipped -- otherwise the figure arrives twice. }
+    if MimaSceneJsonOf(FDoc.Notebook, FCell, Index_, SceneJson) then
+    begin
+      Scene := TMmmSceneView.Create(Self);
+      Scene.Parent := Self;
+      { the wheel scrolls the page of cells, as it does over a cell's text,
+        until the plot's own menu turns its zoom on }
+      TControlEvents(Scene).OnMouseWheel := @ChildWheel;
+      Room := AWidth - LedScale96(LabelWidth + Pad * 2);
+      if Room < LedScale96(120) then Room := LedScale96(120);
+      H := Round(Room * 0.7);
+      if H > LedScale96(420) then H := LedScale96(420);
+      Scene.SetBounds(LedScale96(LabelWidth + Pad), AY, Room, H);
+      if Scene.LoadScene(SceneJson) then
+      begin
+        Inc(AY, H + LedScale96(4));
+        Continue;
+      end;
+      { a scene that will not parse leaves the png to do the job }
+      FreeAndNil(Scene);
+    end;
+{$ENDIF}
     if LedNBImageOf(FDoc.Notebook, FCell, Index_, Bytes, Mime) and
        { A cell that asked matplotlib for SVG has SVG in its outputs. }
        LedNBMakeDrawable(Bytes, Mime) then
@@ -1261,6 +1678,7 @@ begin
         Inc(AY, H + LedScale96(4));
       end;
     end;
+  end;
 
   { And the text, rendered the same way the line view renders it -- one
     place decides what an output says. }
@@ -1306,6 +1724,11 @@ begin
     a cell that has just run has different ones. }
   for i := ComponentCount - 1 downto 0 do
     if (Components[i] is TImage) or
+{$IFDEF MIMA}
+       { a figure's control and a GUI figure's panel are outputs too: left
+         behind, the next build put a second one over the first }
+       (Components[i] is TMmmSceneView) or (Components[i] is TMmmGuiFrame) or
+{$ENDIF}
        ((Components[i] is TLabel) and (Components[i] <> FHead)) then
       Components[i].Free;
 
@@ -1326,16 +1749,16 @@ begin
   Source := FDoc.Notebook.CellSource(FCell);
   Prose := (FDoc.Notebook.CellKind(FCell) = nbkMarkdown) and (not FEditing);
   if FEditBtn <> nil then
+  begin
+    FEditBtn.Down := FEditing;
     if FEditing then
-    begin
-      FEditBtn.Caption := 'ok';
-      FEditBtn.Hint := 'Show this cell rendered';
-    end
+      FEditBtn.Hint := 'Done: show this cell rendered'
     else
-    begin
-      FEditBtn.Caption := '...';
-      FEditBtn.Hint := 'Edit this cell as text';
-    end;
+      FEditBtn.Hint := 'Edit this cell (or double-click it, or click it and press Enter)';
+  end;
+  if FClear <> nil then
+    FClear.Enabled := (FDoc.Notebook.CellOutputs(FCell) <> nil) and
+      (FDoc.Notebook.CellOutputs(FCell).Count > 0);
 
   Y := LedScale96(Pad);
   if Prose then
@@ -1347,7 +1770,13 @@ begin
     if Room < LedScale96(80) then Room := LedScale96(80);
     { The width is worked out before the page is built, because a picture
       too wide for it is written into the page at the size that fits. }
-    Page := ProsePage(Source, Room - LedScale96(8));
+    { An empty text cell says how to fill it, rather than being a blank
+      strip nobody can tell is a cell }
+    if Trim(Source) = '' then
+      Page := ProsePage('*Double-click or press Enter to edit*',
+        Room - LedScale96(8))
+    else
+      Page := ProsePage(Source, Room - LedScale96(8));
     { The panel is made as tall as the prose is, so the cell shows all of it
       and never scrolls inside itself.  A cell of prose folded into a box
       with its own scrollbar is the one thing a reader cannot skim.
@@ -1357,7 +1786,13 @@ begin
       asked before it has a page in it. }
     FRender.SetBounds(LedScale96(ProseGutter), Y, Room,
       RenderedHeight(Page, Room));
-    FRender.SetHtmlFromStr(Page);
+    FPageShown := Page;
+    { the face and size again on every redraw, so a font chosen in
+      Preferences shows the next time the cell is drawn }
+    FRender.DefaultTypeFace := LedPreviewFace;
+    FRender.DefaultFontSize := ProseSize(FDoc);
+    FRender.SetHtmlFromStr(HoverPage(Page));
+    Color := HoverColour;
     { The renderer makes its drawing control when it is given a page, so the
       handlers go on after that as well as at creation. }
     HookRenderChildren;
@@ -1389,6 +1824,7 @@ begin
         LedApplyThemeToHighlighter(LedCurrentTheme, Inner);
     end;
     if FRender <> nil then FRender.Visible := False;
+    Color := LedNBColours.Page;    { not the hover shade of the prose it replaced }
     FEdit.Visible := True;
     if FEdit.Lines.Text <> Source then
     begin
@@ -1398,17 +1834,65 @@ begin
     { In two steps, because the second answer depends on the first: how tall
       the box has to be is how many rows the text wraps into, and that is not
       known until it has been given its width. }
-    Room := AWidth - LedScale96(LabelWidth + Pad * 2);
+    Room := AWidth - LedScale96(LabelWidth + Pad * 2 + CodeInset * 2);
     if Room < LedScale96(80) then Room := LedScale96(80);
-    FEdit.SetBounds(LedScale96(LabelWidth + Pad), Y, Room,
+    Inc(Y, LedScale96(CodeInset));
+    FEdit.SetBounds(LedScale96(LabelWidth + Pad + CodeInset), Y, Room,
       FEdit.LineHeight * 2);
-    FEdit.SetBounds(LedScale96(LabelWidth + Pad), Y, Room, EditorHeight);
-    Inc(Y, FEdit.Height + LedScale96(4));
+    FEdit.SetBounds(LedScale96(LabelWidth + Pad + CodeInset), Y, Room,
+      EditorHeight);
+    Inc(Y, FEdit.Height + LedScale96(CodeInset + 4));
+    Invalidate;
   end;
 
   BuildOutputs(Y, AWidth);
   Result := Y + LedScale96(Pad);
+  if Result < ButtonsBottom + LedScale96(Pad) then
+    Result := ButtonsBottom + LedScale96(Pad);
   Height := Result;
+end;
+
+function TLedNBCellBox.ButtonsBottom: Integer;
+begin
+  Result := LedScale96(Pad + 18 + ButtonSize);
+end;
+
+function TLedNBCellBox.FitEditor: Boolean;
+var
+  NewH, D, OldBottom, i, Want: Integer;
+begin
+  Result := False;
+  if (FEdit = nil) or not FEdit.Visible then Exit;
+  NewH := EditorHeight;
+  D := NewH - FEdit.Height;
+  if D = 0 then Exit;
+  OldBottom := FEdit.Top + FEdit.Height;
+  { The outputs under a code cell ride along, or a new line would be typed
+    underneath them. }
+  for i := 0 to ControlCount - 1 do
+    if (Controls[i] <> FEdit) and (Controls[i].Top >= OldBottom) then
+      Controls[i].Top := Controls[i].Top + D;
+  FEdit.Height := NewH;
+  Invalidate;                   { the shaded block around it grows too }
+  Want := Height + D;
+  if Want < ButtonsBottom + LedScale96(Pad) then
+    Want := ButtonsBottom + LedScale96(Pad);
+  Result := Want <> Height;
+  Height := Want;
+end;
+
+procedure TLedNBCellBox.TellPane;
+begin
+  if Parent is TLedNotebookPane then
+    TLedNotebookPane(Parent).CellGrew(FCell);
+end;
+
+{ Each keystroke, not only on leaving: a new line has to have somewhere to
+  go while it is being typed, or the box keeps its old height and the
+  editor, with no scrollbar, shows only the line the caret is on. }
+procedure TLedNBCellBox.EditTyped(Sender: TObject);
+begin
+  if FitEditor then TellPane;
 end;
 
 { ---- the pane ---- }
@@ -1459,6 +1943,7 @@ begin
   FAddBar.AddText.OnClick := @AddTextClicked;
   FAddBar.DeleteAbove.OnClick := @DeleteAboveClicked;
 
+  FHoverCell := -1;
   FHoverTimer := TTimer.Create(Self);
   FHoverTimer.Interval := 120;
   FHoverTimer.Enabled := True;
@@ -1476,6 +1961,22 @@ begin
   OnMouseDown := @PaneMouseDown;
 end;
 
+procedure TLedNotebookPane.SetImages(AValue: TCustomImageList);
+begin
+  FImages := AValue;
+  if AValue = nil then
+  begin
+    FreeAndNil(FCellIcons);
+    Exit;
+  end;
+  if FCellIcons = nil then FCellIcons := TImageList.Create(Self);
+  { Two pixels clear of the button's edge on every side, and built from the
+    same names so that an index means the same icon in both lists. }
+  FCellIcons.Width := LedScale96(ButtonSize - 4);
+  FCellIcons.Height := LedScale96(ButtonSize - 4);
+  LedBuildIconList(FCellIcons, LedIconNames, clBtnText);
+end;
+
 destructor TLedNotebookPane.Destroy;
 begin
   FBoxes.Free;
@@ -1488,10 +1989,20 @@ begin
   Result := FBar.Position;
 end;
 
+{ The furthest the page can be scrolled: its last pixel at the foot of the
+  view.  Not FBar.Max, which is a page larger -- the bar's thumb is a page
+  long, so its range is the room plus a page -- and scrolling to Max took the
+  wheel a whole empty page past the last cell. }
+function TLedNotebookPane.ScrollLimit: Integer;
+begin
+  Result := FBar.Max - FBar.PageSize;
+  if Result < 0 then Result := 0;
+end;
+
 procedure TLedNotebookPane.SetScrollPos(AValue: Integer);
 begin
   if AValue < 0 then AValue := 0;
-  if AValue > FBar.Max then AValue := FBar.Max;
+  if AValue > ScrollLimit then AValue := ScrollLimit;
   if FBar.Position = AValue then Exit;
   FBar.Position := AValue;      { fires BarScrolled }
 end;
@@ -1585,6 +2096,11 @@ begin
   FBar.SmallChange := LedScale96(24);
   FBar.Max := Room + FBar.PageSize;
   FBar.Visible := Room > 0;
+  { Measuring cells can make the notebook shorter than it was estimated to
+    be, which leaves the view scrolled past its new end.  Brought back, and
+    the cells built again for where it now is. }
+  if (FBar.Position > Room) and not FBuilding then
+    FBar.Position := Room;       { fires BarScrolled }
 end;
 
 procedure TLedNotebookPane.ReleaseBoxes;
@@ -1611,7 +2127,7 @@ end;
   scrollbar settles as the reader moves through the file. }
 procedure TLedNotebookPane.BuildWindow;
 var
-  Cell, Y, W, Offset, Grown: Integer;
+  Cell, Y, W, Offset, Grown, Into, NewTop: Integer;
   B: TLedNBCellBox;
   Keep: TFPList;
 begin
@@ -1637,6 +2153,7 @@ begin
       Inc(Cell);
     FFirst := Cell;
     Y := VirtualTop(Cell) - Offset;
+    Into := -Y;
 
     while (Cell < CellCount) and (Y < ClientHeight) do
     begin
@@ -1646,9 +2163,12 @@ begin
       B := BoxOf(Cell);
       if B = nil then
       begin
-        B := TLedNBCellBox.Create(Self, FDoc, Cell, FImages);
+        B := TLedNBCellBox.Create(Self, FDoc, Cell, FCellIcons);
         B.Parent := Self;
         B.OnRunCell := @CellRun;
+        B.OnClearCell := @CellClear;
+        B.OnRunFrom := @CellRunFrom;
+        B.OnClearAll := @CellClearAll;
         B.OnEdited := @CellEdited;
         B.SetBounds(0, Y, W, LedScale96(40));
         Grown := B.Rebuild(W);
@@ -1682,6 +2202,26 @@ begin
   end;
   { The heights just learnt may have changed how tall the notebook is. }
   SyncBar;
+
+  { And where the top cell starts.  A cell not yet built is assumed to be
+    as tall as the average of those that have been, so measuring the ones
+    on screen moves every unmeasured cell above them -- and the position,
+    left alone, then points into a different cell from the one drawn at
+    the top: the pane showed cell 41 and said it was at 39.  So the
+    position follows the top cell, quietly, since the reader did not move. }
+  if (FFirst >= 0) and LiveDoc then
+  begin
+    NewTop := VirtualTop(FFirst) + Into;
+    if (NewTop <> FBar.Position) and (NewTop >= 0) and (NewTop <= ScrollLimit) then
+    begin
+      FBar.OnChange := nil;
+      try
+        FBar.Position := NewTop;
+      finally
+        FBar.OnChange := @BarScrolled;
+      end;
+    end;
+  end;
 end;
 
 { Pictures that have arrived since the last look.
@@ -1790,7 +2330,15 @@ begin
     Exit;
   end;
 
+  { An empty notebook shows the bar whatever the pointer is doing. }
+  if CellCount = 0 then
+  begin
+    PlaceAddBarTop(LedScale96(CellGap) * 2);
+    Exit;
+  end;
+
   P := APoint;
+  ShadeHovered(P);
   { The bar itself counts as being at its own boundary, or moving the
     pointer onto a button would take the button away. }
   if FAddBar.Visible and (P.x >= FAddBar.Left) and
@@ -1804,10 +2352,14 @@ begin
     begin
       B := TLedNBCellBox(FBoxes[i]);
       Edge := B.Top + B.Height;
-      Reach := B.Height div 4;
-      if Reach > LedScale96(40) then Reach := LedScale96(40);
-      if Reach < LedScale96(12) then Reach := LedScale96(12);
-      if (P.y >= Edge - Reach) and (P.y <= Edge + LedScale96(6)) then
+      { On the boundary, give or take three pixels: over the gap between two
+        cells and a sliver of each.  It had been the bottom quarter of every
+        cell, which put the bar up whenever the pointer crossed a cell's
+        last lines -- a reader moving down a page saw it flicker on at every
+        cell they read. }
+      Reach := LedScale96(3);
+      if (P.y >= Edge - Reach) and
+         (P.y <= Edge + LedScale96(CellGap) + Reach) then
       begin
         Near_ := B;
         Break;
@@ -1816,10 +2368,65 @@ begin
 
   if Near_ = nil then
   begin
+    { Above the first cell, when it is on the page: + Code and + Text there
+      put a cell at the very top, which is where a notebook's title and
+      introduction go. }
+    if (FBoxes.Count > 0) and (TLedNBCellBox(FBoxes[0]).Cell = 0) and
+       (P.x >= 0) and (P.x < ClientWidth) and (P.y >= 0) and
+       (P.y <= TLedNBCellBox(FBoxes[0]).Top + LedScale96(3)) then
+    begin
+      PlaceAddBarTop(TLedNBCellBox(FBoxes[0]).Top);
+      Exit;
+    end;
     if FAddBar.Visible then FAddBar.Visible := False;
     Exit;
   end;
   PlaceAddBar(Near_);
+end;
+
+procedure TLedNotebookPane.ShadeHovered(const APoint: TPoint);
+var
+  i, Cell: Integer;
+  B: TLedNBCellBox;
+begin
+  Cell := -1;
+  if (APoint.x >= 0) and (APoint.x < ClientWidth) and (APoint.y >= 0) and
+     (APoint.y < ClientHeight) then
+    for i := 0 to FBoxes.Count - 1 do
+    begin
+      B := TLedNBCellBox(FBoxes[i]);
+      if (APoint.y >= B.Top) and (APoint.y < B.Top + B.Height) then
+      begin
+        if (B.Rendered <> nil) and B.Rendered.Visible and not B.Editing then
+          Cell := B.Cell;
+        Break;
+      end;
+    end;
+  if Cell = FHoverCell then Exit;
+  { By cell rather than by box: the box shaded last may have scrolled away
+    and been released since. }
+  B := BoxOf(FHoverCell);
+  if B <> nil then B.SetHovered(False);
+  FHoverCell := Cell;
+  B := BoxOf(Cell);
+  if B <> nil then B.SetHovered(True);
+end;
+
+{ The bar before the first cell -- and on an empty notebook, always, since
+  it is then the only way to begin. }
+procedure TLedNotebookPane.PlaceAddBarTop(AFirstTop: Integer);
+var
+  Y: Integer;
+begin
+  FAddBar.Cell := -1;                 // after "cell -1": at the top
+  FAddBar.DeleteAbove.Visible := False;
+  FAddBar.AddCode.Hint := 'Add a code cell at the top';
+  FAddBar.AddText.Hint := 'Add a text cell at the top';
+  Y := (AFirstTop - FAddBar.Height) div 2;
+  if Y < 0 then Y := 0;
+  FAddBar.SetBounds(LedScale96(LabelWidth + Pad), Y, FAddBar.Width, FAddBar.Height);
+  FAddBar.Visible := True;
+  FAddBar.BringToFront;
 end;
 
 { The bar at the foot of a box, indented to where a cell's own text starts so
@@ -1827,6 +2434,9 @@ end;
 procedure TLedNotebookPane.PlaceAddBar(ABox: TLedNBCellBox);
 begin
   FAddBar.Cell := ABox.Cell;
+  FAddBar.DeleteAbove.Visible := True;
+  FAddBar.AddCode.Hint := 'Add a code cell below this one';
+  FAddBar.AddText.Hint := 'Add a text cell below this one';
   { Just below the boundary rather than across it, and indented to where a
     cell's own text starts so that it lines up with the cells rather than
     with the pane.
@@ -1954,6 +2564,12 @@ function TLedNotebookPane.DoMouseWheel(AShift: TShiftState;
 var
   Notches: Integer;
 begin
+  if ssCtrl in AShift then
+  begin
+    if AWheelDelta > 0 then ZoomText(1)
+    else if AWheelDelta < 0 then ZoomText(-1);
+    Exit(True);
+  end;
   Notches := AWheelDelta div 120;
   if Notches = 0 then
     if AWheelDelta > 0 then Notches := 1 else Notches := -1;
@@ -2082,6 +2698,14 @@ begin
   if Assigned(FOnRun) then FOnRun(Self, ACell);
 end;
 
+{ The output goes; the box stays, since its own button is what was pressed. }
+procedure TLedNotebookPane.CellClear(Sender: TObject; ACell: Integer);
+begin
+  if not LiveDoc then Exit;
+  FDoc.NBClearOutputs(ACell);
+  RefreshCell(ACell);
+end;
+
 procedure TLedNotebookPane.CellEdited(Sender: TObject; ACell: Integer);
 var
   B: TLedNBCellBox;
@@ -2092,8 +2716,40 @@ begin
     in -- but its new height is recorded and the cells below are moved. }
   B := BoxOf(ACell);
   if B = nil then Exit;
-  if B.Editor <> nil then B.Editor.Height := B.EditorHeight;
-  B.Height := B.Editor.Top + B.Editor.Height + LedScale96(Pad);
+  B.FitEditor;
+  CellGrew(ACell);
+end;
+
+procedure TLedNotebookPane.CellRunFrom(Sender: TObject; ACell: Integer);
+begin
+  if Assigned(FOnRunFrom) then FOnRunFrom(Self, ACell);
+end;
+
+{ Every output in the notebook: the boxes on screen are rebuilt, and the
+  reader stays on the cell they were looking at. }
+procedure TLedNotebookPane.CellClearAll(Sender: TObject; ACell: Integer);
+begin
+  if not LiveDoc then Exit;
+  FDoc.NBClearAllOutputs;
+  ReloadKeeping(TopCell);
+end;
+
+{ Every cell again at the new size, the reader kept on the cell they were
+  reading. The boxes are released, not freed, so a wheel event arriving
+  from inside one is safe. }
+procedure TLedNotebookPane.ZoomText(ADelta: Integer);
+begin
+  if not LedPageZoomBy(ADelta) then Exit;
+  if LiveDoc then
+    ReloadKeeping(TopCell);
+end;
+
+procedure TLedNotebookPane.CellGrew(ACell: Integer);
+var
+  B: TLedNBCellBox;
+begin
+  B := BoxOf(ACell);
+  if B = nil then Exit;
   if (ACell >= 0) and (ACell <= High(FHeights)) then
     FHeights[ACell] := B.Height;
   LayoutBelow(ACell);
@@ -2120,5 +2776,12 @@ begin
     end;
   SyncBar;
 end;
+
+{$IFDEF MIMA}
+initialization
+  { a GUI figure is drawn as its controls, so its line of text is not }
+  SetLength(LedNBDrawnMimes, 1);
+  LedNBDrawnMimes[0] := MimaGuiMime;
+{$ENDIF}
 
 end.

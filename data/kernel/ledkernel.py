@@ -83,7 +83,7 @@ def output_from(msg):
             "text": lines_of(content.get("text", "")),
         }
 
-    if kind in ("execute_result", "display_data"):
+    if kind in ("execute_result", "display_data", "update_display_data"):
         data = dict(content.get("data", {}))
         # Text stays a list of lines, as nbformat writes it; a picture stays
         # the single base64 string it arrived as.
@@ -97,6 +97,15 @@ def output_from(msg):
         }
         if kind == "execute_result":
             out["execution_count"] = content.get("execution_count")
+        if kind == "update_display_data":
+            # A change to an output shown earlier, found by its display id.
+            # nbformat has no such output, so it goes to the editor as a
+            # display_data marked with the id it updates; the document
+            # drops it unless something there knows what it updates.
+            out["output_type"] = "display_data"
+            out["metadata"] = dict(out["metadata"])
+            out["metadata"]["led_update"] = \
+                content.get("transient", {}).get("display_id", "")
         return out
 
     if kind == "error":

@@ -32,7 +32,13 @@ uses
 
 const
   { What a notebook is when it does not say: see the unit comment. }
+{$IFDEF MIMA}
+  { mima-ide is a matlab IDE, and its notebooks are mima's: a cell that
+    says nothing about itself in a notebook that says nothing is matlab }
+  LedNBDefaultLanguage = 'matlab';
+{$ELSE}
   LedNBDefaultLanguage = 'python';
+{$ENDIF}
 
 { The word a cell magic on the first line of ASource names, in lower case, or
   '' when the cell does not open with one.  '%%shell' gives 'shell'. }
@@ -83,7 +89,7 @@ const
     the right the ids LED's highlighters are registered under.  A name that
     is already an id is still listed, because the caller cannot tell the two
     apart and this way it does not have to. }
-  Aliases: array[0..58] of TLedNBLangAlias = (
+  Aliases: array[0..59] of TLedNBLangAlias = (
     { the shells, all of which get LED's sh grammar }
     (Name: 'sh';          LangId: 'sh'),
     (Name: 'bash';        LangId: 'sh'),
@@ -131,6 +137,8 @@ const
     { the numerical ones, which is what a teaching notebook is full of }
     (Name: 'octave';      LangId: 'octave'),
     (Name: 'matlab';      LangId: 'matlab'),
+    { mima's kernel, and its magic }
+    (Name: 'mima';        LangId: 'matlab'),
     (Name: 'scilab';      LangId: 'scilab'),
     (Name: 'maxima';      LangId: 'maxima'),
     (Name: 'julia';       LangId: 'julia'),

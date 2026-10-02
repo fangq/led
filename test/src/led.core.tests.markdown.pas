@@ -48,6 +48,7 @@ type
     procedure SplittingLeavesPreformattedTextAlone;
     procedure SplittingKeepsTheAttributesOfATag;
     procedure SplittingPutsAWholeRunOfSpacesOutside;
+    procedure SplittingKeepsAFlattenedHeadingsSize;
     procedure FlatteningWritesAHeadingAsAParagraph;
     procedure FlatteningPicksTheSizeTheRendererWouldHave;
     procedure FlatteningKeepsTheLineId;
@@ -333,6 +334,15 @@ procedure TTestMarkdown.SplittingBreaksAMultiWordSpan;
 begin
   AssertEquals('<p><b>two</b> <b>words</b></p>',
     LedSplitInlineRuns('<p><b>two words</b></p>'));
+end;
+
+procedure TTestMarkdown.SplittingKeepsAFlattenedHeadingsSize;
+begin
+  { A heading is written as <b><font size=..> and then split for wrapping:
+    the <font> has to be closed and reopened with the <b> at every space, or
+    only the first word keeps the heading's size. }
+  AssertEquals('<p><b><font size="5">Alpha</font></b> <b><font size="5">beta</font></b></p>',
+    LedSplitInlineRuns(LedFlattenHeadings('<h1>Alpha beta</h1>')));
 end;
 
 procedure TTestMarkdown.SplittingLeavesAOneWordSpanAlone;

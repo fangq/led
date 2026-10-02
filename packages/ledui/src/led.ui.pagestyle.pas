@@ -22,8 +22,8 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Graphics, IpHtml, SynEditHighlighter,
-  Led.Core.Markdown, Led.Core.StrBuf, Led.Syn.Factory, Led.Syn.Theme,
-  Led.UI.Document;
+  Led.Core.Markdown, Led.Core.StrBuf, Led.Core.Prefs, Led.Syn.Factory,
+  Led.Syn.Theme, Led.UI.Document;
 
 type
   { How tall a page of HTML comes out at a given width.
@@ -101,6 +101,19 @@ function LedPageColourCode(const AHtml: string;
   body between.  AMargin is the body's own margin: none for a notebook cell,
   which is already inside a box with its own padding, and a little for a
   whole document, where text against the edge of the pane is hard to read. }
+{ The notebook and preview face the reader chose (Preferences, View), Sans
+  when they chose none }
+function LedPreviewFace: string;
+
+{ The size given with that face, or AFallback when it names only a face }
+function LedPreviewPointSize(AFallback: Integer): Integer;
+
+{ Ctrl+wheel over a notebook or a preview: points added to all of their
+  text, prose and code alike. For the session only, as the editor's zoom
+  is; LedPageZoomBy keeps it within reason and answers whether it moved. }
+function LedPageZoom: Integer;
+function LedPageZoomBy(ADelta: Integer): Boolean;
+
 function LedPageHead(const ATitle: string;
   const AColours: TLedPageColours; AMargin: Integer = 0): string;
 function LedPageTail: string;
@@ -460,6 +473,66 @@ begin
   Result := Buf.Text;
 end;
 
+{ "Face" or "Face Size", split by hand: LedParseFontSpec swaps a family
+  it cannot find installed for the default, and "Serif" or "Sans" -- the
+  aliases a page wants -- are not installed families but names fontconfig
+  answers, which the renderer asks it for. }
+procedure SplitPreviewSpec(out AFace: string; out ASize: Integer);
+var
+  Spec: string;
+  Cut: Integer;
+begin
+  Spec := Trim(LedPrefs.GetStr(LedPrefPreviewFont, 'Sans'));
+  ASize := 0;
+  Cut := LastDelimiter(' ', Spec);
+  if (Cut > 0) and (StrToIntDef(Copy(Spec, Cut + 1, MaxInt), 0) > 0) then
+  begin
+    ASize := StrToInt(Copy(Spec, Cut + 1, MaxInt));
+    Spec := Trim(Copy(Spec, 1, Cut - 1));
+  end;
+  AFace := Spec;
+  if AFace = '' then
+    AFace := 'Sans';
+end;
+
+var
+  GPageZoom: Integer = 0;
+
+function LedPageZoom: Integer;
+begin
+  Result := GPageZoom;
+end;
+
+function LedPageZoomBy(ADelta: Integer): Boolean;
+var
+  Was: Integer;
+begin
+  Was := GPageZoom;
+  GPageZoom := GPageZoom + ADelta;
+  if GPageZoom < -6 then GPageZoom := -6;
+  if GPageZoom > 30 then GPageZoom := 30;
+  Result := GPageZoom <> Was;
+end;
+
+function LedPreviewFace: string;
+var
+  Size: Integer;
+begin
+  SplitPreviewSpec(Result, Size);
+end;
+
+function LedPreviewPointSize(AFallback: Integer): Integer;
+var
+  Face: string;
+  Size: Integer;
+begin
+  SplitPreviewSpec(Face, Size);
+  if Size > 0 then
+    Result := Size
+  else
+    Result := AFallback;
+end;
+
 function LedPageHead(const ATitle: string;
   const AColours: TLedPageColours; AMargin: Integer): string;
 begin
@@ -468,8 +541,10 @@ begin
     ones that decide the background. }
   Result :=
     '<html><head><title>' + LedHtmlEscape(ATitle) + '</title><style>' +
+    { no font-family: the renderer's DefaultTypeFace is the reader's
+      choice (LedPreviewFace), and a family here would override it }
     'body { margin: ' + IntToStr(AMargin) +
-      'px; font-family: sans-serif; color: ' +
+      'px; color: ' +
       LedHtmlColour(AColours.Text) + '; }' +
     'h1, h2, h3, h4 { margin: 6px 0 4px 0; }' +
     'p { margin: 4px 0 8px 0; }' +

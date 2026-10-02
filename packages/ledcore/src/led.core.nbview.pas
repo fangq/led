@@ -106,6 +106,12 @@ procedure LedNBOutputLines(ANotebook: TLedNotebook; ACell: Integer;
   AInto: TStrings; out AIsError: TLedNBFlags;
   ASkipPictures: Boolean = False);
 
+var
+  { Output kinds besides images that a pane draws itself, and whose text a
+    caller skipping pictures skips too.  Empty in LED; a program built on
+    it adds the kinds its pane knows how to show. }
+  LedNBDrawnMimes: array of string;
+
 { Terminal colour escapes, taken out.  Tracebacks are full of them: ipykernel
   colours its own output, and a buffer that showed the escapes would be
   unreadable where it matters most. }
@@ -180,7 +186,7 @@ end;
 function LedNBHeaderText(ANotebook: TLedNotebook; ACell: Integer): string;
 var
   Count: Integer;
-  Left: string;
+  Left, Lang: string;
 begin
   case ANotebook.CellKind(ACell) of
     nbkCode:
@@ -197,10 +203,21 @@ begin
           magic says otherwise: a reader looking at a %%octave cell is owed
           the word "octave" rather than the word "python", and it is also
           how they can see that LED read the magic at all. }
-        Left := Left + ' ' + LedNBCellLanguage(ANotebook.CellSource(ACell),
+        Lang := LedNBCellLanguage(ANotebook.CellSource(ACell),
           ANotebook.LanguageName);
+{$IFDEF MIMA}
+        { mima-ide's code is mima's: the cell says whose, not the language's
+          name -- a %%octave or %%python cell still says its own }
+        if Lang = 'matlab' then
+          Lang := 'Mima';
+{$ENDIF}
+        Left := Left + ' ' + Lang;
       end;
+{$IFDEF MIMA}
+    nbkMarkdown: Left := '[ ] Markdown';
+{$ELSE}
     nbkMarkdown: Left := '[ ] markdown';
+{$ENDIF}
   else
     Left := '[ ] raw';
   end;
@@ -342,13 +359,17 @@ end;
 function OutputIsPicture(AOutput: TJSONObject): Boolean;
 var
   Data: TJSONData;
-  i: Integer;
+  i, j: Integer;
 begin
   Result := False;
   Data := AOutput.Find('data');
   if (Data = nil) or (Data.JSONType <> jtObject) then Exit;
   for i := 0 to TJSONObject(Data).Count - 1 do
+  begin
     if Pos('image/', TJSONObject(Data).Names[i]) = 1 then Exit(True);
+    for j := 0 to High(LedNBDrawnMimes) do
+      if TJSONObject(Data).Names[i] = LedNBDrawnMimes[j] then Exit(True);
+  end;
 end;
 
 procedure LedNBOutputLines(ANotebook: TLedNotebook; ACell: Integer;

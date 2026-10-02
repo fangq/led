@@ -32,7 +32,27 @@ uses
   Led.Core.Modeline, Led.Core.Prefs, Led.Core.Filters,
   Led.Syn.Languages, Led.Syn.Theme,
   Led.Syn.Factory, Led.UI.Edit, Led.UI.Dpi, Led.UI.SpellMarkup,
-  Led.UI.LongLine;
+  Led.UI.LongLine
+{$IFDEF MIMA}
+  , Mima.UI.NBScene
+{$ENDIF}
+  ;
+
+type
+  { A program built on the editor may know what a file *is* better than the
+    editor does: a data file it can load, a figure it can draw.  Opening a
+    file by name -- a double-click in the file list, a drop on the window,
+    the command line -- asks this first, and when it answers True the file
+    has been dealt with and no document is opened.
+
+    ARaw is True when the reader asked for the bytes themselves, which is
+    File > Open: then the hook is expected to decline, so that a file it
+    would otherwise act on can still be read and edited as a structure.
+    The editor sets nothing here; the program that knows the formats does. }
+  TLedOpenFileHook = function(const APath: string; ARaw: Boolean): Boolean;
+
+var
+  LedOpenFileHook: TLedOpenFileHook = nil;
 
 type
   { Where a view is looking, in cells rather than in lines: see
@@ -133,12 +153,17 @@ type
       notebook are two views of one session, not two sessions. }
     FKernel: TLedKernel;
     FKernelTimer: TTimer;
+    { in mima, the magic put in front of each code cell when the notebook's
+      matlab has to run inside a Python kernel: see NBKernelStart }
+    FCellMagic: string;
     { Output and execution counts live in the notebook rather than in the
       buffer, and SynEdit's Modified only knows about the buffer -- so a cell
       that has just run leaves the document changed in a way that has to be
       recorded here.  The hex view keeps its own flag for the same reason. }
     FNBDirty: Boolean;
-    FRuns: array of record Id, Cell: Integer; end;
+    { Event: the run reports a click on a GUI figure rather than running
+      the cell, so it neither clears the cell nor numbers it }
+    FRuns: array of record Id, Cell: Integer; Event: Boolean; end;
     FDirtyCells: array of Integer;   // cells whose output has just changed
     FOnKernel: TLedDocumentEvent;
     FOnCell: TLedDocumentCellEvent;
@@ -172,6 +197,7 @@ type
     function NBHeaderAbove(ALine: Integer; out ACell: Integer): Integer;
     procedure NBRender;
     function NBGuard(Sender: TObject; ACommand: TSynEditorCommand): Boolean;
+    function NBCaret(Sender: TObject; ALine, AFrom: Integer): Integer;
     function NBLineKind(ALine: Integer; out ACell: Integer;
       out ALang: string): TLedNBLine;
     function NBCellLanguage(ACell, AHeaderLine: Integer): string;
@@ -241,6 +267,11 @@ type
 
     function DisplayName: string;
     function IsUntitled: Boolean;
+    { Make this untitled document a notebook holding AText, as opening a
+      .ipynb would -- for New Notebook, which should not have to ask for a
+      file name before there is anything to save.  False, with the reason,
+      when the text is not a notebook. }
+    function StartNotebook(const AText: string; out AError: string): Boolean;
 
     property FileName: string read FFileName;
     property Info: TLedTextInfo read FInfo;
@@ -307,6 +338,8 @@ type
     { Whether a line is one the reader may type into: the cell's own source,
       as opposed to a header or an output. }
     function NBLineIsSource(ATextIdx: Integer): Boolean;
+    { whether a 0-based line is a cell's header, the separator line }
+    function NBLineIsHeader(ATextIdx: Integer): Boolean;
     { How many cells, and the line a cell's source starts on. }
     function NBCellCount: Integer;
     function NBSourceLineOf(ACell: Integer): Integer;
@@ -342,8 +375,15 @@ type
       Ctrl+Z, and the window asks before it deletes anything that is not
       empty. }
     function NBInsertCell(ACell: Integer; AKind: TLedNBCellKind): Integer;
-    { Takes a cell out.  False when there is no such cell or it is the only
-      one -- a notebook with no cells is a page with nothing to type into. }
+    { Clears a code cell's output and its execution count, as Jupyter's
+      "Clear Output" does.  The notebook is then modified. }
+    procedure NBClearOutputs(ACell: Integer);
+    { Every code cell's output and count, cleared; each cell that had any is
+      redrawn in the line view rather than the whole notebook re-rendered,
+      which would move it. }
+    procedure NBClearAllOutputs;
+    { Takes a cell out.  False when there is no such cell; the last one may
+      go, leaving an empty notebook. }
     function NBDeleteCell(ACell: Integer): Boolean;
 
     { Copies what the buffer holds back into the notebook, cell by cell.
@@ -369,9 +409,19 @@ type
       The cell's own source is taken from the buffer, so what runs is what
       the reader can see. }
     function NBRunCell(ACell: Integer; out AWhy: string): Boolean;
+{$IFDEF MIMA}
+    { Reports a user action on a GUI figure's control, drawn in ACell's
+      output, to the kernel, which runs its callback.  What the callback
+      prints goes to ACell; the figure's new look replaces its output. }
+    function NBGuiEvent(ACell: Integer; AHandle: Double;
+      const AEvent, AUpdates: string): Boolean;
+{$ENDIF}
     { Every code cell, in order.  The kernel runs them in the order they
       arrive, which is the order they are on the page. }
     function NBRunAll(out AWhy: string): Boolean;
+    { Every code cell from AFirst to the end, in order: Run All is AFirst 0,
+      and Run to the End is the cell the reader is in. }
+    function NBRunFrom(AFirst: Integer; out AWhy: string): Boolean;
     property OnKernelChanged: TLedDocumentEvent read FOnKernel write FOnKernel;
     { Fired for the one cell whose header or output has just changed.  A view
       that shows the cells uses this instead of rebuilding itself: on a real
@@ -598,9 +648,15 @@ begin
   AView.BJDataMode := FIsBJData;
   AView.NotebookMode := FIsNotebook;
   if FIsNotebook then
-    AView.OnNBGuard := @NBGuard
+  begin
+    AView.OnNBGuard := @NBGuard;
+    AView.OnNBCaret := @NBCaret;
+  end
   else
+  begin
     AView.OnNBGuard := nil;
+    AView.OnNBCaret := nil;
+  end;
   if IsHexDump then
     AView.OnHexKey := @HexKey
   else
@@ -701,8 +757,16 @@ end;
 
 procedure TLedDocument.ApplyConfigToViews;
 var
-  i: Integer;
+  i, FontSize: Integer;
+  FontName: string;
 begin
+  { The master is never shown, but the notebook pane takes its monospaced
+    face and size from it -- cell editors, outputs, code in prose -- and a
+    bare TSynEdit is Courier New.  So it follows the preference too, which
+    is Fira Code unless Preferences says otherwise. }
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), FontName, FontSize);
+  FMaster.Font.Name := FontName;
+  FMaster.Font.Size := LedScalePointSize(FontSize);
   { The structure view's highlighter belongs to this document, so LedRetheme
     -- which re-themes the shared language ones -- never reaches it.  Without
     this a theme change left the structure view in the old scheme's colours,
@@ -1282,6 +1346,39 @@ end;
   header, and a delete at the end of its last line would swallow the output
   label, so both are refused even though the caret is on a line that is
   otherwise editable. }
+function TLedDocument.NBLineIsHeader(ATextIdx: Integer): Boolean;
+var
+  T: PtrInt;
+begin
+  Result := False;
+  if (ATextIdx < 0) or (ATextIdx >= FMaster.Lines.Count) then Exit;
+  T := NBTagOf(ATextIdx);
+  Result := (T <> 0) and ((-T) mod NBTagKinds = NBTagHeader);
+end;
+
+{ A cell's header is a separator rather than text, so the caret does not
+  stand on one: moving up it goes on to the line above, moving down (or a
+  click) to the line below, and at either end of the file the other way. }
+function TLedDocument.NBCaret(Sender: TObject; ALine, AFrom: Integer): Integer;
+var
+  I, Step: Integer;
+begin
+  Result := ALine;
+  if not FIsNotebook or not NBLineIsHeader(ALine - 1) then Exit;
+  if ALine < AFrom then Step := -1 else Step := 1;
+  I := ALine - 1;
+  while (I >= 0) and (I < FMaster.Lines.Count) and NBLineIsHeader(I) do
+    Inc(I, Step);
+  if (I < 0) or (I >= FMaster.Lines.Count) then
+  begin
+    I := ALine - 1;
+    while (I >= 0) and (I < FMaster.Lines.Count) and NBLineIsHeader(I) do
+      Dec(I, Step);
+  end;
+  if (I >= 0) and (I < FMaster.Lines.Count) then
+    Result := I + 1;
+end;
+
 function TLedDocument.NBGuard(Sender: TObject;
   ACommand: TSynEditorCommand): Boolean;
 var
@@ -1658,6 +1755,45 @@ begin
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
+procedure TLedDocument.NBClearOutputs(ACell: Integer);
+begin
+  if not FIsNotebook then Exit;
+  if (ACell < 0) or (ACell >= FNotebook.CellCount) then Exit;
+  NBSyncFromBuffer;
+  FNotebook.ClearCellOutputs(ACell);
+  FNotebook.SetCellExecutionCount(ACell, -1);
+  FNBDirty := True;
+  FMaster.Modified := True;
+  NBRefreshCell(ACell);
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.NBClearAllOutputs;
+var
+  i: Integer;
+  Outs: TJSONArray;
+  Any: Boolean;
+begin
+  if not FIsNotebook then Exit;
+  NBSyncFromBuffer;
+  Any := False;
+  for i := 0 to FNotebook.CellCount - 1 do
+  begin
+    if FNotebook.CellKind(i) <> nbkCode then Continue;
+    Outs := FNotebook.CellOutputs(i);
+    if ((Outs = nil) or (Outs.Count = 0)) and
+       (FNotebook.CellExecutionCount(i) < 0) then Continue;
+    FNotebook.ClearCellOutputs(i);
+    FNotebook.SetCellExecutionCount(i, -1);
+    NBRefreshCell(i);
+    Any := True;
+  end;
+  if not Any then Exit;
+  FNBDirty := True;
+  FMaster.Modified := True;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
 function TLedDocument.NBDeleteCell(ACell: Integer): Boolean;
 var
   Place: TLedNBPlace;
@@ -1911,7 +2047,20 @@ begin
     say: a notebook with no kernelspec is almost always one somebody wrote
     by hand or converted, and python3 is the kernel they meant. }
   Name_ := FNotebook.KernelName;
+{$IFDEF MIMA}
+  { In mima a notebook is matlab unless it says otherwise: one naming no
+    kernel runs on mima's.  Where that kernel is not installed the cells
+    still run, through Python and the %%mima magic, rather than as Python. }
+  FCellMagic := '';
+  if Name_ = '' then Name_ := 'mima';
+  if (Name_ = 'mima') and not LedKernelSpecInstalled('mima') then
+  begin
+    Name_ := 'python3';
+    FCellMagic := '%%mima' + #10;
+  end;
+{$ELSE}
   if Name_ = '' then Name_ := 'python3';
+{$ENDIF}
 
   if FKernel = nil then
   begin
@@ -1919,6 +2068,13 @@ begin
     FKernel.OnEvent := @NBKernelEvent;
   end;
   Result := FKernel.Start(Name_, AWhy);
+
+{$IFDEF MIMA}
+  { the magic has to be loaded before the first cell can use it; its own
+    output belongs to no cell and is not shown }
+  if Result and (FCellMagic <> '') then
+    FKernel.Run('%load_ext mima_magic');
+{$ENDIF}
 
   if Result then
   begin
@@ -2004,6 +2160,11 @@ procedure TLedDocument.NBKernelEvent(Sender: TObject;
   const AEvent: TLedKernelEvent);
 var
   Cell, i, j: Integer;
+  WasEvent: Boolean;
+  Meta: TJSONData;
+{$IFDEF MIMA}
+  Dirty: TMimaCells;
+{$ENDIF}
 begin
   case AEvent.Kind of
     lkeReady, lkeFailed, lkeStatus:
@@ -2013,6 +2174,23 @@ begin
       begin
         Cell := NBCellOfRun(AEvent.Id);
         if Cell < 0 then Exit;
+{$IFDEF MIMA}
+        { a GUI figure is one output, wherever it first appeared }
+        if MimaPlaceGuiOutput(FNotebook, Cell, AEvent.Output, Dirty) then
+        begin
+          for i := 0 to High(Dirty) do
+            NBMarkDirty(Dirty[i]);
+          FNBDirty := True;
+          Exit;
+        end;
+{$ENDIF}
+        { A change to an output shown earlier, by its display id.  Only
+          something that knows that output can place it; nothing here
+          does, so it is dropped, as it was before the helper passed it on. }
+        Meta := AEvent.Output.FindPath('metadata');
+        if (Meta <> nil) and (Meta.JSONType = jtObject) and
+           (TJSONObject(Meta).IndexOfName('led_update') >= 0) then
+          Exit;
         { Cloned: the event's output belongs to the poll that read it and is
           freed when the poll moves on, while the notebook keeps what it is
           given until the file is saved. }
@@ -2024,16 +2202,18 @@ begin
     lkeDone:
       begin
         Cell := NBCellOfRun(AEvent.Id);
+        WasEvent := False;
         for i := 0 to High(FRuns) do
           if FRuns[i].Id = AEvent.Id then
           begin
+            WasEvent := FRuns[i].Event;
             for j := i to High(FRuns) - 1 do FRuns[j] := FRuns[j + 1];
             SetLength(FRuns, Length(FRuns) - 1);
             Break;
           end;
         if Cell >= 0 then
         begin
-          if AEvent.Count >= 0 then
+          if (AEvent.Count >= 0) and not WasEvent then
           begin
             FNotebook.SetCellExecutionCount(Cell, AEvent.Count);
             FNBDirty := True;
@@ -2079,6 +2259,9 @@ begin
     LedNBRunnableSource.  The cell in the file is not changed. }
   NBSyncFromBuffer;
   Source := LedNBRunnableSource(FNotebook.CellSource(ACell));
+  { a cell that names its own magic keeps it }
+  if (FCellMagic <> '') and (Copy(TrimLeft(Source), 1, 2) <> '%%') then
+    Source := FCellMagic + Source;
 
   Id := FKernel.Run(Source);
   if Id < 0 then
@@ -2090,6 +2273,7 @@ begin
   SetLength(FRuns, Length(FRuns) + 1);
   FRuns[High(FRuns)].Id := Id;
   FRuns[High(FRuns)].Cell := ACell;
+  FRuns[High(FRuns)].Event := False;
 
   { Cleared the moment it is sent, the way Jupyter does: what is on screen
     under a running cell should be that run's output and not the last one's. }
@@ -2102,12 +2286,39 @@ begin
   Result := True;
 end;
 
+{$IFDEF MIMA}
+function TLedDocument.NBGuiEvent(ACell: Integer; AHandle: Double;
+  const AEvent, AUpdates: string): Boolean;
+var
+  Id: Integer;
+begin
+  Result := False;
+  { Through the %%mima magic in a Python kernel the figure lives in
+    another process's engine, which this command does not reach. }
+  if (FKernel = nil) or not FKernel.Running or (FCellMagic <> '') then Exit;
+  Id := FKernel.Run(MimaGuiEventCode(AHandle, AEvent, AUpdates));
+  if Id < 0 then Exit;
+  SetLength(FRuns, Length(FRuns) + 1);
+  FRuns[High(FRuns)].Id := Id;
+  FRuns[High(FRuns)].Cell := ACell;
+  FRuns[High(FRuns)].Event := True;
+  if Assigned(FOnKernel) then FOnKernel(Self);
+  Result := True;
+end;
+{$ENDIF}
+
 function TLedDocument.NBRunAll(out AWhy: string): Boolean;
+begin
+  Result := NBRunFrom(0, AWhy);
+end;
+
+function TLedDocument.NBRunFrom(AFirst: Integer; out AWhy: string): Boolean;
 var
   i: Integer;
   Ran: Boolean;
 begin
   Result := False;
+  if AFirst < 0 then AFirst := 0;
   AWhy := '';
   if not FIsNotebook then
   begin
@@ -2115,7 +2326,7 @@ begin
     Exit;
   end;
   Ran := False;
-  for i := 0 to FNotebook.CellCount - 1 do
+  for i := AFirst to FNotebook.CellCount - 1 do
     if FNotebook.CellKind(i) = nbkCode then
       { Sent one after another without waiting: the kernel runs them in the
         order they arrive, which is the order they are on the page. }
@@ -2664,10 +2875,47 @@ begin
   Result := FFileName = '';
 end;
 
+function TLedDocument.StartNotebook(const AText: string; out AError: string): Boolean;
+begin
+  Result := False;
+  AError := '';
+  FreeAndNil(FNotebook);
+  FNotebook := TLedNotebook.Create;
+  if not FNotebook.LoadFromText(AText, AError) then
+  begin
+    FreeAndNil(FNotebook);
+    Exit;
+  end;
+  FIsNotebook := True;
+  FNBError := '';
+  FNBDirty := False;
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := AText;
+    FMaster.ClearUndo;
+    FMaster.Modified := False;
+  finally
+    FMaster.EndUpdate;
+  end;
+  { the steps LoadFromFile takes for a notebook, without the file }
+  NBRender;
+  FConfig.SetStr(LedSetLang, '', lcsAuto);
+  ApplyLanguage;
+  ApplyConfigToViews;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+  Result := True;
+end;
+
 function TLedDocument.DisplayName: string;
 begin
   if IsUntitled then
+{$IFDEF MIMA}
+    { one word: in matlab a file's name is the function or script it holds,
+      and "Untitled 1.m" is neither }
+    Result := Format('Untitled%d', [FUntitledNo])
+{$ELSE}
     Result := Format('Untitled %d', [FUntitledNo])
+{$ENDIF}
   else
     Result := ExtractFileName(FFileName);
 end;
