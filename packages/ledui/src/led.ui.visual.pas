@@ -1,0 +1,512 @@
+{ LED - a lightweight editor.  The visual editor: Markdown, HTML and Word
+  files edited as the pages they print as.
+
+  The pages are Parade's -- a text layout engine in C with a Lazarus control
+  of its own, TParadeEdit, which lays out, rasterizes and edits a document
+  model that imports and exports Markdown, HTML and DOCX.  This unit is the
+  frame around that control: the fonts it is given, a strip of formatting
+  buttons, and the conversion between the document LED holds -- a text
+  buffer, or the bytes of a .docx -- and Parade's.
+
+  A visual edit is a translation, and the translation is not the identity:
+  Markdown written as `*this*` comes back as `_this_`, HTML loses what the
+  importer does not model.  So nothing is written back until something was
+  changed here, and then all of it at once, as one undo step in the text.
+
+  Parade is optional.  Built without it -- `make PARADE=` or no Parade tree
+  next to LED -- led.parade.inc is the empty stub, every query here answers
+  "not available", and the rest of LED needs no IFDEF of its own. }
+unit Led.UI.Visual;
+
+{$mode objfpc}{$H+}
+{$I led.parade.inc}
+
+interface
+
+uses
+  Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
+  LCLType
+  {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF};
+
+type
+  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx);
+
+  { The page view, a strip of buttons above it.  One per tab, made when the
+    tab is first switched to it. }
+  TLedVisualPane = class(TPanel)
+  private
+    FKind: TLedVisualKind;
+    FBar: TPanel;
+    FStyle: TComboBox;
+    FOnChange: TNotifyEvent;
+    {$IFDEF LED_PARADE}
+    FEdit: TParadeEdit;
+    {$ENDIF}
+    function AddButton(const ACaption, AHint: string; AStyle: TFontStyles;
+      AOnClick: TNotifyEvent): TSpeedButton;
+    procedure StyleChosen(Sender: TObject);
+    procedure BoldClicked(Sender: TObject);
+    procedure ItalicClicked(Sender: TObject);
+    procedure UnderlineClicked(Sender: TObject);
+    procedure EditChanged(Sender: TObject);
+    function GetModified: Boolean;
+    function GetEditor: TWinControl;
+  public
+    constructor Create(AOwner: TComponent); override;
+
+    { The document in a format, the whole of it.  False with the reason when
+      it would not import -- or when LED was built without Parade. }
+    function Load(const AData: string; AKind: TLedVisualKind;
+      const AFileName: string; out AWhy: string): Boolean;
+    { And back out, in the format it came in -- or in another one. }
+    function Export(AKind: TLedVisualKind = lvkNone): string;
+    { The words on the pages, without their formatting. }
+    function PlainText: string;
+    { Typed at the caret, over the selection.  For scripting the page. }
+    procedure InsertText(const AText: string);
+
+    function CanUndo: Boolean;
+    function CanRedo: Boolean;
+    function SelAvail: Boolean;
+    procedure Undo;
+    procedure Redo;
+    procedure CutToClipboard;
+    procedure CopyToClipboard;
+    procedure PasteFromClipboard;
+    procedure SelectAll;
+    procedure ToggleBold;
+    procedure ToggleItalic;
+    procedure ToggleUnderline;
+
+    property Kind: TLedVisualKind read FKind;
+    { Changed here since the last Load or MarkSaved. }
+    property Modified: Boolean read GetModified;
+    procedure MarkSaved;
+    { The control that takes the focus and the keys.  nil without Parade. }
+    property Editor: TWinControl read GetEditor;
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+  end;
+
+{ Whether this LED has the visual editor at all. }
+function LedVisualAvailable: Boolean;
+
+{ What the visual editor would open this file as, by its name. }
+function LedVisualKindOf(const AFileName: string): TLedVisualKind;
+
+{ The keys the visual editor takes before the window's shortcuts do: Ctrl+B
+  is bold in a page and Toggle Bookmark everywhere else, and the window would
+  otherwise always win -- see Led.UI.EditKeys. }
+function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
+  AControl: TWinControl): Boolean;
+
+implementation
+
+uses
+  Led.UI.EditKeys, Led.UI.Dpi;
+
+const
+  { The paragraph styles every Parade document is made with, in the order a
+    reader looks for them. }
+  StyleNames: array[0..9] of string = ('Normal', 'Title', 'Heading 1',
+    'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6',
+    'Quote', 'Code');
+
+function LedVisualAvailable: Boolean;
+begin
+  Result := {$IFDEF LED_PARADE}True{$ELSE}False{$ENDIF};
+end;
+
+function LedVisualKindOf(const AFileName: string): TLedVisualKind;
+var
+  E: string;
+begin
+  E := LowerCase(ExtractFileExt(AFileName));
+  if (E = '.md') or (E = '.markdown') then Exit(lvkMarkdown);
+  if (E = '.html') or (E = '.htm') or (E = '.xhtml') then Exit(lvkHtml);
+  if E = '.docx' then Exit(lvkDocx);
+  Result := lvkNone;
+end;
+
+{$IFDEF LED_PARADE}
+function ParadeFormat(AKind: TLedVisualKind): Int32;
+begin
+  case AKind of
+    lvkMarkdown: Result := PD_CONV_MARKDOWN;
+    lvkHtml: Result := PD_CONV_HTML;
+    lvkDocx: Result := PD_CONV_DOCX;
+  else
+    Result := -1;
+  end;
+end;
+
+{ A serif for the text, a monospace for code, a math font for equations --
+  wherever this system keeps them.  Parade reads TrueType and OpenType files
+  itself rather than asking the desktop, so it has to be told where they are;
+  the first family found is the one a document that names no font is set
+  in, and a document naming a font this does not have gets the nearest
+  weight and slant of it. }
+procedure AddFonts(AEdit: TParadeEdit);
+type
+  TFace = record
+    Family, Dir, Regular, Bold, Italic, BoldItalic: string;
+  end;
+var
+  Faces: array of TFace;
+  Monos, Maths: array of string;
+  Found: Boolean;
+  i: Integer;
+
+  procedure Face(const AFamily, ADir, AR, AB, AI, ABI: string);
+  begin
+    SetLength(Faces, Length(Faces) + 1);
+    with Faces[High(Faces)] do
+    begin
+      Family := AFamily;
+      Dir := IncludeTrailingPathDelimiter(ADir);
+      Regular := AR;
+      Bold := AB;
+      Italic := AI;
+      BoldItalic := ABI;
+    end;
+  end;
+
+  procedure Add(const AFamily, AFile: string; AWeight: Integer; AItalic: Boolean);
+  begin
+    if FileExists(AFile) then
+      AEdit.AddFont(AFamily, AFile, AWeight, AItalic);
+  end;
+
+var
+  Win: string;
+begin
+  Faces := nil;
+  {$IFDEF WINDOWS}
+  Win := GetEnvironmentVariable('WINDIR');
+  if Win = '' then Win := 'C:\Windows';
+  Face('Times New Roman', Win + '\Fonts', 'times.ttf', 'timesbd.ttf',
+    'timesi.ttf', 'timesbi.ttf');
+  Monos := [Win + '\Fonts\consola.ttf', Win + '\Fonts\cour.ttf'];
+  Maths := [];
+  {$ELSE}
+  {$IFDEF DARWIN}
+  Win := '/System/Library/Fonts/Supplemental';
+  Face('Times New Roman', Win, 'Times New Roman.ttf',
+    'Times New Roman Bold.ttf', 'Times New Roman Italic.ttf',
+    'Times New Roman Bold Italic.ttf');
+  Monos := [Win + '/Courier New.ttf'];
+  Maths := [];
+  {$ELSE}
+  Win := '/usr/share/fonts/';
+  Face('Liberation Serif', Win + 'truetype/liberation', 'LiberationSerif-Regular.ttf',
+    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf',
+    'LiberationSerif-BoldItalic.ttf');
+  Face('Liberation Serif', Win + 'liberation-serif', 'LiberationSerif-Regular.ttf',
+    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf',
+    'LiberationSerif-BoldItalic.ttf');
+  Face('DejaVu Serif', Win + 'truetype/dejavu', 'DejaVuSerif.ttf',
+    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf',
+    'DejaVuSerif-BoldItalic.ttf');
+  Face('DejaVu Serif', Win + 'dejavu-serif-fonts', 'DejaVuSerif.ttf',
+    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf',
+    'DejaVuSerif-BoldItalic.ttf');
+  Monos := [Win + 'truetype/dejavu/DejaVuSansMono.ttf',
+    Win + 'dejavu-sans-mono-fonts/DejaVuSansMono.ttf',
+    Win + 'truetype/liberation/LiberationMono-Regular.ttf'];
+  Maths := ['/usr/share/texmf/fonts/opentype/public/lm-math/latinmodern-math.otf',
+    '/usr/share/fonts/opentype/lmodern/latinmodern-math.otf',
+    '/usr/share/texlive/texmf-dist/fonts/opentype/public/lm-math/latinmodern-math.otf'];
+  {$ENDIF}
+  {$ENDIF}
+
+  { One serif family: the first one that is there. }
+  Found := False;
+  for i := 0 to High(Faces) do
+    with Faces[i] do
+      if (not Found) and FileExists(Dir + Regular) then
+      begin
+        Found := True;
+        Add(Family, Dir + Regular, 400, False);
+        Add(Family, Dir + Bold, 700, False);
+        Add(Family, Dir + Italic, 400, True);
+        Add(Family, Dir + BoldItalic, 700, True);
+      end;
+  for i := 0 to High(Monos) do
+    if FileExists(Monos[i]) then
+    begin
+      AEdit.AddFont('monospace', Monos[i]);
+      Break;
+    end;
+  for i := 0 to High(Maths) do
+    if FileExists(Maths[i]) then
+    begin
+      AEdit.SetMathFont(Maths[i]);
+      Break;
+    end;
+end;
+{$ENDIF}
+
+{ TLedVisualPane }
+
+constructor TLedVisualPane.Create(AOwner: TComponent);
+var
+  i: Integer;
+begin
+  inherited Create(AOwner);
+  BevelOuter := bvNone;
+  Caption := '';
+
+  FBar := TPanel.Create(Self);
+  FBar.Parent := Self;
+  FBar.Align := alTop;
+  FBar.BevelOuter := bvNone;
+  FBar.Caption := '';
+  FBar.AutoSize := True;
+  FBar.ChildSizing.LeftRightSpacing := LedScale96(4);
+  FBar.ChildSizing.TopBottomSpacing := LedScale96(2);
+  FBar.ChildSizing.HorizontalSpacing := LedScale96(2);
+  FBar.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  FBar.ChildSizing.ControlsPerLine := 100;
+
+  FStyle := TComboBox.Create(Self);
+  FStyle.Parent := FBar;
+  FStyle.Style := csDropDownList;
+  FStyle.Width := LedScale96(120);
+  FStyle.Hint := 'Paragraph style';
+  FStyle.ShowHint := True;
+  for i := Low(StyleNames) to High(StyleNames) do
+    FStyle.Items.Add(StyleNames[i]);
+  FStyle.ItemIndex := 0;
+  FStyle.OnSelect := @StyleChosen;
+
+  AddButton('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
+  AddButton('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
+  AddButton('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
+
+  {$IFDEF LED_PARADE}
+  FEdit := TParadeEdit.Create(Self);
+  FEdit.Parent := Self;
+  FEdit.Align := alClient;
+  AddFonts(FEdit);
+  FEdit.OnChange := @EditChanged;
+  {$ENDIF}
+end;
+
+function TLedVisualPane.AddButton(const ACaption, AHint: string;
+  AStyle: TFontStyles; AOnClick: TNotifyEvent): TSpeedButton;
+begin
+  { Speed buttons, so that a click leaves the caret where it was: a button
+    that took the focus would take the selection's highlight with it. }
+  Result := TSpeedButton.Create(Self);
+  Result.Parent := FBar;
+  Result.Caption := ACaption;
+  Result.Font.Style := AStyle;
+  Result.Hint := AHint;
+  Result.ShowHint := True;
+  Result.Flat := True;
+  { A minimum rather than a width: the bar lays its children out itself and
+    would shrink a button to its one-letter caption. }
+  Result.Constraints.MinWidth := LedScale96(26);
+  Result.Height := FStyle.Height;
+  Result.OnClick := AOnClick;
+end;
+
+function TLedVisualPane.GetEditor: TWinControl;
+begin
+  Result := {$IFDEF LED_PARADE}FEdit{$ELSE}nil{$ENDIF};
+end;
+
+function TLedVisualPane.Load(const AData: string; AKind: TLedVisualKind;
+  const AFileName: string; out AWhy: string): Boolean;
+{$IFDEF LED_PARADE}
+var
+  S: TStringStream;
+{$ENDIF}
+begin
+  Result := False;
+  AWhy := '';
+  {$IFDEF LED_PARADE}
+  if AKind = lvkNone then
+  begin
+    AWhy := 'the visual editor opens Markdown, HTML and Word (.docx) files';
+    Exit;
+  end;
+  S := TStringStream.Create(AData);
+  try
+    try
+      FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
+    except
+      on E: Exception do
+      begin
+        AWhy := E.Message;
+        Exit;
+      end;
+    end;
+  finally
+    S.Free;
+  end;
+  FKind := AKind;
+  Result := True;
+  {$ELSE}
+  AWhy := 'this LED was built without Parade, the visual editor';
+  {$ENDIF}
+end;
+
+function TLedVisualPane.Export(AKind: TLedVisualKind): string;
+{$IFDEF LED_PARADE}
+var
+  S: TStringStream;
+{$ENDIF}
+begin
+  Result := '';
+  if AKind = lvkNone then AKind := FKind;
+  if AKind = lvkNone then Exit;
+  {$IFDEF LED_PARADE}
+  S := TStringStream.Create('');
+  try
+    FEdit.SaveToStream(S, ParadeFormat(AKind));
+    Result := S.DataString;
+  finally
+    S.Free;
+  end;
+  {$ENDIF}
+end;
+
+function TLedVisualPane.PlainText: string;
+begin
+  Result := {$IFDEF LED_PARADE}FEdit.DocumentText{$ELSE}''{$ENDIF};
+end;
+
+procedure TLedVisualPane.InsertText(const AText: string);
+begin
+  {$IFDEF LED_PARADE}FEdit.InsertText(AText);{$ENDIF}
+end;
+
+function TLedVisualPane.GetModified: Boolean;
+begin
+  Result := {$IFDEF LED_PARADE}FEdit.Modified{$ELSE}False{$ENDIF};
+end;
+
+procedure TLedVisualPane.MarkSaved;
+begin
+  {$IFDEF LED_PARADE}FEdit.Modified := False;{$ENDIF}
+end;
+
+function TLedVisualPane.CanUndo: Boolean;
+begin
+  Result := {$IFDEF LED_PARADE}pd_doc_can_undo(FEdit.Doc) <> 0{$ELSE}False{$ENDIF};
+end;
+
+function TLedVisualPane.CanRedo: Boolean;
+begin
+  Result := {$IFDEF LED_PARADE}pd_doc_can_redo(FEdit.Doc) <> 0{$ELSE}False{$ENDIF};
+end;
+
+function TLedVisualPane.SelAvail: Boolean;
+begin
+  {$IFDEF LED_PARADE}
+  Result := (FEdit.CaretPos.block <> FEdit.AnchorPos.block) or
+    (FEdit.CaretPos.offset <> FEdit.AnchorPos.offset);
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
+end;
+
+procedure TLedVisualPane.Undo;
+begin
+  {$IFDEF LED_PARADE}FEdit.Undo;{$ENDIF}
+end;
+
+procedure TLedVisualPane.Redo;
+begin
+  {$IFDEF LED_PARADE}FEdit.Redo;{$ENDIF}
+end;
+
+procedure TLedVisualPane.CutToClipboard;
+begin
+  {$IFDEF LED_PARADE}FEdit.CutToClipboard;{$ENDIF}
+end;
+
+procedure TLedVisualPane.CopyToClipboard;
+begin
+  {$IFDEF LED_PARADE}FEdit.CopyToClipboard;{$ENDIF}
+end;
+
+procedure TLedVisualPane.PasteFromClipboard;
+begin
+  {$IFDEF LED_PARADE}FEdit.PasteFromClipboard;{$ENDIF}
+end;
+
+procedure TLedVisualPane.SelectAll;
+begin
+  {$IFDEF LED_PARADE}FEdit.SelectAll;{$ENDIF}
+end;
+
+procedure TLedVisualPane.ToggleBold;
+begin
+  {$IFDEF LED_PARADE}FEdit.ToggleBold;{$ENDIF}
+end;
+
+procedure TLedVisualPane.ToggleItalic;
+begin
+  {$IFDEF LED_PARADE}FEdit.ToggleItalic;{$ENDIF}
+end;
+
+procedure TLedVisualPane.ToggleUnderline;
+begin
+  {$IFDEF LED_PARADE}FEdit.ToggleUnderline;{$ENDIF}
+end;
+
+procedure TLedVisualPane.StyleChosen(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  if FStyle.ItemIndex >= 0 then
+    FEdit.SetParagraphStyle(FStyle.Items[FStyle.ItemIndex]);
+  { Back to the page: the next key is meant for the text, not the list. }
+  if FEdit.CanFocus then FEdit.SetFocus;
+  {$ENDIF}
+end;
+
+procedure TLedVisualPane.BoldClicked(Sender: TObject);
+begin
+  ToggleBold;
+end;
+
+procedure TLedVisualPane.ItalicClicked(Sender: TObject);
+begin
+  ToggleItalic;
+end;
+
+procedure TLedVisualPane.UnderlineClicked(Sender: TObject);
+begin
+  ToggleUnderline;
+end;
+
+procedure TLedVisualPane.EditChanged(Sender: TObject);
+begin
+  if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
+  AControl: TWinControl): Boolean;
+var
+  Pane: TLedVisualPane;
+begin
+  Result := False;
+  if (AControl = nil) or not (AControl.Parent is TLedVisualPane) then Exit;
+  Pane := TLedVisualPane(AControl.Parent);
+  if AControl <> Pane.Editor then Exit;
+  if AShift * [ssCtrl, ssAlt, ssShift, ssMeta] <> [ssCtrl] then Exit;
+  Result := True;
+  case AKey of
+    VK_B: Pane.ToggleBold;
+    VK_I: Pane.ToggleItalic;
+    VK_U: Pane.ToggleUnderline;
+  else
+    Result := False;
+  end;
+end;
+
+initialization
+  LedEditKeyClaim := @LedVisualClaimKey;
+
+end.

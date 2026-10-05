@@ -38,6 +38,7 @@ desktop's own GTK. Nothing to configure before you can use it.
   - [Panes and window layout](#panes-and-window-layout)
   - [Terminal](#terminal)
   - [Markdown and wiki preview](#markdown-and-wiki-preview)
+  - [Visual editing: Markdown, HTML and Word](#visual-editing-markdown-html-and-word)
   - [Jupyter notebooks](#jupyter-notebooks)
   - [The AI pane](#the-ai-pane)
   - [Binary and structured files](#binary-and-structured-files)
@@ -187,6 +188,26 @@ Wiki files — `.wiki`, `.wp`, `.usemod`, or any file starting with
 dialect: `= Heading =`, numbered headings with `<toc>`, `*`/`#` lists,
 `; term : definition`, `||tables||`, `'''bold'''`, `[[FreeLinks]]`,
 `[url label]`, bare URLs, `WikiWord`, `[#anchors]` and `<nowiki>`.
+
+### Visual editing: Markdown, HTML and Word
+
+**View ▸ Visual Editor** (`Ctrl+Shift+E`) swaps the text of a `.md`, `.html`
+or `.docx` file for its pages, laid out by
+Parade, a text layout engine, and edited in place. A strip
+above the page sets the paragraph style (Normal, Title, Heading 1–6, Quote,
+Code) and bold, italic and underline (`Ctrl+B`/`I`/`U`).
+
+- **A `.docx` opens as its pages** without being asked, instead of as a hex
+  dump of the zip. Save writes a Word file.
+- **Markdown and HTML go back to text** when you save or switch back. The
+  whole change is one undo step in the text, so `Ctrl+Z` gives back the
+  Markdown exactly as you wrote it.
+- Nothing is written back unless you changed something on the page.
+  Converting is not lossless: `*this*` comes back as `_this_`, and HTML
+  loses whatever Parade does not model.
+
+The visual editor is built in when a Parade checkout sits beside LED
+(`../Parade`); see [Build from source](#build-from-source).
 
 ### Jupyter notebooks
 
@@ -442,8 +463,16 @@ make                  # optimized and stripped -> bin/led
 make run              # build and launch
 make debug            # symbols, range checks and leak reporting
 make WIDGETSET=qt5    # Qt5 instead of gtk2 on Linux
+make PARADE=          # without the visual editor
 make help             # every target
 ```
+
+The [visual editor](#visual-editing-markdown-html-and-word) comes from
+Parade, a C library with a Lazarus control. `make` looks for a Parade
+checkout at `../Parade` (or wherever `PARADE=` points), builds its static
+library with that tree's own Makefile and a C compiler, and links it in.
+Without one, LED builds as before and the menu item is greyed out. The cross
+builds (`make win64` and the like) always leave Parade out.
 
 Install it:
 
@@ -560,6 +589,7 @@ All of these are remappable in **Edit ▸ Configure Shortcuts**.
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+[` | Toggle fold |
+| `Ctrl+Shift+E` | Visual editor (Markdown, HTML, Word) |
 | `F6` | Cycle split views |
 | `Alt+End` | Focus the document |
 | `F1` | Help |

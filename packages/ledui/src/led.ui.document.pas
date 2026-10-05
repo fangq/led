@@ -177,6 +177,11 @@ type
     FBJUndo: array of TLedBJUndo;
     FBJUndoCount: Integer;
     FHexDirty: Boolean;
+    { Changed in the visual editor and not yet written back -- see
+      FlushVisual.  The buffer and the bytes do not know, so Modified asks
+      this as well. }
+    FVisualDirty: Boolean;
+    FOnFlushVisual: TNotifyEvent;
     FOnChanged: TLedDocumentEvent;
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
@@ -435,6 +440,24 @@ type
     property OnConfirmExpand: TLedBJConfirmExpand
       read FOnConfirmExpand write FOnConfirmExpand;
     property Master: TSynEdit read FMaster;
+
+    { The visual editor's side.  The page the reader edits is a translation
+      of the buffer (Markdown, HTML) or of the bytes (a .docx), held by the
+      tab; it is written back here, all at once, when the document is about
+      to be read for real -- a save -- or when the page is closed.
+
+      NoteVisualEdit says the page has changed, so the tab shows a modified
+      document while the buffer is still the old one.  TakeVisualText
+      replaces the buffer in one undo step, and TakeVisualBytes replaces the
+      bytes of a binary.  FlushVisual asks whoever is holding the page --
+      OnFlushVisual -- to do one of those now; SaveToFile calls it first. }
+    procedure NoteVisualEdit;
+    procedure TakeVisualText(const AText: string);
+    procedure TakeVisualBytes(const ABytes: string);
+    procedure FlushVisual;
+    property OnFlushVisual: TNotifyEvent read FOnFlushVisual write FOnFlushVisual;
+    { The file itself, when IsBinary. }
+    property Bytes: string read FBytes;
     property Views[AIndex: Integer]: TLedEdit read GetView;
     property ViewCount: Integer read GetViewCount;
     property UntitledNo: Integer read FUntitledNo write FUntitledNo;
@@ -861,6 +884,7 @@ end;
 
 function TLedDocument.GetModified: Boolean;
 begin
+  if FVisualDirty then Exit(True);
   { A dump's buffer is rewritten row by row rather than typed into, so
     FMaster.Modified says nothing about it -- the bytes are what changed. }
   if FIsBinary then Exit(FHexDirty);
@@ -2374,6 +2398,64 @@ begin
   end;
 end;
 
+procedure TLedDocument.NoteVisualEdit;
+begin
+  if FVisualDirty then Exit;
+  FVisualDirty := True;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.TakeVisualText(const AText: string);
+begin
+  FVisualDirty := False;
+  { An edit that came back as the text it started from -- typed and undone
+    -- is no edit, and must not leave the file modified. }
+  if AText <> FMaster.Lines.Text then
+  begin
+    { SelText rather than Lines.Text, which would empty the undo history:
+      this way the whole translation is one step in it, and Ctrl+Z in the
+      text puts the reader's own Markdown back. }
+    FMaster.BeginUndoBlock;
+    try
+      FMaster.SelectAll;
+      FMaster.SelText := AText;
+    finally
+      FMaster.EndUndoBlock;
+    end;
+    FMaster.Modified := True;
+  end;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.TakeVisualBytes(const ABytes: string);
+begin
+  FVisualDirty := False;
+  if ABytes <> FBytes then
+  begin
+    FBytes := ABytes;
+    FHexDirty := True;
+    { Every recorded byte edit is an offset into the old file. }
+    FHexUndoCount := 0;
+    FBJUndoCount := 0;
+    SetLength(FBJUndo, 0);
+    if IsHexDump then
+    begin
+      FMaster.BeginUpdate;
+      try
+        FMaster.Lines.Text := LedHexDump(FBytes);
+      finally
+        FMaster.EndUpdate;
+      end;
+    end;
+  end;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.FlushVisual;
+begin
+  if FVisualDirty and Assigned(FOnFlushVisual) then FOnFlushVisual(Self);
+end;
+
 function TLedDocument.IsHexDump: Boolean;
 begin
   Result := FIsBinary and (not FIsBJData);
@@ -2524,6 +2606,7 @@ begin
   FBJUndoCount := 0;
   SetLength(FBJUndo, 0);
   FHexDirty := False;
+  FVisualDirty := False;
   FInfo := NewInfo;
 
   FMaster.BeginUpdate;
@@ -2781,6 +2864,9 @@ procedure TLedDocument.SaveToFile(const AFileName: string);
 var
   Renamed: Boolean;
 begin
+  { What was typed into the page goes into the buffer or the bytes first, so
+    that what follows saves it. }
+  FlushVisual;
   { A dump saves its bytes, never its buffer.  Writing the buffer would put
     the offsets and the bars over the bytes they describe, and the text path
     would normalise the line endings on the way out for good measure -- so
