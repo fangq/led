@@ -39,7 +39,7 @@ uses
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
-  Led.UI.Splitter, Led.UI.BJEdit, LCLProc, LazFileUtils;
+  Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, LCLProc, LazFileUtils;
 
 { Every open window, in creation order.  Needed so that opening a file which
   is already on screen somewhere can raise that window rather than making a
@@ -149,6 +149,7 @@ type
     actTogglePreview: TAction;
     actToggleNotebookPane: TAction;
     actToggleMiniMap: TAction;
+    actVisualEdit: TAction;
     actComplete: TAction;
     actToggleLeftPane: TAction;
     actToggleBottomPane: TAction;
@@ -289,6 +290,7 @@ type
     mi_ToggleSymbols: TMenuItem;
     mi_TogglePreview: TMenuItem;
     mi_ToggleMiniMap: TMenuItem;
+    mi_VisualEdit: TMenuItem;
     mnuWindow: TMenuItem;
     mi_PrevTab: TMenuItem;
     mi_NextTab: TMenuItem;
@@ -504,6 +506,7 @@ type
     procedure actTogglePreviewExecute(Sender: TObject);
     procedure actToggleNotebookPaneExecute(Sender: TObject);
     procedure actToggleMiniMapExecute(Sender: TObject);
+    procedure actVisualEditExecute(Sender: TObject);
   private
     FFocusedOnce: Boolean;
     FRecovery: TLedRecovery;
@@ -733,6 +736,7 @@ type
     function RestoreSession: Boolean;
     procedure CheckExternalChanges;
     function CurrentView: TLedEdit;
+    function CurrentVisual: TLedVisualPane;
     procedure GotoAdjacentBookmark(AForward: Boolean);
     procedure BookmarkItemClick(Sender: TObject);
     procedure ShowFindForm(AReplace: Boolean);
@@ -1588,6 +1592,28 @@ end;
 procedure TLedMainForm.actToggleMiniMapExecute(Sender: TObject);
 begin
   SetMiniMaps(not LedPrefs.GetBool(LedPrefMiniMap, False));
+end;
+
+{ The document in front as pages, or back as text.  Per tab, because it is
+  a way of looking at one file rather than a preference about the editor. }
+procedure TLedMainForm.actVisualEditExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Why: string;
+begin
+  Tab := ActiveTab;
+  if Tab = nil then Exit;
+  try
+    if Tab.VisualMode then
+      Tab.LeaveVisual
+    else if not Tab.EnterVisual(Why) then
+      ReportError('Visual editor: ' + Why);
+  except
+    on E: Exception do
+      ReportError('Visual editor: ' + E.Message);
+  end;
+  RefreshTabCaption(Tab);
+  UpdateStatusBar;
 end;
 
 procedure TLedMainForm.SetMiniMaps(AOn: Boolean);
@@ -2940,35 +2966,64 @@ begin
   Result := ActiveView;
 end;
 
+{ The page in front, when the tab is showing one.  The editing commands go
+  to it instead of to the text views hidden behind it. }
+function TLedMainForm.CurrentVisual: TLedVisualPane;
+begin
+  Result := nil;
+  if (ActiveTab <> nil) and ActiveTab.VisualMode then
+    Result := ActiveTab.Visual;
+end;
+
 procedure TLedMainForm.actUndoExecute(Sender: TObject);
 begin
+  if CurrentVisual <> nil then
+  begin
+    CurrentVisual.Undo;
+    Exit;
+  end;
   if HexUndo(ActiveTab) then Exit;
   if CurrentView <> nil then CurrentView.Undo;
 end;
 
 procedure TLedMainForm.actRedoExecute(Sender: TObject);
 begin
-  if CurrentView <> nil then CurrentView.Redo;
+  if CurrentVisual <> nil then
+    CurrentVisual.Redo
+  else if CurrentView <> nil then
+    CurrentView.Redo;
 end;
 
 procedure TLedMainForm.actCutExecute(Sender: TObject);
 begin
-  LedCut(CurrentView);
+  if CurrentVisual <> nil then
+    CurrentVisual.CutToClipboard
+  else
+    LedCut(CurrentView);
 end;
 
 procedure TLedMainForm.actCopyExecute(Sender: TObject);
 begin
-  LedCopy(CurrentView);
+  if CurrentVisual <> nil then
+    CurrentVisual.CopyToClipboard
+  else
+    LedCopy(CurrentView);
 end;
 
 procedure TLedMainForm.actPasteExecute(Sender: TObject);
 begin
-  LedPaste(CurrentView);
+  if CurrentVisual <> nil then
+    CurrentVisual.PasteFromClipboard
+  else
+    LedPaste(CurrentView);
 end;
 
 procedure TLedMainForm.actSelectAllExecute(Sender: TObject);
 begin
-  if CurrentView <> nil then CurrentView.SelectAll;
+  if CurrentVisual <> nil then
+    CurrentVisual.SelectAll
+  else if CurrentView <> nil then
+    CurrentView.SelectAll;
 end;
 
 procedure TLedMainForm.actPasteColumnExecute(Sender: TObject);
@@ -3992,12 +4047,12 @@ end;
   no menu item handle changed. }
 procedure TLedMainForm.MakeTogglesCheckable;
 const
-  Toggles: array[0..12] of string = (
+  Toggles: array[0..13] of string = (
     'actShowToolbar', 'actToggleOutput', 'actToggleDebugPane',
     'actToggleBreakPane', 'actToggleSymbols', 'actToggleMiniMap',
     'actWrapText', 'actSplitNotebook', 'actLineNumbers',
     'actToggleLeftPane', 'actToggleBottomPane', 'actTogglePreview',
-    'actToggleAIPane');
+    'actToggleAIPane', 'actVisualEdit');
 
   function IsToggle(AAction: TBasicAction): Boolean;
   var
@@ -5273,6 +5328,7 @@ end;
 procedure TLedMainForm.actReloadExecute(Sender: TObject);
 var
   Tab: TLedTab;
+  Why: string;
 begin
   Tab := ActiveTab;
   if (Tab = nil) or Tab.Document.IsUntitled then Exit;
@@ -5285,6 +5341,12 @@ begin
   except
     on E: ELedFileError do
       ReportError(E.Message);
+  end;
+  { The page was made from what was there before. }
+  if Tab.VisualMode and not Tab.ReloadVisual(Why) then
+  begin
+    Tab.LeaveVisual;
+    ReportError('Visual editor: ' + Why);
   end;
   UpdateStatusBar;
 end;
@@ -5335,6 +5397,7 @@ end;
 function TLedMainForm.AddTab(ADoc: TLedDocument): TLedTab;
 var
   Sheet: TTabSheet;
+  Why: string;
 begin
   Sheet := ActiveBook.AddTabSheet;
   Result := TLedTab.CreateForDocument(Self, ADoc);
@@ -5361,6 +5424,18 @@ begin
     and must not be allowed to raise; FormShow focuses the editor once the
     window is up. }
   LedTryFocus(Result.ActiveView);
+  { A Word file opens as its pages, however it was opened -- a dialog, the
+    command line, a session.  The alternative is a hex dump of a zip
+    archive, which nobody opening a .docx was asking to see; when the pages
+    cannot be made, the dump is still there, with the reason. }
+  if (LedVisualKindOf(ADoc.FileName) = lvkDocx) and Result.CanVisual then
+    try
+      if not Result.EnterVisual(Why) then
+        ReportError('Visual editor: ' + Why);
+    except
+      on E: Exception do
+        ReportError('Visual editor: ' + E.Message);
+    end;
   UpdateStatusBar;
 end;
 
@@ -5682,6 +5757,18 @@ begin
     else
       StatusBar1.Panels[3].Text := 'Plain text';
   end;
+  { The page in front is the thing the column describes, not the text or the
+    dump behind it; the caret position is the hidden view's and says
+    nothing. }
+  if (ActiveTab <> nil) and ActiveTab.VisualMode then
+  begin
+    StatusBar1.Panels[0].Text := '';
+    case ActiveTab.Visual.Kind of
+      lvkMarkdown: StatusBar1.Panels[3].Text := 'Visual (Markdown)';
+      lvkHtml: StatusBar1.Panels[3].Text := 'Visual (HTML)';
+      lvkDocx: StatusBar1.Panels[3].Text := 'Visual (Word)';
+    end;
+  end;
   if V.InsertMode then
     StatusBar1.Panels[4].Text := 'INS'
   else
@@ -5952,6 +6039,18 @@ begin
   actSelectAll.Enabled := HasDoc;
   actPasteColumn.Enabled := CanPaste;
   actClearSelection.Enabled := HasDoc and Tab.ActiveView.SelAvail;
+  { A page in front answers for itself; the views behind it have not been
+    touched since it came up. }
+  actVisualEdit.Enabled := HasDoc and (Tab.VisualMode or Tab.CanVisual);
+  actVisualEdit.Checked := HasDoc and Tab.VisualMode;
+  if HasDoc and Tab.VisualMode then
+  begin
+    actUndo.Enabled := Tab.Visual.CanUndo;
+    actRedo.Enabled := Tab.Visual.CanRedo;
+    actCut.Enabled := Tab.Visual.SelAvail;
+    actCopy.Enabled := actCut.Enabled;
+    actPaste.Enabled := True;
+  end;
   actIndent.Enabled := HasDoc;
   actUnindent.Enabled := HasDoc;
   actIndentSpace.Enabled := HasDoc;

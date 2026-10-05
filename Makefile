@@ -11,6 +11,7 @@
 #   make icon       - regenerate the icons from tools/make-icon.py
 #   make grammars   - reconvert data/grammars from the .lang sources
 #   make conpty     - type-check the Windows ConPTY backend on any platform
+#   make PARADE=    - build without the visual editor (default: ../Parade)
 #   make deb        - build dist/*.deb and a portable dist/*.tar.gz (Linux)
 #   make clean      - remove build artifacts
 #   make distclean  - also remove the binaries
@@ -54,7 +55,7 @@ ICONSIZES := 16 22 24 32 48 64 128 256 512
 PASSRC := $(shell find packages app -name '*.pas' -o -name '*.lpr')
 
 .PHONY: all build release debug tests selftest check run res icon grammars \
-        conpty \
+        conpty parade noparade \
         deb clean distclean install uninstall linux win64 win32 macos help
 
 all: build
@@ -72,21 +73,54 @@ $(RES): packaging/windows/led.rc packaging/windows/led.manifest $(ICON)
 	cd packaging/windows && $(FPCRES) -of res -o ../../$(RES) led.rc
 res: $(RES)
 
+# ---- Parade, the visual editor ---------------------------------------------
+# View > Visual Editor is Parade's TParadeEdit, from a Parade tree beside this
+# one -- ../Parade unless PARADE says otherwise, and none at all with PARADE=.
+# Its C library is built there by its own Makefile; the library and the two
+# Pascal units are copied into lib/parade, which led.lpi searches, and
+# led.parade.inc there turns the editor on.  Without it the include path
+# falls through to the empty stub in packages/ledui/parade-off.
+#
+# Copied with their times kept and the include rewritten only when it
+# changes, so that a build with nothing new in Parade recompiles nothing.
+PARADE ?= $(wildcard ../Parade)
+PARADE_LIB := lib/parade
+
+ifneq ($(PARADE),)
+parade:
+	$(MAKE) -C $(PARADE) build/pascal/lib/libparade.a
+	mkdir -p $(PARADE_LIB)
+	cp -p $(PARADE)/build/pascal/lib/libparade.a $(PARADE)/pascal/parade.pas \
+	      $(PARADE)/pascal/paradeedit.pas $(PARADE_LIB)/
+	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n' \
+	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
+	cmp -s $(PARADE_LIB)/led.parade.inc.new $(PARADE_LIB)/led.parade.inc && \
+	  rm $(PARADE_LIB)/led.parade.inc.new || \
+	  mv $(PARADE_LIB)/led.parade.inc.new $(PARADE_LIB)/led.parade.inc
+else
+parade: noparade
+endif
+
+# The cross builds go without it: libparade.a here is for this machine.
+noparade:
+	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
+	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/libparade.a
+
 # ---- builds ----------------------------------------------------------------
-build release: $(RES)
+build release: $(RES) parade
 	$(LAZBUILD) $(LAZDIR) --widgetset=$(WIDGETSET) --build-mode=Release $(PROJECT)
 
-debug: $(RES)
+debug: $(RES) parade
 	$(LAZBUILD) $(LAZDIR) --widgetset=$(WIDGETSET) --build-mode=Debug $(PROJECT)
 
 # ---- cross builds ----------------------------------------------------------
-linux: $(RES)
+linux: $(RES) noparade
 	$(LAZBUILD) $(LAZDIR) --operating-system=linux  --widgetset=gtk2  --build-mode=Release $(PROJECT)
-win64: $(RES)
+win64: $(RES) noparade
 	$(LAZBUILD) $(LAZDIR) --operating-system=win64  --cpu=x86_64 --widgetset=win32 --build-mode=Release $(PROJECT)
-win32: $(RES)
+win32: $(RES) noparade
 	$(LAZBUILD) $(LAZDIR) --operating-system=win32  --cpu=i386   --widgetset=win32 --build-mode=Release $(PROJECT)
-macos: $(RES)
+macos: $(RES) noparade
 	$(LAZBUILD) $(LAZDIR) --operating-system=darwin --widgetset=cocoa --build-mode=Release $(PROJECT)
 
 # ---- tests -----------------------------------------------------------------

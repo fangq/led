@@ -35,7 +35,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit,
+  Led.UI.BJEdit, Led.UI.Visual,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -14919,6 +14919,120 @@ begin
   DeleteFile(Path);
 end;
 
+{ The visual editor, over a Markdown file and a Word one.
+
+  What matters is where the words go.  Typed on the page, they are in
+  neither the buffer nor the file until the document is saved -- the
+  translation back is not the identity, so it is not made for nothing -- and
+  then they are in both, the buffer's change one step in its undo history.
+  A .docx opens as pages without being asked and saves its bytes. }
+procedure TestVisualEditor(F: TLedMainForm);
+var
+  Dir, Md, Docx, Why, Original, Saved: string;
+  Tab: TLedTab;
+  P: TLedVisualPane;
+  L: TStringList;
+  Before: Integer;
+begin
+  Say('visual editor');
+  if not LedVisualAvailable then
+  begin
+    WriteLn('  (built without Parade; nothing to check)');
+    Exit;
+  end;
+  Dir := TempName('visual');
+  ForceDirectories(Dir);
+  Md := IncludeTrailingPathDelimiter(Dir) + 'note.md';
+  Original := '# Title'#10#10'Some *words* here.'#10;
+  WriteBytes(Md, Original);
+
+  Before := F.TabCount;
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  Check('a Markdown file can be shown as pages', Tab.CanVisual);
+  Check('and is', Tab.EnterVisual(Why));
+  if not Tab.VisualMode then
+  begin
+    WriteLn('  why: ', Why);
+    Exit;
+  end;
+  Pump;
+  Check('the text views are hidden behind it', not Tab.ActiveView.IsVisible);
+  Check('a page is not split', not Tab.CanSplit);
+  Check('the page holds the words', Pos('Some words here.', Tab.Visual.PlainText) > 0);
+  Check('not modified by being looked at', not Tab.Document.Modified);
+
+  Tab.Visual.InsertText('Hello ');
+  Pump;
+  Check('typing on the page modifies the document', Tab.Document.Modified);
+  Check('and leaves the text alone until it is needed',
+    Pos('Hello', Tab.Document.Master.Lines.Text) = 0);
+
+  Check('it saves', F.SaveDocument(Tab.Document));
+  Saved := LedReadRawFile(Md);
+  Check('the file has what was typed, as Markdown',
+    Pos('# Hello Title', Saved) > 0);
+  Check('and what was there', Pos('words', Saved) > 0);
+  Check('saved, the document is clean', not Tab.Document.Modified);
+
+  Tab.LeaveVisual;
+  Pump;
+  Check('back to text, the views are back', Tab.ActiveView.IsVisible);
+  Check('showing what was saved', Pos('# Hello Title', Tab.Document.Master.Lines.Text) > 0);
+  Tab.ActiveView.Undo;
+  CheckEq('one undo puts the Markdown as it was written back', Original,
+    Tab.Document.Master.Lines.Text);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+
+  { A Word file, made by Parade itself from a little Markdown. }
+  Docx := IncludeTrailingPathDelimiter(Dir) + 'letter.docx';
+  P := TLedVisualPane.Create(nil);
+  try
+    Check('a page loads from Markdown',
+      P.Load('# Letter'#10#10'Dear reader.'#10, lvkMarkdown, '', Why));
+    WriteBytes(Docx, P.Export(lvkDocx));
+  finally
+    P.Free;
+  end;
+
+  L := TStringList.Create;
+  try
+    L.Add(Docx);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  Check('a .docx opens', (Tab <> nil) and (Tab.Document.FileName = Docx));
+  if Tab = nil then Exit;
+  Check('as its pages, without being asked', Tab.VisualMode);
+  if not Tab.VisualMode then Exit;
+  Check('with its words', Pos('Dear reader.', Tab.Visual.PlainText) > 0);
+  Tab.Visual.InsertText('My ');
+  Pump;
+  Check('typing modifies it', Tab.Document.Modified);
+  Check('it saves', F.SaveDocument(Tab.Document));
+
+  P := TLedVisualPane.Create(nil);
+  try
+    Check('the saved file is a Word file again',
+      P.Load(LedReadRawFile(Docx), lvkDocx, Docx, Why));
+    Check('with what was typed in it', Pos('My Letter', P.PlainText) > 0);
+  finally
+    P.Free;
+  end;
+  F.CloseActiveTab(False);
+  Pump;
+  CheckEqInt('every tab it opened is closed', Before, F.TabCount);
+
+  DeleteFile(Md);
+  DeleteFile(Docx);
+  RemoveDir(Dir);
+end;
+
 { A divider must not be pushable until one side is gone.
 
   Driven by setting Position to the extremes, which is what a drag amounts to
@@ -15244,6 +15358,8 @@ begin
   TestSplitNotebook(F);
   WriteLn;
   TestDropFiles(F);
+  WriteLn;
+  TestVisualEditor(F);
   WriteLn;
   TestSplitterMinimums(F);
   WriteLn;

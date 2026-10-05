@@ -38,6 +38,17 @@ uses
   Classes, SysUtils, Controls, Forms, StdCtrls, Clipbrd, LCLType, LMessages,
   LCLProc;
 
+type
+  { A control's own claim on a key, asked before the text-box rule below.
+    The visual editor's page is not a text box, but Ctrl+B there is bold
+    and not Toggle Bookmark -- and this unit should not have to know what a
+    page is, so the page's unit sets this. }
+  TLedEditKeyClaim = function(AKey: Word; AShift: TShiftState;
+    AControl: TWinControl): Boolean;
+
+var
+  LedEditKeyClaim: TLedEditKeyClaim = nil;
+
 { Installs the guard on Application.OnShortcut.  Call once at startup. }
 procedure LedInstallEditKeyGuard;
 
@@ -179,6 +190,12 @@ end;
 procedure TLedKeyGuard.Shortcut(var AMessage: TLMKey; var AHandled: Boolean);
 begin
   if AHandled then Exit;
+  if Assigned(LedEditKeyClaim) then
+  begin
+    AHandled := LedEditKeyClaim(AMessage.CharCode,
+      KeyDataToShiftState(AMessage.KeyData), Screen.ActiveControl);
+    if AHandled then Exit;
+  end;
   AHandled := LedEditKeyAction(AMessage.CharCode,
     KeyDataToShiftState(AMessage.KeyData), Screen.ActiveControl);
 end;

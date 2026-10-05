@@ -13,7 +13,7 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
   Led.UI.Document, Led.UI.Edit, Led.UI.Focus,
   Led.UI.MiniMap,
-  Led.UI.Splitter;
+  Led.UI.Splitter, Led.UI.Visual;
 
 const
   LedMaxViewsPerTab = 4;
@@ -31,6 +31,11 @@ type
     FViewBJEdit: TLedBJOpenEvent;
     FMiniMap: TLedMiniMap;
     FShowMiniMap: Boolean;
+    FVisual: TLedVisualPane;
+    FVisualMode: Boolean;
+    procedure ShowViews(AShow: Boolean);
+    procedure VisualChanged(Sender: TObject);
+    procedure VisualFlush(Sender: TObject);
     procedure SetShowMiniMap(AValue: Boolean);
     procedure ViewEnter(Sender: TObject);
     function AddView(AParent: TWinControl): TLedEdit;
@@ -88,6 +93,23 @@ type
 
     property MiniMap: TLedMiniMap read FMiniMap;
     property ShowMiniMap: Boolean read FShowMiniMap write SetShowMiniMap;
+
+    { The visual editor: the document as pages, in place of the views.
+
+      Only for a Markdown, HTML or Word file, and only in a LED built with
+      Parade.  The page is a translation of what the document holds, made on
+      the way in; what is changed on it goes back on the way out, or at the
+      next save, whichever comes first -- the document asks for it through
+      OnFlushVisual.  The views stay where they are, hidden, so the split
+      they were in is the split they come back to. }
+    function CanVisual: Boolean;
+    function EnterVisual(out AWhy: string): Boolean;
+    procedure LeaveVisual;
+    { The page made again from the document, after it was reloaded from
+      disk underneath it. }
+    function ReloadVisual(out AWhy: string): Boolean;
+    property VisualMode: Boolean read FVisualMode;
+    property Visual: TLedVisualPane read FVisual;
   end;
 
 implementation
@@ -159,7 +181,7 @@ procedure TLedTab.RefreshMiniMap;
 begin
   if FMiniMap = nil then Exit;
   FMiniMap.Visible := FShowMiniMap and (FActiveView <> nil) and
-    (not FActiveView.HexMode);
+    (not FActiveView.HexMode) and (not FVisualMode);
   if FMiniMap.Visible then
     FMiniMap.Attach(FActiveView);
 end;
@@ -170,6 +192,8 @@ var
 begin
   { The map holds a reference to a view, and the views are about to go. }
   if FMiniMap <> nil then FMiniMap.Attach(nil);
+  { And the document a way back to the page. }
+  if (FDocument <> nil) and FVisualMode then FDocument.OnFlushVisual := nil;
   { Detach the views from the document before they are destroyed with us, so
     the document's view list never holds dangling pointers. }
   if FDocument <> nil then
@@ -267,7 +291,126 @@ end;
 
 function TLedTab.CanSplit: Boolean;
 begin
-  Result := FViews.Count < LedMaxViewsPerTab;
+  Result := (FViews.Count < LedMaxViewsPerTab) and (not FVisualMode);
+end;
+
+function TLedTab.CanVisual: Boolean;
+var
+  Kind: TLedVisualKind;
+begin
+  Result := False;
+  if not LedVisualAvailable then Exit;
+  Kind := LedVisualKindOf(FDocument.FileName);
+  if Kind = lvkNone then Exit;
+  { A .docx is bytes, and an HTML or Markdown file is text; one that was
+    opened the other way round -- Open as Text on a .docx -- holds nothing
+    the page could be made from. }
+  Result := (Kind = lvkDocx) = FDocument.IsBinary;
+end;
+
+procedure TLedTab.ShowViews(AShow: Boolean);
+var
+  i: Integer;
+  C: TControl;
+begin
+  for i := 0 to ControlCount - 1 do
+  begin
+    C := Controls[i];
+    if (C <> FVisual) and (C <> FMiniMap) then C.Visible := AShow;
+  end;
+  RefreshMiniMap;
+end;
+
+function TLedTab.EnterVisual(out AWhy: string): Boolean;
+var
+  Made: Boolean;
+begin
+  Result := FVisualMode;
+  AWhy := '';
+  if FVisualMode then Exit;
+  if not LedVisualAvailable then
+  begin
+    AWhy := 'this LED was built without Parade, the visual editor';
+    Exit;
+  end;
+  if not CanVisual then
+  begin
+    if LedVisualKindOf(FDocument.FileName) = lvkNone then
+      AWhy := 'the visual editor opens Markdown, HTML and Word (.docx) files'
+    else
+      AWhy := 'the file is not open as what its name says it is';
+    Exit;
+  end;
+  Made := FVisual = nil;
+  if Made then
+  begin
+    FVisual := TLedVisualPane.Create(Self);
+    FVisual.Visible := False;
+    FVisual.Parent := Self;
+    FVisual.Align := alClient;
+    FVisual.OnChange := @VisualChanged;
+  end;
+  FVisualMode := True;
+  if not ReloadVisual(AWhy) then
+  begin
+    FVisualMode := False;
+    if Made then FreeAndNil(FVisual);
+    Exit;
+  end;
+  FDocument.OnFlushVisual := @VisualFlush;
+  ShowViews(False);
+  FVisual.Visible := True;
+  LedTryFocus(FVisual.Editor);
+  Result := True;
+end;
+
+function TLedTab.ReloadVisual(out AWhy: string): Boolean;
+var
+  Kind: TLedVisualKind;
+  Data: string;
+begin
+  Result := False;
+  AWhy := '';
+  if (not FVisualMode) or (FVisual = nil) then Exit;
+  Kind := LedVisualKindOf(FDocument.FileName);
+  if Kind = lvkDocx then
+    Data := FDocument.Bytes
+  else
+    Data := FDocument.Master.Lines.Text;
+  Result := FVisual.Load(Data, Kind, FDocument.FileName, AWhy);
+end;
+
+procedure TLedTab.LeaveVisual;
+begin
+  if not FVisualMode then Exit;
+  { Written back while the page still exists to be read. }
+  FDocument.FlushVisual;
+  FDocument.OnFlushVisual := nil;
+  FVisualMode := False;
+  FVisual.Visible := False;
+  ShowViews(True);
+  { Made again next time, from the text as it is then: a page kept from now
+    would not know what is typed into the text in between. }
+  FreeAndNil(FVisual);
+  LedTryFocus(FActiveView);
+end;
+
+procedure TLedTab.VisualChanged(Sender: TObject);
+begin
+  FDocument.NoteVisualEdit;
+end;
+
+procedure TLedTab.VisualFlush(Sender: TObject);
+var
+  Data: string;
+begin
+  if FVisual = nil then Exit;
+  Data := FVisual.Export;
+  if FVisual.Kind = lvkDocx then
+    FDocument.TakeVisualBytes(Data)
+  else
+    FDocument.TakeVisualText(Data);
+  FVisual.MarkSaved;
 end;
 
 procedure TLedTab.SplitView(AVertical: Boolean);

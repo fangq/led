@@ -353,6 +353,12 @@ object LedMainForm: TLedMainForm
       Caption = '&Minimap'
       OnExecute = actToggleMiniMapExecute
     end
+    object actVisualEdit: TAction
+      Caption = 'V&isual Editor'
+      Hint = 'Edit a Markdown, HTML or Word file as pages'
+      ShortCut = 24645
+      OnExecute = actVisualEditExecute
+    end
     object actComplete: TAction
       Caption = 'Complete &Word'
       OnExecute = actCompleteExecute
@@ -1053,6 +1059,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ToggleMiniMap: TMenuItem
         Action = actToggleMiniMap
+      end
+      object mi_VisualEdit: TMenuItem
+        Action = actVisualEdit
       end
     end
     object mnuWindow: TMenuItem
