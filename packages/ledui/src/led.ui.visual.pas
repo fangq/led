@@ -139,28 +139,36 @@ begin
   end;
 end;
 
-{ A serif for the text, a monospace for code, a math font for equations --
-  wherever this system keeps them.  Parade reads TrueType and OpenType files
-  itself rather than asking the desktop, so it has to be told where they are;
-  the first family found is the one a document that names no font is set
-  in, and a document naming a font this does not have gets the nearest
-  weight and slant of it. }
+{ A serif and a sans for the text, a monospace for code, a math font for
+  equations -- wherever this system keeps them.  Parade reads TrueType and
+  OpenType files itself rather than asking the desktop, so it has to be told
+  where they are.
+
+  The serif comes first: it is what a document that names no font is set
+  in.  A document that names a font this does not have -- Arial, Times New
+  Roman -- gets a registered face of the same kind (pd_font_family_class),
+  and the Liberation faces are the metric twins of those two, so the lines
+  break where Word broke them.  Calibri and Cambria, the Office defaults,
+  have twins of their own, Carlito and Caladea, registered under the names
+  documents ask for. }
 procedure AddFonts(AEdit: TParadeEdit);
 type
   TFace = record
-    Family, Dir, Regular, Bold, Italic, BoldItalic: string;
+    Group, Family, Dir, Regular, Bold, Italic, BoldItalic: string;
   end;
+const
+  Groups: array[0..3] of string = ('serif', 'sans', 'calibri', 'cambria');
 var
   Faces: array of TFace;
   Monos, Maths: array of string;
-  Found: Boolean;
-  i: Integer;
+  g, i: Integer;
 
-  procedure Face(const AFamily, ADir, AR, AB, AI, ABI: string);
+  procedure Face(const AGroup, AFamily, ADir, AR, AB, AI, ABI: string);
   begin
     SetLength(Faces, Length(Faces) + 1);
     with Faces[High(Faces)] do
     begin
+      Group := AGroup;
       Family := AFamily;
       Dir := IncludeTrailingPathDelimiter(ADir);
       Regular := AR;
@@ -183,32 +191,41 @@ begin
   {$IFDEF WINDOWS}
   Win := GetEnvironmentVariable('WINDIR');
   if Win = '' then Win := 'C:\Windows';
-  Face('Times New Roman', Win + '\Fonts', 'times.ttf', 'timesbd.ttf',
-    'timesi.ttf', 'timesbi.ttf');
-  Monos := [Win + '\Fonts\consola.ttf', Win + '\Fonts\cour.ttf'];
+  Win := Win + '\Fonts';
+  Face('serif', 'Times New Roman', Win, 'times.ttf', 'timesbd.ttf', 'timesi.ttf', 'timesbi.ttf');
+  Face('sans', 'Arial', Win, 'arial.ttf', 'arialbd.ttf', 'ariali.ttf', 'arialbi.ttf');
+  Face('calibri', 'Calibri', Win, 'calibri.ttf', 'calibrib.ttf', 'calibrii.ttf', 'calibriz.ttf');
+  Monos := [Win + '\consola.ttf', Win + '\cour.ttf'];
   Maths := [];
   {$ELSE}
   {$IFDEF DARWIN}
   Win := '/System/Library/Fonts/Supplemental';
-  Face('Times New Roman', Win, 'Times New Roman.ttf',
-    'Times New Roman Bold.ttf', 'Times New Roman Italic.ttf',
-    'Times New Roman Bold Italic.ttf');
+  Face('serif', 'Times New Roman', Win, 'Times New Roman.ttf', 'Times New Roman Bold.ttf',
+    'Times New Roman Italic.ttf', 'Times New Roman Bold Italic.ttf');
+  Face('sans', 'Arial', Win, 'Arial.ttf', 'Arial Bold.ttf', 'Arial Italic.ttf',
+    'Arial Bold Italic.ttf');
   Monos := [Win + '/Courier New.ttf'];
   Maths := [];
   {$ELSE}
   Win := '/usr/share/fonts/';
-  Face('Liberation Serif', Win + 'truetype/liberation', 'LiberationSerif-Regular.ttf',
-    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf',
-    'LiberationSerif-BoldItalic.ttf');
-  Face('Liberation Serif', Win + 'liberation-serif', 'LiberationSerif-Regular.ttf',
-    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf',
-    'LiberationSerif-BoldItalic.ttf');
-  Face('DejaVu Serif', Win + 'truetype/dejavu', 'DejaVuSerif.ttf',
-    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf',
-    'DejaVuSerif-BoldItalic.ttf');
-  Face('DejaVu Serif', Win + 'dejavu-serif-fonts', 'DejaVuSerif.ttf',
-    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf',
-    'DejaVuSerif-BoldItalic.ttf');
+  Face('serif', 'Liberation Serif', Win + 'truetype/liberation', 'LiberationSerif-Regular.ttf',
+    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf', 'LiberationSerif-BoldItalic.ttf');
+  Face('serif', 'Liberation Serif', Win + 'liberation-serif', 'LiberationSerif-Regular.ttf',
+    'LiberationSerif-Bold.ttf', 'LiberationSerif-Italic.ttf', 'LiberationSerif-BoldItalic.ttf');
+  Face('serif', 'DejaVu Serif', Win + 'truetype/dejavu', 'DejaVuSerif.ttf',
+    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf', 'DejaVuSerif-BoldItalic.ttf');
+  Face('serif', 'DejaVu Serif', Win + 'dejavu-serif-fonts', 'DejaVuSerif.ttf',
+    'DejaVuSerif-Bold.ttf', 'DejaVuSerif-Italic.ttf', 'DejaVuSerif-BoldItalic.ttf');
+  Face('sans', 'Liberation Sans', Win + 'truetype/liberation', 'LiberationSans-Regular.ttf',
+    'LiberationSans-Bold.ttf', 'LiberationSans-Italic.ttf', 'LiberationSans-BoldItalic.ttf');
+  Face('sans', 'Liberation Sans', Win + 'liberation-sans', 'LiberationSans-Regular.ttf',
+    'LiberationSans-Bold.ttf', 'LiberationSans-Italic.ttf', 'LiberationSans-BoldItalic.ttf');
+  Face('sans', 'DejaVu Sans', Win + 'truetype/dejavu', 'DejaVuSans.ttf',
+    'DejaVuSans-Bold.ttf', 'DejaVuSans-Oblique.ttf', 'DejaVuSans-BoldOblique.ttf');
+  Face('calibri', 'Calibri', Win + 'truetype/crosextra', 'Carlito-Regular.ttf',
+    'Carlito-Bold.ttf', 'Carlito-Italic.ttf', 'Carlito-BoldItalic.ttf');
+  Face('cambria', 'Cambria', Win + 'truetype/crosextra', 'Caladea-Regular.ttf',
+    'Caladea-Bold.ttf', 'Caladea-Italic.ttf', 'Caladea-BoldItalic.ttf');
   Monos := [Win + 'truetype/dejavu/DejaVuSansMono.ttf',
     Win + 'dejavu-sans-mono-fonts/DejaVuSansMono.ttf',
     Win + 'truetype/liberation/LiberationMono-Regular.ttf'];
@@ -218,18 +235,18 @@ begin
   {$ENDIF}
   {$ENDIF}
 
-  { One serif family: the first one that is there. }
-  Found := False;
-  for i := 0 to High(Faces) do
-    with Faces[i] do
-      if (not Found) and FileExists(Dir + Regular) then
-      begin
-        Found := True;
-        Add(Family, Dir + Regular, 400, False);
-        Add(Family, Dir + Bold, 700, False);
-        Add(Family, Dir + Italic, 400, True);
-        Add(Family, Dir + BoldItalic, 700, True);
-      end;
+  { One family per group: the first one that is there, serif first. }
+  for g := Low(Groups) to High(Groups) do
+    for i := 0 to High(Faces) do
+      with Faces[i] do
+        if (Group = Groups[g]) and FileExists(Dir + Regular) then
+        begin
+          Add(Family, Dir + Regular, 400, False);
+          Add(Family, Dir + Bold, 700, False);
+          Add(Family, Dir + Italic, 400, True);
+          Add(Family, Dir + BoldItalic, 700, True);
+          Break;
+        end;
   for i := 0 to High(Monos) do
     if FileExists(Monos[i]) then
     begin
