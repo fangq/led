@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  LCLType
+  Dialogs, LCLType
   {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF};
 
 type
@@ -38,6 +38,8 @@ type
     FKind: TLedVisualKind;
     FBar: TPanel;
     FStyle: TComboBox;
+    FMarkup: TComboBox;
+    FTrack: TSpeedButton;
     FOnChange: TNotifyEvent;
     {$IFDEF LED_PARADE}
     FEdit: TParadeEdit;
@@ -48,6 +50,14 @@ type
     procedure BoldClicked(Sender: TObject);
     procedure ItalicClicked(Sender: TObject);
     procedure UnderlineClicked(Sender: TObject);
+    procedure TrackClicked(Sender: TObject);
+    procedure PrevClicked(Sender: TObject);
+    procedure NextClicked(Sender: TObject);
+    procedure AcceptClicked(Sender: TObject);
+    procedure RejectClicked(Sender: TObject);
+    procedure CommentClicked(Sender: TObject);
+    procedure MarkupChosen(Sender: TObject);
+    procedure BackToPage;
     procedure EditChanged(Sender: TObject);
     function GetModified: Boolean;
     function GetEditor: TWinControl;
@@ -299,6 +309,28 @@ begin
   AddButton('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
   AddButton('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
 
+  { review: tracked changes and comments }
+  FTrack := AddButton('Track', 'Record edits as tracked changes', [], @TrackClicked);
+  FTrack.AllowAllUp := True;
+  FTrack.GroupIndex := 1;
+  AddButton('<', 'Previous change or comment', [], @PrevClicked);
+  AddButton('>', 'Next change or comment', [], @NextClicked);
+  AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked);
+  AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked);
+  AddButton('Comment', 'Comment on the selection, or reply to the comment at the caret', [], @CommentClicked);
+  FMarkup := TComboBox.Create(Self);
+  FMarkup.Parent := FBar;
+  FMarkup.Style := csDropDownList;
+  FMarkup.Width := LedScale96(110);
+  FMarkup.Hint := 'How tracked changes show';
+  FMarkup.ShowHint := True;
+  FMarkup.Items.Add('Balloons');
+  FMarkup.Items.Add('Inline');
+  FMarkup.Items.Add('Final');
+  FMarkup.Items.Add('Original');
+  FMarkup.ItemIndex := 0;
+  FMarkup.OnSelect := @MarkupChosen;
+
   {$IFDEF LED_PARADE}
   FEdit := TParadeEdit.Create(Self);
   FEdit.Parent := Self;
@@ -496,6 +528,86 @@ end;
 procedure TLedVisualPane.UnderlineClicked(Sender: TObject);
 begin
   ToggleUnderline;
+end;
+
+procedure TLedVisualPane.BackToPage;
+begin
+  {$IFDEF LED_PARADE}
+  if FEdit.CanFocus then FEdit.SetFocus;
+  {$ENDIF}
+end;
+
+procedure TLedVisualPane.TrackClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.TrackChanges := FTrack.Down;
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.PrevClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.NextChange(-1);
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NextClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.NextChange(1);
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.AcceptClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.AcceptChange;
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.RejectClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.RejectChange;
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CommentClicked(Sender: TObject);
+{$IFDEF LED_PARADE}
+var
+  S: string;
+  Id: pd_comment_id;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE}
+  S := '';
+  if SelAvail then
+    Id := 0
+  else
+    Id := FEdit.CommentAt(FEdit.CaretPos);
+  if Id <> 0 then
+  begin
+    if InputQuery('Reply', 'Reply to the comment:', S) and (S <> '') then
+      FEdit.ReplyToComment(Id, S);
+  end
+  else if InputQuery('Comment', 'Comment on the selection:', S) and (S <> '') then
+    FEdit.AddComment(S);
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.MarkupChosen(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  if FMarkup.ItemIndex >= 0 then
+    FEdit.MarkupMode := FMarkup.ItemIndex;   { PD_MARKUP_* in the list's order }
+  {$ENDIF}
+  BackToPage;
 end;
 
 procedure TLedVisualPane.EditChanged(Sender: TObject);
