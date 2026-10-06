@@ -26,7 +26,8 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Dialogs, LCLType
-  {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF};
+  {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF}
+  {$IFDEF LED_PARADE_SYNC}, paradesync{$ENDIF};
 
 type
   TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx);
@@ -43,6 +44,15 @@ type
     FOnChange: TNotifyEvent;
     {$IFDEF LED_PARADE}
     FEdit: TParadeEdit;
+    {$ENDIF}
+    {$IFDEF LED_PARADE_SYNC}
+    FSync: TParadeSync;
+    FShareBtn, FJoinBtn: TSpeedButton;
+    FSyncStatus: TLabel;
+    procedure ShareClicked(Sender: TObject);
+    procedure JoinClicked(Sender: TObject);
+    procedure SyncChanged(Sender: TObject);
+    function AskConnection(const ACaption: string; var AServer, ADoc, AToken, AName: string): Boolean;
     {$ENDIF}
     function AddButton(const ACaption, AHint: string; AStyle: TFontStyles;
       AOnClick: TNotifyEvent): TSpeedButton;
@@ -112,7 +122,8 @@ function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi;
+  Led.UI.EditKeys, Led.UI.Dpi
+  {$IFDEF LED_PARADE_SYNC}, IniFiles, Led.Core.Paths{$ENDIF};
 
 const
   { The paragraph styles every Parade document is made with, in the order a
@@ -337,6 +348,18 @@ begin
   FEdit.Align := alClient;
   AddFonts(FEdit);
   FEdit.OnChange := @EditChanged;
+  {$ENDIF}
+
+  {$IFDEF LED_PARADE_SYNC}
+  { a shared document: everyone editing it at once, through a relay (Parade's tools/parade_relay.py) }
+  FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
+  FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
+  FSyncStatus := TLabel.Create(Self);
+  FSyncStatus.Parent := FBar;
+  FSyncStatus.Caption := '';
+  FSyncStatus.Layout := tlCenter;
+  FSync := TParadeSync.Create(Self, FEdit);
+  FSync.OnStateChange := @SyncChanged;
   {$ENDIF}
 end;
 
@@ -609,6 +632,97 @@ begin
   {$ENDIF}
   BackToPage;
 end;
+
+{$IFDEF LED_PARADE_SYNC}
+function CollabIni: TIniFile;
+begin
+  ForceDirectories(LedConfigDir);
+  Result := TIniFile.Create(IncludeTrailingPathDelimiter(LedConfigDir) + 'collab.ini');
+end;
+
+function TLedVisualPane.AskConnection(const ACaption: string; var AServer, ADoc, AToken, AName: string): Boolean;
+var
+  V: array of string;
+  Ini: TIniFile;
+begin
+  Ini := CollabIni;
+  try
+    SetLength(V, 4);
+    V[0] := Ini.ReadString('relay', 'server', 'http://127.0.0.1:8765');
+    V[1] := ADoc;
+    V[2] := Ini.ReadString('relay', 'token', '');
+    V[3] := Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER'));
+    Result := InputQuery(ACaption, ['Relay address', 'Document', 'Token (from parade_relay.py token)', 'Your name'], V) and
+      (Trim(V[0]) <> '') and (Trim(V[1]) <> '');
+    if not Result then
+      Exit;
+    AServer := Trim(V[0]);
+    ADoc := Trim(V[1]);
+    AToken := Trim(V[2]);
+    AName := Trim(V[3]);
+    Ini.WriteString('relay', 'server', AServer);
+    Ini.WriteString('relay', 'token', AToken);
+    Ini.WriteString('relay', 'name', AName);
+  finally
+    Ini.Free;
+  end;
+end;
+
+procedure TLedVisualPane.ShareClicked(Sender: TObject);
+var
+  Server, Doc, Token, Who: string;
+begin
+  if FSync.State <> pssOff then
+  begin   { Share is Leave while shared }
+    FSync.Stop;
+    BackToPage;
+    Exit;
+  end;
+  Doc := '';
+  if not AskConnection('Share this document', Server, Doc, Token, Who) then
+    Exit;
+  if not FSync.Start(Server, Doc, Token, Who, True) then
+    MessageDlg('Share', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.JoinClicked(Sender: TObject);
+var
+  Server, Doc, Token, Who: string;
+begin
+  if (FEdit.Modified or (Trim(FEdit.DocumentText) <> '')) and
+     (MessageDlg('Join', 'The shared document replaces what this tab shows. Go on?', mtConfirmation,
+      [mbYes, mbNo], 0) <> mrYes) then
+    Exit;
+  Doc := '';
+  if not AskConnection('Join a shared document', Server, Doc, Token, Who) then
+    Exit;
+  if not FSync.Start(Server, Doc, Token, Who, False) then
+    MessageDlg('Join', 'Could not join: ' + FSync.LastError, mtError, [mbOK], 0);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SyncChanged(Sender: TObject);
+var
+  S: string;
+begin
+  if FSync.State = pssOff then
+  begin
+    FSyncStatus.Caption := '';
+    FShareBtn.Caption := 'Share';
+    FJoinBtn.Enabled := True;
+    Exit;
+  end;
+  S := 'shared: ' + ParadeSyncStateName(FSync.State);
+  if FSync.PeerCount > 0 then
+    S := S + Format(', %d other(s) here', [FSync.PeerCount]);
+  if FEdit.ReadOnly then
+    S := S + ' (read only)';
+  FSyncStatus.Caption := S;
+  FShareBtn.Caption := 'Leave';
+  FJoinBtn.Enabled := False;
+end;
+{$ENDIF}
 
 procedure TLedVisualPane.EditChanged(Sender: TObject);
 begin
