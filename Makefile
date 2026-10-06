@@ -86,14 +86,31 @@ res: $(RES)
 PARADE ?= $(wildcard ../Parade)
 PARADE_LIB := lib/parade
 
+# Shared documents (File > Share / Join in the visual editor) come with it when
+# Parade has its yrs library built (see Parade's README): its SYNC build and
+# libyrs.a are used then. PARADE_SYNC=0 leaves them out.
+PARADE_YRS := $(if $(PARADE),$(wildcard $(PARADE)/build/yrs/src/target/release/libyrs.a))
+PARADE_SYNC ?= $(if $(PARADE_YRS),1,0)
+
 ifneq ($(PARADE),)
+ifeq ($(PARADE_SYNC),1)
+parade:
+	$(MAKE) -C $(PARADE) SYNC=yrs BUILD=build-sync build-sync/pascal/lib/libparade.a
+	mkdir -p $(PARADE_LIB)
+	cp -p $(PARADE)/build-sync/pascal/lib/libparade.a $(PARADE_YRS) $(PARADE)/pascal/parade.pas \
+	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradesync.pas $(PARADE_LIB)/
+	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n{$$DEFINE LED_PARADE_SYNC}\n' \
+	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
+else
 parade:
 	$(MAKE) -C $(PARADE) build/pascal/lib/libparade.a
 	mkdir -p $(PARADE_LIB)
+	rm -f $(PARADE_LIB)/libyrs.a $(PARADE_LIB)/paradesync.pas
 	cp -p $(PARADE)/build/pascal/lib/libparade.a $(PARADE)/pascal/parade.pas \
 	      $(PARADE)/pascal/paradeedit.pas $(PARADE_LIB)/
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
+endif
 	cmp -s $(PARADE_LIB)/led.parade.inc.new $(PARADE_LIB)/led.parade.inc && \
 	  rm $(PARADE_LIB)/led.parade.inc.new || \
 	  mv $(PARADE_LIB)/led.parade.inc.new $(PARADE_LIB)/led.parade.inc
@@ -104,7 +121,8 @@ endif
 # The cross builds go without it: libparade.a here is for this machine.
 noparade:
 	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
-	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/libparade.a
+	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/libparade.a \
+	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/libyrs.a
 
 # ---- builds ----------------------------------------------------------------
 build release: $(RES) parade
