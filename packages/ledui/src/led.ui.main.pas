@@ -2914,6 +2914,8 @@ begin
     for i := 0 to Tabs.Count - 1 do
     begin
       TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+      if TLedTab(Tabs[i]).Visual <> nil then
+        TLedTab(Tabs[i]).Visual.ApplyPrefs;
       { The map is a picture of the page, so it follows the page's colours.
         Its own are mixed from the view's, which have just changed. }
       if TLedTab(Tabs[i]).MiniMap <> nil then

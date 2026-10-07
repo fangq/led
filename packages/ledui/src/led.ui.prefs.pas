@@ -166,7 +166,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..69] of TLedPrefItem = (
+  PrefItems: array[0..71] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -275,6 +275,15 @@ const
     (Category: 'View'; Kind: pkBool; Key: 'Editor/wrapping_dont_split_words';
      Caption: 'Do not split words when wrapping'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
+    { The visual editor's paragraphs: broken whole (Knuth-Plass) when they
+      are laid out; as one types, hybrid keeps the lines away from the edit
+      where they were, optimal re-breaks the paragraph and may move them. }
+    (Category: 'View'; Kind: pkHeading; Key: '';
+     Caption: 'Visual editor'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'View'; Kind: pkChoice; Key: 'Visual/line_breaking';
+     Caption: 'Line breaking as you type'; DefStr: 'hybrid';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'hybrid,optimal'),
     (Category: 'Files'; Kind: pkHeading; Key: '';
      Caption: 'Opening'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),

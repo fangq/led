@@ -252,6 +252,8 @@ type
     { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
       Table (shown in a table); without Parade: 0 Home, 1 Review }
     procedure ShowTab(AIndex: Integer);
+    { the preferences that reach the page: line breaking as one types }
+    procedure ApplyPrefs;
   end;
 
 { Whether this LED has the visual editor at all. }
@@ -275,7 +277,7 @@ function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Math, StrUtils
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.Core.Prefs, Math, StrUtils
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -735,6 +737,7 @@ begin
   FEdit.OnResize := @EditResized;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
+  ApplyPrefs;
 
   AddTab('Home');
   FStyle := TComboBox.Create(Self);
@@ -2550,6 +2553,16 @@ end;
 function TLedVisualPane.GetEditor: TWinControl;
 begin
   Result := {$IFDEF LED_PARADE}FEdit{$ELSE}nil{$ENDIF};
+end;
+
+procedure TLedVisualPane.ApplyPrefs;
+begin
+  {$IFDEF LED_PARADE}
+  { what a document opened or joined from now on gets, and the one shown: the
+    formats LED opens here carry no setting of their own }
+  FEdit.HybridDefault := LowerCase(LedPrefs.GetStr(LedPrefLineBreaking, 'hybrid')) <> 'optimal';
+  FEdit.HybridBreaking := FEdit.HybridDefault;
+  {$ENDIF}
 end;
 
 function TLedVisualPane.Load(const AData: string; AKind: TLedVisualKind;
