@@ -153,7 +153,7 @@ uses
   The MATLAB logo is the MATLAB fork's (Mima) alone: its file ships there,
   and LED draws a page with an M for the name instead. }
 const
-  ArtworkNames: array[0..{$IFDEF MIMA}102{$ELSE}101{$ENDIF}] of string = (
+  ArtworkNames: array[0..{$IFDEF MIMA}103{$ELSE}102{$ENDIF}] of string = (
     'assistant', 'back', 'breakpoint', 'browser', 'codeform', 'copy',
     'cut', 'debug', 'files', 'find', 'forward', 'help', 'home',
     {$IFDEF MIMA}'matlab', {$ENDIF}'new', 'newfile', 'newfolder', 'notebook', 'open',
@@ -172,7 +172,7 @@ const
     'nextchange', 'numbering', 'orientation', 'pagenumbers', 'pagesize', 'prevchange',
     'reject', 'shading', 'share', 'tbldelete', 'tblinsert', 'tblmerge',
     'textcolor', 'toc', 'trackchanges', 'unindent', 'zoomin', 'zoomout',
-    'formatpainter');
+    'formatpainter', 'insertform');
 
 function LedIconArtwork(const AName: string): string;
 var
@@ -346,7 +346,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..130] of string = (
+  IconNames: array[0..131] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -408,7 +408,7 @@ const
     'pagenumbers', 'pagesize', 'prevchange', 'reject', 'shading', 'share',
     'tbldelete', 'tblinsert', 'tblmerge', 'textcolor', 'toc', 'trackchanges',
     'zoomin', 'zoomout',
-    'formatpainter'
+    'formatpainter', 'insertform'
   );
 
 

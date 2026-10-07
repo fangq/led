@@ -113,6 +113,7 @@ type
     procedure EquationItemClicked(Sender: TObject);
     procedure NoteItemClicked(Sender: TObject);
     procedure FieldItemClicked(Sender: TObject);
+    procedure FormItemClicked(Sender: TObject);
     procedure SymbolItemClicked(Sender: TObject);
     {$ENDIF}
   private
@@ -1646,6 +1647,53 @@ begin
     Item(M, Symbols[i], i, @SymbolItemClicked);
   Big('insertsymbol', 'Symbol', 'A symbol the keyboard does not have', nil, M, False);
   EndRows;
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  Item(M, 'Check box', 0, @FormItemClicked);
+  Item(M, 'Drop-down list...', 1, @FormItemClicked);
+  Item(M, 'Date', 2, @FormItemClicked);
+  Item(M, 'Text box', 3, @FormItemClicked);
+  Big('insertform', 'Form', 'A form field Word fills in: a check box, a list to choose from, a date, a text box; ' +
+    'click it on the page to tick, choose or pick', nil, M);
+end;
+
+procedure TLedVisualPane.FormItemClicked(Sender: TObject);
+var
+  S: string;
+  L: TStringList;
+  A: array of string;
+  i: Integer;
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.InsertControl('checkbox', []);
+    1:
+      begin
+        S := 'Yes, No, Maybe';
+        if InputQuery('Drop-down list', 'The choices, separated by commas:', S) and (Trim(S) <> '') then
+        begin
+          L := TStringList.Create;
+          try
+            L.StrictDelimiter := True;
+            L.Delimiter := ',';
+            L.DelimitedText := S;
+            SetLength(A, 0);
+            for i := 0 to L.Count - 1 do
+              if Trim(L[i]) <> '' then
+              begin
+                SetLength(A, Length(A) + 1);
+                A[High(A)] := Trim(L[i]);
+              end;
+            if Length(A) > 0 then
+              FEdit.InsertControl('dropdown', A);
+          finally
+            L.Free;
+          end;
+        end;
+      end;
+    2: FEdit.InsertControl('date', []);
+    3: FEdit.InsertControl('text', []);
+  end;
+  BackToPage;
 end;
 
 procedure TLedVisualPane.TableItemClicked(Sender: TObject);
