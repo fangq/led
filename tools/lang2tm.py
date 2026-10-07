@@ -116,7 +116,7 @@ def fix_quantifiers(pattern):
 
     Dropping the possessive marker leaves a greedy quantifier: the same
     language is matched, only the backtracking behaviour differs.  Eight
-    grammars in the corpus use them -- matlab, octave, julia among them.
+    grammars in the corpus use them -- MATLAB, octave, julia among them.
     """
     return re.sub(r'(?<!\\)([*+?}])\+', r'\1', pattern)
 

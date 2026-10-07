@@ -47,8 +47,12 @@ const
 const
   LedDefaultAppName    = 'LED';
   LedDefaultAppTagline = 'a lightweight editor';
+  { The sentence under the name in About.  A tagline says what a program is
+    called; this says what it is. }
+  LedDefaultAppAbout   = 'A fast, no-nonsense editor for code and text, '
+                       + 'with its own highlighting, panes and debugger.';
 
-{ And what the matlab-language fork calls itself.
+{ And what the MATLAB-language fork calls itself.
 
   **Mima is the name; `mima` is the command.**  Written with the capital
   everywhere a reader sees it -- the title bar, the About box, a dialog, the
@@ -57,20 +61,30 @@ const
   two are not interchangeable and the lower-case form had leaked into places
   that are prose.
 
-  Mighty Matrix, after mimamo, the matrix library the engine computes with. }
+  Three projects, one family:
+    Mima     (`mima`)     -- this program, the IDE: Mighty Matrix
+    Mimagen  (`mima-cli`, `mimac`, libmima) -- the engine it runs:
+                            Mighty Matrix Engine
+    Mimamo   (`mimamo`)   -- the C++17 library the engine computes and draws
+                            with: Mighty Matrix Module }
 const
   MimaAppName    = 'Mima';
   MimaAppTagline = 'Mighty Matrix';
   MimaAppTitle   = 'Mima - Mighty Matrix';
   MimaAppId      = 'mima';
+  { Where this fork's source is, which is not where the editor's is.  Shown
+    in About and in a bug report. }
+  MimaAppHome    = 'https://github.com/fangq/mima';
+  { Mima's own version, which is not the editor's it was forked from. }
+  MimaVersion    = '0.1.0';
 
-  { What this is: an implementation of the matlab *language*, in one line a
+  { What this is: an implementation of the MATLAB *language*, in one line a
     greeting has room for. }
   { Short enough to fit the pane it is printed in: the command window is
     about seventy columns at its default size, and a greeting whose third
     line runs off the right-hand edge is a poor first impression. }
-  MimaAppAbout   = 'An independent parser and runtime for the matlab '
-                 + 'language, over mimamo.';
+  MimaAppAbout   = 'An IDE for the MATLAB language, running Mimagen '
+                 + 'over Mimamo.';
 
 { Whose it is.  In one place because the greeting, the About box and a bug
   report all quote it. }
@@ -92,7 +106,18 @@ const
 function LedAppName: string;
 function LedAppTagline: string;
 function LedAppTitle: string;
-procedure LedSetAppIdentity(const AName, ATagline: string);
+{ Where the source is.  Shown in About and in a bug report, so a reader who
+  has one of those in front of them has somewhere to send it. }
+function LedAppHome: string;
+{ What this program is, in a sentence: the subtitle in About. }
+function LedAppAbout: string;
+{ The version this program reports -- LedVersion for the editor, the fork's
+  own for a fork, which is not the editor's: Mima announced itself as LED's
+  0.5.0-dev. }
+function LedAppVersion: string;
+procedure LedSetAppIdentity(const AName, ATagline: string;
+  const AHome: string = ''; const AAbout: string = '';
+  const AVersion: string = '');
 
 { Which LCL backend this binary was built against -- gtk2, qt5, win32, cocoa.
   Worth quoting in a bug report, because most of what goes wrong in a GUI
@@ -104,6 +129,9 @@ implementation
 var
   FAppName: string = LedDefaultAppName;
   FAppTagline: string = LedDefaultAppTagline;
+  FAppHome: string = 'https://github.com/fangq/led';
+  FAppAbout: string = LedDefaultAppAbout;
+  FAppVersion: string = LedVersion;
 
 function LedAppName: string;
 begin
@@ -120,10 +148,30 @@ begin
   Result := FAppName + ' - ' + FAppTagline;
 end;
 
-procedure LedSetAppIdentity(const AName, ATagline: string);
+function LedAppHome: string;
 begin
+  Result := FAppHome;
+end;
+
+function LedAppAbout: string;
+begin
+  Result := FAppAbout;
+end;
+
+function LedAppVersion: string;
+begin
+  Result := FAppVersion;
+end;
+
+procedure LedSetAppIdentity(const AName, ATagline: string;
+  const AHome: string = ''; const AAbout: string = '';
+  const AVersion: string = '');
+begin
+  if AVersion <> '' then FAppVersion := AVersion;
   if AName <> '' then FAppName := AName;
   if ATagline <> '' then FAppTagline := ATagline;
+  if AHome <> '' then FAppHome := AHome;
+  if AAbout <> '' then FAppAbout := AAbout;
 end;
 
 function LedLineEndName(ALineEnd: TLedLineEnd): string;

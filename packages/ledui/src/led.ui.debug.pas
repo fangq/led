@@ -57,7 +57,7 @@ type
 
     LED's debugger drives a gdb subprocess, which is the right answer for a
     C program and no answer at all for a language whose interpreter is
-    already in this process.  The matlab fork has one of those, and it had
+    already in this process.  The MATLAB fork has one of those, and it had
     grown a menu of its own -- Run, Toggle Breakpoint, Step Over -- beside a
     Debug menu offering the same seven verbs to gdb.  Two menus for one idea
     is not a feature, and the shortcuts collided: F9 was bound twice, and

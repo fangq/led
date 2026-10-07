@@ -372,7 +372,7 @@ type
       the window is for and everything else is arranged around it.  A
       language environment is not shaped that way -- the command window is
       where the session lives, and the editor is one of the things around it,
-      which is how matlab, octave and every REPL-first workbench read.
+      which is how MATLAB, octave and every REPL-first workbench read.
 
       So this swaps the two roles without moving anything on screen: the
       editor panel gains a header, a close button, a rail button and a line

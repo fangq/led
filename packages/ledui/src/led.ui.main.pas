@@ -18,14 +18,14 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
-  Led.UI.TabClose,
+  Led.UI.TabClose, Led.UI.ImageWin, Led.UI.About,
   Led.Core.Outline,
   Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude,
   fpjson,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
   {$IFDEF MIMA}
   { The fork's own addition, and the only one in this file: everything the
-    matlab side needs is behind MimaAttach, so rebasing on upstream LED is
+    MATLAB side needs is behind MimaAttach, so rebasing on upstream LED is
     a merge rather than a re-port -- and with the define off this file
     compiles to exactly what upstream compiles to. }
   Mima.UI.Host,
@@ -765,6 +765,18 @@ type
     Silent: Boolean;
     { Answered instead of asking, when Silent; '' means "give up". }
     SilentEncodingChoice: string;
+    { A file dragged out of the file list and dropped on the editor area.
+      Public so that what the drag means can be checked without a mouse:
+      the LCL hands these two the source control and the pane answers what
+      it is carrying, and neither of those needs a pointer to be moved. }
+    { What the assistant is told about this window with every question:
+      the folder, what is in it, what is open and what is selected.  Public
+      because that string is the feature, and a check can read it where it
+      cannot read a model's answer. }
+    function AIState: string;
+    procedure EditorDragOver(Sender, Source: TObject; X, Y: Integer;
+      AState: TDragState; var Accept: Boolean);
+    procedure EditorDragDrop(Sender, Source: TObject; X, Y: Integer);
     procedure ReportError(const AMessage: string);
     { Offers the user a list of encodings after a decode has failed.  Returns
       '' when they decline, which means the file is simply not opened. }
@@ -1290,7 +1302,7 @@ begin
   FDock.AddPane(ledRight, 'ai', 'AI Chat', FAIPane, 'assistant');
 
   {$IFDEF MIMA}
-  { The matlab engine, its command window and its workspace browser. }
+  { The MATLAB engine, its command window and its workspace browser. }
   MimaAttach(FDock, Self);
   {$ENDIF}
 
@@ -2170,6 +2182,147 @@ begin
   end;
 end;
 
+{ **What the window tells a model about itself, with every question.**
+
+  Without it, "make a new script in this folder to do that" is a question
+  about a program the model cannot see, and the answer is the generic one
+  it has to be: the model does not know what the folder is, what is in it,
+  which file is in front of the reader or what they have selected.  Nothing
+  here is secret -- it is the same few lines anybody looking at the window
+  can read off it -- and it is what turns an assistant that writes
+  plausible code into one that writes code about this.
+
+  Capped, because a folder of four hundred files is not context, it is a
+  bill: the first forty names and a count of the rest, which is enough for
+  "the script beside foo.m" to mean something.
+
+  The fork's own state is appended rather than woven in: the MATLAB session
+  has a working folder of its own, variables and figures, and the editor
+  has no business knowing the shape of any of that.  See LedAIHostState. }
+function TLedMainForm.AIState: string;
+const
+  MaxNames = 40;
+var
+  Lines_: TStringList;
+  Dir, Name_, Extra: string;
+  Rec: TSearchRec;
+  Names: TStringList;
+  Tab: TLedTab;
+  i, More: Integer;
+  Doc: TLedDocument;
+begin
+  Lines_ := TStringList.Create;
+  Names := TStringList.Create;
+  try
+    Lines_.Add('Context: you are answering inside ' + LedAppName +
+      ', ' + LedAppTagline + '.  What follows is the state of its window; ' +
+      'use it, and do not ask the reader for things it already says.');
+
+    Dir := '';
+    if FBrowser <> nil then
+      Dir := FBrowser.Root;
+    if Dir = '' then
+      Dir := GetCurrentDir;
+    Lines_.Add('The folder the file list is showing: ' + Dir);
+
+    { What is in it, by name, folders marked.  Names only: the reader asks
+      for a file's contents by naming it, and sending every file would be
+      a different feature with a different cost. }
+    More := 0;
+    if FindFirst(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile,
+                 Rec) = 0 then
+    try
+      repeat
+        if (Rec.Name = '.') or (Rec.Name = '..') then
+          Continue;
+        if Names.Count >= MaxNames then
+        begin
+          Inc(More);
+          Continue;
+        end;
+        if (Rec.Attr and faDirectory) <> 0 then
+          Names.Add(Rec.Name + '/')
+        else
+          Names.Add(Rec.Name);
+      until FindNext(Rec) <> 0;
+    finally
+      FindClose(Rec);
+    end;
+    Names.Sort;
+    Extra := '';
+    if More > 0 then
+      Extra := Format(' (and %d more)', [More]);
+    if Names.Count > 0 then
+      Lines_.Add('The files in it: ' +
+        StringReplace(Names.CommaText, ',', ', ', [rfReplaceAll]) + Extra)
+    else
+      Lines_.Add('It has no files in it.');
+
+    { The documents open, which one is in front, and what is selected in
+      it.  "The current script" is the active one, and a reader who says
+      "the selected section" means the selection in that. }
+    Name_ := '';
+    for i := 0 to FDocs.Count - 1 do
+    begin
+      Doc := FDocs[i];
+      if Name_ <> '' then
+        Name_ := Name_ + ', ';
+      if Doc.FileName <> '' then
+        Name_ := Name_ + ExtractFileName(Doc.FileName)
+      else
+        Name_ := Name_ + Doc.DisplayName;
+    end;
+    if Name_ = '' then
+      Lines_.Add('No file is open in the editor.')
+    else
+      Lines_.Add('Open in the editor: ' + Name_);
+
+    Tab := ActiveTab;
+    if (Tab <> nil) and (Tab.ActiveView <> nil) then
+    begin
+      Name_ := Tab.Document.DisplayName;
+      if Tab.Document.FileName <> '' then
+        Name_ := Tab.Document.FileName;
+      Extra := '';
+      if Tab.Document.LangInfo <> nil then
+        Extra := ', ' + LowerCase(Tab.Document.LangInfo.Id);
+      Lines_.Add(Format('The one in front -- "the current file" -- is %s%s,'
+        + ' %d lines.', [Name_, Extra, Tab.ActiveView.Lines.Count]));
+      if Tab.ActiveView.SelAvail then
+        Lines_.Add(Format('The reader has lines %d to %d of it selected; ' +
+          '"the selection" means those.',
+          [Tab.ActiveView.BlockBegin.Y, Tab.ActiveView.BlockEnd.Y]))
+      else
+        Lines_.Add(Format('Nothing is selected in it; the caret is on ' +
+          'line %d.', [Tab.ActiveView.CaretY]));
+    end;
+
+    { And whatever the program around the editor knows that the editor does
+      not. }
+    Name_ := LedAIHostState;
+    if Trim(Name_) <> '' then
+      Lines_.Add(TrimRight(Name_));
+
+    { What the reader can do next, said plainly, because a model that knows
+      the window can ask for the one thing it is missing instead of
+      guessing.  The three names are the three the box beside the question
+      actually offers. }
+    Lines_.Add('The question may arrive with text attached: the reader ' +
+      'chooses "Nothing attached", "The selected text" or "The whole ' +
+      'file".  If you need the contents of the open file and they are not ' +
+      'here, say which of those to pick rather than guessing at the code.');
+    Lines_.Add('When an answer is a file the reader asked you to write, ' +
+      'reply with its contents alone in one fenced block, so it can be put ' +
+      'into a document without editing.  Name the file you mean in the ' +
+      'sentence before it.');
+
+    Result := Lines_.Text;
+  finally
+    Names.Free;
+    Lines_.Free;
+  end;
+end;
+
 procedure TLedMainForm.AIAsk(Sender: TObject; const APrompt: string;
   ATask: TLedAITask; AAttach: TLedAIAttach);
 var
@@ -2181,6 +2334,16 @@ begin
   R.Task := ATask;
   R.Instruction := APrompt;
   AINeedContext(Sender, AAttach, R.Context, R.ContextName, R.Language);
+
+  { What the task is for, and then where it is being asked.  Composed here
+    because a backend given a System takes it *instead* of the task's own
+    words, so sending only the state would lose "reply with the replacement
+    text and nothing else" -- and an answer that explained itself would go
+    into somebody's file. }
+  R.System := LedAITaskSystem(ATask);
+  if R.System <> '' then
+    R.System := R.System + LineEnding + LineEnding;
+  R.System := R.System + AIState;
   R.Replaces := LedAIReplaces(ATask, AAttach <> laaNothing);
   R.Standalone := R.Replaces;
 
@@ -2221,6 +2384,45 @@ begin
   FAITimer.Enabled := True;
 end;
 
+{ **A file dragged into the editor area is opened as a file.**
+
+  Which is not the same as double-clicking it in the list.  A program built
+  on this editor can claim a name -- the MATLAB fork reads a .pmat into its
+  workspace rather than showing anybody the bytes, and a picture opens in a
+  window of its own -- and when it does, there is no other way left to ask
+  for the thing a text editor is for.  Dragging it onto the editor is that
+  way: the same ARaw the Open dialog passes, which is this program saying
+  "give me the file, not what you would rather do with it".
+
+  The drag is the file list's; the question of what it means is the
+  window's, which is why the pane only says what it is carrying. }
+procedure TLedMainForm.EditorDragOver(Sender, Source: TObject;
+  X, Y: Integer; AState: TDragState; var Accept: Boolean);
+begin
+  Accept := (FBrowser <> nil) and (Source = TObject(FBrowser.DragSource)) and
+            (FBrowser.DraggedFile <> '');
+end;
+
+procedure TLedMainForm.EditorDragDrop(Sender, Source: TObject;
+  X, Y: Integer);
+var
+  Files: TStringList;
+  Path: string;
+begin
+  if (FBrowser = nil) or (Source <> TObject(FBrowser.DragSource)) then
+    Exit;
+  Path := FBrowser.DraggedFile;
+  if Path = '' then
+    Exit;
+  Files := TStringList.Create;
+  try
+    Files.Add(Path);
+    OpenFiles(Files, True);
+  finally
+    Files.Free;
+  end;
+end;
+
 procedure TLedMainForm.AIStop(Sender: TObject);
 begin
   if FAI <> nil then FAI.Stop;
@@ -2230,7 +2432,16 @@ end;
 procedure TLedMainForm.AITick(Sender: TObject);
 begin
   if FAI = nil then Exit;
-  FAI.Poll;
+  { Everything this poll brings is laid out once, at the end of it.  A
+    poll usually carries several deltas, and measuring the answer so far
+    and moving the whole transcript for each of them is what made the
+    pane flicker while an answer was being written. }
+  FAIPane.BeginBatch;
+  try
+    FAI.Poll;
+  finally
+    FAIPane.EndBatch;
+  end;
   { Off again the moment there is nothing in flight: a pane nobody is
     talking to should cost nothing. }
   if FAI.State <> laiBusy then FAITimer.Enabled := False;
@@ -2270,6 +2481,15 @@ var
   Tab: TLedTab;
   Doc: TLedDocument;
 begin
+  { Out of the editor altogether: the program's own command line, where
+    there is one.  Put there, not run -- see TLedAIBubble.PromptClicked. }
+  if AKind = lapToPrompt then
+  begin
+    if Assigned(LedAIPromptHook) then
+      LedAIPromptHook(AText);
+    Exit;
+  end;
+
   { Somewhere else entirely: a document of its own, untitled and unsaved,
     which is where an answer worth keeping goes when it does not belong in
     the file being edited. }
@@ -2586,7 +2806,7 @@ procedure TLedMainForm.DebugCommand(ACommand: TLedDebugCommand);
 var
   Tab: TLedTab;
 begin
-  { Something other than gdb may own these verbs -- the matlab fork's engine
+  { Something other than gdb may own these verbs -- the MATLAB fork's engine
     is in this process and has its own idea of Run and Step.  Asked first
     and asked once, so the menu, the toolbar and the Debugger pane's buttons
     all reach the same backend.  See TLedDebugHooks. }
@@ -3882,10 +4102,11 @@ begin
   ReconcileRecovery;
 end;
 
-{ Anything left in the journal at startup is work from a run that never
-  reached its close handler.  A clean exit empties the directory, so its
-  contents are the whole signal -- there is no separate "was I running" flag
-  to fall out of step with reality. }
+{ A journal left at startup by an editor that is no longer running is work
+  from a run that never reached its close handler: a clean exit empties its
+  own journal.  Each editor's journal is locked while it runs, so another
+  window's unsaved work -- open, and journalled every few seconds -- is not
+  mistaken for a crash; see Led.Core.Recovery. }
 procedure TLedMainForm.OfferRecovery;
 var
   Pending: TLedRecoveryEntries;
@@ -3904,7 +4125,7 @@ begin
     destroy the user's pending recovery as a side effect of running. }
   if Silent then Exit;
 
-  Pending := FRecovery.Scan;
+  Pending := FRecovery.ScanOrphans;
   if Length(Pending) = 0 then Exit;
 
   Names := '';
@@ -3938,7 +4159,7 @@ begin
   if MessageDlg('Recover unsaved work', Msg, mtWarning, [mbYes, mbNo], 0)
      <> mrYes then
   begin
-    FRecovery.Clear;
+    FRecovery.ForgetOrphans(Pending);
     Exit;
   end;
 
@@ -3980,10 +4201,10 @@ begin
     end;
   end;
 
-  { The journal is rebuilt from the restored documents on the next tick, so
-    clearing here cannot lose anything -- and leaving the old entries would
-    make a second crash offer the same work twice. }
-  FRecovery.Clear;
+  { The restored documents are journalled again, in this editor's own
+    journal, so forgetting the old entries cannot lose anything -- and
+    leaving them would make a second crash offer the same work twice. }
+  FRecovery.ForgetOrphans(Pending);
   if Restored > 0 then
     ReconcileRecovery;
 end;
@@ -5022,7 +5243,13 @@ begin
   if not FFocusedOnce then
   begin
     FFocusedOnce := True;
+    {$IFDEF MIMA}
+    { the IDE starts at its command window's prompt, as MATLAB's does }
+    if not MimaFocusConsole then
+      LedTryFocus(ActiveView);
+    {$ELSE}
     LedTryFocus(ActiveView);
+    {$ENDIF}
     { Asked once the window is actually up, so the dialog has a parent and
       the user can see what it is talking about. }
     OfferRecovery;
@@ -5415,6 +5642,8 @@ begin
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
   Result.ViewBJEdit := @BJEditRequested;
+  Result.ViewDragOver := @EditorDragOver;
+  Result.ViewDragDrop := @EditorDragDrop;
   ADoc.OnKernelChanged := @KernelChanged;
   ADoc.OnCellChanged := @NBCellChanged;
   Result.ViewHoverExpression := @DebugHover;
@@ -5834,6 +6063,14 @@ begin
     if (Tab <> nil) and (Tab.Document.FileName <> '') then
       Exit(ExtractFilePath(Tab.Document.FileName));
   end;
+  {$IFDEF MIMA}
+  { A document with no file of its own is saved where the session is
+    working, as MATLAB's editor does: pwd, which the command window's `cd`
+    moves -- not the folder of whatever dialog happened to be used last,
+    nor the one the program was started in. }
+  Result := GetCurrentDir;
+  if DirectoryExists(Result) then Exit;
+  {$ENDIF}
   Result := LedPrefs.GetStr('Editor/last_dir', '');
   if (Result <> '') and not DirectoryExists(Result) then Result := '';
 end;
@@ -5853,7 +6090,7 @@ var
 begin
   if ADoc = nil then
     { %t rather than the tagline written out: the same sources build the
-      editor and the matlab language IDE, and a literal here had the IDE describing
+      editor and the MATLAB language IDE, and a literal here had the IDE describing
       itself as a lightweight editor. }
     Fmt := LedPrefs.GetStr('Editor/window_title_no_doc', '%a - %t')
   else
@@ -6196,7 +6433,7 @@ procedure TLedMainForm.OpenFiles(AFiles: TStrings; ARaw: Boolean);
 var
   i: Integer;
   Doc: TLedDocument;
-  Encoding: string;
+  Encoding, Why: string;
   Retried: Boolean;
 begin
   for i := 0 to AFiles.Count - 1 do
@@ -6204,6 +6441,25 @@ begin
     { A file the host program acts on is not a document here. }
     if Assigned(LedOpenFileHook) and LedOpenFileHook(AFiles[i], ARaw) then
       Continue;
+
+    { **A picture is shown, not opened.**  There is nothing in this program
+      that edits one, so reading a .png as bytes into the structure view
+      answers a question nobody asked.  Which files count is asked of the
+      LCL's register of graphic formats rather than listed here; see
+      Led.UI.ImageWin.
+
+      Not when the reader asked for the bytes (ARaw): that is what File ▸
+      Open means, and what dragging a file onto the editor means, and both
+      are how somebody looks at a picture's header or its EXIF. }
+    if (not ARaw) and LedIsPictureFile(AFiles[i]) then
+    begin
+      if LedShowPicture(AFiles[i], Why) then
+        Continue;
+      { It would not decode.  Saying so and then showing the bytes is more
+        use than either on its own -- a truncated PNG is a thing somebody
+        is trying to find out about. }
+      ReportError(Format('Could not show %s:'#10'%s', [AFiles[i], Why]));
+    end;
     Doc := nil;
     Retried := False;
     repeat
@@ -6382,7 +6638,7 @@ end;
   neither: the cells pane would show nothing and the editor would show a
   reader the braces they were trying not to type. }
 { A new notebook's text.  In mima it names mima's kernel, so its cells are
-  matlab from the first one; elsewhere it names none and runs on Python. }
+  MATLAB from the first one; elsewhere it names none and runs on Python. }
 function NewNotebookText: string;
 {$IFDEF MIMA}
 var
@@ -6396,7 +6652,7 @@ begin
     NB.InsertCell(0, nbkCode);
     Meta := TJSONObject(NB.Root.Find('metadata'));
     Spec := TJSONObject.Create;
-    Spec.Add('display_name', 'mima (matlab)');
+    Spec.Add('display_name', 'Mimagen (MATLAB)');
     Spec.Add('language', 'matlab');
     Spec.Add('name', 'mima');
     Meta.Add('kernelspec', Spec);
@@ -7086,7 +7342,7 @@ procedure TLedMainForm.actHelpExecute(Sender: TObject);
 begin
   if Silent then Exit;
   ShowMessage(
-    LedAppName + ' ' + LedVersion + ' -- ' + LedAppTagline + '.'
+    LedAppName + ' ' + LedAppVersion + ' -- ' + LedAppTagline + '.'
       + LineEnding + LineEnding +
     'Keyboard shortcuts are listed under Edit / Configure Shortcuts,' +
     LineEnding +
@@ -7099,7 +7355,7 @@ begin
   if Silent then Exit;
   ShowMessage(
     'Please report bugs with:' + LineEnding + LineEnding +
-    '  ' + LedAppName + ' version:  ' + LedVersion + LineEnding +
+    '  ' + LedAppName + ' version:  ' + LedAppVersion + LineEnding +
     '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
       LineEnding +
     '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +
@@ -7109,12 +7365,7 @@ end;
 procedure TLedMainForm.actAboutExecute(Sender: TObject);
 begin
   if Silent then Exit;
-  ShowMessage(
-    LedAppTitle + LineEnding + LedVersion + LineEnding + LineEnding +
-    'In the shape of medit.' + LineEnding +
-    'Free Pascal ' + {$I %FPCVERSION%} + ', Lazarus LCL, SynEdit.' +
-    LineEnding + LineEnding +
-    'Widgetset: ' + LedWidgetSetName);
+  LedShowAbout(Self);
 end;
 
 { ---- The context menus ------------------------------------------------ }

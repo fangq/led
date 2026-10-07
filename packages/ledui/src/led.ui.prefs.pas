@@ -43,7 +43,7 @@ type
 
   The table below is the whole preferences surface and adding a setting is
   one line in it -- which is right as long as every setting belongs to the
-  editor.  The matlab fork's do not: a command window, a compiler and a
+  editor.  The MATLAB fork's do not: a command window, a compiler and a
   matrix back end are settings of a program built from these sources with
   -dMIMA, and writing them into the array here would put a fork's vocabulary
   in an upstream file and make the array's own length conditional.

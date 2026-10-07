@@ -20,8 +20,13 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
-  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils, Masks,
-  Led.UI.Icons;
+  Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils, LazUTF8, LCLType, Masks,
+  Led.UI.Icons, Led.Core.Prefs;
+
+const
+  { the paths typed or chosen in the path box, newest first: its list }
+  LedPrefRecentPaths = 'FileBrowser/recent_paths';
+  LedRecentPathsMax = 20;
 
 const
   { The preset that means "do not filter".  Named because the filter box is
@@ -33,9 +38,14 @@ const
     here is what a node's ImageIndex is, so the order is load-bearing --
     'folder' first because a directory takes it without consulting the
     extension table, and the plain page last because it is the fallback. }
-  TreeIconNames: array[0..7] of string =
+  { The tree's own list, in its own order: IconForPath answers an index
+    into this and the plain page is last, which is what an unrecognised
+    name falls back to.  MATLAB and python are here because the shipped
+    set has a logo for each and a file list in this program is mostly .m
+    files -- without them both fell through to the plain page. }
+  TreeIconNames: array[0..9] of string =
     ('folder', 'filesource', 'filetext', 'filemarkdown', 'filepdf',
-     'fileimage', 'filebinary', 'doc');
+     'fileimage', 'filebinary', 'matlab', 'python', 'doc');
 
 { A byte count as a person reads one: 1.4 MB rather than 1468006.  Binary
   multiples, since that is what a file system reports. }
@@ -63,7 +73,12 @@ type
     FCrumbs: TPanel;
     { The trail as text: a double click on the bar swaps it for this, to
       type or paste a path into. }
-    FPathEdit: TEdit;
+    FPathRow: TPanel;            { the path being typed, and its browse button }
+    FPathEdit: TComboBox;
+    FPathBrowse: TSpeedButton;
+    FBtnRefresh: TSpeedButton;
+    FWatch: TTimer;
+    FWatchSig: string;           { what the folders held when last looked at }
     FTree: TShellTreeView;
     FIcons: TImageList;
     FFilter: TComboBox;
@@ -87,6 +102,19 @@ type
     FCrumbWidth: Integer;
     FOnOpenFile: TLedOpenFileEvent;
     FOnRootChanged: TLedOpenFileEvent;
+    { Type-to-select: the letters typed so far, and when the last came.
+      Letters a second apart are one name; a longer pause starts another.
+      While FTyped is set, Up and Down move between the rows it matches. }
+    FTyped: string;
+    FTypedAt: QWord;
+    procedure TreeKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure TreeUTF8KeyPress(Sender: TObject; var UTF8Key: TUTF8Char);
+    procedure TreeMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure TreeExit(Sender: TObject);
+    function TypedMatches(ANode: TTreeNode): Boolean;
+    function NextTypedMatch(AFrom: TTreeNode; AForward, AIncludeFrom: Boolean): TTreeNode;
+    procedure SelectNode(ANode: TTreeNode);
     procedure BuildCrumbs;
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
@@ -104,6 +132,11 @@ type
       Shift: TShiftState);
     procedure PathEditExit(Sender: TObject);
     procedure EndPathEdit;
+    procedure PathSelect(Sender: TObject);
+    procedure PathBrowseClick(Sender: TObject);
+    procedure RememberPath(const APath: string);
+    procedure WatchTick(Sender: TObject);
+    function FolderSignature: string;
     procedure SortTree;
     procedure ListDblClick(Sender: TObject);
     procedure TreeDblClick(Sender: TObject);
@@ -129,6 +162,23 @@ type
     function SelectedPath: string;
     procedure Reload;
   public
+    { The file a drag out of this pane is carrying, or '' when the drag
+      started on a folder or on nothing.
+
+      A drag out of the list is how a file is opened *as a file* -- the
+      editor's reading of it -- whatever else the program would otherwise
+      do with that name.  The pane does not know what that means; it only
+      says what is being carried, and the window decides.  See
+      TLedMainForm.EditorDragDrop.
+
+      Read from the selection rather than from a pointer-position hit test,
+      because a tree selects on the press and the drag begins after it. }
+    function DraggedFile: string;
+
+    { The tree itself, so a drop target can ask "is this drag mine?".
+      Answered with the control rather than with a flag, because that is
+      what the LCL hands a drop handler as the source. }
+    function DragSource: TControl;
     constructor Create(AOwner: TComponent); override;
     { FHistory is a list of this pane's own making rather than a child
       component, so it is freed here; everything else is Create(Self). }
@@ -183,6 +233,20 @@ type
 
     { The one tree.  Public so a check can read what is in it. }
     property Tree: TShellTreeView read FTree;
+
+    { Type-to-select, as the tree's key handlers drive it; public so a check
+      can type without a keyboard.  TypeAhead adds what was typed to the
+      name being looked for -- or starts a new one after a pause -- and
+      selects the first visible row whose name begins with it, from the
+      selected row on.  CycleTyped moves to the next (ADelta > 0) or the
+      previous matching row, wrapping, and is False when no name is being
+      typed, so Up and Down then move as they always do.  EndTyping forgets
+      the name. }
+    procedure TypeAhead(const AText: string);
+    function CycleTyped(ADelta: Integer): Boolean;
+    procedure EndTyping;
+    { What is being typed; '' when nothing is. }
+    property Typed: string read FTyped;
     { Which picture a path would get.  Public so the mapping can be checked
       without going through the tree's own enumeration. }
     function IconFor(const APath: string): Integer;
@@ -212,7 +276,7 @@ type
     procedure BeginPathEdit;
     function EnterPath(const APath: string): Boolean;
     function PathEditing: Boolean;
-    property PathEdit: TEdit read FPathEdit;
+    property PathEdit: TComboBox read FPathEdit;
     function CrumbsWidth: Integer;
     function CrumbBarWidth: Integer;
     { The glyph on a navigation button, and the button under it.  Exposed
@@ -235,7 +299,7 @@ type
       all of them go through SetRoot and nothing else sets FRoot.
 
       Nothing in the editor listens: where a file list is pointed is not the
-      editor's business.  It is the matlab IDE's, where this pane *is* the
+      editor's business.  It is the MATLAB IDE's, where this pane *is* the
       current folder -- `pwd` answers from it, `cd` moves it, and a script
       beside it is on the path -- and one event is cheaper than the fork
       watching a private field on a timer. }
@@ -246,7 +310,7 @@ type
 implementation
 
 uses
-  Clipbrd, LCLType, Led.UI.Dpi;
+  Clipbrd, Led.UI.Dpi;
 
 const
   { The editor's own presets: the languages LED was written to edit, with
@@ -550,6 +614,171 @@ begin
   Result := nil;
 end;
 
+{ ---- type-to-select --------------------------------------------------- }
+
+const
+  { Letters closer together than this are one name. }
+  TypeAheadPause = 1000;
+
+function TLedFileBrowser.TypedMatches(ANode: TTreeNode): Boolean;
+begin
+  Result := (ANode <> nil) and (FTyped <> '') and
+    (Pos(UTF8LowerCase(FTyped), UTF8LowerCase(ANode.Text)) = 1);
+end;
+
+{ The next visible row that matches, after AFrom (or at it), going one way
+  and wrapping round; nil when none does.  Visible rows only: a name inside a
+  folder that is shut is not one the user can see to be choosing. }
+function TLedFileBrowser.NextTypedMatch(AFrom: TTreeNode; AForward,
+  AIncludeFrom: Boolean): TTreeNode;
+var
+  Node, Start: TTreeNode;
+begin
+  Result := nil;
+  if (FTree = nil) or (FTree.Items.Count = 0) then Exit;
+  Start := AFrom;
+  if Start = nil then
+  begin
+    Start := FTree.Items.GetFirstVisibleNode;
+    AIncludeFrom := True;
+  end;
+  if Start = nil then Exit;
+  if AIncludeFrom and TypedMatches(Start) then Exit(Start);
+  Node := Start;
+  repeat
+    if AForward then
+    begin
+      Node := Node.GetNextVisible;
+      if Node = nil then Node := FTree.Items.GetFirstVisibleNode;
+    end
+    else
+    begin
+      Node := Node.GetPrevVisible;
+      if Node = nil then Node := FTree.Items.GetLastExpandedSubNode;
+    end;
+    if Node = nil then Exit;
+    if TypedMatches(Node) then Exit(Node);
+  until Node = Start;
+end;
+
+procedure TLedFileBrowser.SelectNode(ANode: TTreeNode);
+begin
+  if ANode = nil then Exit;
+  FTree.Selected := ANode;
+  ANode.MakeVisible;
+end;
+
+procedure TLedFileBrowser.TypeAhead(const AText: string);
+var
+  Found: TTreeNode;
+begin
+  if (FTree = nil) or (AText = '') then Exit;
+  if (FTyped <> '') and (GetTickCount64 - FTypedAt > TypeAheadPause) then
+    FTyped := '';
+  FTyped := FTyped + AText;
+  FTypedAt := GetTickCount64;
+  { The selected row stays if it still matches -- "ap" then "p" keeps
+    apple -- and otherwise the search runs on from it. }
+  Found := NextTypedMatch(FTree.Selected, True, True);
+  if Found <> nil then
+    SelectNode(Found)
+  else if UTF8Length(FTyped) > 1 then
+  begin
+    { Nothing starts with what has been typed: the last letter alone, as a
+      repeated first letter steps through the rows that begin with it. }
+    FTyped := AText;
+    Found := NextTypedMatch(FTree.Selected, True, False);
+    if Found <> nil then
+      SelectNode(Found);
+  end;
+end;
+
+function TLedFileBrowser.CycleTyped(ADelta: Integer): Boolean;
+var
+  Found: TTreeNode;
+begin
+  Result := FTyped <> '';
+  if not Result then Exit;
+  FTypedAt := GetTickCount64;
+  Found := NextTypedMatch(FTree.Selected, ADelta > 0, False);
+  if Found <> nil then
+    SelectNode(Found);
+end;
+
+procedure TLedFileBrowser.EndTyping;
+begin
+  FTyped := '';
+end;
+
+procedure TLedFileBrowser.TreeUTF8KeyPress(Sender: TObject;
+  var UTF8Key: TUTF8Char);
+begin
+  { Printable characters only: Enter, Tab, Escape and the control keys keep
+    the meanings the tree and the window give them. }
+  if (UTF8Key = '') or ((Length(UTF8Key) = 1) and (UTF8Key[1] < ' ')) then
+    Exit;
+  { A space continues a name being typed, and is the tree's own otherwise. }
+  if (UTF8Key = ' ') and (FTyped = '') then Exit;
+  TypeAhead(UTF8Key);
+  UTF8Key := '';
+end;
+
+procedure TLedFileBrowser.TreeKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+  if FTyped = '' then Exit;
+  if Shift * [ssCtrl, ssAlt, ssMeta] <> [] then
+  begin
+    EndTyping;
+    Exit;
+  end;
+  case Key of
+    VK_UP:
+      begin
+        CycleTyped(-1);
+        Key := 0;
+      end;
+    VK_DOWN:
+      begin
+        CycleTyped(1);
+        Key := 0;
+      end;
+    VK_BACK:
+      begin
+        UTF8Delete(FTyped, UTF8Length(FTyped), 1);
+        FTypedAt := GetTickCount64;
+        if FTyped <> '' then
+          SelectNode(NextTypedMatch(FTree.Selected, True, True));
+        Key := 0;
+      end;
+    VK_ESCAPE:
+      begin
+        EndTyping;
+        Key := 0;
+      end;
+    VK_RETURN, VK_TAB, VK_LEFT, VK_RIGHT, VK_HOME, VK_END, VK_PRIOR,
+    VK_NEXT, VK_DELETE, VK_INSERT:
+      { the name is done, and the key does what it always does }
+      EndTyping;
+  else
+    { Anything else -- a letter, a digit, Shift on its way to a capital --
+      arrives here first, as a key, and then as the character it types.
+      Ending the name here, as the first version did for every key it did
+      not list, emptied it before each letter was added to it. }
+  end;
+end;
+
+procedure TLedFileBrowser.TreeMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  EndTyping;
+end;
+
+procedure TLedFileBrowser.TreeExit(Sender: TObject);
+begin
+  EndTyping;
+end;
+
 constructor TLedFileBrowser.Create(AOwner: TComponent);
 var
   Bar: TPanel;
@@ -572,7 +801,10 @@ var
     Result.OnClick := @NavClick;
     { At the size the button actually is, not the sixteen pixels the icons are
       designed at -- same as the toolbar's image list. }
-    Result.Glyph.Assign(LedIconBitmap(AIcon, clBtnText, LedScale96(14)));
+    { Sixteen, not fourteen: the glyphs are painted artwork now and a
+      gradient needs a pixel or two more than a line drawing before it
+      reads as a shape rather than a smudge. }
+    Result.Glyph.Assign(LedIconBitmap(AIcon, clBtnText, LedScale96(16)));
   end;
 
   procedure AddMenu(const ACaption: string; AHandler: TNotifyEvent);
@@ -618,6 +850,10 @@ begin
   FBtnNewFolder.OnClick := @MenuNewFolder;
   FBtnNewFile := MakeNavButton('newfile', 'New file...', 116);
   FBtnNewFile.OnClick := @MenuNewFile;
+  { the folders read again: what another program -- or the engine -- wrote
+    shows without waiting for the watch below }
+  FBtnRefresh := MakeNavButton('reload', 'Refresh', 142);
+  FBtnRefresh.OnClick := @MenuRefresh;
 
   { A row of its own, under the buttons.  It shared the button row once,
     which kept the chrome to one line but left the trail a few dozen pixels
@@ -642,13 +878,41 @@ begin
 
   { Owned by the pane, not the bar: BuildCrumbs frees everything the bar
     owns, and counts what it holds. }
-  FPathEdit := TEdit.Create(Self);
-  FPathEdit.Visible := False;
-  FPathEdit.Parent := Self;
-  FPathEdit.Top := FCrumbs.Top;
-  FPathEdit.Align := alTop;
+  { The path typed in place of the trail: a box that remembers the paths
+    entered before, and a button that chooses a folder instead. }
+  FPathRow := TPanel.Create(Self);
+  FPathRow.Visible := False;
+  FPathRow.Parent := Self;
+  FPathRow.Top := FCrumbs.Top;
+  FPathRow.Align := alTop;
+  FPathRow.AutoSize := True;
+  FPathRow.BevelOuter := bvNone;
+  FPathRow.Caption := '';
+  FPathBrowse := TLedSpeedButton.Create(Self);
+  FPathBrowse.Parent := FPathRow;
+  FPathBrowse.Align := alRight;
+  FPathBrowse.Width := 24;
+  FPathBrowse.Flat := True;
+  FPathBrowse.Hint := 'Choose a folder...';
+  FPathBrowse.ShowHint := True;
+  FPathBrowse.Glyph.Assign(LedIconBitmap('open', clBtnText, LedScale96(14)));
+  FPathBrowse.OnClick := @PathBrowseClick;
+  FPathEdit := TComboBox.Create(Self);
+  FPathEdit.Parent := FPathRow;
+  FPathEdit.Align := alClient;
+  FPathEdit.Style := csDropDown;
+  FPathEdit.DropDownCount := LedRecentPathsMax;
+  FPathEdit.Items.CommaText := LedPrefs.GetStr(LedPrefRecentPaths, '');
   FPathEdit.OnKeyDown := @PathEditKeyDown;
   FPathEdit.OnExit := @PathEditExit;
+  FPathEdit.OnSelect := @PathSelect;
+
+  { Looked at a little at a time, while the pane is in view: a folder that
+    gained or lost an entry -- a file saved, made by a program, deleted -- is
+    read again, its open folders open and its selection kept. }
+  FWatch := TTimer.Create(Self);
+  FWatch.Interval := 1500;
+  FWatch.OnTimer := @WatchTick;
 
   { Just the filter row, at the foot.  It used to sit inside a container 228
     pixels tall -- the height the file list wanted before the pane became one
@@ -707,12 +971,22 @@ begin
   FTree.ObjectTypes := [otFolders, otNonFolders];
   FTree.ReadOnly := True;
   FTree.OnDblClick := @TreeDblClick;
+  { Draggable out of the pane.  Automatic rather than begun by hand: the
+    LCL starts the drag after its own threshold, so a click still selects
+    and an expander arrow still expands.  Through the accessor because the
+    shell tree does not publish it. }
+  TLedTreeAccess(FTree).DragMode := dmAutomatic;
   { The row under the pointer says where it is and how big it is.  A tree in
     a narrow pane truncates names, and the size is the other thing anyone
     asks of a file list -- it was the one thing lost when the pane stopped
     being a list with columns. }
   FTree.ShowHint := True;
   FTree.OnMouseMove := @TreeMouseMove;
+  { Typing a name selects it, as in any file manager; see TypeAhead. }
+  FTree.OnUTF8KeyPress := @TreeUTF8KeyPress;
+  FTree.OnKeyDown := @TreeKeyDown;
+  FTree.OnMouseDown := @TreeMouseDown;
+  FTree.OnExit := @TreeExit;
   { LED draws the expander.  The LCL offers a themed box, a plus-minus and an
     outlined triangle, and none of them is the chevron a file tree has used
     since VS Code made it the convention.  OnCustomDrawArrow hands over that
@@ -845,6 +1119,10 @@ begin
   { Moving through the history is not itself a place to come back to. }
   if not FNavigating then PushHistory(FRoot);
   UpdateNav;
+  { what the folders hold as they were just read: a file made from now on
+    is a change to it.  Taken on the first look instead, a file made
+    before that look was in it, and was never seen. }
+  FWatchSig := FolderSignature;
 
   { Last, so a listener that asks the pane where it is gets the answer it
     has just finished arriving at rather than the one it is leaving. }
@@ -1141,6 +1419,9 @@ begin
   if ANode = nil then Exit;
   IconiseChildren(ANode);
   SortChildren(ANode);
+  { a folder opened is watched from now on, as it was just read -- not a
+    change to read again }
+  FWatchSig := FolderSignature;
 end;
 
 procedure TLedFileBrowser.CrumbsDblClick(Sender: TObject);
@@ -1150,13 +1431,13 @@ end;
 
 procedure TLedFileBrowser.BeginPathEdit;
 begin
-  if FPathEdit.Visible then Exit;
+  if FPathRow.Visible then Exit;
   FPathEdit.Text := FRoot;
   FPathEdit.ParentColor := False;
   FPathEdit.Color := clDefault;
-  FPathEdit.Top := FCrumbs.Top;
+  FPathRow.Top := FCrumbs.Top;
   FCrumbs.Visible := False;
-  FPathEdit.Visible := True;
+  FPathRow.Visible := True;
   if FPathEdit.CanFocus then
     FPathEdit.SetFocus;
   FPathEdit.SelectAll;
@@ -1164,17 +1445,52 @@ end;
 
 procedure TLedFileBrowser.EndPathEdit;
 begin
-  if not FPathEdit.Visible then Exit;
-  FCrumbs.Top := FPathEdit.Top;
+  if not FPathRow.Visible then Exit;
+  FCrumbs.Top := FPathRow.Top;
   FCrumbs.Visible := True;
-  FPathEdit.Visible := False;
+  FPathRow.Visible := False;
   { the trail was built at whatever width it had when it was hidden }
   BuildCrumbs;
 end;
 
 function TLedFileBrowser.PathEditing: Boolean;
 begin
-  Result := FPathEdit.Visible;
+  Result := FPathRow.Visible;
+end;
+
+{ a path gone to from the box: first in its list, and kept for next time }
+procedure TLedFileBrowser.RememberPath(const APath: string);
+var
+  I: Integer;
+begin
+  I := FPathEdit.Items.IndexOf(APath);
+  if I >= 0 then
+    FPathEdit.Items.Delete(I);
+  FPathEdit.Items.Insert(0, APath);
+  while FPathEdit.Items.Count > LedRecentPathsMax do
+    FPathEdit.Items.Delete(FPathEdit.Items.Count - 1);
+  LedPrefs.SetStr(LedPrefRecentPaths, FPathEdit.Items.CommaText);
+end;
+
+procedure TLedFileBrowser.PathSelect(Sender: TObject);
+begin
+  if FPathEdit.ItemIndex >= 0 then
+    EnterPath(FPathEdit.Items[FPathEdit.ItemIndex]);
+end;
+
+procedure TLedFileBrowser.PathBrowseClick(Sender: TObject);
+var
+  D: TSelectDirectoryDialog;
+begin
+  D := TSelectDirectoryDialog.Create(Self);
+  try
+    D.Title := 'Choose a folder';
+    D.InitialDir := FRoot;
+    if D.Execute then
+      EnterPath(D.FileName);
+  finally
+    D.Free;
+  end;
 end;
 
 function TLedFileBrowser.EnterPath(const APath: string): Boolean;
@@ -1190,10 +1506,11 @@ begin
   if not Result then
   begin
     { left open and marked, so a typo is fixed rather than retyped }
-    if FPathEdit.Visible then
+    if FPathRow.Visible then
       FPathEdit.Color := $C0C0FF;
     Exit;
   end;
+  RememberPath(ExcludeTrailingPathDelimiter(ExpandFileName(Target)));
   EndPathEdit;
   SetRoot(Target);
 end;
@@ -1215,6 +1532,9 @@ end;
 
 procedure TLedFileBrowser.PathEditExit(Sender: TObject);
 begin
+  { the list dropped down takes the focus for a moment: still typing }
+  if FPathEdit.DroppedDown then
+    Exit;
   EndPathEdit;
 end;
 
@@ -1232,6 +1552,21 @@ begin
 end;
 
 { Whatever the user last pointed at, in either pane. }
+function TLedFileBrowser.DraggedFile: string;
+var
+  Path: string;
+begin
+  Result := '';
+  Path := SelectedPath;
+  if (Path <> '') and FileExists(Path) and not DirectoryExists(Path) then
+    Result := Path;
+end;
+
+function TLedFileBrowser.DragSource: TControl;
+begin
+  Result := FTree;
+end;
+
 function TLedFileBrowser.SelectedPath: string;
 begin
   Result := '';
@@ -1353,21 +1688,105 @@ begin
     FOnOpenFile(Path);
 end;
 
+{ The folders read again, as they are on disk now; the folders that were
+  open opened again, shallowest first, and what was selected selected }
 procedure TLedFileBrowser.Reload;
 var
-  Keep: string;
+  Keep, Sel: string;
+  Open: TStringList;
+  I, J: Integer;
+  N: TTreeNode;
 begin
   Keep := FRoot;
-  FRoot := '';
-  FTree.Root := '';
-  SetRoot(Keep);
+  Sel := SelectedPath;
+  Open := TStringList.Create;
+  try
+    for I := 0 to FTree.Items.Count - 1 do
+      if FTree.Items[I].Expanded and (FTree.Items[I].Level > 0) then
+        Open.Add(FTree.GetPathFromNode(FTree.Items[I]));
+    FRoot := '';
+    FTree.Root := '';
+    SetRoot(Keep);
+    for J := 0 to Open.Count - 1 do
+      for I := 0 to FTree.Items.Count - 1 do
+      begin
+        N := FTree.Items[I];
+        if (N.Level > 0) and (FTree.GetPathFromNode(N) = Open[J]) then
+        begin
+          N.Expand(False);
+          Break;
+        end;
+      end;
+    if Sel <> '' then
+      for I := 0 to FTree.Items.Count - 1 do
+        if FTree.GetPathFromNode(FTree.Items[I]) = Sel then
+        begin
+          FTree.Selected := FTree.Items[I];
+          Break;
+        end;
+  finally
+    Open.Free;
+  end;
+  FWatchSig := FolderSignature;
+end;
+
+{ what the root and its open folders hold, as their names: a change of it is
+  an entry made, deleted or renamed }
+function TLedFileBrowser.FolderSignature: string;
+var
+  Dirs: TStringList;
+  I, Count: Integer;
+  R: TSearchRec;
+begin
+  Result := '';
+  if FRoot = '' then
+    Exit;
+  Dirs := TStringList.Create;
+  try
+    Dirs.Add(FRoot);
+    for I := 0 to FTree.Items.Count - 1 do
+      if FTree.Items[I].Expanded and (FTree.Items[I].Level > 0) and (Dirs.Count < 50) then
+        Dirs.Add(FTree.GetPathFromNode(FTree.Items[I]));
+    for I := 0 to Dirs.Count - 1 do
+    begin
+      Result := Result + '|' + Dirs[I] + ':';
+      Count := 0;
+      if FindFirst(IncludeTrailingPathDelimiter(Dirs[I]) + '*', faAnyFile, R) = 0 then
+      try
+        repeat
+          if (R.Name <> '.') and (R.Name <> '..') then
+          begin
+            Result := Result + R.Name + '/';
+            Inc(Count);
+          end;
+        until (FindNext(R) <> 0) or (Count > 5000);
+      finally
+        FindClose(R);
+      end;
+    end;
+  finally
+    Dirs.Free;
+  end;
+end;
+
+procedure TLedFileBrowser.WatchTick(Sender: TObject);
+var
+  Sig: string;
+begin
+  if not IsVisible or PathEditing or (FRoot = '') then
+    Exit;
+  Sig := FolderSignature;
+  if (FWatchSig <> '') and (Sig <> FWatchSig) then
+    Reload
+  else
+    FWatchSig := Sig;
 end;
 
 procedure TLedFileBrowser.FilterChange(Sender: TObject);
 begin
   { By what the entry says, not by where it sits.  "Everything" was index 0
     by construction, which held for exactly as long as one program supplied
-    the presets: the matlab fork puts its own first, and a first entry that
+    the presets: the MATLAB fork puts its own first, and a first entry that
     was a real mask was read as no mask at all and filtered nothing. }
   if (FFilter.ItemIndex < 0) or (FFilter.Text = LedFilterAll) then
     FilterBy('')

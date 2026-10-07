@@ -32,7 +32,7 @@
   </metadata>
 
   <!--
-    Note: Matlab language is a subset of the Octave language. When making
+    Note: MATLAB language is a subset of the Octave language. When making
     modification to this file check first if they apply to both languages.
   -->
 
@@ -208,8 +208,8 @@
         </context>
         <context id="octave-matlab-keyword" style-ref="keyword">
           <!--
-            Octave and Matlab have already implemented most of each others keywords
-            but not all. Both Octave and Matlab are still missing keywords from the
+            Octave and MATLAB have already implemented most of each others keywords
+            but not all. Both Octave and MATLAB are still missing keywords from the
             other. As such, this block only has the keywords already implemented in
             both. When adding a new keyword, make sure you place it on the right
             place.

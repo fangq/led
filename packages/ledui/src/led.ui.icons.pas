@@ -67,6 +67,12 @@ function LedIconIndex(const AName: string): Integer;
   list the application builds at startup. }
 function LedIconNames: TStringArray;
 
+{ Every icon that comes from a file in data/icons rather than from a case
+  branch.  Readable so that the two lists can be checked against each
+  other: a name in this one and not in LedIconNames is an icon nothing can
+  ask for, and a file in data/icons that is in neither is dead weight. }
+function LedArtworkNames: TStringArray;
+
 { Puts the application's own logo on the window and the task bar entry.
 
   It reads the PNG copy of the artwork that packaging/windows/led.rc embeds,
@@ -125,6 +131,14 @@ procedure LedDrawIcon(ABitmap: TBitmap; const AName: string; AColour: TColor);
 function LedIconBitmap(const AName: string; AColour: TColor;
   ASize: Integer = 16): TBitmap;
 
+{ One shipped icon as a bitmap of its own, with its alpha, at ASize -- or
+  nil where that name has no artwork.  **The caller owns it**, unlike
+  LedIconBitmap's shared buffer, because this is for the places that build
+  an image list of their own: the App Designer's toolbar has four of LED's
+  icons and three of its own, and the three were drawn while the four were
+  painted. }
+function LedIconArtworkBitmap(const AName: string; ASize: Integer): TBitmap;
+
 implementation
 
 uses
@@ -135,14 +149,18 @@ uses
 { The actions whose picture is a file in data/icons rather than a case
   branch below.  Listed rather than probed so that a data directory the
   reader has half-deleted shows the drawn icon instead of an empty square,
-  and so that "which of these is artwork" is answerable by reading. }
+  and so that "which of these is artwork" is answerable by reading.
+  The MATLAB logo is the MATLAB fork's (Mima) alone: its file ships there,
+  and LED draws a page with an M for the name instead. }
 const
-  ArtworkNames: array[0..26] of string = (
-    'new', 'open', 'save', 'undo', 'redo', 'cut', 'copy', 'paste',
-    'find', 'replace', 'run', 'stop', 'pause', 'debug',
-    'stepover', 'stepinto', 'stepout', 'terminal', 'help',
-    'symbols', 'browser', 'assistant',
-    'preview', 'notebook', 'output', 'project', 'breakpoint');
+  ArtworkNames: array[0..{$IFDEF MIMA}41{$ELSE}40{$ENDIF}] of string = (
+    'assistant', 'back', 'breakpoint', 'browser', 'codeform', 'copy',
+    'cut', 'debug', 'files', 'find', 'forward', 'help', 'home',
+    {$IFDEF MIMA}'matlab', {$ENDIF}'new', 'newfile', 'newfolder', 'notebook', 'open',
+    'output', 'paste', 'pause', 'preview', 'project', 'python',
+    'redo', 'reload', 'replace', 'run', 'runcell', 'save', 'saveas',
+    'stepinto', 'stepout', 'stepover', 'stop', 'symbols', 'terminal',
+    'theme', 'undo', 'up', 'watch');
 
 function LedIconArtwork(const AName: string): string;
 var
@@ -172,13 +190,55 @@ end;
   dragged towards whatever colour happened to be stored under the
   transparency. }
 function LoadIconArtwork(const AFile: string; ASize: Integer): TBitmap;
+{ **Cubic, not a box average.**
+
+  The artwork is drawn at 128 and shown at whatever the toolbar's buttons
+  come to -- 26 on an ordinary display, 78 on a 3x one -- so every icon in
+  the program goes through this on the way to the screen.  It used to take
+  the mean of the source pixels that fall in each destination pixel, which
+  is correct and soft: a box filter passes everything above the sampling
+  rate straight through as blur, and what that blurs most is exactly the
+  edge of a glyph against nothing.
+
+  Catmull-Rom instead -- the interpolating cubic, B=0 and C=1/2 -- with its
+  support widened by the scale factor, which is what keeps a 5:1 reduction
+  from aliasing while still being a cubic rather than an average.  Its
+  slightly negative lobes are what sharpen the border: they pull the pixel
+  just outside an edge away from the colour just inside it.
+
+  On premultiplied alpha, and unpremultiplied again at the end.  Weighting
+  colour by coverage is the whole reason the old code multiplied by Alpha
+  before summing; a cubic has to do the same or the half-covered pixels
+  around a glyph drag the colour of the transparent side into it. }
+
+  { A cubic overshoots at an edge -- which is the point of it -- so every
+    channel comes back through here. }
+  function ClampWord(AValue: Double): Word;
+  begin
+    if AValue <= 0 then Result := 0
+    else if AValue >= 65535 then Result := 65535
+    else Result := Round(AValue);
+  end;
+
+  { Catmull-Rom, written out for the two intervals of |t|. }
+  function Cubic(t: Double): Double;
+  begin
+    t := Abs(t);
+    if t < 1 then
+      Result := 1.5 * t * t * t - 2.5 * t * t + 1
+    else if t < 2 then
+      Result := -0.5 * t * t * t + 2.5 * t * t - 4 * t + 2
+    else
+      Result := 0;
+  end;
+
 var
   Png: TPortableNetworkGraphic;
   Src, Dst: TLazIntfImage;
   Desc: TRawImageDescription;
   x, y, sx, sy, x0, x1, y0, y1: Integer;
-  ar, ag, ab, aa: Int64;
-  n: Integer;
+  ScaleX, ScaleY, SupX, SupY, Cx, Cy, W, Wy, Sum: Double;
+  AccR, AccG, AccB, AccA: Double;
   C: TFPColor;
 begin
   Result := nil;
@@ -201,37 +261,58 @@ begin
     Dst.DataDescription := Desc;
     Dst.SetSize(ASize, ASize);
 
+    { How many source pixels to a destination one, and how far the kernel
+      has to reach to cover them.  Never less than one: enlarging is
+      interpolation and the kernel keeps its own width. }
+    ScaleX := Src.Width / ASize;
+    ScaleY := Src.Height / ASize;
+    SupX := 2 * ScaleX;
+    SupY := 2 * ScaleY;
+    if SupX < 2 then SupX := 2;
+    if SupY < 2 then SupY := 2;
+
     for y := 0 to ASize - 1 do
     begin
-      y0 := (y * Src.Height) div ASize;
-      y1 := ((y + 1) * Src.Height) div ASize;
-      if y1 <= y0 then y1 := y0 + 1;
+      Cy := (y + 0.5) * ScaleY - 0.5;
+      y0 := Trunc(Cy - SupY); if y0 < 0 then y0 := 0;
+      y1 := Trunc(Cy + SupY) + 1; if y1 > Src.Height - 1 then y1 := Src.Height - 1;
       for x := 0 to ASize - 1 do
       begin
-        x0 := (x * Src.Width) div ASize;
-        x1 := ((x + 1) * Src.Width) div ASize;
-        if x1 <= x0 then x1 := x0 + 1;
+        Cx := (x + 0.5) * ScaleX - 0.5;
+        x0 := Trunc(Cx - SupX); if x0 < 0 then x0 := 0;
+        x1 := Trunc(Cx + SupX) + 1; if x1 > Src.Width - 1 then x1 := Src.Width - 1;
 
-        ar := 0; ag := 0; ab := 0; aa := 0; n := 0;
-        for sy := y0 to y1 - 1 do
-          for sx := x0 to x1 - 1 do
+        AccR := 0; AccG := 0; AccB := 0; AccA := 0; Sum := 0;
+        for sy := y0 to y1 do
+        begin
+          Wy := Cubic((sy - Cy) / (SupY / 2));
+          if Wy = 0 then Continue;
+          for sx := x0 to x1 do
           begin
+            W := Wy * Cubic((sx - Cx) / (SupX / 2));
+            if W = 0 then Continue;
             C := Src.Colors[sx, sy];
-            ar := ar + Int64(C.Red) * C.Alpha;
-            ag := ag + Int64(C.Green) * C.Alpha;
-            ab := ab + Int64(C.Blue) * C.Alpha;
-            aa := aa + C.Alpha;
-            Inc(n);
+            { premultiplied: colour counts for as much as it covers }
+            AccR := AccR + W * C.Red * C.Alpha;
+            AccG := AccG + W * C.Green * C.Alpha;
+            AccB := AccB + W * C.Blue * C.Alpha;
+            AccA := AccA + W * C.Alpha;
+            Sum := Sum + W;
           end;
+        end;
 
-        if (n = 0) or (aa = 0) then
+        if (Sum <= 0) or (AccA <= 0) then
           C := FPColor(0, 0, 0, 0)
         else
         begin
-          C.Red   := Word(ar div aa);
-          C.Green := Word(ag div aa);
-          C.Blue  := Word(ab div aa);
-          C.Alpha := Word(aa div n);
+          { Unpremultiply by the weighted alpha, not by the weight: that is
+            what divides out the coverage again. }
+          C.Red   := ClampWord(AccR / AccA);
+          C.Green := ClampWord(AccG / AccA);
+          C.Blue  := ClampWord(AccB / AccA);
+          { A cubic overshoots -- that is where the sharpening comes from --
+            so alpha is clamped rather than trusted. }
+          C.Alpha := ClampWord(AccA / Sum);
         end;
         Dst.Colors[x, y] := C;
       end;
@@ -253,7 +334,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..68] of string = (
+  IconNames: array[0..73] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -290,7 +371,19 @@ const
     'preview', 'notebook', 'output', 'project',
     { The notebook's cell buttons: a pencil for editing a text cell, and an
       eraser for clearing a code cell's output.  Appended, as above. }
-    'edit', 'clearoutput', 'runcell'
+    'edit', 'clearoutput', 'runcell',
+
+    { What the second icon set added that nothing here had a name for: the
+      two languages a file list can tell apart at a glance, the debugger's
+      watches, the designer's switch between a form and its code, and the
+      painted page the editor pane shows on its rail -- which is *not*
+      'doc', the drawn page a file list puts against a name it does not
+      recognise.  One name was doing both jobs, and painting it put a
+      coloured page in among the drawn ones in the tree.
+
+      Appended, like everything above it: a position in this list is an
+      ImageIndex in a form file, so the list only ever grows at the end. }
+    'python', 'matlab', 'watch', 'codeform', 'files'
   );
 
 
@@ -504,6 +597,14 @@ begin
   for i := 0 to High(IconNames) do Result[i] := IconNames[i];
 end;
 
+function LedArtworkNames: TStringArray;
+var
+  i: Integer;
+begin
+  SetLength(Result, Length(ArtworkNames));
+  for i := 0 to High(ArtworkNames) do Result[i] := ArtworkNames[i];
+end;
+
 function LedIconAccent(const AName: string): TColor;
 begin
   { The toolbar, in the Tango palette medit's stock GTK icons came from.
@@ -562,6 +663,13 @@ var
   Ext: string;
 begin
   Ext := LowerCase(ExtractFileExt(AFileName));
+  { The two with a logo of their own in the set.  A file list in a MATLAB
+    environment is mostly .m files, and telling them from the rest at a
+    glance is worth more than the uniformity of a row of blue pages. }
+  {$IFDEF MIMA}
+  if (Ext = '.m') or (Ext = '.mex') then Exit('matlab');
+  {$ENDIF}
+  if Ext = '.py' then Exit('python');
   if (Ext = '.c') or (Ext = '.h') or (Ext = '.cpp') or (Ext = '.hpp') or
      (Ext = '.cc') or (Ext = '.cxx') or (Ext = '.m') or (Ext = '.mm') or
      (Ext = '.pas') or (Ext = '.pp') or (Ext = '.inc') or (Ext = '.lpr') or
@@ -1244,6 +1352,11 @@ begin
         P.Box(1.5, 12.5, 14.5, 15, True);
         P.Colour(AColour);
       end;
+    'matlab':
+      begin   { where the logo is not shipped (LED): a source page with an M on it }
+        DrawPage(P);
+        P.Poly([5, 12.5, 5, 7, 8, 10, 11, 7, 11, 12.5]);
+      end;
     { the Insert tab }
     'insertpicture':
       begin
@@ -1315,16 +1428,56 @@ end;
 var
   FGlyph: TBitmap = nil;
 
+function LedIconArtworkBitmap(const AName: string; ASize: Integer): TBitmap;
+var
+  Art: string;
+begin
+  Result := nil;
+  if ASize < 1 then ASize := 16;
+  Art := LedIconArtwork(AName);
+  if Art <> '' then
+    Result := LoadIconArtwork(Art, ASize);
+end;
+
 function LedIconBitmap(const AName: string; AColour: TColor;
   ASize: Integer): TBitmap;
+var
+  Art: string;
+  Bmp: TBitmap;
 begin
   if ASize < 1 then ASize := 16;
+
+  { **Artwork first, here as well as in the image list.**
+
+    This is what a TSpeedButton's Glyph is made from -- the file browser's
+    navigation row, the rail buttons -- and it used to draw the line
+    version whatever was in data/icons.  So the toolbar showed the painted
+    Back arrow and the file list, an inch below it, showed a drawn one:
+    two programs in one window.  The set now has every one of those
+    glyphs, so there is nothing left to be gained by the difference. }
+  Art := LedIconArtwork(AName);
+  if Art <> '' then
+  begin
+    Bmp := LoadIconArtwork(Art, ASize);
+    if Bmp <> nil then
+    begin
+      { The one-bitmap rule the drawn path below keeps: the caller copies
+        out of what it is handed, so only one is alive at a time. }
+      FGlyph.Free;
+      FGlyph := Bmp;
+      Exit(FGlyph);
+    end;
+  end;
   { One bitmap reused for every call: Glyph.Assign copies, so nothing outside
     keeps a reference, and this avoids leaking one per button.  Resized when
     the caller asks for a different size, which on a scaled display it does.
     This was fixed at sixteen, so the file browser's navigation buttons grew
     with the rest of the pane and kept a sixteen-pixel glyph rattling about
     inside them. }
+  { A buffer left over from the artwork path above is 32-bit with an alpha
+    channel; the masked drawing below wants a plain 24-bit one. }
+  if (FGlyph <> nil) and (FGlyph.PixelFormat <> pf24bit) then
+    FreeAndNil(FGlyph);
   if FGlyph = nil then
   begin
     FGlyph := TBitmap.Create;

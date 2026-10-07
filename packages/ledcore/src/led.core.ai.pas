@@ -324,10 +324,54 @@ function LedAICutContext(const AText: string; ALimitBytes: Integer;
   Stripping that would mean guessing which sentences are the answer. }
 function LedAIUnfence(const AText: string): string;
 
+{ ---- what the program running this is, and what it can take back ------- }
+
+{ **What a model is told about where it is.**
+
+  A model asked "write a script in the current folder to do this" used to
+  answer with something generic, because nothing in the question said what
+  the current folder was, what was in it, which file was open or what the
+  session already held.  It was being asked about a program it could not
+  see.  So the window describes itself with every turn, and a fork adds
+  what it knows that the editor does not -- the MATLAB session's own
+  folder, its variables, its figures.
+
+  A hook rather than a field on the request: the state is read at the
+  moment of asking, and the thing that knows it is not the thing that
+  builds the request. }
+type
+  TLedAIStateQuery = function: string;
+
+  { Where an answer can be sent, beyond the documents the editor has.  The
+    MATLAB fork has a command line, and "put that on the prompt" is the
+    obvious thing to want from an answer that is one line of code; an
+    editor with no prompt offers no such button. }
+  TLedAIPromptSink = procedure(const AText: string);
+
+var
+  { Set by the program, read when a question is asked.  Unset in a plain
+    editor, which then says only what the window itself knows. }
+  LedAIHostStateHook: TLedAIStateQuery = nil;
+
+  { Set by a program that has somewhere else to put an answer, together
+    with what the button should say.  Both unset means no button. }
+  LedAIPromptHook: TLedAIPromptSink = nil;
+  LedAIPromptName: string = '';
+
+{ The hook's answer, or '' when there is none. }
+function LedAIHostState: string;
+
 implementation
 
 uses
   StrUtils;
+
+function LedAIHostState: string;
+begin
+  Result := '';
+  if Assigned(LedAIHostStateHook) then
+    Result := LedAIHostStateHook();
+end;
 
 { ----- the conversation ------------------------------------------------- }
 

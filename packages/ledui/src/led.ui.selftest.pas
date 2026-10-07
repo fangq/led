@@ -44,6 +44,7 @@ uses
   Buttons,
   Led.Core.AppFont,
   Led.UI.Main, Led.UI.Document, Led.UI.Tab, Led.UI.Edit, Led.UI.Dock,
+  Led.UI.ImageWin, Led.Core.AI.Ollama, Led.UI.About, LazVersion,
   Led.UI.Splitter, Led.UI.Dpi,
   Led.UI.Commands, Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts,
   Led.UI.Icons, Led.UI.Focus, Led.UI.Preview, Led.Core.Wiki,
@@ -1010,6 +1011,94 @@ begin
   DeleteFile(P1); DeleteFile(P2); DeleteFile(P3);
 end;
 
+{ Type-to-select in the file tree: letters pick the first row starting with
+  them, Up and Down then move among the matching rows only, wrapping, and
+  Escape gives the arrows back. }
+procedure TestBrowserTypeAhead(F: TLedMainForm);
+var
+  Dir, Start: string;
+  Names: array[0..3] of string = ('alpha.m', 'apple.m', 'apricot.txt', 'banana.m');
+  i: Integer;
+  T: TStringList;
+
+  function Sel: string;
+  begin
+    if F.Browser.Tree.Selected = nil then
+      Result := ''
+    else
+      Result := F.Browser.Tree.Selected.Text;
+  end;
+
+  { A key as the tree receives one: the key down, then -- for a key that
+    types -- the character.  Through the tree's own event handlers, in the
+    LCL's order, which is where the first version went wrong: every letter's
+    key down emptied the name its character was about to extend. }
+  procedure Press(AKey: Word; const AChar: string);
+  var
+    K: Word;
+    C: TUTF8Char;
+  begin
+    K := AKey;
+    if Assigned(F.Browser.Tree.OnKeyDown) then
+      F.Browser.Tree.OnKeyDown(F.Browser.Tree, K, []);
+    if (K <> 0) and (AChar <> '') and Assigned(F.Browser.Tree.OnUTF8KeyPress) then
+    begin
+      C := AChar;
+      F.Browser.Tree.OnUTF8KeyPress(F.Browser.Tree, C);
+    end;
+  end;
+
+begin
+  Say('file browser type-to-select');
+  Dir := IncludeTrailingPathDelimiter(TempName('typeahead'));
+  ForceDirectories(Dir);
+  T := TStringList.Create;
+  try
+    for i := 0 to High(Names) do
+      T.SaveToFile(Dir + Names[i]);
+  finally
+    T.Free;
+  end;
+  F.Dock.ShowPane('files');
+  Pump;
+  Start := F.Browser.Root;
+  F.Browser.SetRoot(Dir);
+  Pump;
+
+  Press(VK_A, 'a');
+  CheckEq('a letter selects the first row it begins', 'alpha.m', Sel);
+  Press(VK_SHIFT, '');
+  Press(VK_P, 'P');
+  CheckEq('the next letter narrows it, whatever its case', 'apple.m', Sel);
+  CheckEq('the keys typed are one name', 'aP', F.Browser.Typed);
+  Press(VK_R, 'r');
+  CheckEq('and a third narrows it again', 'apricot.txt', Sel);
+  Press(VK_BACK, '');
+  CheckEq('Backspace takes the last letter off', 'aP', F.Browser.Typed);
+  Press(VK_DOWN, '');
+  CheckEq('Down moves to the next row that matches', 'apple.m', Sel);
+  Press(VK_DOWN, '');
+  CheckEq('and wraps round to the first', 'apricot.txt', Sel);
+  Press(VK_UP, '');
+  CheckEq('Up goes the other way, wrapping too', 'apple.m', Sel);
+  Press(VK_ESCAPE, '');
+  Check('Escape forgets the name, and the arrows are the tree''s again',
+    (F.Browser.Typed = '') and not F.Browser.CycleTyped(1));
+  F.Browser.TypeAhead('b');
+  CheckEq('and a new name is looked for afresh', 'banana.m', Sel);
+  F.Browser.EndTyping;
+  F.Browser.TypeAhead('a');
+  CheckEq('a first letter again', 'alpha.m', Sel);
+  F.Browser.TypeAhead('a');
+  CheckEq('typed twice steps to the next row it begins, as no name starts aa',
+    'apple.m', Sel);
+  F.Browser.EndTyping;
+
+  if Start <> '' then
+    F.Browser.SetRoot(Start);
+  Pump;
+end;
+
 procedure TestBrowserNavigation(F: TLedMainForm);
 var
   Dir, Sub, Start: string;
@@ -1557,7 +1646,8 @@ var
   Bmp: TBitmap;
   Img: TLazIntfImage;
   x, y, Clear, Opaque, Purple, i, Blank: Integer;
-  Leaky: string;
+  Leaky, BlankNames: string;
+  IconFile: TPicture;
   C: TFPColor;
   Hidden: TForm;
   Ed: TEdit;
@@ -1586,8 +1676,21 @@ begin
     and not from MAINICON, which the LCL hands to gtk2 with its colour
     channels striped. }
   if LedAppId = MimaAppId then
-    CheckGt('taken from the PNG beside the program, not MAINICON', 256,
-      Application.Icon.Width)
+  begin
+    { Against the file's own width rather than a number written here: the
+      fork's icon is a picture in its data directory and it has been
+      redrawn once already.  What is being checked is that *that* file is
+      what reached the application, and the only thing that could answer
+      instead is MAINICON, which is 16 pixels. }
+    IconFile := TPicture.Create;
+    try
+      IconFile.LoadFromFile(LedDataFile('mima_icon.png'));
+      CheckEqInt('taken from the PNG beside the program, not MAINICON',
+        IconFile.Width, Application.Icon.Width);
+    finally
+      IconFile.Free;
+    end;
+  end
   else
     CheckEqInt('taken from the PNG resource, not MAINICON', 256,
       Application.Icon.Width);
@@ -1666,6 +1769,7 @@ begin
   { An icon that draws nothing is a missing case branch, which is easy to
     introduce and impossible to see in a menu. }
   Blank := 0;
+  BlankNames := '';
   Bmp := TBitmap.Create;
   try
     Bmp.PixelFormat := pf32bit;
@@ -1679,7 +1783,14 @@ begin
         for y := 0 to Img.Height - 1 do
           for x := 0 to Img.Width - 1 do
             if Img.Colors[x, y].Alpha >= $4000 then Inc(Opaque);
-        if Opaque = 0 then Inc(Blank);
+        if Opaque = 0 then
+        begin
+          Inc(Blank);
+          if i <= High(LedIconNames) then
+            BlankNames := BlankNames + ' ' + LedIconNames[i]
+          else
+            BlankNames := BlankNames + ' #' + IntToStr(i);
+        end;
       finally
         Img.Free;
       end;
@@ -1687,7 +1798,7 @@ begin
   finally
     Bmp.Free;
   end;
-  CheckEqInt('no icon is blank', 0, Blank);
+  CheckEqInt('no icon is blank' + BlankNames, 0, Blank);
 
   { The state that raises is a form that is neither active nor visible-and-
     enabled: during FormCreate, and for as long as a modal dialog holds the
@@ -2712,6 +2823,17 @@ begin
   Result := DoMouseWheel([], ADelta, Point(0, 0));
 end;
 
+{ Where lapToPrompt goes while the check is watching.  A plain procedure
+  because that is what the hook is: a program with a command line sets one,
+  and an editor does not have one to set. }
+var
+  GPromptText: string = '';
+
+procedure NotePromptText(const AText: string);
+begin
+  GPromptText := AText;
+end;
+
 procedure TLedAIAskCatcher.Note(Sender: TObject; const APrompt: string;
   ATask: TLedAITask; AAttach: TLedAIAttach);
 begin
@@ -2731,7 +2853,10 @@ var
   WasAsk: TLedAIAskEvent;
   V: TLedEdit;
   R: TLedAIResult;
-  Was: string;
+  Was, State, WasPromptName: string;
+  WasPromptHook: TLedAIPromptSink;
+  B: TLedAIBubble;
+  i, Moves0, Moved: Integer;
 begin
   Say('a transform is asked for about the selected text');
 
@@ -2863,6 +2988,179 @@ begin
   CheckEq('a stale answer is not applied', Was, V.Lines.Text);
   Check('and it says why: ' + P.StatusText,
     Pos('changed', P.StatusText) > 0);
+
+  { ----------------------------------------------------------------
+    An answer being written does not lay out the conversation again for
+    every word of it.
+
+    Reported as flicker, and that is what it looked like: each delta
+    measured the answer so far -- the whole memo, wrapped -- moved every
+    bubble in the transcript whether or not it had moved, and scrolled a
+    box that was already at the bottom.  So the cost per token grew with
+    the length of the conversation, and the whole pane repainted several
+    times a second.
+
+    Counted, because "it flickers" is a claim about work and the work is
+    the only thing a check can see: three turns on screen, twenty words
+    arriving in one poll, and the number of turns moved has to be about
+    the one being written rather than about all of them.
+    ---------------------------------------------------------------- }
+  { On screen first.  A memo with no handle takes nothing through SelText
+    -- which is how the words were once kept and not shown -- so a check
+    about what is *shown* has to be able to see it. }
+  F.Dock.ShowPane('ai');
+  Pump;
+  P.Clear;
+  for i := 1 to 3 do
+  begin
+    P.TypePrompt('question ' + IntToStr(i));
+    P.PressEnter([]);
+    Pump;
+    P.BeginReply;
+    P.AddWords('answer ' + IntToStr(i));
+    R := Default(TLedAIResult);
+    P.EndReply(R);
+    Pump;
+  end;
+  CheckEqInt('three turns and three answers are on screen', 6, P.TurnCount);
+
+  P.TypePrompt('and one more');
+  P.PressEnter([]);
+  Pump;
+  P.BeginReply;
+
+  Moves0 := P.Moves;
+  P.BeginBatch;
+  for i := 1 to 20 do
+    P.AddWords('word ' + IntToStr(i) + ' ');
+  P.EndBatch;
+  Pump;
+  Moved := P.Moves - Moves0;
+  { One pass over the transcript, not twenty.  The bound is the number of
+    turns rather than a tuned constant: what is being refused is work
+    proportional to words times turns, which is what measuring the whole
+    answer and every bubble above it on every delta came to. }
+  Check('twenty words arriving together cost one pass, not twenty: ' +
+    IntToStr(Moved) + ' measures of ' + IntToStr(P.TurnCount) + ' turns',
+    (Moved > 0) and (Moved <= P.TurnCount));
+  Check('and the words are all there, on screen and not only kept',
+    (Pos('word 20', P.Turn(P.TurnCount - 1).Text) > 0) and
+    (Pos('word 20', P.Turn(P.TurnCount - 1).LiveText) > 0));
+
+  { ----------------------------------------------------------------
+    An answer longer than the pane stops growing and shows its own end.
+
+    While a turn is shorter than the pane, growing it is free: nothing
+    moves but the turn.  Once it is longer, the pane is pinned to the
+    bottom of it, so every line that wraps grows the scroll range and
+    scrolls the whole transcript up by one -- a jump at the end of every
+    line, which is what was left of the flicker after the layout work was
+    dealt with.  Past that height the box keeps its height and shows the
+    end of its text instead, the way a terminal does.
+    ---------------------------------------------------------------- }
+  for i := 1 to 400 do
+    P.AddWords('a line of an answer that goes on and on ');
+  Pump;
+  B := P.Turn(P.TurnCount - 1);
+  Check('a long answer does not grow past the pane: ' +
+    IntToStr(B.Height) + ' against a view of ' + IntToStr(P.ViewHeight),
+    B.Height <= P.ViewHeight);
+  Check('and it is showing the end of itself, not a window on the start',
+    B.BodyControl <> nil);
+
+  { Outside a batch each call still lays out at once, which is what a
+    check and a single late delta both rely on. }
+  Moves0 := P.Moves;
+  P.AddWords('late');
+  Pump;
+  { LiveText rather than ShownText: the turn being written is a box of
+    text and has not become a page yet, which is what ShownText asks
+    about. }
+  Check('a word arriving on its own is still measured at once',
+    (P.Moves > Moves0) and
+    (Pos('late', P.Turn(P.TurnCount - 1).LiveText) > 0));
+
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+
+  { ----------------------------------------------------------------
+    What the model is told about where it is.
+
+    A question like "write a script in this folder to do that" used to be
+    a question about a program the model could not see, and the answer was
+    the generic one it had to be.  The window now describes itself with
+    every turn: the folder, what is in it, what is open, which file is in
+    front and what is selected in it.
+
+    Checked on the string, because that string *is* the feature -- and
+    because a model's answer is not something a check can assert on.
+    ---------------------------------------------------------------- }
+  State := F.AIState;
+  Check('the state says what program this is',
+    Pos(LedAppName, State) > 0);
+  Check('and which folder the file list is showing',
+    Pos(F.Browser.Root, State) > 0);
+  Check('and names a file that is in it',
+    (Pos('a.c', State) > 0) or (Pos('.c', State) > 0));
+  Check('and which file is in front',
+    Pos(ExtractFileName(F.ActiveTab.Document.DisplayName), State) > 0);
+  Check('and how long it is',
+    Pos(IntToStr(V.Lines.Count) + ' lines', State) > 0);
+  Check('and says what is selected in it',
+    (Pos('selected', State) > 0) or (Pos('Nothing is selected', State) > 0));
+  Check('and how the reader attaches a file when it is needed',
+    Pos('The whole file', State) > 0);
+
+  { The task's own instructions are *not* replaced by all that: a backend
+    given a System uses it instead of the task's, so an answer that
+    explained itself would go into somebody's file. }
+  Check('a transform still carries its own instructions',
+    Pos('replacement text', LedAITaskSystem(laskProofread)) > 0);
+
+  { ---- where an answer can be sent ----
+
+    A plain editor has nowhere but its documents, so it offers no button
+    for anywhere else; a program with a command line sets the hook and the
+    name, and the button appears.  Driven here rather than clicked,
+    because what is worth checking is that the route exists and that
+    nothing travels it on its own. }
+  { A program with a command line registers one and names the button; an
+    editor has nowhere but its documents and registers neither. }
+  if LedAppId = MimaAppId then
+    Check('a program with a command line offers a button for it',
+      LedAIPromptName <> '')
+  else
+    Check('an editor with no command line offers no button for one',
+      LedAIPromptName = '');
+
+  WasPromptName := LedAIPromptName;
+  WasPromptHook := LedAIPromptHook;
+  LedAIPromptName := 'Put it somewhere';
+  LedAIPromptHook := @NotePromptText;
+  GPromptText := '';
+  try
+    P.Clear;
+    P.PickTask(laskChat);
+    P.TypePrompt('say something');
+    P.PressEnter([]);
+    Pump;
+    P.BeginReply;
+    P.AddWords('```'#10'disp(42)'#10'```');
+    R := Default(TLedAIResult);
+    P.EndReply(R);
+    Pump;
+    CheckEq('nothing has gone to the command line yet', '', GPromptText);
+    P.ApplyTurn(P.TurnCount - 1, lapToPrompt);
+    Pump;
+    CheckEq('and when it is sent, it arrives unfenced',
+      'disp(42)', Trim(GPromptText));
+  finally
+    { Put back what was there, which in the fork is the fork's own: nilling
+      it would leave the rest of the run with a button that goes nowhere. }
+    LedAIPromptHook := WasPromptHook;
+    LedAIPromptName := WasPromptName;
+  end;
 
   P.Clear;
   P.PickTask(laskChat);
@@ -3060,6 +3358,7 @@ var
   B: TLedAIBubble;
   R: TLedAIResult;
   D: TLedAIDelta;
+  Line: Integer;
 begin
   Say('what the model thought is kept, and can be read');
 
@@ -3103,8 +3402,111 @@ begin
   Check('and then it is', B.ThinkingShown);
   B.ShowThinking(False);
   Pump;
+
+  { And where it can be read.
+
+    The working is the last thing in a turn, so on a transcript long
+    enough to scroll it opens below the fold and pressing the button looks
+    like nothing happening -- which is how it was reported.  Long enough
+    to scroll is the whole of the check: with three turns in a tall pane
+    everything is in view whatever the button does. }
+  F.Dock.ShowPane('ai');
+  Pump;
+  for Line := 1 to 12 do
+  begin
+    P.Ask('a question long enough to take a line or two of the pane, ' +
+          'number ' + IntToStr(Line));
+    Pump;
+  end;
+  P.BeginReply;
+  D.Kind := ladThinking;
+  D.Text := 'Working that is long enough to push the end of the turn ' +
+            'below the bottom of the pane when it is shown, which is the ' +
+            'case that was reported.';
+  P.AddDelta(D);
+  D.Kind := ladText;
+  D.Text := 'The answer.';
+  P.AddDelta(D);
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+  P.ScrollToBottom;
+  Pump;
+
+  B := P.Turn(P.TurnCount - 1);
+  Check('a long transcript scrolls', P.ViewTop > 0);
+  B.ShowThinking(True);
+  Pump;
+  Check('and the working opens where it can be read: bottom ' +
+    IntToStr(B.Top + B.Height) + ' against a view ending at ' +
+    IntToStr(P.ViewTop + P.ViewHeight),
+    B.Top + B.Height <= P.ViewTop + P.ViewHeight + 1);
+  B.ShowThinking(False);
+  Pump;
+
+  { And again with a turn taller than the pane, which is the ordinary case
+    for a model that thinks at length: the rule that keeps a short turn's
+    top in view must not put the reader back at the top of a long one with
+    the working they just asked for still off the screen. }
+  P.BeginReply;
+  D.Kind := ladText;
+  for Line := 1 to 40 do
+    P.AddDelta(D);
+  D.Kind := ladThinking;
+  D.Text := 'And a page of working underneath all of that.';
+  P.AddDelta(D);
+  R := Default(TLedAIResult);
+  P.EndReply(R);
+  Pump;
+  P.ScrollToBottom;
+  Pump;
+
+  B := P.Turn(P.TurnCount - 1);
+  Check('a turn can be taller than the pane', B.Height > P.ViewHeight);
+  B.ShowThinking(True);
+  Pump;
+  Check('and its working still opens where it can be read: bottom ' +
+    IntToStr(B.Top + B.Height) + ' against a view ending at ' +
+    IntToStr(P.ViewTop + P.ViewHeight),
+    B.Top + B.Height <= P.ViewTop + P.ViewHeight + 1);
+  B.ShowThinking(False);
+  Pump;
   Check('and can be put away again', not B.ThinkingShown);
   P.Clear;
+end;
+
+{ A model that has no working to show is not an error.
+
+  ollama answers `"<model>" does not support thinking` -- a hard failure,
+  not a quieter answer -- for a model with none, which is why asking was
+  off by default and why nobody ever saw the button.  It is asked for now,
+  and that one refusal is answered by asking again without it. }
+procedure TestAModelThatCannotThinkIsStillAsked(F: TLedMainForm);
+var
+  Body: string;
+  R: TLedAIRequest;
+  Chat: TLedAIChat;
+begin
+  Say('thinking is asked for, and refused gracefully');
+
+  Chat := TLedAIChat.Create;
+  try
+    R := Default(TLedAIRequest);
+    R.Instruction := 'say hi';
+    Body := LedAIOllamaChatBody('qwen3', Chat, R, True);
+    Check('the request asks the model to think', Pos('"think":true', 
+      StringReplace(Body, ' ', '', [rfReplaceAll])) > 0);
+    Body := LedAIOllamaChatBody('qwen3', Chat, R, False);
+    Check('and says so plainly when it does not',
+      Pos('"think":false', StringReplace(Body, ' ', '', [rfReplaceAll])) > 0);
+  finally
+    Chat.Free;
+  end;
+
+  { The preference now means "ask", and it is the default: a reader should
+    not have to find a setting to see why an answer says what it says. }
+  Check('thinking is asked for unless the reader turns it off',
+    LedPrefs.GetBool(LedPrefAIOllamaThink, True));
 end;
 
 { An answer worth keeping usually does not belong in the file being edited. }
@@ -5223,8 +5625,9 @@ var
   TabForIcon: TLedTab;
   HintRect: TRect;
   Root, Node: TTreeNode;
-  RootRaised, BrowseDir, Names, Kinds, LinkDir, LinkPath: string;
-  EditH, i, x, Tabs0, Tabs1: Integer;
+  RootRaised, BrowseDir, Names, Kinds, LinkDir, LinkPath, Leaky: string;
+  EditH, i, x, Tabs0, Tabs1, J: Integer;
+  Seen: Boolean;
   SavedOpen: TLedOpenFileEvent;
   Catcher: TBrowserOpenCatcher;
   Pane: TLedPaneForm;
@@ -5384,6 +5787,26 @@ begin
   Check('while Save now comes from artwork instead',
     LedIconArtwork('save') <> '');
 
+  { ----------------------------------------------------------------
+    The two lists agree with each other and with the directory.
+
+    There are three places a name has to appear -- the canonical list, the
+    artwork list, and data/icons -- and getting two of the three right is
+    how four icons came out blank: they were in the canonical list, they
+    had files, and nothing had added them to the artwork list, so the
+    drawn path was asked for a case branch that does not exist.
+    ---------------------------------------------------------------- }
+  Leaky := '';
+  for i := 0 to High(LedArtworkNames) do
+  begin
+    if LedIconIndex(LedArtworkNames[i]) < 0 then
+      Leaky := Leaky + ' ' + LedArtworkNames[i] + '(not an icon name)';
+    if LedIconArtwork(LedArtworkNames[i]) = '' then
+      Leaky := Leaky + ' ' + LedArtworkNames[i] + '(no file)';
+  end;
+  CheckEq('every painted icon is a name the program can ask for, and is ' +
+    'on disk:' + Leaky, '', Leaky);
+
   { The fallback page too.  Drawn in the caller's ink it came out black, and
     the file tree is painted in the editor's colours -- so on a dark scheme
     an unrecognised file was a page-shaped hole.  A mid grey reads on both:
@@ -5396,6 +5819,26 @@ begin
     Round(10 * LedContrastRatio(LedIconAccent('doc'), clWhite)));
   CheckGt('and it is drawn in it', 0,
     IconColourCount('doc', LedIconAccent('doc')));
+
+  { The painted page is a different icon with a different job: the editor
+    pane's rail button, among other painted ones.  They were one name, and
+    painting it put a coloured page in among the drawn ones in the tree. }
+  Check('the painted page is its own icon', LedIconArtwork('files') <> '');
+  Check('and the tree''s fallback is still the drawn one',
+    LedIconArtwork('doc') = '');
+
+  { The two languages the set has a logo for.  A file list in a MATLAB
+    environment is mostly .m files. }
+  {$IFDEF MIMA}
+  CheckEq('a .m file is shown as MATLAB''s', 'matlab',
+    LedIconForFile('script.m'));
+  {$ELSE}
+  CheckEq('a .m file is a source page in LED (the logo is the MATLAB fork''s)', 'filesource',
+    LedIconForFile('script.m'));
+  {$ENDIF}
+  CheckEq('and a .py as python''s', 'python', LedIconForFile('script.py'));
+  CheckEq('while a .c is still the source page', 'filesource',
+    LedIconForFile('main.c'));
 
   { One extension table, in Led.UI.Icons, so the tree and the tab headers
     cannot disagree about what a file is. }
@@ -5557,6 +6000,70 @@ begin
     Catcher.Free;
   end;
 
+  { ----------------------------------------------------------------
+    A file dragged out of the list and dropped on the editor opens as a
+    file.
+
+    Which is the way back from everything a program built on this editor
+    may do with a name instead: the MATLAB fork reads a .pmat into its
+    workspace and shows a picture in its figures pane, and without this
+    there would be no way left to ask for the thing an editor is for.  The
+    drop passes the same ARaw the Open dialog passes.
+
+    Driven through the two handlers the LCL calls, because what is worth
+    checking is what the drag *means* -- the pointer is the LCL's business
+    and it has its own tests.
+    ---------------------------------------------------------------- }
+  Node := F.Browser.Tree.Items.GetFirstNode;
+  while (Node <> nil) and
+        (ExtractFileName(F.Browser.Tree.GetPathFromNode(Node)) <> 'a.c') do
+    Node := Node.GetNext;
+  if Node <> nil then
+  begin
+    Node.Selected := True;
+    Pump;
+    Check('the file list says what a drag out of it carries',
+      ExtractFileName(F.Browser.DraggedFile) = 'a.c');
+
+    Seen := False;
+    F.EditorDragOver(F.Notebook, F.Browser.DragSource, 10, 10, dsDragMove,
+      Seen);
+    Check('and the editor area takes that drag', Seen);
+
+    Seen := True;
+    F.EditorDragOver(F.Notebook, F.Notebook, 10, 10, dsDragMove, Seen);
+    Check('but not a drag from somewhere else', not Seen);
+
+    { A folder carries nothing: dropping one on the editor would have to
+      mean something, and there is nothing it could usefully mean. }
+    Node := F.Browser.Tree.Items.GetFirstNode;
+    while (Node <> nil) and
+          not DirectoryExists(F.Browser.Tree.GetPathFromNode(Node)) do
+      Node := Node.GetNext;
+    if Node <> nil then
+    begin
+      Node.Selected := True;
+      Pump;
+      Check('a folder carries nothing', F.Browser.DraggedFile = '');
+      Seen := True;
+      F.EditorDragOver(F.Notebook, F.Browser.DragSource, 10, 10,
+        dsDragMove, Seen);
+      Check('so the editor does not take it', not Seen);
+    end;
+  end;
+
+  { ---- a picture is shown, not read as bytes ----
+
+    Asked of the LCL's register of graphic formats rather than a list
+    written here, so that a build with more image units linked in reads
+    more of them and this still answers for it. }
+  Check('a .png is a picture this build can read',
+    LedIsPictureFile('somewhere' + PathDelim + 'a.png'));
+  Check('and a .bmp', LedIsPictureFile('a.bmp'));
+  Check('a .pas is not', not LedIsPictureFile('a.pas'));
+  Check('and neither is a name with no extension at all',
+    not LedIsPictureFile('Makefile'));
+
   { Opening a file that is already open goes to its tab instead of reading it
     again -- which would be bad enough for the parse and worse for a file with
     unsaved edits in it. }
@@ -5631,11 +6138,34 @@ begin
   { The navigation row only -- the breadcrumb trail below it is made of
     speed buttons as well, so counting them by class across the pane finds
     both and answers eight. }
-  CheckEqInt('six buttons on the row: four to navigate, two to create', 6,
+  CheckEqInt('seven buttons on the row: four to navigate, two to create, one to refresh', 7,
     F.Browser.NavButtonCount);
   Check('every row got a picture', Pos('-1', Kinds) = 0);
   Check('and so are the files', (Pos('a.c ', Names) > 0) and
     (Pos('b.md ', Names) > 0) and (Pos('e.o ', Names) > 0));
+
+  { A file made behind the pane's back -- by another program, by the engine
+    -- shows without a refresh asked for: the pane watches its folders. }
+  with TStringList.Create do
+  try
+    Add('new');
+    SaveToFile(BrowseDir + PathDelim + 'zz_new.txt');
+  finally
+    Free;
+  end;
+  Seen := False;
+  for I := 1 to 60 do
+  begin
+    Pump;
+    Sleep(50);
+    for J := 0 to F.Browser.Tree.Items.Count - 1 do
+      if F.Browser.Tree.Items[J].Text = 'zz_new.txt' then
+        Seen := True;
+    if Seen then
+      Break;
+  end;
+  Check('a file made on disk shows in the tree by itself', Seen);
+  DeleteFile(BrowseDir + PathDelim + 'zz_new.txt');
 
   { 0 folder, 1 source, 2 text, 3 markdown, 4 pdf, 5 image, 6 binary. }
   CheckEqInt('a folder gets the folder icon', 0,
@@ -9182,8 +9712,8 @@ begin
       not B.Editor.HighlightWord.Enabled);
 
 {$IFDEF MIMA}
-  { ---- and a cell that says nothing is matlab ---- }
-  CheckEq('a cell in a notebook that names no language is matlab', 'matlab',
+  { ---- and a cell that says nothing is MATLAB ---- }
+  CheckEq('a cell in a notebook that names no language is MATLAB', 'matlab',
     LedNBCellLanguage('x = 1', ''));
   CheckEq('and so is one in a notebook for the mima kernel', 'matlab',
     LedNBCellLanguage('x = 1', 'mima'));
@@ -10900,7 +11430,7 @@ begin
   Doc := Tab.Document;
   Check('the document is untitled', Doc.IsUntitled);
 {$IFDEF MIMA}
-  { one word in the matlab IDE, where a file's name is the name it is called by }
+  { one word in the MATLAB IDE, where a file's name is the name it is called by }
   CheckEq('and is called Untitled1', 'Untitled1', Doc.DisplayName);
 {$ELSE}
   CheckEq('and is called Untitled 1', 'Untitled 1', Doc.DisplayName);
@@ -11073,6 +11603,7 @@ end;
 procedure TestSpeedButtonHover(F: TLedMainForm);
 var
   N, I: Integer;
+  State: string;
 begin
   Say('hover on the hand-built toolbars');
 
@@ -11112,6 +11643,38 @@ begin
     About LED whatever the program was called. }
   Check('the About item names this program',
     Pos(LedAppName, F.actAbout.Caption) > 0);
+
+  { ----------------------------------------------------------------
+    And what About says.
+
+    It was five lines -- the name, the version, "In the shape of medit",
+    the toolkit -- so the one place in the program for answering "what is
+    this?" answered almost none of it.  Checked on the text rather than
+    the dialog, because the text is the thing: a claim about a licence or
+    about somebody else's work that has gone stale is worse than no claim,
+    and it goes stale quietly.
+    ---------------------------------------------------------------- }
+  State := LedAboutText;
+  Check('About says whose it is', Pos(LedAppAuthor, State) > 0);
+  Check('and under what licence',
+    (Pos('GPL-3.0-or-later', State) > 0) and (Pos('NO WARRANTY', State) > 0));
+  Check('and that it is this program it is talking about',
+    Pos(LedAppName + ' is free software', State) > 0);
+  Check('it names what the program is built with',
+    (Pos('Free Pascal', State) > 0) and (Pos('Lazarus LCL', State) > 0) and
+    (Pos('SynEdit', State) > 0));
+  Check('with the versions it was actually built against, not a guess',
+    (Pos({$I %FPCVERSION%}, State) > 0) and (Pos(laz_version, State) > 0));
+  Check('it lists the work it ships that belongs to other people',
+    (Pos('GtkSourceView', State) > 0) and (Pos('Fira Code', State) > 0) and
+    (Pos('SCOWL', State) > 0));
+  Check('and says each of them keeps its own licence',
+    (Pos('LGPL-2.1-or-later', State) > 0) and
+    (Pos('SIL Open Font License', State) > 0));
+  Check('it credits medit, and says what was and was not taken',
+    (Pos('medit', State) > 0) and (Pos('no medit source', State) > 0));
+  Check('and it says where the source is',
+    Pos(LedAppHome, State) > 0);
 
   F.Dock.HidePane('files');
   Pump;
@@ -13559,9 +14122,9 @@ end;
 { gdb is the subject of TestDebugger, so gdb is what drives it.
 
   The verbs of the Debug menu, of the toolbar and of the Debugger pane's own
-  buttons all go through one hook a backend may claim -- and the matlab fork
+  buttons all go through one hook a backend may claim -- and the MATLAB fork
   claims it, because its interpreter is already in this process.  With that
-  hook in place the pane's Start button started a matlab run and its
+  hook in place the pane's Start button started a MATLAB run and its
   Breakpoint button set a breakpoint in the engine, so two checks about a
   gdb session failed while both programs were behaving exactly as intended.
 
@@ -15484,6 +16047,7 @@ begin
   TestXErrorSurvival(F);
   TestTerminalPaneAndSession(F);
   TestBrowserNavigation(F);
+  TestBrowserTypeAhead(F);
   TestTabReordering(F);
   TestSaveTheRightDocument(F);
   TestRememberedState(F);
@@ -15506,6 +16070,7 @@ begin
   WithNoModelBehindIt(F, @TestTheReadersOwnWordsAreShown);
   WithNoModelBehindIt(F, @TestTheStatusSitsAboveWhereYouType);
   WithNoModelBehindIt(F, @TestThinkingIsKeptAndCanBeRead);
+  TestAModelThatCannotThinkIsStillAsked(F);
   WithNoModelBehindIt(F, @TestAnAnswerCanBecomeADocumentOfItsOwn);
   WithNoModelBehindIt(F, @TestTheApplyButtonNamesWhatItWillDo);
   WithNoModelBehindIt(F, @TestClearingWhileItThinksLeavesItReady);
@@ -15530,8 +16095,8 @@ begin
   WriteLn;
 
   {$IFDEF MIMA}
-  { The matlab engine, its command window and its workspace browser. }
-  Say('the matlab engine');
+  { The MATLAB engine, its command window and its workspace browser. }
+  Say('the MATLAB engine');
   MimaSelfTest(@Check);
   WriteLn;
   {$ENDIF}

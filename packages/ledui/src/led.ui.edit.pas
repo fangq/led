@@ -276,7 +276,7 @@ type
     property CurrentLineRow: Integer read FCurrentLineRow;
     { The tint behind a line whose block is folded shut.  Set from the theme
       by the document, as the guide colour is. }
-    { Sections, as matlab's %% marks them.  A line whose first text is the
+    { Sections, as MATLAB's %% marks them.  A line whose first text is the
       marker begins one, which runs to the next such line or to the end.
       The section holding the caret is tinted and every header gets a rule
       above it; '' (the default) turns the whole thing off. }
@@ -1190,7 +1190,7 @@ begin
   QueueRepaint;
 end;
 
-{ A rule across the top of every header line, the division matlab draws
+{ A rule across the top of every header line, the division MATLAB draws
   between one section and the next. }
 procedure TLedEdit.DrawSectionRules;
 var
