@@ -65,7 +65,7 @@ uses
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
   Controls,
-  PairSplitter, LCLProc;
+  PairSplitter, LCLProc{$IFDEF LED_PARADE_SYNC}, paraderelay, paradetextsync, Led.UI.Collab{$ENDIF};
 
 type
   { The gtk widget behind each menu item, watched for being replaced. }
@@ -15545,6 +15545,121 @@ begin
   end;
 end;
 
+{$IFDEF LED_PARADE_SYNC}
+function TabText(T: TLedTab): string;
+begin
+  Result := T.Document.Master.Lines.Text;
+end;
+
+{ Pumped until the two tabs hold the same text, or ASeconds go by. }
+function TabsAgree(A, B: TLedTab; ASeconds: Integer): Boolean;
+var
+  T0: QWord;
+begin
+  T0 := GetTickCount64;
+  repeat
+    Pump;
+    if TabText(A) = TabText(B) then
+      Exit(True);
+    Sleep(20);
+  until GetTickCount64 - T0 > QWord(ASeconds) * 1000;
+  Result := TabText(A) = TabText(B);
+  if not Result then
+    WriteLn('    A: ', StringReplace(TabText(A), LineEnding, '|', [rfReplaceAll]), LineEnding,
+      '    B: ', StringReplace(TabText(B), LineEnding, '|', [rfReplaceAll]));
+end;
+{$ENDIF}
+
+{ Two text tabs sharing one buffer through a relay run in this process: what
+  one types the other gets, characters of every width, its own undo only. }
+procedure TestSharedText(F: TLedMainForm);
+{$IFDEF LED_PARADE_SYNC}
+var
+  Relay: TParadeRelay;
+  A, B: TLedTab;
+  SA, SB: TLedTextSession;
+  Url, Secret: string;
+  T0: QWord;
+begin
+  Say('a shared text');
+  Secret := 'led-selftest-not-a-secret-0123456789';
+  Relay := TParadeRelay.Create(nil);
+  try
+    Relay.Secret := Secret;
+    Relay.DbFile := TempName('relay.sqlite');
+    Relay.Host := '127.0.0.1';
+    Relay.Port := 20000 + Random(20000);
+    Check('a relay runs in LED', Relay.Start);
+    if not Relay.Active then
+      Exit;
+    Url := Format('http://127.0.0.1:%d', [Relay.Port]);
+
+    A := F.AddTab(F.Documents.NewDocument);
+    A.Document.Master.Lines.Text := 'program hello;' + LineEnding + 'begin' + LineEnding + 'end.';
+    SA := TLedTextSession.Ensure(A);
+    Check('one tab shares its text', SA.Collab.Sync.Start(Url, 'hello.pas',
+      ParadeMakeToken(Secret, 'Ann', 'hello.pas', 'editor', 1), 'Ann', True));
+
+    B := F.AddTab(F.Documents.NewDocument);
+    SB := TLedTextSession.Ensure(B);
+    Check('another joins it', SB.Collab.JoinWith(Url, 'hello.pas',
+      ParadeMakeToken(Secret, 'Bob', 'hello.pas', 'editor', 1), 'Bob'));
+    Check('and gets the text', TabsAgree(A, B, 15));
+    Check('which is the one shared', Pos('program hello;', TabText(B)) = 1);
+    Check('the relay holds a text', ParadeRelayKind(Url, 'hello.pas',
+      ParadeMakeToken(Secret, 'Ann', 'hello.pas', 'editor', 1)) = 'text');
+
+    { Ann types a line in }
+    A.ActiveView.CaretXY := Point(1, 3);
+    A.ActiveView.InsertTextAtCaret('  WriteLn(''hi'');' + LineEnding);
+    Check('what one types the other gets', TabsAgree(A, B, 15) and (Pos('WriteLn', TabText(B)) > 0));
+
+    { both at once, with characters of two, three and four bytes }
+    B.ActiveView.CaretXY := Point(15, 1);
+    B.ActiveView.InsertTextAtCaret(' { ünï 漢字 😀 }');
+    A.ActiveView.CaretXY := Point(4, 4);
+    A.ActiveView.InsertTextAtCaret(' { the end }');
+    Check('edits at once end up the same', TabsAgree(A, B, 15));
+    Check('with every character whole', (Pos('漢字 😀', TabText(A)) > 0) and (Pos('the end', TabText(B)) > 0));
+
+    { Bob's undo takes back Bob's edit, not Ann's }
+    T0 := GetTickCount64;
+    while GetTickCount64 - T0 < 700 do
+    begin
+      Pump;
+      Sleep(20);
+    end;
+    B.ActiveView.CommandProcessor(ecUndo, '', nil);
+    Check('undo is one''s own', TabsAgree(A, B, 15) and (Pos('😀', TabText(A)) = 0) and
+      (Pos('the end', TabText(A)) > 0) and (Pos('WriteLn', TabText(A)) > 0));
+
+    { Ann's caret in Bob's view }
+    T0 := GetTickCount64;
+    repeat
+      Pump;
+      Sleep(20);
+    until (SB.Target.PeerCaretCount > 0) or (GetTickCount64 - T0 > 15000);
+    Check('the other''s caret is drawn', SB.Target.PeerCaretCount > 0);
+    Check('the status bar says it is shared', SB.Collab.StatusText <> '');
+
+    SA.Collab.Leave;
+    Check('one can leave', not SA.Collab.Active and SB.Collab.Active);
+    A.Document.Master.Modified := False;
+    B.Document.Master.Modified := False;
+    F.CloseActiveTab(False);    { B, the last made, closed still in the session }
+    Pump;
+    Check('and a tab closes in one', F.Notebook.ActivePage <> nil);
+    F.CloseActiveTab(False);
+    Pump;
+  finally
+    Relay.Free;
+  end;
+end;
+{$ELSE}
+begin
+end;
+{$ENDIF}
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -16178,6 +16293,7 @@ begin
   TestDropFiles(F);
   WriteLn;
   TestVisualEditor(F);
+  TestSharedText(F);
   WriteLn;
   TestSplitterMinimums(F);
   WriteLn;

@@ -209,6 +209,26 @@ Code) and bold, italic and underline (`Ctrl+B`/`I`/`U`).
 The visual editor is built in when a Parade checkout sits beside LED
 (`../Parade`); see [Build from source](#build-from-source).
 
+### Editing together
+
+**File ▸ Share / Host / Invite / Leave** share the document in front with
+other LEDs, live: each sees the others' typing as it happens, their carets
+and selections in their colours, and `Ctrl+Z` takes back only one's own
+edits. It works for any text tab (code, notes, a Makefile) as well as for
+the visual editor's pages.
+
+- **Host** runs the relay inside this LED and shows an invitation link per
+  role (editor, commenter, viewer) to send to the others; **Share** uses a
+  relay someone else runs.
+- **File ▸ Join Shared Document** takes a link. A shared text opens in a new
+  text tab, coloured as its name says (`hello.pas` is Pascal); a shared Word
+  document opens as pages.
+- What is typed while the network is down is kept, on disk too, and sent
+  when it comes back. The status bar says how the session is doing and who
+  else is there.
+
+Needs Parade built with its yrs library (`make SYNC=yrs` in Parade).
+
 ### Jupyter notebooks
 
 A `.ipynb` file opens as a notebook, not as JSON. **View ▸ Notebook Cells**
