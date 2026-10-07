@@ -149,6 +149,10 @@ type
     FNavList: TListBox;
     FNavSplitter: TSplitter;
     FNavTimer: TTimer;
+    FFitWidth: Boolean;         { the zoom follows the width of the view (Page width), until another is chosen }
+    FFitZoom: Double;           { the zoom it last set: another one found means Ctrl+wheel chose it }
+    procedure FitWidth;
+    procedure EditResized(Sender: TObject);
     procedure BuildReferences;
     procedure TocItemClicked(Sender: TObject);
     procedure CaptionItemClicked(Sender: TObject);
@@ -468,6 +472,8 @@ begin
   AddFonts(FEdit);
   FEdit.OnChange := @EditChanged;
   FEdit.OnSelectionChange := @SelectionChanged;
+  FEdit.OnResize := @EditResized;
+  FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
 
   AddTab('Home');
@@ -911,6 +917,7 @@ begin
   RefreshStyles;
   if not FStyle.DroppedDown then
     FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
+  FitWidth;     { the paper may have changed (landscape, another size) }
   ShowZoom;
   { the Layout tab's boxes and menus }
   FUpdating := True;
@@ -1871,6 +1878,30 @@ begin
   FNavTimer.OnTimer := @NavTimerFired;
 end;
 
+{ the page as wide as the view, while that is the zoom the reader has; a zoom chosen another way ends it }
+procedure TLedVisualPane.FitWidth;
+var
+  Z: Double;
+begin
+  if not FFitWidth or (FEdit = nil) or (FEdit.PageCount = 0) or (FEdit.ClientWidth < 50) then Exit;
+  if (FFitZoom <> 0) and (Abs(FEdit.Zoom - FFitZoom) > 1e-6) then
+  begin   { Ctrl+wheel moved it }
+    FFitWidth := False;
+    Exit;
+  end;
+  Z := FEdit.PageWidthZoom;
+  if Z <= 0 then Exit;
+  FEdit.Zoom := Z;
+  FFitZoom := FEdit.Zoom;     { as the editor kept it, within its limits }
+  if FZoomBox <> nil then
+    ShowZoom;
+end;
+
+procedure TLedVisualPane.EditResized(Sender: TObject);
+begin
+  FitWidth;
+end;
+
 procedure TLedVisualPane.ShowZoom;
 begin
   if not FZoomBox.Focused then
@@ -1886,8 +1917,10 @@ begin
     S := FZoomBox.Items[FZoomBox.ItemIndex]
   else
     S := Trim(FZoomBox.Text);
-  if S = 'Page width' then
-    FEdit.Zoom := FEdit.PageWidthZoom
+  FFitWidth := S = 'Page width';
+  FFitZoom := 0;
+  if FFitWidth then
+    FitWidth
   else if S = 'Whole page' then
     FEdit.Zoom := FEdit.WholePageZoom
   else if TryStrToFloat(Trim(StringReplace(S, '%', '', [])), V) and (V >= 10) and (V <= 600) then
@@ -1915,6 +1948,7 @@ end;
 
 procedure TLedVisualPane.ZoomInClicked(Sender: TObject);
 begin
+  FFitWidth := False;
   FEdit.Zoom := FEdit.Zoom * 1.25;
   ShowZoom;
   BackToPage;
@@ -1922,6 +1956,7 @@ end;
 
 procedure TLedVisualPane.ZoomOutClicked(Sender: TObject);
 begin
+  FFitWidth := False;
   FEdit.Zoom := FEdit.Zoom / 1.25;
   ShowZoom;
   BackToPage;
@@ -2017,6 +2052,9 @@ begin
   end;
   FKind := AKind;
   Result := True;
+  {$IFDEF LED_PARADE}
+  FitWidth;
+  {$ENDIF}
   {$ELSE}
   AWhy := 'this LED was built without Parade, the visual editor';
   {$ENDIF}
