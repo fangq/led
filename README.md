@@ -7,7 +7,7 @@
 [![CI](https://github.com/fangq/led/actions/workflows/ci.yml/badge.svg)](https://github.com/fangq/led/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3--or--later-blue.svg)](#license)
 
-- **Copyright**: (C) Qianqian Fang (2026) \<q.fang at neu.edu>
+- **Copyright**: (C) Qianqian Fang (2026) \<fangqq at fanglab.org>
 - **License**: GNU General Public License, version 3 or later
 - **Version**: 0.5.0-dev
 - **GitHub**: <https://github.com/fangq/led>

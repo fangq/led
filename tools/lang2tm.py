@@ -428,7 +428,18 @@ class Converter:
                 suffix = r'\b'
             else:
                 suffix = convert_pattern(suffix, lang.defines, ext, not ci)
-            words = [re.escape(text_of(k)) for k in kws if text_of(k)]
+            # each keyword is a pattern to GtkSourceView, not literal text:
+            # octave.lang's (u)?int(8|16|32|64) matched int8 there and,
+            # escaped here, nothing at all
+            words = []
+            for k in kws:
+                w = text_of(k)
+                if not w:
+                    continue
+                if re.fullmatch(r'\w+', w):
+                    words.append(w)
+                else:
+                    words.append('(?:%s)' % convert_pattern(w, lang.defines, ext, not ci))
             if not words:
                 return None
             body = '%s(?:%s)%s' % (prefix, '|'.join(words), suffix)
@@ -553,7 +564,7 @@ class Converter:
 # so a table here is faithful rather than a shortcut.  TextMate expresses
 # folding as a pair of line regexes, which covers braces and end-keywords but
 # cannot express indentation folding -- Python and YAML get none, as noted in
-# PARITY.md.
+# PARITY_LED.md.
 BRACE_FOLD = {
     'c', 'chdr', 'cpp', 'cpphdr', 'objc', 'csharp', 'java', 'js', 'json',
     'css', 'scss', 'less', 'php', 'perl', 'awk', 'go', 'rust', 'scala',

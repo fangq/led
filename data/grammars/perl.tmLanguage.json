@@ -958,7 +958,7 @@
      },
      "patterns": [
       {
-       "match": "\\b(?:attributes|autodie|autouse|base|bigint|bignum|bigrat|blib|bytes|charnames|constant|diagnostics|encoding|feature|fields|fileset|if|integer|less|lib|locale|mro|open|ops|overload|overloading|parent|re|sigtrap|sort|strict|subs|threads|threads::shared|utf8|vars|vmish|warnings|warnings::register)\\b",
+       "match": "\\b(?:attributes|autodie|autouse|base|bigint|bignum|bigrat|blib|bytes|charnames|constant|diagnostics|encoding|feature|fields|fileset|if|integer|less|lib|locale|mro|open|ops|overload|overloading|parent|re|sigtrap|sort|strict|subs|threads|(?:threads::shared)|utf8|vars|vmish|warnings|(?:warnings::register))\\b",
        "name": "def.preprocessor"
       },
       {

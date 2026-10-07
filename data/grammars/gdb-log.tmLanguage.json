@@ -60,11 +60,11 @@
    },
    "patterns": [
     {
-     "match": "\\b(?:value\\ optimized\\ out)\\b",
+     "match": "\\b(?:(?:value optimized out))\\b",
      "name": "def.special-constant"
     },
     {
-     "match": "\\b(?:incomplete\\ sequence)\\b",
+     "match": "\\b(?:(?:incomplete sequence))\\b",
      "name": "def.special-constant"
     },
     {
@@ -101,11 +101,11 @@
    },
    "patterns": [
     {
-     "match": "\\b(?:value\\ optimized\\ out)\\b",
+     "match": "\\b(?:(?:value optimized out))\\b",
      "name": "def.special-constant"
     },
     {
-     "match": "\\b(?:incomplete\\ sequence)\\b",
+     "match": "\\b(?:(?:incomplete sequence))\\b",
      "name": "def.special-constant"
     },
     {

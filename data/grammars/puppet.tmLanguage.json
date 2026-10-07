@@ -193,7 +193,7 @@
      "name": "def.type"
     },
     {
-     "match": "\\b(?:absent|access|all|allow|auto|current|daily|deny|directory|discard|distance|dot1q|evaluate\\-mechanisms|exclusive|false|file|first|fletcher2|fletcher4|full|follow|groupmask|gzip|gzip\\-1|gzip\\-2|gzip\\-3|gzip\\-4|gzip\\-5|gzip\\-6|gzip\\-7|gzip\\-8|gzip\\-9|half|held|hidden|hourly|inclusive|inf|installed|isl|keep|latest|latency|legacy|link|lzjb|manage|manual|metadata|minimum|monthly|mounted|never|no|noallow|noauto|none|notlink|no_shutdown|number|off|on|once|on_failure|packages|passthrough|passthrough\\-x|present|priority|purged|remote|restricted|right|role|roundrobin|running|shared|sha256|shutdown|ssh\\-dss|ssh\\-rsa|stopped|throughput|true|trunk|unmounted|visible|weekly|yes|zle)\\b",
+     "match": "\\b(?:absent|access|all|allow|auto|current|daily|deny|directory|discard|distance|dot1q|(?:evaluate-mechanisms)|exclusive|false|file|first|fletcher2|fletcher4|full|follow|groupmask|gzip|(?:gzip-1)|(?:gzip-2)|(?:gzip-3)|(?:gzip-4)|(?:gzip-5)|(?:gzip-6)|(?:gzip-7)|(?:gzip-8)|(?:gzip-9)|half|held|hidden|hourly|inclusive|inf|installed|isl|keep|latest|latency|legacy|link|lzjb|manage|manual|metadata|minimum|monthly|mounted|never|no|noallow|noauto|none|notlink|no_shutdown|number|off|on|once|on_failure|packages|passthrough|(?:passthrough-x)|present|priority|purged|remote|restricted|right|role|roundrobin|running|shared|sha256|shutdown|(?:ssh-dss)|(?:ssh-rsa)|stopped|throughput|true|trunk|unmounted|visible|weekly|yes|zle)\\b",
      "name": "def.type"
     },
     {

@@ -58,11 +58,11 @@
    ]
   },
   {
-   "match": "\\b(?:%f|%F|%t|%T)\\b",
+   "match": "\\b(?:(?:%f)|(?:%F)|(?:%t)|(?:%T))\\b",
    "name": "def.boolean"
   },
   {
-   "match": "\\b(?:%pi|%eps|%inf|%nan|%e|%i|%z|%s)\\b",
+   "match": "\\b(?:(?:%pi)|(?:%eps)|(?:%inf)|(?:%nan)|(?:%e)|(?:%i)|(?:%z)|(?:%s))\\b",
    "name": "def.special-constant"
   },
   {

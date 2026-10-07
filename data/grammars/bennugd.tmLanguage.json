@@ -197,11 +197,11 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:bigbro|father|frame_percent|id|process_type|reserved|reserved\\.frame_percent|reserved\\.process_type|reserved\\.saved_priority|reserved\\.saved_status|reserved\\.status|saved_priority|saved_status|smallbro|status|son)\\b",
+   "match": "\\b(?:bigbro|father|frame_percent|id|process_type|reserved|(?:reserved.frame_percent)|(?:reserved.process_type)|(?:reserved.saved_priority)|(?:reserved.saved_status)|(?:reserved.status)|saved_priority|saved_status|smallbro|status|son)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "(?<!(?:[-!+\\\\|=:&><]))(?:==|!=|!|<|>|<=|>=|\\&\\&|\\&|=|\\|\\||\\||\\^\\^|\\^)(?!(?:[-!+\\\\|=:&><]))",
+   "match": "(?<!(?:[-!+\\\\|=:&><]))(?:(?:==)|(?:!=)|(?:!)|(?:<)|(?:>)|(?:<=)|(?:>=)|(?:&&)|(?:&)|(?:=)|(?:||)|(?:|)|(?:^^)|(?:^))(?!(?:[-!+\\\\|=:&><]))",
    "name": "def.operator"
   },
   {

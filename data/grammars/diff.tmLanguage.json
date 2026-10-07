@@ -31,7 +31,7 @@
    ]
   },
   {
-   "match": "^(?:Only\\ in\\ \\.\\*|Files\\ \\.\\*\\ and\\ \\.\\*\\ are\\ identical\\$|Files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|Binary\\ files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|File\\ \\.\\*\\ is\\ a\\ \\.\\*\\ while\\ file\\ \\.\\*\\ is\\ a\\ \\.\\*|No\\ newline\\ at\\ end\\ of\\ file\\ \\.\\*)\\b",
+   "match": "^(?:(?:Only in .*)|(?:Files .* and .* are identical$)|(?:Files .* and .* differ$)|(?:Binary files .* and .* differ$)|(?:File .* is a .* while file .* is a .*)|(?:No newline at end of file .*))\\b",
    "name": "diff.special-case"
   },
   {

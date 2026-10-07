@@ -129,7 +129,7 @@
    ]
   },
   {
-   "match": "^[ \\t]*#[ \\t]*(?:define|undef|\\(if\\|elif\\)\\(\\[\\ \\\\t\\]\\+defined\\)\\?|ifdef|ifndef|else|endif|error|pragma|extension|version|line)\\b",
+   "match": "^[ \\t]*#[ \\t]*(?:define|undef|(?:(if|elif)([ \\t]+defined)?)|ifdef|ifndef|else|endif|error|pragma|extension|version|line)\\b",
    "name": "def.preprocessor"
   },
   {
@@ -141,7 +141,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:bool|float|double|int|uint|struct|void|\\[bdiu\\]\\?vec\\[2\\-4\\]|\\[d\\]\\?mat\\[2\\-4\\]|\\[d\\]\\?mat\\[2\\-4\\]x\\[2\\-4\\]|\\[iu\\]\\?sampler\\[1\\-3\\]D|sampler\\[1\\-2\\]DShadow|\\[iu\\]\\?sampler\\[1\\-2\\]DArray|sampler\\[1\\-2\\]DArrayShadow|\\[iu\\]\\?samplerCube|samplerCubeShadow|\\[iu\\]\\?sampler2DRect|sampler2DRectShadow|\\[iu\\]\\?samplerBuffer|\\[iu\\]\\?sampler2DMS|\\[iu\\]\\?sampler2DMSArray|\\[iu\\]\\?sampler2DMSCubeArray|samplerCubeArrayShadow)\\b",
+   "match": "\\b(?:bool|float|double|int|uint|struct|void|(?:[bdiu]?vec[2-4])|(?:[d]?mat[2-4])|(?:[d]?mat[2-4]x[2-4])|(?:[iu]?sampler[1-3]D)|(?:sampler[1-2]DShadow)|(?:[iu]?sampler[1-2]DArray)|(?:sampler[1-2]DArrayShadow)|(?:[iu]?samplerCube)|samplerCubeShadow|(?:[iu]?sampler2DRect)|sampler2DRectShadow|(?:[iu]?samplerBuffer)|(?:[iu]?sampler2DMS)|(?:[iu]?sampler2DMSArray)|(?:[iu]?sampler2DMSCubeArray)|samplerCubeArrayShadow)\\b",
    "name": "def.type"
   },
   {
@@ -165,11 +165,11 @@
    "name": "def.floating-point"
   },
   {
-   "match": "\\b(?:radians|degrees|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh|pow|exp|log|exp2|log2|sqrt|inversesqrt|abs|sign|floor|trunc|round|roundEven|ceil|fract|mod|modf|min|max|clamp|mix|step|smoothstep|isnan|isinf|floatBitsToInt|floatBitsToUint|intBitsToFloat|uintBitsToFloat|fma|frexp|ldexp|packUnorm2x16|packUnorm4x8|packSnorm4x8|unpackUnorm2x16|unpackUnorm4x8|unpackSnorm4x8|packDouble2x32|unpackDouble2x32|length|distance|dot|cross|normalize|ftransform|faceforward|reflect|refract|matrixCompMult|outerProduct|transpose|determinant|inverse|lessThan|lessThanEqual|greaterThan|greaterThanEqual|equal|notEqual|any|all|not|uaddCarry|usubBorrow|umulExtended|imulExtended|bitfieldExtract|bitfildInsert|bitfieldReverse|bitCount|findLSB|findMSB|textureSize|textureQueryLOD|texture|textureProj|textureLod|textureOffset|texelFetch|texelFetchOffset|textureProjOffset|textureLodOffset|textureProjLod|textureProjLodOffset|textureGrad|textureGradOffset|textureProjGrad|textureProjGradOffset|textureGather|textureGatherOffset|texture\\[1\\-3\\]D|texture\\[1\\-3\\]DProj|texture\\[1\\-3\\]DLod|texture\\[1\\-3\\]DProjLod|textureCube|textureCubeLod|shadow\\[1\\-2\\]D|shadow\\[1\\-2\\]DProj|shadow\\[1\\-2\\]DLod|shadow\\[1\\-2\\]DProjLod|dFdx|dFdy|fwidth|interpolateAtCentroid|interpolateAtSample|interpolateAtOffset|noise\\[1\\-4\\]|EmitStreamVertex|EndStreamPrimitive|EmitVertex|EndPrimitive|barrier)\\b",
+   "match": "\\b(?:radians|degrees|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh|pow|exp|log|exp2|log2|sqrt|inversesqrt|abs|sign|floor|trunc|round|roundEven|ceil|fract|mod|modf|min|max|clamp|mix|step|smoothstep|isnan|isinf|floatBitsToInt|floatBitsToUint|intBitsToFloat|uintBitsToFloat|fma|frexp|ldexp|packUnorm2x16|packUnorm4x8|packSnorm4x8|unpackUnorm2x16|unpackUnorm4x8|unpackSnorm4x8|packDouble2x32|unpackDouble2x32|length|distance|dot|cross|normalize|ftransform|faceforward|reflect|refract|matrixCompMult|outerProduct|transpose|determinant|inverse|lessThan|lessThanEqual|greaterThan|greaterThanEqual|equal|notEqual|any|all|not|uaddCarry|usubBorrow|umulExtended|imulExtended|bitfieldExtract|bitfildInsert|bitfieldReverse|bitCount|findLSB|findMSB|textureSize|textureQueryLOD|texture|textureProj|textureLod|textureOffset|texelFetch|texelFetchOffset|textureProjOffset|textureLodOffset|textureProjLod|textureProjLodOffset|textureGrad|textureGradOffset|textureProjGrad|textureProjGradOffset|textureGather|textureGatherOffset|(?:texture[1-3]D)|(?:texture[1-3]DProj)|(?:texture[1-3]DLod)|(?:texture[1-3]DProjLod)|textureCube|textureCubeLod|(?:shadow[1-2]D)|(?:shadow[1-2]DProj)|(?:shadow[1-2]DLod)|(?:shadow[1-2]DProjLod)|dFdx|dFdy|fwidth|interpolateAtCentroid|interpolateAtSample|interpolateAtOffset|(?:noise[1-4])|EmitStreamVertex|EndStreamPrimitive|EmitVertex|EndPrimitive|barrier)\\b",
    "name": "def.builtin"
   },
   {
-   "match": "\\b(?:gl_VertexID|gl_InstanceID|gl_Position|gl_PointSize|gl_ClipDistance|gl_PrimitiveIDIn|gl_InvocationID|gl_PrimitiveID|gl_Layer|gl_PatchVerticesIn|gl_TessLevelOuter|gl_TessLevelInner|gl_TessCoord|gl_FragCoord|gl_FrontFacing|gl_PointCoord|gl_SampleID|gl_SamplePosition|gl_FragColor|gl_FragData|gl_FragDepth|gl_SampleMask|gl_ClipVertex|gl_FrontColor|gl_BackColor|gl_FrontSecondaryColor|gl_BackSecondaryColor|gl_TexCoord|gl_FogFragCoord|gl_Color|gl_SecondaryColor|gl_Normal|gl_Vertex|gl_MultiTexCoord\\[0\\-7\\]|gl_FogCoord)\\b",
+   "match": "\\b(?:gl_VertexID|gl_InstanceID|gl_Position|gl_PointSize|gl_ClipDistance|gl_PrimitiveIDIn|gl_InvocationID|gl_PrimitiveID|gl_Layer|gl_PatchVerticesIn|gl_TessLevelOuter|gl_TessLevelInner|gl_TessCoord|gl_FragCoord|gl_FrontFacing|gl_PointCoord|gl_SampleID|gl_SamplePosition|gl_FragColor|gl_FragData|gl_FragDepth|gl_SampleMask|gl_ClipVertex|gl_FrontColor|gl_BackColor|gl_FrontSecondaryColor|gl_BackSecondaryColor|gl_TexCoord|gl_FogFragCoord|gl_Color|gl_SecondaryColor|gl_Normal|gl_Vertex|(?:gl_MultiTexCoord[0-7])|gl_FogCoord)\\b",
    "name": "def.identifier"
   },
   {
@@ -181,7 +181,7 @@
    "name": "def.constant"
   },
   {
-   "match": "\\b(?:common|partition|active|asm|class|union|enum|typedef|template|this|packed|goto|inline|noinline|volatile|public|static|extern|external|interface|long|short|half|fixed|unsigned|input|output|\\[hf\\]vec\\[2\\-4\\]|sampler3DRect|filter|sizeof|cast|namespace|using|row_major)\\b",
+   "match": "\\b(?:common|partition|active|asm|class|union|enum|typedef|template|this|packed|goto|inline|noinline|volatile|public|static|extern|external|interface|long|short|half|fixed|unsigned|input|output|(?:[hf]vec[2-4])|sampler3DRect|filter|sizeof|cast|namespace|using|row_major)\\b",
    "name": "glsl.future-use"
   }
  ],

@@ -64,7 +64,7 @@
      "name": "def.keyword"
     },
     {
-     "match": "^@(?:bye|\\(end\\ \\)\\?docbook|\\(end\\ \\)\\?html|end\\ ifclear|\\(end\\ \\)\\?if\\(not\\)\\?docbook|\\(end\\ \\)\\?if\\(not\\)\\?html|\\(end\\ \\)\\?if\\(not\\)\\?info|\\(end\\ \\)\\?if\\(not\\)\\?plaintext|\\(end\\ \\)\\?if\\(not\\)\\?tex|\\(end\\ \\)\\?if\\(not\\)\\?xml|end\\ ifset|lowersections|end\\ macro|raisesections|\\(end\\ \\)\\?tex|\\(end\\ \\)\\?xml)\\s*$",
+     "match": "^@(?:bye|(?:(end )?docbook)|(?:(end )?html)|(?:end ifclear)|(?:(end )?if(not)?docbook)|(?:(end )?if(not)?html)|(?:(end )?if(not)?info)|(?:(end )?if(not)?plaintext)|(?:(end )?if(not)?tex)|(?:(end )?if(not)?xml)|(?:end ifset)|lowersections|(?:end macro)|raisesections|(?:(end )?tex)|(?:(end )?xml))\\s*$",
      "name": "def.keyword"
     }
    ]
@@ -80,17 +80,17 @@
      "name": "def.keyword"
     },
     {
-     "match": "^@(?:afivepaper|afourlatex|afourpaper|afourwide|\\(end\\ \\)\\?direntry|\\(end\\ \\)\\?documentdescription|finalout|novalidate|setcontentsaftertitlepage|setshortcontentsaftertitlepage|smallbook)\\s*$",
+     "match": "^@(?:afivepaper|afourlatex|afourpaper|afourwide|(?:(end )?direntry)|(?:(end )?documentdescription)|finalout|novalidate|setcontentsaftertitlepage|setshortcontentsaftertitlepage|smallbook)\\s*$",
      "name": "def.keyword"
     }
    ]
   },
   {
-   "match": "None(?:\\^@contents\\\\s\\*\\$|\\^@insertcopying\\\\s\\*\\$|\\^@listoffloats\\\\s\\*\\$|\\^@printindex\\\\s\\*\\$|\\^@shortcontents\\\\s\\*\\$|\\^@shorttitlepage\\\\s\\*\\$|\\^@summarycontents\\\\s\\*\\$|@thischapter\\\\b|@thischaptername\\\\b|@thisfile\\\\b|@thispage\\\\b|@thistitle\\\\b|@today\\\\b|@value\\\\b|@verb\\\\b|\\^@\\(end\\ \\)\\?verbatim\\\\s\\*\\$|\\^@verbatiminclude\\\\b)None",
+   "match": "None(?:(?:^@contents\\s*$)|(?:^@insertcopying\\s*$)|(?:^@listoffloats\\s*$)|(?:^@printindex\\s*$)|(?:^@shortcontents\\s*$)|(?:^@shorttitlepage\\s*$)|(?:^@summarycontents\\s*$)|(?:@thischapter\\b)|(?:@thischaptername\\b)|(?:@thisfile\\b)|(?:@thispage\\b)|(?:@thistitle\\b)|(?:@today\\b)|(?:@value\\b)|(?:@verb\\b)|(?:^@(end )?verbatim\\s*$)|(?:^@verbatiminclude\\b))None",
    "name": "def.keyword"
   },
   {
-   "match": "None(?:\\^\\\\\\\\input|\\^@include|@image)\\b",
+   "match": "None(?:(?:^\\\\input)|(?:^@include)|(?:@image))\\b",
    "name": "def.preprocessor"
   },
   {
@@ -100,25 +100,25 @@
   {
    "patterns": [
     {
-     "match": "^@(?:author|defcv\\(x\\)\\?|deff\\(u\\)\\?n\\(x\\)\\?|defivar\\(x\\)\\?|defmac\\(x\\)\\?|defmethod\\(x\\)\\?|defop\\(x\\)\\?|defopt\\(x\\)\\?|defspec\\(x\\)\\?|deftp\\(x\\)\\?|deftypecv\\(x\\)\\?|deftypef\\(u\\)\\?n\\(x\\)\\?|deftypeivar\\(x\\)\\?|deftypemethod\\(x\\)\\?|deftypeop\\(x\\)\\?|deftypevar\\(x\\)\\?|deftypevr\\(x\\)\\?|defv\\(a\\)\\?r\\(x\\)\\?|enumerate|ftable|itemize|multitable|subtitle|tab|table|title|vtable)\\b",
+     "match": "^@(?:author|(?:defcv(x)?)|(?:deff(u)?n(x)?)|(?:defivar(x)?)|(?:defmac(x)?)|(?:defmethod(x)?)|(?:defop(x)?)|(?:defopt(x)?)|(?:defspec(x)?)|(?:deftp(x)?)|(?:deftypecv(x)?)|(?:deftypef(u)?n(x)?)|(?:deftypeivar(x)?)|(?:deftypemethod(x)?)|(?:deftypeop(x)?)|(?:deftypevar(x)?)|(?:deftypevr(x)?)|(?:defv(a)?r(x)?)|enumerate|ftable|itemize|multitable|subtitle|tab|table|title|vtable)\\b",
      "name": "def.keyword"
     },
     {
-     "match": "^@(?:\\(end\\ \\)\\?copying|end\\ defcv|end\\ def\\(u\\)\\?n|end\\ defivar|end\\ defmac|end\\ defmethod|end\\ defop|end\\ defopt|end\\ defspec|end\\ deftp|end\\ deftypecv|end\\ deftypef\\(u\\)\\?n|end\\ deftypevar|end\\ deftypemethod|end\\ deftypeop|end\\ deftypevar|end\\ deftypevr|end\\ defv\\(a\\)\\?r|\\(end\\ \\)\\?display|end\\ enumerate|\\(end\\ \\)\\?example|\\(end\\ \\)\\?exampleindent|\\(end\\ \\)\\?format|end\\ ftable|item|end\\ itemize|itemx|\\(end\\ \\)\\?lisp|end\\ multitable|\\(end\\ \\)\\?quotation|\\(end\\ \\)\\?smalldisplay|\\(end\\ \\)\\?smallexample|\\(end\\ \\)\\?smallformat|\\(end\\ \\)\\?smalllisp|end\\ table|end\\ vtable)\\s*$",
+     "match": "^@(?:(?:(end )?copying)|(?:end defcv)|(?:end def(u)?n)|(?:end defivar)|(?:end defmac)|(?:end defmethod)|(?:end defop)|(?:end defopt)|(?:end defspec)|(?:end deftp)|(?:end deftypecv)|(?:end deftypef(u)?n)|(?:end deftypevar)|(?:end deftypemethod)|(?:end deftypeop)|(?:end deftypevar)|(?:end deftypevr)|(?:end defv(a)?r)|(?:(end )?display)|(?:end enumerate)|(?:(end )?example)|(?:(end )?exampleindent)|(?:(end )?format)|(?:end ftable)|item|(?:end itemize)|itemx|(?:(end )?lisp)|(?:end multitable)|(?:(end )?quotation)|(?:(end )?smalldisplay)|(?:(end )?smallexample)|(?:(end )?smallformat)|(?:(end )?smalllisp)|(?:end table)|(?:end vtable))\\s*$",
      "name": "def.keyword"
     }
    ]
   },
   {
-   "match": "^@(?:appendix\\\\b|appendixsec\\(tion\\)\\?\\\\b|appendixsub\\(sub\\)\\?sec\\\\b|centerchap\\\\b|chapter\\\\b|chapheading\\\\b|\\(end\\ \\)\\?detailmenu\\\\s\\*\\$|\\(end\\ \\)\\?group\\\\s\\*\\$|heading\\\\b|majorheading\\\\b|\\(end\\ \\)\\?menu\\\\s\\*\\$|node\\\\b|section\\\\b|sub\\(sub\\)\\?heading\\\\b|sub\\(sub\\)\\?section\\\\b|\\(end\\ \\)\\?titlepage\\\\s\\*\\$|top\\\\b|unnumbered\\\\b|unnumberedsec\\\\b|unnumberedsub\\(sub\\)\\?sec\\\\b)None",
+   "match": "^@(?:(?:appendix\\b)|(?:appendixsec(tion)?\\b)|(?:appendixsub(sub)?sec\\b)|(?:centerchap\\b)|(?:chapter\\b)|(?:chapheading\\b)|(?:(end )?detailmenu\\s*$)|(?:(end )?group\\s*$)|(?:heading\\b)|(?:majorheading\\b)|(?:(end )?menu\\s*$)|(?:node\\b)|(?:section\\b)|(?:sub(sub)?heading\\b)|(?:sub(sub)?section\\b)|(?:(end )?titlepage\\s*$)|(?:top\\b)|(?:unnumbered\\b)|(?:unnumberedsec\\b)|(?:unnumberedsub(sub)?sec\\b))None",
    "name": "def.keyword"
   },
   {
-   "match": "None(?:@\\(\\(\\ \\)\\|\\$\\)|@\\\\\\*|@\\\\\\-|@/|@\\\\:|\\^@asis\\\\s\\*\\$|@b|\\^@\\(end\\ \\)\\?cartouche\\\\s\\*\\$|\\^@center\\\\b|\\^@exdent\\\\b|\\^@\\(end\\ \\)\\?float\\\\s\\*\\$|\\^@\\(end\\ \\)\\?flushleft\\\\s\\*\\$|\\^@\\(end\\ \\)\\?flushright\\\\s\\*\\$|@hyphenation\\\\b|@i\\\\b|\\^@need\\\\b|\\^@noindent\\\\s\\*\\$|\\^@page\\\\s\\*\\$|@r\\\\b|\\^@refill\\\\s\\*\\$|@sc\\\\b|\\^@sp\\\\b|@t\\\\b|@tie\\\\b|\\^@vskip\\\\b|@w\\\\b)None",
+   "match": "None(?:(?:@(( )|$))|(?:@\\*)|(?:@\\-)|(?:@/)|(?:@\\:)|(?:^@asis\\s*$)|(?:@b)|(?:^@(end )?cartouche\\s*$)|(?:^@center\\b)|(?:^@exdent\\b)|(?:^@(end )?float\\s*$)|(?:^@(end )?flushleft\\s*$)|(?:^@(end )?flushright\\s*$)|(?:@hyphenation\\b)|(?:@i\\b)|(?:^@need\\b)|(?:^@noindent\\s*$)|(?:^@page\\s*$)|(?:@r\\b)|(?:^@refill\\s*$)|(?:@sc\\b)|(?:^@sp\\b)|(?:@t\\b)|(?:@tie\\b)|(?:^@vskip\\b)|(?:@w\\b))None",
    "name": "def.keyword"
   },
   {
-   "match": "@(?:!|\"|'|\\\\\\.|\\\\=|\\\\\\?|@|\\\\\\\\|\\\\\\^|`|\\\\\\{|\\\\\\}|\\~|AA\\\\\\{\\\\\\}|aa\\\\\\{\\\\\\}|AE\\\\\\{\\\\\\}|ae\\\\\\{\\\\\\}|bullet\\\\\\{\\\\\\}|comma\\\\\\{\\\\\\}|copyright\\\\\\{\\\\\\}|dotaccent\\\\b|dots\\\\\\{\\\\\\}|enddots\\\\\\{\\\\\\}|equiv\\\\\\{\\\\\\}|error\\\\\\{\\\\\\}|exclamdown\\\\\\{\\\\\\}|expansion\\\\\\{\\\\\\}|H\\\\b|L\\\\\\{\\\\\\}|l\\\\\\{\\\\\\}|LaTeX\\\\\\{\\\\\\}|minus\\\\\\{\\\\\\}|O\\\\\\{\\\\\\}|o\\\\\\{\\\\\\}|OE\\\\\\{\\\\\\}|oe\\\\\\{\\\\\\}|point\\\\\\{\\\\\\}|pounds\\\\\\{\\\\\\}|print\\\\\\{\\\\\\}|questiondown\\\\\\{\\\\\\}|registeredsymbol\\\\\\{\\\\\\}|result\\\\\\{\\\\\\}|ringaccent\\\\\\{\\\\\\}|ss\\\\\\{\\\\\\}|TeX\\\\\\{\\\\\\}|tieaccent\\\\b|u\\\\b|ubaraccent\\\\b|udotaccent\\\\b|v\\\\b)None",
+   "match": "@(?:(?:!)|(?:\")|(?:')|(?:\\.)|(?:\\=)|(?:\\?)|(?:@)|(?:\\\\)|(?:\\^)|(?:`)|(?:\\{)|(?:\\})|(?:~)|(?:AA\\{\\})|(?:aa\\{\\})|(?:AE\\{\\})|(?:ae\\{\\})|(?:bullet\\{\\})|(?:comma\\{\\})|(?:copyright\\{\\})|(?:dotaccent\\b)|(?:dots\\{\\})|(?:enddots\\{\\})|(?:equiv\\{\\})|(?:error\\{\\})|(?:exclamdown\\{\\})|(?:expansion\\{\\})|(?:H\\b)|(?:L\\{\\})|(?:l\\{\\})|(?:LaTeX\\{\\})|(?:minus\\{\\})|(?:O\\{\\})|(?:o\\{\\})|(?:OE\\{\\})|(?:oe\\{\\})|(?:point\\{\\})|(?:pounds\\{\\})|(?:print\\{\\})|(?:questiondown\\{\\})|(?:registeredsymbol\\{\\})|(?:result\\{\\})|(?:ringaccent\\{\\})|(?:ss\\{\\})|(?:TeX\\{\\})|(?:tieaccent\\b)|(?:u\\b)|(?:ubaraccent\\b)|(?:udotaccent\\b)|(?:v\\b))None",
    "name": "def.keyword"
   },
   {

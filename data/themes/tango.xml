@@ -133,4 +133,18 @@
   <style name="sh:variable"                 foreground="plum3"/>
   <style name="sh:variable-definition"      foreground="chameleon3"/>
 
+
+  <!-- The MATLAB language (.m), as mima shows it: comments green, every
+       keyword and every builtin function in a colour of its own. Said for
+       the octave grammar too, which mima uses for .m while it accepts
+       Octave's spellings. -->
+  <style name="matlab:comment"              foreground="#4e9a06" italic="true"/>
+  <style name="matlab:keyword"              foreground="#204a87" bold="true"/>
+  <style name="matlab:builtin"              foreground="#5c3566"/>
+  <style name="matlab:type"                 foreground="#8f5902" bold="true"/>
+  <style name="octave:comment"              foreground="#4e9a06" italic="true"/>
+  <style name="octave:keyword"              foreground="#204a87" bold="true"/>
+  <style name="octave:builtin"              foreground="#5c3566"/>
+  <style name="octave:type"                 foreground="#8f5902" bold="true"/>
+
 </style-scheme>

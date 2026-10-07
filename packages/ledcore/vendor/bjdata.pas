@@ -13,7 +13,7 @@ unit bjdata;
     Specification: https://neurojson.org/bjdata/draft4
     Project page:  https://github.com/NeuroJSON/bjdata
 
-  Copyright (c) 2026  Qianqian Fang <q.fang at neu.edu>
+  Copyright (c) 2026  Qianqian Fang <fangqq at fanglab.org>
   Licensed under the Apache License, Version 2.0
 
   Everything is implemented by a single class, TBJData, which serves as an

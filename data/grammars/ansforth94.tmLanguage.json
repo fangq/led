@@ -287,31 +287,31 @@
    }
   },
   {
-   "match": "\\b(?:!|\\#|\\#>|\\#S|'|\\\\\\(|\\\\\\*|\\\\\\*/|\\\\\\*/MOD|\\\\\\+|\\\\\\+!|\\\\\\+LOOP|,|\\-|\\\\\\.|\\\\\\.\"|/|/MOD|0<|0=|1\\\\\\+|1\\-|2!|2\\\\\\*|2/|2@|2DROP|2DUP|2OVER|2SWAP|:|;|<|<\\#|=|>|>BODY|>IN|>NUMBER|>R|\\\\\\?DUP|@|ABORT|ABORT\"|ABS|ACCEPT|ALIGN|ALIGNED|ALLOT|AND|BASE|BEGIN|BL|C!|C,|C@|CELL\\\\\\+|CELLS|CHAR|CHAR\\\\\\+|CHARS|CONSTANT|COUNT|CR|CREATE|DECIMAL|DEPTH|DO|DOES>|DROP|DUP|ELSE|EMIT|ENVIRONMENT\\\\\\?|EVALUATE|EXECUTE|EXIT|FILL|FIND|FM/MOD|HERE|HOLD|I|IF|IMMEDIATE|INVERT|J|KEY|LEAVE|LITERAL|LOOP|LSHIFT|M\\\\\\*|MAX|MIN|MOD|MOVE|NEGATE|OR|OVER|POSTPONE|QUIT|R>|R@|RECURSE|REPEAT|ROT|RSHIFT|S\"|S>D|SIGN|SM/REM|SOURCE|SPACE|SPACES|STATE|SWAP|THEN|TYPE|U\\\\\\.|U<|UM\\\\\\*|UM/MOD|UNLOOP|UNTIL|VARIABLE|WHILE|WORD|XOR|\\\\\\[|\\\\\\['\\\\\\]|\\\\\\[CHAR\\\\\\]|\\\\\\])\\b",
+   "match": "\\b(?:(?:!)|(?:#)|(?:#>)|(?:#S)|(?:')|(?:\\()|(?:\\*)|(?:\\*/)|(?:\\*/MOD)|(?:\\+)|(?:\\+!)|(?:\\+LOOP)|(?:,)|(?:-)|(?:\\.)|(?:\\.\")|(?:/)|(?:/MOD)|(?:0<)|(?:0=)|(?:1\\+)|(?:1-)|(?:2!)|(?:2\\*)|(?:2/)|(?:2@)|2DROP|2DUP|2OVER|2SWAP|(?::)|(?:;)|(?:<)|(?:<#)|(?:=)|(?:>)|(?:>BODY)|(?:>IN)|(?:>NUMBER)|(?:>R)|(?:\\?DUP)|(?:@)|ABORT|(?:ABORT\")|ABS|ACCEPT|ALIGN|ALIGNED|ALLOT|AND|BASE|BEGIN|BL|(?:C!)|(?:C,)|(?:C@)|(?:CELL\\+)|CELLS|CHAR|(?:CHAR\\+)|CHARS|CONSTANT|COUNT|CR|CREATE|DECIMAL|DEPTH|DO|(?:DOES>)|DROP|DUP|ELSE|EMIT|(?:ENVIRONMENT\\?)|EVALUATE|EXECUTE|EXIT|FILL|FIND|(?:FM/MOD)|HERE|HOLD|I|IF|IMMEDIATE|INVERT|J|KEY|LEAVE|LITERAL|LOOP|LSHIFT|(?:M\\*)|MAX|MIN|MOD|MOVE|NEGATE|OR|OVER|POSTPONE|QUIT|(?:R>)|(?:R@)|RECURSE|REPEAT|ROT|RSHIFT|(?:S\")|(?:S>D)|SIGN|(?:SM/REM)|SOURCE|SPACE|SPACES|STATE|SWAP|THEN|TYPE|(?:U\\.)|(?:U<)|(?:UM\\*)|(?:UM/MOD)|UNLOOP|UNTIL|VARIABLE|WHILE|WORD|XOR|(?:\\[)|(?:\\['\\])|(?:\\[CHAR\\])|(?:\\]))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\\\\\.\\\\\\(|\\\\\\.R|0<>|0>|2>R|2R>|2R@|:NONAME|<>|\\\\\\?DO|AGAIN|C\"|CASE|COMPILE,|ENDCASE|ENDOF|ERASE|FALSE|HEX|MARKER|NIP|OF|PAD|PARSE|PICK|REFILL|RESTORE\\-INPUT|ROLL|SAVE\\-INPUT|SOURCE\\-ID|TO|TRUE|TUCK|U\\\\\\.R|U>|UNUSED|VALUE|WITHIN|\\\\\\[COMPILE\\\\\\]|\\\\\\\\)\\b",
+   "match": "\\b(?:(?:\\.\\()|(?:\\.R)|(?:0<>)|(?:0>)|(?:2>R)|(?:2R>)|(?:2R@)|(?::NONAME)|(?:<>)|(?:\\?DO)|AGAIN|(?:C\")|CASE|(?:COMPILE,)|ENDCASE|ENDOF|ERASE|FALSE|HEX|MARKER|NIP|OF|PAD|PARSE|PICK|REFILL|(?:RESTORE-INPUT)|ROLL|(?:SAVE-INPUT)|(?:SOURCE-ID)|TO|TRUE|TUCK|(?:U\\.R)|(?:U>)|UNUSED|VALUE|WITHIN|(?:\\[COMPILE\\])|(?:\\\\))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\#TIB|CONVERT|EXPECT|QUERY|SPAN|TIB)\\b",
+   "match": "\\b(?:(?:#TIB)|CONVERT|EXPECT|QUERY|SPAN|TIB)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:BLK|BLOCK|BUFFER|EVALUATE|FLUSH|LOAD|SAVE\\-BUFFERS|UPDATE)\\b",
+   "match": "\\b(?:BLK|BLOCK|BUFFER|EVALUATE|FLUSH|LOAD|(?:SAVE-BUFFERS)|UPDATE)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:EMPTY\\-BUFFERS|LIST|REFILL|SCR|THRU|\\\\\\\\)\\b",
+   "match": "\\b(?:(?:EMPTY-BUFFERS)|LIST|REFILL|SCR|THRU|(?:\\\\))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:2CONSTANT|2LITERAL|2VARIABLE|D\\\\\\+|D\\-|D\\\\\\.|D\\\\\\.R|D0<|D0=|D2\\\\\\*|D2/|D<|D=|D>S|DABS|DMAX|DMIN|DNEGATE|M\\\\\\*/|M\\\\\\+)\\b",
+   "match": "\\b(?:2CONSTANT|2LITERAL|2VARIABLE|(?:D\\+)|(?:D-)|(?:D\\.)|(?:D\\.R)|(?:D0<)|(?:D0=)|(?:D2\\*)|(?:D2/)|(?:D<)|(?:D=)|(?:D>S)|DABS|DMAX|DMIN|DNEGATE|(?:M\\*/)|(?:M\\+))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:2ROT|DU<)\\b",
+   "match": "\\b(?:2ROT|(?:DU<))\\b",
    "name": "def.keyword"
   },
   {
@@ -319,39 +319,39 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:ABORT|ABORT\")\\b",
+   "match": "\\b(?:ABORT|(?:ABORT\"))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:AT\\-XY|KEY\\\\\\?|PAGE)\\b",
+   "match": "\\b(?:(?:AT-XY)|(?:KEY\\?)|PAGE)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:EKEY|EKEY>CHAR|EKEY\\\\\\?|EMIT\\\\\\?|MS|TIME\\&DATE)\\b",
+   "match": "\\b(?:EKEY|(?:EKEY>CHAR)|(?:EKEY\\?)|(?:EMIT\\?)|MS|(?:TIME&DATE))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\\\\\(|BIN|CLOSE\\-FILE|CREATE\\-FILE|DELETE\\-FILE|FILE\\-POSITION|FILE\\-SIZE|INCLUDE\\-FILE|INCLUDED|OPEN\\-FILE|R/O|R/W|READ\\-FILE|READ\\-LINE|REPOSITION\\-FILE|RESIZE\\-FILE|S\"|SOURCE\\-ID|W/O|WRITE\\-FILE|WRITE\\-LINE)\\b",
+   "match": "\\b(?:(?:\\()|BIN|(?:CLOSE-FILE)|(?:CREATE-FILE)|(?:DELETE-FILE)|(?:FILE-POSITION)|(?:FILE-SIZE)|(?:INCLUDE-FILE)|INCLUDED|(?:OPEN-FILE)|(?:R/O)|(?:R/W)|(?:READ-FILE)|(?:READ-LINE)|(?:REPOSITION-FILE)|(?:RESIZE-FILE)|(?:S\")|(?:SOURCE-ID)|(?:W/O)|(?:WRITE-FILE)|(?:WRITE-LINE))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:FILE\\-STATUS|FLUSH\\-FILE|REFILL|RENAME\\-FILE)\\b",
+   "match": "\\b(?:(?:FILE-STATUS)|(?:FLUSH-FILE)|REFILL|(?:RENAME-FILE))\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:>FLOAT|D>F|F!|F\\\\\\*|F\\\\\\+|F\\-|F/|F0<|F0=|F<|F>D|F@|FALIGN|FALIGNED|FCONSTANT|FDEPTH|FDROP|FDUP|FLITERAL|FLOAT\\\\\\+|FLOATS|FLOOR|FMAX|FMIN|FNEGATE|FOVER|FROT|FROUND|FSWAP|FVARIABLE|REPRESENT)\\b",
+   "match": "\\b(?:(?:>FLOAT)|(?:D>F)|(?:F!)|(?:F\\*)|(?:F\\+)|(?:F-)|(?:F/)|(?:F0<)|(?:F0=)|(?:F<)|(?:F>D)|(?:F@)|FALIGN|FALIGNED|FCONSTANT|FDEPTH|FDROP|FDUP|FLITERAL|(?:FLOAT\\+)|FLOATS|FLOOR|FMAX|FMIN|FNEGATE|FOVER|FROT|FROUND|FSWAP|FVARIABLE|REPRESENT)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:DF!|DF@|DFALIGN|DFALIGNED|DFLOAT\\\\\\+|DFLOATS|F\\\\\\*\\\\\\*|F\\\\\\.|FABS|FACOS|FACOSH|FALOG|FASIN|FASINH|FATAN|FATAN2|FATANH|FCOS|FCOSH|FE\\\\\\.|FEXP|FEXPM1|FLN|FLNP1|FLOG|FS\\\\\\.|FSIN|FSINCOS|FSINH|FSQRT|FTAN|FTANH|F\\~|PRECISION|SET\\-PRECISION|SF!|SF@|SFALIGN|SFALIGNED|SFLOAT\\\\\\+|SFLOATS)\\b",
+   "match": "\\b(?:(?:DF!)|(?:DF@)|DFALIGN|DFALIGNED|(?:DFLOAT\\+)|DFLOATS|(?:F\\*\\*)|(?:F\\.)|FABS|FACOS|FACOSH|FALOG|FASIN|FASINH|FATAN|FATAN2|FATANH|FCOS|FCOSH|(?:FE\\.)|FEXP|FEXPM1|FLN|FLNP1|FLOG|(?:FS\\.)|FSIN|FSINCOS|FSINH|FSQRT|FTAN|FTANH|(?:F~)|PRECISION|(?:SET-PRECISION)|(?:SF!)|(?:SF@)|SFALIGN|SFALIGNED|(?:SFLOAT\\+)|SFLOATS)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\\\\\(LOCAL\\\\\\)|TO)\\b",
+   "match": "\\b(?:(?:\\(LOCAL\\))|TO)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:LOCALS\\\\\\|)\\b",
+   "match": "\\b(?:(?:LOCALS\\|))\\b",
    "name": "def.keyword"
   },
   {
@@ -359,11 +359,11 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\\\\\.S|\\\\\\?|DUMP|SEE|WORDS)\\b",
+   "match": "\\b(?:(?:\\.S)|(?:\\?)|DUMP|SEE|WORDS)\\b",
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:;CODE|AHEAD|ASSEMBLER|BYE|CODE|CS\\-PICK|CS\\-ROLL|EDITOR|STATE|\\\\\\[ELSE\\\\\\]|\\\\\\[IF\\\\\\]|\\\\\\[THEN\\\\\\])\\b",
+   "match": "\\b(?:(?:;CODE)|AHEAD|ASSEMBLER|BYE|CODE|(?:CS-PICK)|(?:CS-ROLL)|EDITOR|STATE|(?:\\[ELSE\\])|(?:\\[IF\\])|(?:\\[THEN\\]))\\b",
    "name": "def.keyword"
   },
   {
@@ -371,7 +371,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:DEFINITIONS|FIND|FORTH\\-WORDLIST|GET\\-CURRENT|GET\\-ORDER|SEARCH\\-WORDLIST|SET\\-CURRENT|SET\\-ORDER|WORDLIST)\\b",
+   "match": "\\b(?:DEFINITIONS|FIND|(?:FORTH-WORDLIST)|(?:GET-CURRENT)|(?:GET-ORDER)|(?:SEARCH-WORDLIST)|(?:SET-CURRENT)|(?:SET-ORDER)|WORDLIST)\\b",
    "name": "def.keyword"
   },
   {
@@ -379,7 +379,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:\\-TRAILING|/STRING|BLANK|CMOVE|CMOVE>|COMPARE|SEARCH|SLITERAL)\\b",
+   "match": "\\b(?:(?:-TRAILING)|(?:/STRING)|BLANK|CMOVE|(?:CMOVE>)|COMPARE|SEARCH|SLITERAL)\\b",
    "name": "def.keyword"
   },
   {

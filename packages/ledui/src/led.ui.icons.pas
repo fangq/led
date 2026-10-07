@@ -48,6 +48,15 @@ function LedIconAccent(const AName: string): TColor;
   the browser tree and the tab headers cannot drift apart. }
 function LedIconForFile(const AFileName: string): string;
 
+type
+  { An extension, lower case with its dot, to the icon a program built on
+    LED shows for it; '' leaves it to LED's own table.  Mima sets one: a
+    .m, .pmat or .pfig is its own kind of file, and wears its logo. }
+  TLedIconForFileHook = function(const AExt: string): string;
+
+var
+  LedIconForFileHook: TLedIconForFileHook = nil;
+
 { The artwork file for AName, or '' when there is none and the icon is
   drawn instead.
 
@@ -688,6 +697,11 @@ var
   Ext: string;
 begin
   Ext := LowerCase(ExtractFileExt(AFileName));
+  if Assigned(LedIconForFileHook) then
+  begin
+    Result := LedIconForFileHook(Ext);
+    if Result <> '' then Exit;
+  end;
   { The two with a logo of their own in the set.  A file list in a MATLAB
     environment is mostly .m files, and telling them from the rest at a
     glance is worth more than the uniformity of a row of blue pages. }
@@ -710,7 +724,8 @@ begin
      (Ext = '.conf') or (Ext = '.csv') then Exit('filetext');
   if Ext = '.pdf' then Exit('filepdf');
   if (Ext = '.png') or (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.gif') or
-     (Ext = '.bmp') or (Ext = '.svg') or (Ext = '.ico') or (Ext = '.webp') then
+     (Ext = '.bmp') or (Ext = '.svg') or (Ext = '.ico') or (Ext = '.webp') or
+     (Ext = '.tif') or (Ext = '.tiff') or (Ext = '.pgm') or (Ext = '.ppm') then
     Exit('fileimage');
   if (Ext = '.o') or (Ext = '.a') or (Ext = '.so') or (Ext = '.dll') or
      (Ext = '.exe') or (Ext = '.bin') or (Ext = '.zip') or (Ext = '.gz') or

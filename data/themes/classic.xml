@@ -125,4 +125,18 @@
   <style name="Others 2"                    foreground="#008B8B"/>
   <style name="Others 3"                    foreground="#6A5ACD"/>
 
+
+  <!-- The MATLAB language (.m), as mima shows it: comments green, every
+       keyword and every builtin function in a colour of its own. Said for
+       the octave grammar too, which mima uses for .m while it accepts
+       Octave's spellings. -->
+  <style name="matlab:comment"              foreground="#228b22" italic="true"/>
+  <style name="matlab:keyword"              foreground="#0000ff" bold="true"/>
+  <style name="matlab:builtin"              foreground="#8b008b"/>
+  <style name="matlab:type"                 foreground="#a0522d" bold="true"/>
+  <style name="octave:comment"              foreground="#228b22" italic="true"/>
+  <style name="octave:keyword"              foreground="#0000ff" bold="true"/>
+  <style name="octave:builtin"              foreground="#8b008b"/>
+  <style name="octave:type"                 foreground="#a0522d" bold="true"/>
+
 </style-scheme>

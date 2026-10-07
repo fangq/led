@@ -625,6 +625,7 @@ type
       is where the whole of it lives now -- the fork's figures are a page
       control with the same strip and wanted the same button. }
     FTabClose: array[0..1] of TLedTabClose;
+    FTabImages: TImageList;
     { Whether the clipboard holds something the Paste actions could use, and
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
@@ -637,6 +638,8 @@ type
     procedure TabCloseClick(Sender: TObject);
     procedure BookResize(Sender: TObject);
     procedure PlaceTabCloseButtons;
+    { the tab close cross where Preferences says: on the tab under the pointer, or at the strip's end }
+    procedure ApplyTabCloseMode;
     procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
     procedure ChooseView;
@@ -921,6 +924,8 @@ type
     function DialogStartDir: string;
     procedure RememberDialogDir(const AFileName: string);
     function ActiveTab: TLedTab;
+    { the tab heads' pictures, smaller than the toolbar's }
+    property TabImages: TImageList read FTabImages;
     function ActiveView: TLedEdit;
     function AddTab(ADoc: TLedDocument): TLedTab;
     { See the body: brings the editor area to the front in a window where it
@@ -1081,6 +1086,15 @@ begin
   ImageList1.Width := Size;
   ImageList1.Height := Size;
   LedBuildIconList(ImageList1, LedIconNames, clBtnText);
+
+  { The tab heads' own, smaller: at the toolbar's size a tab's picture was
+    taller than its name.  The same names in the same order, so an
+    ImageIndex means the same picture in either list. }
+  if FTabImages = nil then
+    FTabImages := TImageList.Create(Self);
+  FTabImages.Width := LedScale96(18);
+  FTabImages.Height := LedScale96(18);
+  LedBuildIconList(FTabImages, LedIconNames, clBtnText);
 end;
 
 procedure TLedMainForm.FormCreate(Sender: TObject);
@@ -1188,7 +1202,7 @@ begin
   FBook.OnMouseMove := @BookTabMouseMove;
   Application.OnShowHint := @AppShowHint;
   FBook.OnMouseUp := @BookTabMouseUp;
-  FBook.Images := ImageList1;
+  FBook.Images := FTabImages;
   FBook.PopupMenu := PopupTab;
 
   { Phase 0 placeholders so the dock edges can be exercised; real panes arrive
@@ -1386,6 +1400,7 @@ begin
   BuildThemeButton;
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
+  ApplyTabCloseMode;
 
   if RestoreSession then
     { A restored position is kept, but on this launch's monitor. }
@@ -2904,6 +2919,7 @@ begin
   FDock.ShowRails := LedPrefs.GetBool(LedPrefShowPaneButtons, True);
   FDock.DraggingAllowed := not LedPrefs.GetBool(LedPrefLockPanes, False);
   FDock.HeaderStyle := LedPrefs.GetStr(LedPrefHeaderStyle, 'Points');
+  ApplyTabCloseMode;
   { Which model LED talks to, and what it may do, are preferences like any
     other: changed here they take effect now rather than at the next
     start. }
@@ -4755,9 +4771,13 @@ end;
 procedure TLedMainForm.BookTabMouseMove(Sender: TObject; Shift: TShiftState;
   X, Y: Integer);
 var
-  Target: Integer;
+  Target, I: Integer;
 begin
   TabStripHint(Sender, X, Y);
+  { the hover cross follows the pointer along the strip (LedTabHoverClose) }
+  for I := 0 to 1 do
+    if (FTabClose[I] <> nil) and (BookByIndex(I) = Sender) then
+      FTabClose[I].BookMouseMove(Sender, Shift, X, Y);
 
   if (FDragTabBook = nil) or (FDragTabIndex < 0) then Exit;
   if not (ssLeft in Shift) then Exit;
@@ -4860,7 +4880,7 @@ begin
     FBook2.OnMouseDown := @BookTabMouseDown;
     FBook2.OnMouseMove := @BookTabMouseMove;
     FBook2.OnMouseUp := @BookTabMouseUp;
-    FBook2.Images := ImageList1;
+    FBook2.Images := FTabImages;
     FBook2.PopupMenu := PopupTab;
 
     { Divide the space evenly.  TPairSplitter leaves the divider wherever its
@@ -5166,16 +5186,51 @@ begin
 end;
 
 procedure TLedMainForm.TabCloseClick(Sender: TObject);
+var
+  I: Integer;
 begin
   { Whichever group was clicked becomes the active one first, so the action
     closes the tab the user aimed at rather than the one that had focus. }
   SetActiveBook(TSpeedButton(Sender).Tag);
+  { a hover cross closes the tab it is on, which need not be the one in
+    front: that one comes to the front first, and the close takes it }
+  I := TSpeedButton(Sender).Tag;
+  if LedTabHoverClose and (I >= 0) and (I <= 1) and (FTabClose[I] <> nil) and
+     (BookByIndex(I) <> nil) and (FTabClose[I].HoverIndex >= 0) and
+     (FTabClose[I].HoverIndex < BookByIndex(I).PageCount) then
+    BookByIndex(I).ActivePageIndex := FTabClose[I].HoverIndex;
   actCloseTabExecute(Sender);
+  if LedTabHoverClose and (I >= 0) and (I <= 1) and (FTabClose[I] <> nil) then
+    FTabClose[I].HideHover;
 end;
 
 procedure TLedMainForm.BookResize(Sender: TObject);
 begin
   PlaceTabCloseButtons;
+end;
+
+procedure TLedMainForm.ApplyTabCloseMode;
+var
+  i: Integer;
+  Tabs: TFPList;
+begin
+  {$IFNDEF MIMA}    { the fork turns hover mode on itself }
+  if LedPrefs.GetBool(LedPrefTabHoverClose, False) = LedTabHoverClose then
+    Exit;
+  for i := 0 to 1 do
+    if FTabClose[i] <> nil then
+      FTabClose[i].HideHover;
+  LedTabHoverClose := LedPrefs.GetBool(LedPrefTabHoverClose, False);
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      RefreshTabCaption(TLedTab(Tabs[i]));     { room for the cross, or none }
+  finally
+    Tabs.Free;
+  end;
+  PlaceTabCloseButtons;
+  {$ENDIF}
 end;
 
 procedure TLedMainForm.PlaceTabCloseButtons;
@@ -5742,6 +5797,8 @@ begin
   else
     ATab.Sheet.ImageIndex :=
       LedIconIndex(LedIconForFile(ATab.Document.FileName));
+  if LedTabHoverClose then
+    S := S + LedTabCaptionPad;
   ATab.Sheet.Caption := S;
   { The path is shown on the strip, by TabStripHint, and not from here.  A
     hint on the page is inherited by everything on it, so this one followed

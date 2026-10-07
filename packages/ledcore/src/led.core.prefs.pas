@@ -109,6 +109,9 @@ const
     which mean something different: those write the user's actual file behind
     their back, this keeps a private journal and never touches it. }
   LedPrefShowPaneButtons  = 'Editor/show_pane_buttons';
+  { the close cross on the tab under the pointer rather than once at the end
+    of the strip (medit's, and the default) }
+  LedPrefTabHoverClose    = 'Editor/tab_close_hover';
   LedPrefLockPanes        = 'Editor/lock_pane_layout';
   { Not a setting: a note that the stale lock below has been cleared once.
     See the migration in the main form. }

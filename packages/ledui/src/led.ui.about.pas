@@ -134,10 +134,11 @@ begin
     L.Add('');
 
     L.Add('ACKNOWLEDGEMENTS');
-    L.Add('- Yevgen Muntyan, author of medit (2004-2010), whose feature set, '
-      + 'vocabulary and shipped tools LED was built against. LED is a new '
-      + 'program written in Free Pascal: no medit source is used here and '
-      + 'none was translated line by line. See PARITY.md.');
+    L.Add('- medit: LED matches the features, vocabulary, shipped tools and '
+      + 'much of the look of the GTK3 branch of medit that Qianqian Fang '
+      + 'extended from Yevgen Muntyan''s original GTK2 medit (2004-2010). '
+      + 'LED is a new program written in Free Pascal: no medit source is '
+      + 'used here and none was translated line by line. See PARITY.md.');
     L.Add('- Developed with the assistance of the AI coding assistant Claude '
       + '(Anthropic)');
     L.Add('');

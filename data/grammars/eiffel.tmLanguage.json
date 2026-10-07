@@ -57,7 +57,7 @@
    "name": "def.preprocessor"
   },
   {
-   "match": "\\b(?:indexing|deferred|expanded|class|obsolete|inherit|insert|rename|as|export|all|undefine|redefine|select|end|\\(create\\|creation\\)|feature|frozen|prefix|infix|is|obsolete|require\\\\s\\*\\(else\\)\\?|local|deferred|do|once|external|alias|ensure\\\\s\\*\\(then\\)\\?|rescue|end|unique|invariant|end|and\\\\s\\*\\(then\\)\\?|or\\\\s\\*\\(else\\)\\?|xor|implies|not|retry|if|then|elseif|else|end|inspect|when|end|from|invariant|variant|until|loop|do|end|strip|old|separate|expanded|like)\\b",
+   "match": "\\b(?:indexing|deferred|expanded|class|obsolete|inherit|insert|rename|as|export|all|undefine|redefine|select|end|(?:(create|creation))|feature|frozen|prefix|infix|is|obsolete|(?:require\\s*(else)?)|local|deferred|do|once|external|alias|(?:ensure\\s*(then)?)|rescue|end|unique|invariant|end|(?:and\\s*(then)?)|(?:or\\s*(else)?)|xor|implies|not|retry|if|then|elseif|else|end|inspect|when|end|from|invariant|variant|until|loop|do|end|strip|old|separate|expanded|like)\\b",
    "name": "def.keyword"
   },
   {

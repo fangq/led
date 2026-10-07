@@ -83,7 +83,7 @@
    ]
   },
   {
-   "match": "\\b(?:byte|character|complex|double\\ complex|double\\ precision|integer|logical|procedure|real)\\b",
+   "match": "\\b(?:byte|character|complex|(?:double complex)|(?:double precision)|integer|logical|procedure|real)\\b",
    "name": "def.type"
   },
   {
@@ -101,7 +101,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:abstract\\ interface|allocate|assign|assignment|block\\ data|call|case|class|common|contains|continue|cycle|data|deallocate|default|do|do\\ concurrent|elemental|elseif|else|elsewhere|enddo|endif|endselect|end|entry|equivalence|exit|external|forall|function|go\\ to|goto|if|implicit\\ none|in|\\[\\^\\#\\]include|inout|interface|intrinsic|kind|len|module|namelist|nullify|only|operator|out|pause|private|program|public|pure|recursive|result|return|save|select|stop|subroutine|then|type|use|where|while)\\b",
+   "match": "\\b(?:(?:abstract interface)|allocate|assign|assignment|(?:block data)|call|case|class|common|contains|continue|cycle|data|deallocate|default|do|(?:do concurrent)|elemental|elseif|else|elsewhere|enddo|endif|endselect|end|entry|equivalence|exit|external|forall|function|(?:go to)|goto|if|(?:implicit none)|in|(?:[^#]include)|inout|interface|intrinsic|kind|len|module|namelist|nullify|only|operator|out|pause|private|program|public|pure|recursive|result|return|save|select|stop|subroutine|then|type|use|where|while)\\b",
    "name": "def.keyword"
   },
   {

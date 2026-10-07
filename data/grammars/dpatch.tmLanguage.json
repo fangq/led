@@ -91,7 +91,7 @@
             {
              "patterns": [
               {
-               "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+               "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
                "name": "def.keyword"
               },
               {
@@ -121,7 +121,7 @@
              ]
             },
             {
-             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
              "name": "def.keyword"
             },
             {
@@ -172,7 +172,7 @@
         {
          "patterns": [
           {
-           "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+           "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
            "name": "def.keyword"
           },
           {
@@ -202,7 +202,7 @@
          ]
         },
         {
-         "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+         "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
          "name": "def.keyword"
         },
         {
@@ -284,7 +284,7 @@
       {
        "patterns": [
         {
-         "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+         "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
          "name": "def.keyword"
         },
         {
@@ -314,7 +314,7 @@
        ]
       },
       {
-       "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+       "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
        "name": "def.keyword"
       },
       {
@@ -427,7 +427,7 @@
               {
                "patterns": [
                 {
-                 "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+                 "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
                  "name": "def.keyword"
                 },
                 {
@@ -457,7 +457,7 @@
                ]
               },
               {
-               "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+               "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
                "name": "def.keyword"
               },
               {
@@ -508,7 +508,7 @@
           {
            "patterns": [
             {
-             "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+             "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
              "name": "def.keyword"
             },
             {
@@ -538,7 +538,7 @@
            ]
           },
           {
-           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
            "name": "def.keyword"
           },
           {
@@ -584,11 +584,11 @@
      }
     },
     {
-     "match": "\\b(?:>\\&\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+>\\&|\\\\b\\[0\\-9\\]\\+>\\&\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+>|>>|\\\\b\\[0\\-9\\]\\+>>|<\\&\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<\\&|\\\\b\\[0\\-9\\]\\+<\\&\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<|<<\\+\\[0\\-9\\]|\\\\b\\[0\\-9\\]\\+<<)\\b",
+     "match": "\\b(?:(?:>&+[0-9])|(?:\\b[0-9]+>&)|(?:\\b[0-9]+>&+[0-9])|(?:\\b[0-9]+>)|(?:>>)|(?:\\b[0-9]+>>)|(?:<&[0-9])|(?:\\b[0-9]+<&)|(?:\\b[0-9]+<&[0-9])|(?:\\b[0-9]+<)|(?:<<+[0-9])|(?:\\b[0-9]+<<))\\b",
      "name": "def.keyword"
     },
     {
-     "match": "\\b(?:\\\\\\-a\\\\b|\\\\\\-b\\\\b|\\\\\\-c\\\\b|\\\\\\-d\\\\b|\\\\\\-e\\\\b|\\\\\\-f\\\\b|\\\\\\-g\\\\b|\\\\\\-h\\\\b|\\\\\\-k\\\\b|\\\\\\-p\\\\b|\\\\\\-r\\\\b|\\\\\\-s\\\\b|\\\\\\-t\\\\b|\\\\\\-u\\\\b|\\\\\\-w\\\\b|\\\\\\-x\\\\b|\\\\\\-O\\\\b|\\\\\\-G\\\\b|\\\\\\-L\\\\b|\\\\\\-S\\\\b|\\\\\\-N\\\\b|\\\\\\-nt\\\\b|\\\\\\-ot\\\\b|\\\\\\-ef\\\\b|\\\\\\-o\\\\b|\\\\\\-z\\\\b|\\\\\\-n\\\\b|<|>|\\\\!=|\\\\\\-eq\\\\b|\\\\\\-ne\\\\b|\\\\\\-lt\\\\b|\\\\\\-le\\\\b|\\\\\\-gt\\\\b|\\\\\\-ge\\\\b)\\b",
+     "match": "\\b(?:(?:\\-a\\b)|(?:\\-b\\b)|(?:\\-c\\b)|(?:\\-d\\b)|(?:\\-e\\b)|(?:\\-f\\b)|(?:\\-g\\b)|(?:\\-h\\b)|(?:\\-k\\b)|(?:\\-p\\b)|(?:\\-r\\b)|(?:\\-s\\b)|(?:\\-t\\b)|(?:\\-u\\b)|(?:\\-w\\b)|(?:\\-x\\b)|(?:\\-O\\b)|(?:\\-G\\b)|(?:\\-L\\b)|(?:\\-S\\b)|(?:\\-N\\b)|(?:\\-nt\\b)|(?:\\-ot\\b)|(?:\\-ef\\b)|(?:\\-o\\b)|(?:\\-z\\b)|(?:\\-n\\b)|(?:<)|(?:>)|(?:\\!=)|(?:\\-eq\\b)|(?:\\-ne\\b)|(?:\\-lt\\b)|(?:\\-le\\b)|(?:\\-gt\\b)|(?:\\-ge\\b))\\b",
      "name": "def.function"
     },
     {
@@ -641,7 +641,7 @@
             {
              "patterns": [
               {
-               "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+               "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
                "name": "def.keyword"
               },
               {
@@ -671,7 +671,7 @@
              ]
             },
             {
-             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+             "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
              "name": "def.keyword"
             },
             {
@@ -700,7 +700,7 @@
           {
            "patterns": [
             {
-             "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+             "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
              "name": "def.keyword"
             },
             {
@@ -730,7 +730,7 @@
            ]
           },
           {
-           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+           "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
            "name": "def.keyword"
           },
           {
@@ -774,7 +774,7 @@
     {
      "patterns": [
       {
-       "match": "None(?:\\\\!|\\\\\\{|\\\\\\}|\\\\:|\\(\\?<=\\\\s\\)\\\\\\.\\(\\?=\\\\s\\))None",
+       "match": "None(?:(?:\\!)|(?:\\{)|(?:\\})|(?:\\:)|(?:(?<=\\s)\\.(?=\\s)))None",
        "name": "def.keyword"
       },
       {
@@ -804,7 +804,7 @@
      ]
     },
     {
-     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|pkg\\-config|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|ssh\\-add|ssh\\-agent|ssh\\-keygen|ssh\\-keyscan|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
+     "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])(?:ar|awk|basename|bash|beep|bunzip2|bzcat|bzcmp|bzdiff|bzegrep|bzfgrep|bzgrep|bzip2recover|bzip2|bzless|bzmore|cc|cat|chattr|chgrp|chmod|chown|chroot|clear|cmp|cpp|cp|cut|date|dd|df|dialog|diff3|diff|dirname|dir|du|egrep|eject|env|expr|false|fgrep|file|find|fmt|free|ftp|funzip|fuser|gawk|gcc|getent|getopt|grep|groups|gunzip|gzip|head|hostname|id|ifconfig|info|insmod|install|join|killall|kill|lastb|last|ld|less|ln|locate|lockfile|login|logname|lp|lpr|lsattr|ls|lsmod|make|man|mkdir|mkfifo|mknod|mktemp|modprobe|more|mount|mv|namei|nawk|nice|nl|passwd|patch|perl|pgawk|pidof|ping|(?:pkg-config)|pr|ps|pwd|readlink|renice|rmdir|rm|scp|sed|seq|sh|sleep|sort|split|(?:ssh-add)|(?:ssh-agent)|(?:ssh-keygen)|(?:ssh-keyscan)|ssh|stat|sudo|sum|su|sync|tac|tail|tar|tee|tempfile|touch|true|tr|umount|uname|uniq|unlink|unzip|uptime|wall|wc|wget|whereis|which|whoami|who|write|w|xargs|xdialog|zcat|zcmp|zdiff|zegrep|zenity|zfgrep|zforce|zgrep|zip|zless|zmore|znew)(?![[A-Za-z0-9_\\x80-\\xFF]\\-\\.])",
      "name": "def.keyword"
     }
    ]
@@ -849,7 +849,7 @@
        ]
       },
       {
-       "match": "^(?:Only\\ in\\ \\.\\*|Files\\ \\.\\*\\ and\\ \\.\\*\\ are\\ identical\\$|Files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|Binary\\ files\\ \\.\\*\\ and\\ \\.\\*\\ differ\\$|File\\ \\.\\*\\ is\\ a\\ \\.\\*\\ while\\ file\\ \\.\\*\\ is\\ a\\ \\.\\*|No\\ newline\\ at\\ end\\ of\\ file\\ \\.\\*)\\b",
+       "match": "^(?:(?:Only in .*)|(?:Files .* and .* are identical$)|(?:Files .* and .* differ$)|(?:Binary files .* and .* differ$)|(?:File .* is a .* while file .* is a .*)|(?:No newline at end of file .*))\\b",
        "name": "diff.special-case"
       },
       {

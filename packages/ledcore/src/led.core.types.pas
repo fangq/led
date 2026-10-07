@@ -78,19 +78,16 @@ const
   { Mima's own version, which is not the editor's it was forked from. }
   MimaVersion    = '0.1.0';
 
-  { What this is: an implementation of the MATLAB *language*, in one line a
-    greeting has room for. }
-  { Short enough to fit the pane it is printed in: the command window is
-    about seventy columns at its default size, and a greeting whose third
-    line runs off the right-hand edge is a poor first impression. }
-  MimaAppAbout   = 'An IDE for the MATLAB language, running Mimagen '
-                 + 'over Mimamo.';
+  { What this is, in the greeting's third line and the About box: the
+    user's own wording (2026-10-07). }
+  MimaAppAbout   = 'A fast interpreter, compiler and IDE for the MATLAB/Octave '
+                 + 'language, built on GPU-accelerated matrix library Mimamo';
 
 { Whose it is.  In one place because the greeting, the About box and a bug
   report all quote it. }
 const
   LedAppAuthor    = 'Qianqian Fang';
-  LedAppContact   = 'q.fang at neu.edu';
+  LedAppContact   = 'fangqq at fanglab.org';
   LedAppCopyright = '(C) 2026 ' + LedAppAuthor + ' <' + LedAppContact + '>';
 
 { ...and which of those this process is.  Read rather than spelled out,
