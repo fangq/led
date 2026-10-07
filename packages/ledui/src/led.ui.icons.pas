@@ -153,14 +153,25 @@ uses
   The MATLAB logo is the MATLAB fork's (Mima) alone: its file ships there,
   and LED draws a page with an M for the name instead. }
 const
-  ArtworkNames: array[0..{$IFDEF MIMA}41{$ELSE}40{$ENDIF}] of string = (
+  ArtworkNames: array[0..{$IFDEF MIMA}101{$ELSE}100{$ENDIF}] of string = (
     'assistant', 'back', 'breakpoint', 'browser', 'codeform', 'copy',
     'cut', 'debug', 'files', 'find', 'forward', 'help', 'home',
     {$IFDEF MIMA}'matlab', {$ENDIF}'new', 'newfile', 'newfolder', 'notebook', 'open',
     'output', 'paste', 'pause', 'preview', 'project', 'python',
     'redo', 'reload', 'replace', 'run', 'runcell', 'save', 'saveas',
     'stepinto', 'stepout', 'stepover', 'stop', 'symbols', 'terminal',
-    'theme', 'undo', 'up', 'watch');
+    'theme', 'undo', 'up', 'watch',
+    { the visual editor's toolbar }
+    'accept', 'addcomment', 'aligncenter', 'alignjustify', 'alignleft', 'alignright',
+    'bookmark', 'borders', 'bullets', 'caption', 'clearformat', 'columns',
+    'crossref', 'distribute', 'fmtbold', 'fmtitalic', 'fmtstrike', 'fmtsub',
+    'fmtsuper', 'fmtunderline', 'fontgrow', 'fontshrink', 'footer', 'formatmarks',
+    'header', 'headerrow', 'highlight', 'host', 'indent', 'insertbreak',
+    'insertequation', 'insertfield', 'insertlink', 'insertnote', 'insertpicture', 'insertsymbol',
+    'inserttable', 'join', 'linenumbers', 'linespacing', 'margins', 'navigation',
+    'nextchange', 'numbering', 'orientation', 'pagenumbers', 'pagesize', 'prevchange',
+    'reject', 'shading', 'share', 'tbldelete', 'tblinsert', 'tblmerge',
+    'textcolor', 'toc', 'trackchanges', 'unindent', 'zoomin', 'zoomout');
 
 function LedIconArtwork(const AName: string): string;
 var
@@ -334,7 +345,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..73] of string = (
+  IconNames: array[0..129] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -383,7 +394,19 @@ const
 
       Appended, like everything above it: a position in this list is an
       ImageIndex in a form file, so the list only ever grows at the end. }
-    'python', 'matlab', 'watch', 'codeform', 'files'
+    'python', 'matlab', 'watch', 'codeform', 'files',
+    { The visual editor's toolbar, painted (tools/visual_icons.py).  Appended:
+      a position here is an ImageIndex in a form file. }
+    'accept', 'addcomment', 'aligncenter', 'alignjustify', 'alignleft', 'alignright',
+    'borders', 'bullets', 'caption', 'clearformat', 'columns', 'crossref',
+    'distribute', 'fmtbold', 'fmtitalic', 'fmtstrike', 'fmtsub', 'fmtsuper',
+    'fmtunderline', 'fontgrow', 'fontshrink', 'footer', 'formatmarks', 'header',
+    'headerrow', 'highlight', 'host', 'insertbreak', 'insertequation', 'insertfield',
+    'insertlink', 'insertnote', 'insertpicture', 'insertsymbol', 'inserttable', 'join',
+    'linespacing', 'margins', 'navigation', 'nextchange', 'numbering', 'orientation',
+    'pagenumbers', 'pagesize', 'prevchange', 'reject', 'shading', 'share',
+    'tbldelete', 'tblinsert', 'tblmerge', 'textcolor', 'toc', 'trackchanges',
+    'zoomin', 'zoomout'
   );
 
 
