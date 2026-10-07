@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  Dialogs, LCLType, Menus
+  Dialogs, LCLType, Menus, Spin
   {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay{$ENDIF};
 
@@ -40,6 +40,8 @@ type
     FTabStrip: TPanel;          { the tabs' names, one button each, and the sharing status }
     FBars: array of TFlowPanel; { a row of controls per tab; one shown }
     FBar: TFlowPanel;           { the one being filled while the constructor builds them }
+    FTabBtns: array of TSpeedButton;
+    FTableTab: Integer;         { the Table tab's index, shown only while the caret is in a table (-1: none) }
     FStyle: TComboBox;
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
@@ -107,6 +109,37 @@ type
     procedure FieldItemClicked(Sender: TObject);
     procedure SymbolItemClicked(Sender: TObject);
     {$ENDIF}
+  private
+    {$IFDEF LED_PARADE}
+    { the Layout and Table tabs }
+    FPortraitItem, FLandscapeItem: TMenuItem;
+    FIndentLeft, FIndentRight, FSpaceBefore, FSpaceAfter: TFloatSpinEdit;
+    FHeaderRowBtn: TSpeedButton;
+    FUpdating: Boolean;
+    function MenuItem(AMenu: TPopupMenu; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
+    function MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu): TSpeedButton;
+    function NumberBox(const ACaption, AHint: string; AMax, AStep: Double; ADecimals: Integer): TFloatSpinEdit;
+    procedure BuildLayout;
+    procedure MarginsItemClicked(Sender: TObject);
+    procedure OrientationItemClicked(Sender: TObject);
+    procedure SizeItemClicked(Sender: TObject);
+    procedure ColumnsItemClicked(Sender: TObject);
+    procedure LayoutBreakItemClicked(Sender: TObject);
+    procedure EditHeaderFooter(AFooter: Boolean);
+    procedure HeaderClicked(Sender: TObject);
+    procedure FooterClicked(Sender: TObject);
+    procedure PageNumberItemClicked(Sender: TObject);
+    procedure LineNumberItemClicked(Sender: TObject);
+    procedure ParaBoxChanged(Sender: TObject);
+    procedure BuildTable;
+    procedure TableInsertItemClicked(Sender: TObject);
+    procedure TableDeleteItemClicked(Sender: TObject);
+    procedure TableMergeItemClicked(Sender: TObject);
+    procedure ShadingItemClicked(Sender: TObject);
+    procedure BordersItemClicked(Sender: TObject);
+    procedure HeaderRowClicked(Sender: TObject);
+    procedure DistributeClicked(Sender: TObject);
+    {$ENDIF}
     function AddTab(const ACaption: string): TFlowPanel;
     procedure TabClicked(Sender: TObject);
     procedure AddSeparator;
@@ -171,7 +204,8 @@ type
     { the page itself, for scripting and tests }
     property Page: TParadeEdit read FEdit;
     {$ENDIF}
-    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Review, 3 Share (without Parade: 0 Home, 1 Review) }
+    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 Review, 4 Share, then Table (shown in a
+      table); without Parade: 0 Home, 1 Review }
     procedure ShowTab(AIndex: Integer);
   end;
 
@@ -196,7 +230,7 @@ function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Math
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -385,9 +419,10 @@ begin
   Caption := '';
 
   { The toolbar: tabs, as a word processor's -- Home for the font and the
-    paragraph, Insert for tables, pictures, links and the like, Review for
-    tracked changes and comments, Share for editing together -- each a row
-    of controls that wraps when the pane is narrow. }
+    paragraph, Insert for tables, pictures, links and the like, Layout for
+    the pages, Review for tracked changes and comments, Share for editing
+    together, and Table while the caret is in one -- each a row of controls
+    that wraps when the pane is narrow. }
   FTabStrip := TPanel.Create(Self);
   FTabStrip.Parent := Self;
   FTabStrip.Align := alTop;
@@ -428,9 +463,12 @@ begin
   AddToggle('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
   {$ENDIF}
 
+  FTableTab := -1;
   {$IFDEF LED_PARADE}
   AddTab('Insert');
   BuildInsert;
+  AddTab('Layout');
+  BuildLayout;
   {$ENDIF}
 
   { review: tracked changes and comments }
@@ -476,6 +514,18 @@ begin
   FSync.OutboxDir := IncludeTrailingPathDelimiter(LedConfigDir) + 'outbox';   { edits made offline outlive a quit }
   FRelay := TParadeRelay.Create(Self);
   {$ENDIF}
+  {$IFDEF LED_PARADE}
+  { a tab of its own while the caret is in a table, as word processors have it }
+  AddTab('Table');
+  BuildTable;
+  FTableTab := High(FBars);
+  FTabBtns[FTableTab].Visible := False;
+  {$ENDIF}
+  {$IFDEF LED_PARADE_SYNC}
+  { the sharing status after the last tab }
+  FSyncStatus.Parent := nil;
+  FSyncStatus.Parent := FTabStrip;
+  {$ENDIF}
   ShowTab(0);
 end;
 
@@ -493,6 +543,8 @@ begin
   B.Constraints.MinWidth := LedScale96(64);
   B.Height := LedScale96(22);
   B.OnClick := @TabClicked;
+  SetLength(FTabBtns, Length(FTabBtns) + 1);
+  FTabBtns[High(FTabBtns)] := B;
   Result := TFlowPanel.Create(Self);
   Result.Parent := Self;
   Result.Align := alTop;
@@ -826,6 +878,36 @@ begin
   RefreshStyles;
   if not FStyle.DroppedDown then
     FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
+  { the Layout tab's boxes and menus }
+  FUpdating := True;
+  try
+    if not FIndentLeft.Focused then FIndentLeft.Value := Pp.indent_left / PD_SP_PER_PT / 72;
+    if not FIndentRight.Focused then FIndentRight.Value := Pp.indent_right / PD_SP_PER_PT / 72;
+    if not FSpaceBefore.Focused then FSpaceBefore.Value := Pp.space_before / PD_SP_PER_PT;
+    if not FSpaceAfter.Focused then FSpaceAfter.Value := Pp.space_after / PD_SP_PER_PT;
+  finally
+    FUpdating := False;
+  end;
+  with FEdit.CurrentSectionProps do
+  begin
+    FLandscapeItem.Checked := page_width > page_height;
+    FPortraitItem.Checked := page_width <= page_height;
+  end;
+  { the Table tab: there while the caret is in a table; Home again when it leaves with the tab open }
+  if FTableTab >= 0 then
+  begin
+    if FEdit.InTable then
+    begin
+      FTabBtns[FTableTab].Visible := True;
+      FHeaderRowBtn.Down := FEdit.CurrentTableProps.header_rows > 0;
+    end
+    else if FTabBtns[FTableTab].Visible then
+    begin
+      if FBars[FTableTab].Visible then
+        ShowTab(0);
+      FTabBtns[FTableTab].Visible := False;
+    end;
+  end;
 end;
 
 procedure TLedVisualPane.FontChosen(Sender: TObject);
@@ -1172,6 +1254,401 @@ end;
 procedure TLedVisualPane.SymbolItemClicked(Sender: TObject);
 begin
   FEdit.InsertText(TMenuItem(Sender).Caption);
+  BackToPage;
+end;
+
+{ ---- the Layout tab: the caret's section's pages, and the paragraph's exact indents and spacing ---- }
+
+function TLedVisualPane.MenuItem(AMenu: TPopupMenu; const ACaption: string; ATag: Integer;
+  AClick: TNotifyEvent): TMenuItem;
+begin
+  Result := TMenuItem.Create(AMenu);
+  Result.Caption := ACaption;
+  Result.Tag := ATag;
+  Result.OnClick := AClick;
+  AMenu.Items.Add(Result);
+end;
+
+function TLedVisualPane.MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu): TSpeedButton;
+begin
+  Result := AddButton(ACaption + ' ' + #$E2#$96#$BE, AHint, [], @MenuDropClicked);
+  Result.Tag := PtrInt(AMenu);
+  if AIcon <> '' then
+  begin
+    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+    Result.Spacing := LedScale96(4);
+  end;
+end;
+
+function TLedVisualPane.NumberBox(const ACaption, AHint: string; AMax, AStep: Double;
+  ADecimals: Integer): TFloatSpinEdit;
+var
+  L: TLabel;
+  Box: TPanel;
+begin
+  { the label and its box in a panel of their own: they wrap to the next line together }
+  Box := TPanel.Create(Self);
+  Box.Parent := FBar;
+  Box.BevelOuter := bvNone;
+  Box.Caption := '';
+  Box.AutoSize := True;
+  Box.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  Box.ChildSizing.ControlsPerLine := 2;
+  Box.ChildSizing.HorizontalSpacing := LedScale96(3);
+  Box.BorderSpacing.Left := LedScale96(6);
+  L := TLabel.Create(Self);
+  L.Parent := Box;
+  L.Caption := ACaption;
+  L.Layout := tlCenter;
+  L.AutoSize := True;
+  Result := TFloatSpinEdit.Create(Self);
+  Result.Parent := Box;
+  Result.Width := LedScale96(64);
+  Result.MinValue := 0;
+  Result.MaxValue := AMax;
+  Result.Increment := AStep;
+  Result.DecimalPlaces := ADecimals;
+  Result.Hint := AHint;
+  Result.ShowHint := True;
+  Result.BorderSpacing.Around := LedScale96(1);
+  Result.OnEditingDone := @ParaBoxChanged;
+end;
+
+procedure TLedVisualPane.BuildLayout;
+var
+  M: TPopupMenu;
+begin
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Normal (1" all round)', 0, @MarginsItemClicked);
+  MenuItem(M, 'Narrow (0.5")', 1, @MarginsItemClicked);
+  MenuItem(M, 'Moderate (1" top and bottom, 0.75" sides)', 2, @MarginsItemClicked);
+  MenuItem(M, 'Wide (1" top and bottom, 2" sides)', 3, @MarginsItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Custom margins...', -1, @MarginsItemClicked);
+  MenuButton('', 'Margins', 'The page''s margins (this section)', M);
+  M := TPopupMenu.Create(Self);
+  FPortraitItem := MenuItem(M, 'Portrait', 0, @OrientationItemClicked);
+  FLandscapeItem := MenuItem(M, 'Landscape', 1, @OrientationItemClicked);
+  FPortraitItem.RadioItem := True;
+  FLandscapeItem.RadioItem := True;
+  MenuButton('', 'Orientation', 'Portrait or landscape (this section)', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Letter (8.5" x 11")', 0, @SizeItemClicked);
+  MenuItem(M, 'Legal (8.5" x 14")', 1, @SizeItemClicked);
+  MenuItem(M, 'Tabloid (11" x 17")', 2, @SizeItemClicked);
+  MenuItem(M, 'Executive (7.25" x 10.5")', 3, @SizeItemClicked);
+  MenuItem(M, 'A3 (297 x 420 mm)', 4, @SizeItemClicked);
+  MenuItem(M, 'A4 (210 x 297 mm)', 5, @SizeItemClicked);
+  MenuItem(M, 'A5 (148 x 210 mm)', 6, @SizeItemClicked);
+  MenuButton('', 'Size', 'The paper (this section)', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'One', 1, @ColumnsItemClicked);
+  MenuItem(M, 'Two', 2, @ColumnsItemClicked);
+  MenuItem(M, 'Three', 3, @ColumnsItemClicked);
+  MenuButton('', 'Columns', 'Text in columns (this section)', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Page break', 0, @LayoutBreakItemClicked);
+  MenuItem(M, 'Column break', 1, @LayoutBreakItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Section break, next page', 2, @LayoutBreakItemClicked);
+  MenuItem(M, 'Section break, continuous', 3, @LayoutBreakItemClicked);
+  MenuButton('insertbreak', 'Breaks', 'A page or column break, or a new section with page settings of its own', M);
+  AddSeparator;
+  AddButton('Header...', 'The text at the top of every page; {page}, {pages} and {date} are kept up to date', [],
+    @HeaderClicked);
+  AddButton('Footer...', 'The text at the bottom of every page; {page}, {pages} and {date} are kept up to date', [],
+    @FooterClicked);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Bottom of the page, centred', 0, @PageNumberItemClicked);
+  MenuItem(M, '"Page N of M" at the bottom', 1, @PageNumberItemClicked);
+  MenuItem(M, 'Top of the page, right', 2, @PageNumberItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Start at...', 3, @PageNumberItemClicked);
+  MenuItem(M, 'Remove', 4, @PageNumberItemClicked);
+  MenuButton('insertfield', 'Page numbers', 'Page numbers in the header or footer', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'None', 0, @LineNumberItemClicked);
+  MenuItem(M, 'Every line', 1, @LineNumberItemClicked);
+  MenuItem(M, 'Every 5 lines', 5, @LineNumberItemClicked);
+  MenuButton('', 'Line numbers', 'Lines numbered in the margin', M);
+  AddSeparator;
+  FIndentLeft := NumberBox('Indent left', 'The paragraph''s left indent, in inches', 10, 0.25, 2);
+  FIndentRight := NumberBox('Indent right', 'The paragraph''s right indent, in inches', 10, 0.25, 2);
+  FSpaceBefore := NumberBox('Space before', 'Space before the paragraph, in points', 500, 6, 0);
+  FSpaceAfter := NumberBox('Space after', 'Space after the paragraph, in points', 500, 6, 0);
+end;
+
+procedure TLedVisualPane.MarginsItemClicked(Sender: TObject);
+const
+  Sets: array[0..3, 0..3] of Double = ((72, 72, 72, 72), (36, 36, 36, 36), (72, 72, 54, 54), (72, 72, 144, 144));
+var
+  V: array of string;
+  P: pd_section_props;
+  i: Integer;
+  T: array[0..3] of Double;
+begin
+  i := TMenuItem(Sender).Tag;
+  if i >= 0 then
+    FEdit.SetMargins(Sets[i, 0], Sets[i, 1], Sets[i, 2], Sets[i, 3])
+  else
+  begin
+    P := FEdit.CurrentSectionProps;
+    SetLength(V, 4);
+    V[0] := FormatFloat('0.##', P.margin_top / PD_SP_PER_PT / 72);
+    V[1] := FormatFloat('0.##', P.margin_bottom / PD_SP_PER_PT / 72);
+    V[2] := FormatFloat('0.##', P.margin_left / PD_SP_PER_PT / 72);
+    V[3] := FormatFloat('0.##', P.margin_right / PD_SP_PER_PT / 72);
+    if InputQuery('Margins', ['Top (inches)', 'Bottom', 'Left', 'Right'], V) then
+    begin
+      for i := 0 to 3 do
+        if not TryStrToFloat(Trim(V[i]), T[i]) or (T[i] < 0) or (T[i] > 10) then
+        begin
+          MessageDlg('Margins', 'Margins are inches from 0 to 10.', mtError, [mbOK], 0);
+          Exit;
+        end;
+      FEdit.SetMargins(T[0] * 72, T[1] * 72, T[2] * 72, T[3] * 72);
+    end;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.OrientationItemClicked(Sender: TObject);
+begin
+  FEdit.SetOrientation(TMenuItem(Sender).Tag = 1);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SizeItemClicked(Sender: TObject);
+const
+  MM = 72 / 25.4;
+  Sizes: array[0..6, 0..1] of Double = ((612, 792), (612, 1008), (792, 1224), (522, 756), (297 * MM, 420 * MM),
+    (210 * MM, 297 * MM), (148 * MM, 210 * MM));
+begin
+  FEdit.SetPageSize(Sizes[TMenuItem(Sender).Tag, 0], Sizes[TMenuItem(Sender).Tag, 1]);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ColumnsItemClicked(Sender: TObject);
+begin
+  FEdit.SetColumns(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.LayoutBreakItemClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.InsertBreak(PD_BREAK_PAGE);
+    1: FEdit.InsertBreak(PD_BREAK_COLUMN);
+    2: FEdit.InsertSectionBreak(False);
+    3: FEdit.InsertSectionBreak(True);
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.EditHeaderFooter(AFooter: Boolean);
+var
+  V: array of string;
+  A: Integer;
+  S: string;
+begin
+  SetLength(V, 2);
+  V[0] := FEdit.HeaderFooterText(AFooter);
+  if AFooter then V[1] := 'centre' else V[1] := 'left';
+  if AFooter then S := 'Footer' else S := 'Header';
+  if not InputQuery(S, [S + ' text ({page}, {pages} and {date} are filled in; blank: none)',
+    'Alignment (left, centre, right)'], V) then
+  begin
+    BackToPage;
+    Exit;
+  end;
+  S := LowerCase(Trim(V[1]));
+  if (S = 'right') or (S = 'r') then A := PD_ALIGN_RIGHT
+  else if (S = 'left') or (S = 'l') then A := PD_ALIGN_LEFT
+  else A := PD_ALIGN_CENTER;
+  FEdit.SetHeaderFooter(AFooter, V[0], A);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.HeaderClicked(Sender: TObject);
+begin
+  EditHeaderFooter(False);
+end;
+
+procedure TLedVisualPane.FooterClicked(Sender: TObject);
+begin
+  EditHeaderFooter(True);
+end;
+
+procedure TLedVisualPane.PageNumberItemClicked(Sender: TObject);
+var
+  S: string;
+  N: Integer;
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.SetHeaderFooter(True, '{page}', PD_ALIGN_CENTER);
+    1: FEdit.SetHeaderFooter(True, 'Page {page} of {pages}', PD_ALIGN_CENTER);
+    2: FEdit.SetHeaderFooter(False, '{page}', PD_ALIGN_RIGHT);
+    3:
+      begin
+        S := IntToStr(Max(1, FEdit.CurrentSectionProps.first_page_number));
+        if InputQuery('Page numbers', 'The first page of this section is number:', S) then
+        begin
+          N := StrToIntDef(Trim(S), -1);
+          if N >= 1 then
+            FEdit.SetFirstPageNumber(N);
+        end;
+      end;
+    4:
+      begin   { only a header or footer that is just the page number goes }
+        if Pos('{page}', FEdit.HeaderFooterText(True)) > 0 then
+          FEdit.SetHeaderFooter(True, '');
+        if FEdit.HeaderFooterText(False) = '{page}' then
+          FEdit.SetHeaderFooter(False, '');
+      end;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.LineNumberItemClicked(Sender: TObject);
+begin
+  FEdit.SetLineNumbers(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ParaBoxChanged(Sender: TObject);
+var
+  P: pd_para_props;
+begin
+  if FUpdating then Exit;
+  FillChar(P, SizeOf(P), 0);
+  if Sender = FIndentLeft then
+  begin
+    P.mask := PD_PP_INDENT_LEFT;
+    P.indent_left := Round(FIndentLeft.Value * 72 * PD_SP_PER_PT);
+  end
+  else if Sender = FIndentRight then
+  begin
+    P.mask := PD_PP_INDENT_RIGHT;
+    P.indent_right := Round(FIndentRight.Value * 72 * PD_SP_PER_PT);
+  end
+  else if Sender = FSpaceBefore then
+  begin
+    P.mask := PD_PP_SPACE_BEFORE;
+    P.space_before := Round(FSpaceBefore.Value * PD_SP_PER_PT);
+  end
+  else if Sender = FSpaceAfter then
+  begin
+    P.mask := PD_PP_SPACE_AFTER;
+    P.space_after := Round(FSpaceAfter.Value * PD_SP_PER_PT);
+  end;
+  { only when it differs: leaving the box unchanged is not an edit }
+  with FEdit.CurrentParaProps do
+    if ((P.mask = PD_PP_INDENT_LEFT) and (indent_left = P.indent_left)) or
+       ((P.mask = PD_PP_INDENT_RIGHT) and (indent_right = P.indent_right)) or
+       ((P.mask = PD_PP_SPACE_BEFORE) and (space_before = P.space_before)) or
+       ((P.mask = PD_PP_SPACE_AFTER) and (space_after = P.space_after)) then
+      Exit;
+  FEdit.ApplyParaProps(P);
+end;
+
+{ ---- the Table tab: shown while the caret is in a table ---- }
+
+procedure TLedVisualPane.BuildTable;
+const
+  Shades: array[0..6] of Integer = ($D9E2F3, $E2EFD9, $FFF2CC, $FBE4D5, $EDEDED, $BDD7EE, $C5E0B3);
+  ShadeNames: array[0..6] of string = ('Light blue', 'Light green', 'Light yellow', 'Light orange', 'Light grey',
+    'Blue', 'Green');
+var
+  M: TPopupMenu;
+  i: Integer;
+begin
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Row above', 0, @TableInsertItemClicked);
+  MenuItem(M, 'Row below', 1, @TableInsertItemClicked);
+  MenuItem(M, 'Column left', 2, @TableInsertItemClicked);
+  MenuItem(M, 'Column right', 3, @TableInsertItemClicked);
+  MenuButton('inserttable', 'Insert', 'A row or column next to the caret''s cell', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Row', 0, @TableDeleteItemClicked);
+  MenuItem(M, 'Column', 1, @TableDeleteItemClicked);
+  MenuItem(M, 'Table', 2, @TableDeleteItemClicked);
+  MenuButton('', 'Delete', 'The caret''s row or column, or the whole table', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'With the cell to the right', 0, @TableMergeItemClicked);
+  MenuItem(M, 'With the cell below', 1, @TableMergeItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Split the merged cell', 2, @TableMergeItemClicked);
+  MenuButton('', 'Merge', 'Join cells into one, or split one back', M);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(Shades) do
+    Swatch(MenuItem(M, ShadeNames[i], Shades[i], @ShadingItemClicked), FromRGB(Shades[i]), False);
+  MenuItem(M, '-', 0, nil);
+  Swatch(MenuItem(M, 'No shading', -1, @ShadingItemClicked), clWhite, True);
+  MenuButton('highlight', 'Shading', 'A colour behind the selected cells', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'None', 0, @BordersItemClicked);
+  MenuItem(M, 'Thin (0.5 pt)', 5, @BordersItemClicked);
+  MenuItem(M, 'Medium (1 pt)', 10, @BordersItemClicked);
+  MenuItem(M, 'Thick (1.5 pt)', 15, @BordersItemClicked);
+  MenuButton('', 'Borders', 'The table''s rules', M);
+  FHeaderRowBtn := AddToggle('Header row', 'Repeat the first row at the top of every page the table runs onto', [],
+    @HeaderRowClicked);
+  AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked);
+end;
+
+procedure TLedVisualPane.TableInsertItemClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.TableInsertRow(False);
+    1: FEdit.TableInsertRow(True);
+    2: FEdit.TableInsertColumn(False);
+    3: FEdit.TableInsertColumn(True);
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.TableDeleteItemClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.TableDeleteRow;
+    1: FEdit.TableDeleteColumn;
+    2: FEdit.TableDelete;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.TableMergeItemClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.TableMergeRight;
+    1: FEdit.TableMergeDown;
+    2: FEdit.TableSplitCell;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShadingItemClicked(Sender: TObject);
+begin
+  FEdit.SetCellShading(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.BordersItemClicked(Sender: TObject);
+begin
+  FEdit.SetTableBorders(TMenuItem(Sender).Tag / 10);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.HeaderRowClicked(Sender: TObject);
+begin
+  FEdit.SetHeaderRow(FHeaderRowBtn.Down);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.DistributeClicked(Sender: TObject);
+begin
+  FEdit.DistributeColumns;
   BackToPage;
 end;
 
