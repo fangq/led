@@ -174,6 +174,7 @@ type
     procedure AddSeparator;
     function AddIconButton(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
     function AddToggle(const ACaption, AHint: string; AStyle: TFontStyles; AOnClick: TNotifyEvent): TSpeedButton;
+    function AddIconToggle(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
     function AddButton(const ACaption, AHint: string; AStyle: TFontStyles;
       AOnClick: TNotifyEvent): TSpeedButton;
     procedure StyleChosen(Sender: TObject);
@@ -439,6 +440,8 @@ begin
 end;
 {$ENDIF}
 
+procedure SetIcon(AButton: TSpeedButton; const AIcon: string); forward;
+
 { TLedVisualPane }
 
 constructor TLedVisualPane.Create(AOwner: TComponent);
@@ -510,15 +513,17 @@ begin
   { review: tracked changes and comments }
   AddTab('Review');
   FTrack := AddButton('Track changes', 'Record edits as tracked changes', [], @TrackClicked);
+  SetIcon(FTrack, 'trackchanges');
   FTrack.AllowAllUp := True;
   FTrack.GroupIndex := 1;
   AddSeparator;
-  AddButton('< Previous', 'Previous change or comment', [], @PrevClicked);
-  AddButton('Next >', 'Next change or comment', [], @NextClicked);
-  AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked);
-  AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked);
+  SetIcon(AddButton('Previous', 'Previous change or comment', [], @PrevClicked), 'prevchange');
+  SetIcon(AddButton('Next', 'Next change or comment', [], @NextClicked), 'nextchange');
+  SetIcon(AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked), 'accept');
+  SetIcon(AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked), 'reject');
   AddSeparator;
-  AddIconButton('comment', 'Comment on the selection, or reply to the comment at the caret', @CommentClicked);
+  SetIcon(AddButton('Comment', 'Comment on the selection, or reply to the comment at the caret', [], @CommentClicked),
+    'addcomment');
   AddSeparator;
   FMarkup := TComboBox.Create(Self);
   FMarkup.Parent := FBar;
@@ -542,9 +547,12 @@ begin
   { a shared document: everyone editing it at once, through a relay }
   AddTab('Share');
   FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
+  SetIcon(FShareBtn, 'share');
   FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
+  SetIcon(FJoinBtn, 'join');
   FHostBtn := AddButton('Host', 'Share this document through a relay LED runs itself, and invite others', [],
     @HostClicked);
+  SetIcon(FHostBtn, 'host');
   FSyncStatus := TLabel.Create(Self);
   FSyncStatus.Parent := FTabStrip;    { on the tabs' row: seen whichever tab is open }
   FSyncStatus.Caption := '';
@@ -646,9 +654,9 @@ begin
   Result.Flat := True;
   { as wide as its caption needs, never narrower than an icon button }
   Result.AutoSize := ACaption <> '';
-  Result.Constraints.MinWidth := LedScale96(26);
-  Result.Width := LedScale96(26);
-  Result.Height := LedScale96(26);
+  Result.Constraints.MinWidth := LedScale96(30);
+  Result.Width := LedScale96(30);
+  Result.Height := LedScale96(30);
   Result.BorderSpacing.Around := LedScale96(1);
   Result.OnClick := AOnClick;
 end;
@@ -656,12 +664,27 @@ end;
 function TLedVisualPane.AddIconButton(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
 begin
   Result := AddButton('', AHint, [], AOnClick);
-  Result.Width := LedScale96(26);
-  Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+  Result.Width := LedScale96(30);
+  Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
 end;
 
 var
   ToggleGroups: Integer = 100;
+
+{ a picture on a button made with a caption: the two side by side }
+procedure SetIcon(AButton: TSpeedButton; const AIcon: string);
+begin
+  AButton.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
+  AButton.Spacing := LedScale96(4);
+end;
+
+function TLedVisualPane.AddIconToggle(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
+begin
+  Result := AddToggle('', AHint, [], AOnClick);
+  Result.AutoSize := False;
+  Result.Width := LedScale96(30);
+  Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
+end;
 
 function TLedVisualPane.AddToggle(const ACaption, AHint: string; AStyle: TFontStyles;
   AOnClick: TNotifyEvent): TSpeedButton;
@@ -787,12 +810,12 @@ begin
   AddIconButton('fontgrow', 'Bigger (Ctrl+])', @GrowClicked);
   AddIconButton('fontshrink', 'Smaller (Ctrl+[)', @ShrinkClicked);
   AddSeparator;
-  FBoldBtn := AddToggle('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
-  FItalicBtn := AddToggle('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
-  FUnderBtn := AddToggle('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
-  FStrikeBtn := AddToggle('S', 'Strikethrough', [fsStrikeOut], @StrikeClicked);
-  FSupBtn := AddToggle('x' + #$C2#$B2, 'Superscript', [], @SupClicked);
-  FSubBtn := AddToggle('x' + #$E2#$82#$82, 'Subscript', [], @SubClicked);
+  FBoldBtn := AddIconToggle('fmtbold', 'Bold (Ctrl+B)', @BoldClicked);
+  FItalicBtn := AddIconToggle('fmtitalic', 'Italic (Ctrl+I)', @ItalicClicked);
+  FUnderBtn := AddIconToggle('fmtunderline', 'Underline (Ctrl+U)', @UnderlineClicked);
+  FStrikeBtn := AddIconToggle('fmtstrike', 'Strikethrough', @StrikeClicked);
+  FSupBtn := AddIconToggle('fmtsuper', 'Superscript', @SupClicked);
+  FSubBtn := AddIconToggle('fmtsub', 'Subscript', @SubClicked);
   AddSeparator;
 
   { colours: the button puts on the last one chosen, the arrow chooses another }
@@ -1148,7 +1171,7 @@ var
     end
     else
       Result := AddButton(ACaption, AHint, [], AClick);
-    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
     Result.Spacing := LedScale96(4);
   end;
 
@@ -1314,7 +1337,7 @@ begin
   Result.Tag := PtrInt(AMenu);
   if AIcon <> '' then
   begin
-    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
     Result.Spacing := LedScale96(4);
   end;
 end;
@@ -1364,13 +1387,13 @@ begin
   MenuItem(M, 'Wide (1" top and bottom, 2" sides)', 3, @MarginsItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Custom margins...', -1, @MarginsItemClicked);
-  MenuButton('', 'Margins', 'The page''s margins (this section)', M);
+  MenuButton('margins', 'Margins', 'The page''s margins (this section)', M);
   M := TPopupMenu.Create(Self);
   FPortraitItem := MenuItem(M, 'Portrait', 0, @OrientationItemClicked);
   FLandscapeItem := MenuItem(M, 'Landscape', 1, @OrientationItemClicked);
   FPortraitItem.RadioItem := True;
   FLandscapeItem.RadioItem := True;
-  MenuButton('', 'Orientation', 'Portrait or landscape (this section)', M);
+  MenuButton('orientation', 'Orientation', 'Portrait or landscape (this section)', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Letter (8.5" x 11")', 0, @SizeItemClicked);
   MenuItem(M, 'Legal (8.5" x 14")', 1, @SizeItemClicked);
@@ -1379,12 +1402,12 @@ begin
   MenuItem(M, 'A3 (297 x 420 mm)', 4, @SizeItemClicked);
   MenuItem(M, 'A4 (210 x 297 mm)', 5, @SizeItemClicked);
   MenuItem(M, 'A5 (148 x 210 mm)', 6, @SizeItemClicked);
-  MenuButton('', 'Size', 'The paper (this section)', M);
+  MenuButton('pagesize', 'Size', 'The paper (this section)', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'One', 1, @ColumnsItemClicked);
   MenuItem(M, 'Two', 2, @ColumnsItemClicked);
   MenuItem(M, 'Three', 3, @ColumnsItemClicked);
-  MenuButton('', 'Columns', 'Text in columns (this section)', M);
+  MenuButton('columns', 'Columns', 'Text in columns (this section)', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Page break', 0, @LayoutBreakItemClicked);
   MenuItem(M, 'Column break', 1, @LayoutBreakItemClicked);
@@ -1393,10 +1416,10 @@ begin
   MenuItem(M, 'Section break, continuous', 3, @LayoutBreakItemClicked);
   MenuButton('insertbreak', 'Breaks', 'A page or column break, or a new section with page settings of its own', M);
   AddSeparator;
-  AddButton('Header...', 'The text at the top of every page; {page}, {pages} and {date} are kept up to date', [],
-    @HeaderClicked);
-  AddButton('Footer...', 'The text at the bottom of every page; {page}, {pages} and {date} are kept up to date', [],
-    @FooterClicked);
+  SetIcon(AddButton('Header...', 'The text at the top of every page; {page}, {pages} and {date} are kept up to date',
+    [], @HeaderClicked), 'header');
+  SetIcon(AddButton('Footer...', 'The text at the bottom of every page; {page}, {pages} and {date} are kept up to date',
+    [], @FooterClicked), 'footer');
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Bottom of the page, centred', 0, @PageNumberItemClicked);
   MenuItem(M, '"Page N of M" at the bottom', 1, @PageNumberItemClicked);
@@ -1404,12 +1427,12 @@ begin
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Start at...', 3, @PageNumberItemClicked);
   MenuItem(M, 'Remove', 4, @PageNumberItemClicked);
-  MenuButton('insertfield', 'Page numbers', 'Page numbers in the header or footer', M);
+  MenuButton('pagenumbers', 'Page numbers', 'Page numbers in the header or footer', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'None', 0, @LineNumberItemClicked);
   MenuItem(M, 'Every line', 1, @LineNumberItemClicked);
   MenuItem(M, 'Every 5 lines', 5, @LineNumberItemClicked);
-  MenuButton('', 'Line numbers', 'Lines numbered in the margin', M);
+  MenuButton('linenumbers', 'Line numbers', 'Lines numbered in the margin', M);
   AddSeparator;
   FIndentLeft := NumberBox('Indent left', 'The paragraph''s left indent, in inches', 10, 0.25, 2);
   FIndentRight := NumberBox('Indent right', 'The paragraph''s right indent, in inches', 10, 0.25, 2);
@@ -1606,34 +1629,35 @@ begin
   MenuItem(M, 'Row below', 1, @TableInsertItemClicked);
   MenuItem(M, 'Column left', 2, @TableInsertItemClicked);
   MenuItem(M, 'Column right', 3, @TableInsertItemClicked);
-  MenuButton('inserttable', 'Insert', 'A row or column next to the caret''s cell', M);
+  MenuButton('tblinsert', 'Insert', 'A row or column next to the caret''s cell', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Row', 0, @TableDeleteItemClicked);
   MenuItem(M, 'Column', 1, @TableDeleteItemClicked);
   MenuItem(M, 'Table', 2, @TableDeleteItemClicked);
-  MenuButton('', 'Delete', 'The caret''s row or column, or the whole table', M);
+  MenuButton('tbldelete', 'Delete', 'The caret''s row or column, or the whole table', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'With the cell to the right', 0, @TableMergeItemClicked);
   MenuItem(M, 'With the cell below', 1, @TableMergeItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Split the merged cell', 2, @TableMergeItemClicked);
-  MenuButton('', 'Merge', 'Join cells into one, or split one back', M);
+  MenuButton('tblmerge', 'Merge', 'Join cells into one, or split one back', M);
   AddSeparator;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Shades) do
     Swatch(MenuItem(M, ShadeNames[i], Shades[i], @ShadingItemClicked), FromRGB(Shades[i]), False);
   MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No shading', -1, @ShadingItemClicked), clWhite, True);
-  MenuButton('highlight', 'Shading', 'A colour behind the selected cells', M);
+  MenuButton('shading', 'Shading', 'A colour behind the selected cells', M);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'None', 0, @BordersItemClicked);
   MenuItem(M, 'Thin (0.5 pt)', 5, @BordersItemClicked);
   MenuItem(M, 'Medium (1 pt)', 10, @BordersItemClicked);
   MenuItem(M, 'Thick (1.5 pt)', 15, @BordersItemClicked);
-  MenuButton('', 'Borders', 'The table''s rules', M);
+  MenuButton('borders', 'Borders', 'The table''s rules', M);
   FHeaderRowBtn := AddToggle('Header row', 'Repeat the first row at the top of every page the table runs onto', [],
     @HeaderRowClicked);
-  AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked);
+  SetIcon(FHeaderRowBtn, 'headerrow');
+  SetIcon(AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked), 'distribute');
 end;
 
 procedure TLedVisualPane.TableInsertItemClicked(Sender: TObject);
@@ -1703,7 +1727,7 @@ begin
   MenuItem(M, 'Insert (headings 1-2)', 2, @TocItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Update table', 0, @TocItemClicked);
-  MenuButton('numbering', 'Table of contents', 'A table of contents of the headings, with their pages', M);
+  MenuButton('toc', 'Table of contents', 'A table of contents of the headings, with their pages', M);
   AddSeparator;
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Footnote...', 0, @NoteItemClicked);
@@ -1714,10 +1738,10 @@ begin
   MenuItem(M, 'Figure...', 0, @CaptionItemClicked);
   MenuItem(M, 'Table...', 1, @CaptionItemClicked);
   MenuItem(M, 'Equation...', 2, @CaptionItemClicked);
-  MenuButton('', 'Caption', 'A numbered caption under the caret''s paragraph: Figure 1, Table 1, ...', M);
-  AddButton('Cross-reference...', 'A reference to a caption or heading: its number, page or text, kept up to date', [],
-    @CrossRefClicked);
-  AddButton('Bookmark...', 'A named place, for links to #name', [], @BookmarkClicked);
+  MenuButton('caption', 'Caption', 'A numbered caption under the caret''s paragraph: Figure 1, Table 1, ...', M);
+  SetIcon(AddButton('Cross-reference...', 'A reference to a caption or heading: its number, page or text, kept up to date',
+    [], @CrossRefClicked), 'crossref');
+  SetIcon(AddButton('Bookmark...', 'A named place, for links to #name', [], @BookmarkClicked), 'bookmark');
 end;
 
 procedure TLedVisualPane.TocItemClicked(Sender: TObject);
@@ -1850,12 +1874,13 @@ begin
   FZoomBox.OnSelect := @ZoomChosen;
   FZoomBox.OnKeyDown := @ZoomKeyDown;
   FZoomBox.BorderSpacing.Around := LedScale96(1);
-  AddButton('-', 'Zoom out', [], @ZoomOutClicked);
-  AddButton('+', 'Zoom in', [], @ZoomInClicked);
+  AddIconButton('zoomout', 'Zoom out', @ZoomOutClicked);
+  AddIconButton('zoomin', 'Zoom in', @ZoomInClicked);
   AddSeparator;
-  FMarksBtn := AddToggle(#$C2#$B6, 'Show formatting marks: where each paragraph ends', [], @MarksClicked);
+  FMarksBtn := AddIconToggle('formatmarks', 'Show formatting marks: where each paragraph ends', @MarksClicked);
   FNavBtn := AddToggle('Navigation', 'A list of the headings beside the page: click one to go there', [],
     @NavClicked);
+  SetIcon(FNavBtn, 'navigation');
 
   { the navigation list, hidden until asked for }
   FNavPanel := TPanel.Create(Self);
