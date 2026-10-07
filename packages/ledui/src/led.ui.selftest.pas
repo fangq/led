@@ -14955,6 +14955,9 @@ var
   Before: Integer;
   Doc: TLedDocument;
   Btn: TControl;
+  {$IFDEF LED_PARADE}
+  BI: pd_block_info;
+  {$ENDIF}
 begin
   Say('visual editor');
   if not LedVisualAvailable then
@@ -15120,6 +15123,33 @@ begin
     else
       Check('a Numbering button', False);
     Check('Review is a tab of its own', ControlByHint(Tab.Visual, 'Record edits as tracked changes') <> nil);
+
+    { the Insert tab's menus }
+    Tab.Visual.Page.ProcessKey(VK_END, [ssCtrl]);
+    Btn := ControlByHint(Tab.Visual, 'A symbol the keyboard does not have');
+    Check('the Insert tab has Symbol', (Btn is TSpeedButton) and (Btn.Tag <> 0));
+    if (Btn is TSpeedButton) and (Btn.Tag <> 0) then
+    begin
+      TPopupMenu(TComponent(Btn.Tag)).Items[0].Click;
+      Pump;
+      Check('a symbol from its menu goes in at the caret',
+        Copy(Tab.Visual.Page.DocumentText, Length(Tab.Visual.Page.DocumentText) - 1, 2) = #$C2#$A9);
+    end;
+    Btn := ControlByHint(Tab.Visual, 'Insert a table at the caret');
+    Check('the Insert tab has Table', (Btn is TSpeedButton) and (Btn.Tag <> 0));
+    if (Btn is TSpeedButton) and (Btn.Tag <> 0) then
+    begin
+      TPopupMenu(TComponent(Btn.Tag)).Items[2].Click;     { 3 x 3 }
+      Pump;
+      FillChar(BI, SizeOf(BI), 0);
+      pd_doc_block_info(Tab.Visual.Page.Doc, Tab.Visual.Page.CaretPos.block, BI);
+      pd_doc_block_info(Tab.Visual.Page.Doc, BI.parent, BI);
+      Check('3 x 3 from its menu puts a table in, the caret in a cell', BI.kind = PD_BLOCK_CELL);
+      pd_doc_block_info(Tab.Visual.Page.Doc, BI.parent, BI);
+      Check('three cells a row', BI.child_count = 3);
+      Tab.Visual.Page.Undo;
+      Pump;
+    end;
     {$ENDIF}
     Tab.Document.SaveToFile(Docx);
     P := TLedVisualPane.Create(nil);

@@ -1244,6 +1244,63 @@ begin
         P.Box(1.5, 12.5, 14.5, 15, True);
         P.Colour(AColour);
       end;
+    { the Insert tab }
+    'insertpicture':
+      begin
+        P.Box(1.5, 2.5, 14.5, 13.5);
+        P.Poly([1.5, 12, 6, 7, 9, 10, 11, 8, 14.5, 11.5]);
+        P.Ellipse(9.5, 4, 12.5, 7, True);
+      end;
+    'inserttable':
+      begin
+        P.Box(1.5, 2.5, 14.5, 13.5);
+        P.Line(1.5, 6.2, 14.5, 6.2);
+        P.Line(1.5, 9.8, 14.5, 9.8);
+        P.Line(5.8, 2.5, 5.8, 13.5);
+        P.Line(10.2, 2.5, 10.2, 13.5);
+      end;
+    'insertlink':
+      begin
+        { two links of a chain }
+        P.Width(1.6);
+        P.Poly([7, 5, 4, 2, 1.5, 4.5, 4.5, 7.5]);
+        P.Poly([9, 11, 12, 14, 14.5, 11.5, 11.5, 8.5]);
+        P.Line(5.5, 10.5, 10.5, 5.5);
+        P.Width(1.2);
+      end;
+    'insertbreak':
+      begin
+        P.Poly([3.5, 1.5, 12.5, 1.5, 12.5, 5.5]);
+        P.Line(3.5, 1.5, 3.5, 5.5);
+        P.C.Pen.Style := psDot;
+        P.Line(1, 8, 15, 8);
+        P.C.Pen.Style := psSolid;
+        P.Poly([3.5, 10.5, 3.5, 14.5, 12.5, 14.5, 12.5, 10.5]);
+      end;
+    'insertequation':
+      { a summation sign }
+      P.Poly([12.5, 3.5, 12.5, 1.5, 3, 1.5, 8.5, 8, 3, 14.5, 12.5, 14.5, 12.5, 12.5]);
+    'insertnote':
+      begin
+        for i := 0 to 2 do
+          P.Line(1.5, 2.5 + i * 3, 14.5, 2.5 + i * 3);
+        P.Line(1.5, 11, 7, 11);
+        P.Width(1);
+        P.Line(2.5, 13, 2.5, 15.5);
+        P.Line(5, 13.5, 13, 13.5);
+        P.Width(1.2);
+      end;
+    'insertfield':
+      begin
+        P.Line(5.5, 2, 4, 14);
+        P.Line(11.5, 2, 10, 14);
+        P.Line(2, 5.5, 14, 5.5);
+        P.Line(1.5, 10.5, 13.5, 10.5);
+      end;
+    'insertsymbol':
+      { an omega }
+      P.Poly([2, 14, 5.5, 14, 5.5, 12, 3, 9.5, 3, 5.5, 5.5, 2.5, 10.5, 2.5, 13, 5.5, 13, 9.5, 10.5, 12, 10.5, 14,
+        14, 14]);
     'highlight':
       begin
         P.Poly([4, 10, 10, 2, 13.5, 5, 7.5, 12.5, 4, 10]);
