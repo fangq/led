@@ -140,6 +140,31 @@ type
     procedure HeaderRowClicked(Sender: TObject);
     procedure DistributeClicked(Sender: TObject);
     {$ENDIF}
+  private
+    {$IFDEF LED_PARADE}
+    { the References and View tabs }
+    FZoomBox: TComboBox;
+    FMarksBtn, FNavBtn: TSpeedButton;
+    FNavPanel: TPanel;
+    FNavList: TListBox;
+    FNavSplitter: TSplitter;
+    FNavTimer: TTimer;
+    procedure BuildReferences;
+    procedure TocItemClicked(Sender: TObject);
+    procedure CaptionItemClicked(Sender: TObject);
+    procedure CrossRefClicked(Sender: TObject);
+    procedure BookmarkClicked(Sender: TObject);
+    procedure BuildView;
+    procedure ShowZoom;
+    procedure ZoomChosen(Sender: TObject);
+    procedure ZoomKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure ZoomInClicked(Sender: TObject);
+    procedure ZoomOutClicked(Sender: TObject);
+    procedure MarksClicked(Sender: TObject);
+    procedure NavClicked(Sender: TObject);
+    procedure NavListClicked(Sender: TObject);
+    procedure NavTimerFired(Sender: TObject);
+    {$ENDIF}
     function AddTab(const ACaption: string): TFlowPanel;
     procedure TabClicked(Sender: TObject);
     procedure AddSeparator;
@@ -204,8 +229,8 @@ type
     { the page itself, for scripting and tests }
     property Page: TParadeEdit read FEdit;
     {$ENDIF}
-    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 Review, 4 Share, then Table (shown in a
-      table); without Parade: 0 Home, 1 Review }
+    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
+      Table (shown in a table); without Parade: 0 Home, 1 Review }
     procedure ShowTab(AIndex: Integer);
   end;
 
@@ -420,9 +445,10 @@ begin
 
   { The toolbar: tabs, as a word processor's -- Home for the font and the
     paragraph, Insert for tables, pictures, links and the like, Layout for
-    the pages, Review for tracked changes and comments, Share for editing
-    together, and Table while the caret is in one -- each a row of controls
-    that wraps when the pane is narrow. }
+    the pages, References for contents, captions and cross-references,
+    Review for tracked changes and comments, View for zoom, marks and the
+    headings, Share for editing together, and Table while the caret is in
+    one -- each a row of controls that wraps when the pane is narrow. }
   FTabStrip := TPanel.Create(Self);
   FTabStrip.Parent := Self;
   FTabStrip.Align := alTop;
@@ -469,6 +495,8 @@ begin
   BuildInsert;
   AddTab('Layout');
   BuildLayout;
+  AddTab('References');
+  BuildReferences;
   {$ENDIF}
 
   { review: tracked changes and comments }
@@ -496,6 +524,11 @@ begin
   FMarkup.Items.Add('Original');
   FMarkup.ItemIndex := 0;
   FMarkup.OnSelect := @MarkupChosen;
+
+  {$IFDEF LED_PARADE}
+  AddTab('View');
+  BuildView;
+  {$ENDIF}
 
   {$IFDEF LED_PARADE_SYNC}
   { a shared document: everyone editing it at once, through a relay }
@@ -878,6 +911,7 @@ begin
   RefreshStyles;
   if not FStyle.DroppedDown then
     FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
+  ShowZoom;
   { the Layout tab's boxes and menus }
   FUpdating := True;
   try
@@ -1128,10 +1162,6 @@ begin
   Item(M, 'In the line...', 0, @EquationItemClicked);
   Item(M, 'On a line of its own...', 1, @EquationItemClicked);
   Big('insertequation', 'Equation', 'An equation, written in LaTeX', nil, M);
-  M := TPopupMenu.Create(Self);
-  Item(M, 'Footnote...', 0, @NoteItemClicked);
-  Item(M, 'Endnote...', 1, @NoteItemClicked);
-  Big('insertnote', 'Note', 'A footnote or an endnote at the caret', nil, M);
   AddSeparator;
   M := TPopupMenu.Create(Self);
   Item(M, 'Page number', PD_FIELD_PAGE, @FieldItemClicked);
@@ -1642,7 +1672,8 @@ end;
 
 procedure TLedVisualPane.HeaderRowClicked(Sender: TObject);
 begin
-  FEdit.SetHeaderRow(FHeaderRowBtn.Down);
+  FEdit.SetHeaderRow(FEdit.CurrentTableProps.header_rows = 0);
+  FHeaderRowBtn.Down := FEdit.CurrentTableProps.header_rows > 0;
   BackToPage;
 end;
 
@@ -1650,6 +1681,287 @@ procedure TLedVisualPane.DistributeClicked(Sender: TObject);
 begin
   FEdit.DistributeColumns;
   BackToPage;
+end;
+
+{ ---- the References tab ---- }
+
+procedure TLedVisualPane.BuildReferences;
+var
+  M: TPopupMenu;
+begin
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Insert (headings 1-3)', 3, @TocItemClicked);
+  MenuItem(M, 'Insert (headings 1-2)', 2, @TocItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Update table', 0, @TocItemClicked);
+  MenuButton('numbering', 'Table of contents', 'A table of contents of the headings, with their pages', M);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Footnote...', 0, @NoteItemClicked);
+  MenuItem(M, 'Endnote...', 1, @NoteItemClicked);
+  MenuButton('insertnote', 'Note', 'A footnote or an endnote at the caret', M);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Figure...', 0, @CaptionItemClicked);
+  MenuItem(M, 'Table...', 1, @CaptionItemClicked);
+  MenuItem(M, 'Equation...', 2, @CaptionItemClicked);
+  MenuButton('', 'Caption', 'A numbered caption under the caret''s paragraph: Figure 1, Table 1, ...', M);
+  AddButton('Cross-reference...', 'A reference to a caption or heading: its number, page or text, kept up to date', [],
+    @CrossRefClicked);
+  AddButton('Bookmark...', 'A named place, for links to #name', [], @BookmarkClicked);
+end;
+
+procedure TLedVisualPane.TocItemClicked(Sender: TObject);
+begin
+  if TMenuItem(Sender).Tag = 0 then
+  begin
+    if not FEdit.UpdateTableOfContents then
+      MessageDlg('Table of contents', 'This document has no table of contents yet.', mtInformation, [mbOK], 0);
+  end
+  else
+    FEdit.InsertTableOfContents(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CaptionItemClicked(Sender: TObject);
+const
+  Seqs: array[0..2] of string = ('Figure', 'Table', 'Equation');
+var
+  S: string;
+begin
+  S := '';
+  if InputQuery(Seqs[TMenuItem(Sender).Tag] + ' caption',
+    'The caption''s text, after "' + Seqs[TMenuItem(Sender).Tag] + ' N: " (blank: the number alone):', S) then
+    FEdit.InsertCaption(Seqs[TMenuItem(Sender).Tag], Trim(S));
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CrossRefClicked(Sender: TObject);
+var
+  F: TForm;
+  L: TListBox;
+  R: TRadioGroup;
+  P: TPanel;
+  B: TButton;
+  T: TParadeRefTargets;
+  i: Integer;
+begin
+  T := FEdit.ReferenceTargets;
+  if T = nil then
+  begin
+    MessageDlg('Cross-reference', 'There is nothing to refer to yet: add captions (References > Caption) or ' +
+      'headings first.', mtInformation, [mbOK], 0);
+    Exit;
+  end;
+  F := TForm.CreateNew(nil);
+  try
+    F.Caption := 'Cross-reference';
+    F.Position := poMainFormCenter;
+    F.SetBounds(0, 0, LedScale96(520), LedScale96(400));
+    R := TRadioGroup.Create(F);
+    R.Parent := F;
+    R.Align := alTop;
+    R.Caption := 'Insert';
+    R.Columns := 2;
+    R.Items.Add('Its label and number ("Figure 2")');
+    R.Items.Add('Its number alone');
+    R.Items.Add('Its page number');
+    R.Items.Add('Its text');
+    R.ItemIndex := 0;
+    R.AutoSize := True;
+    P := TPanel.Create(F);
+    P.Parent := F;
+    P.Align := alBottom;
+    P.BevelOuter := bvNone;
+    P.AutoSize := True;
+    B := TButton.Create(F);
+    B.Parent := P;
+    B.Align := alRight;
+    B.Caption := 'Cancel';
+    B.ModalResult := mrCancel;
+    B.Cancel := True;
+    B := TButton.Create(F);
+    B.Parent := P;
+    B.Align := alRight;
+    B.Caption := 'Insert';
+    B.ModalResult := mrOK;
+    B.Default := True;
+    L := TListBox.Create(F);
+    L.Parent := F;
+    L.Align := alClient;
+    for i := 0 to High(T) do
+      if T[i].IsCaption then
+        L.Items.Add(T[i].Text)
+      else
+        L.Items.Add(StringOfChar(' ', 3 * Max(0, T[i].Level - 1)) + T[i].Text + '   (heading)');
+    L.ItemIndex := 0;
+    if (F.ShowModal = mrOK) and (L.ItemIndex >= 0) then
+      FEdit.InsertCrossReference(T[L.ItemIndex], TParadeRefWhat(R.ItemIndex));
+  finally
+    F.Free;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.BookmarkClicked(Sender: TObject);
+var
+  S: string;
+  i: Integer;
+begin
+  S := '';
+  if InputQuery('Bookmark', 'The place''s name (letters, digits, _ and -; a link to it is #name):', S) then
+  begin
+    S := Trim(S);
+    for i := 1 to Length(S) do
+      if not (S[i] in ['A'..'Z', 'a'..'z', '0'..'9', '_', '-']) then
+        S[i] := '_';
+    if S <> '' then
+      FEdit.InsertBookmark(Copy(S, 1, 31));
+  end;
+  BackToPage;
+end;
+
+{ ---- the View tab ---- }
+
+procedure TLedVisualPane.BuildView;
+const
+  Zooms: array[0..7] of string = ('50%', '75%', '100%', '125%', '150%', '200%', 'Page width', 'Whole page');
+var
+  i: Integer;
+begin
+  FZoomBox := TComboBox.Create(Self);
+  FZoomBox.Parent := FBar;
+  FZoomBox.Style := csDropDown;
+  FZoomBox.Width := LedScale96(100);
+  FZoomBox.Hint := 'Zoom (also Ctrl+wheel)';
+  FZoomBox.ShowHint := True;
+  for i := 0 to High(Zooms) do
+    FZoomBox.Items.Add(Zooms[i]);
+  FZoomBox.Text := '100%';
+  FZoomBox.OnSelect := @ZoomChosen;
+  FZoomBox.OnKeyDown := @ZoomKeyDown;
+  FZoomBox.BorderSpacing.Around := LedScale96(1);
+  AddButton('-', 'Zoom out', [], @ZoomOutClicked);
+  AddButton('+', 'Zoom in', [], @ZoomInClicked);
+  AddSeparator;
+  FMarksBtn := AddToggle(#$C2#$B6, 'Show formatting marks: where each paragraph ends', [], @MarksClicked);
+  FNavBtn := AddToggle('Navigation', 'A list of the headings beside the page: click one to go there', [],
+    @NavClicked);
+
+  { the navigation list, hidden until asked for }
+  FNavPanel := TPanel.Create(Self);
+  FNavPanel.Parent := Self;
+  FNavPanel.Align := alLeft;
+  FNavPanel.Width := LedScale96(200);
+  FNavPanel.BevelOuter := bvNone;
+  FNavPanel.Caption := '';
+  FNavPanel.Visible := False;
+  FNavList := TListBox.Create(Self);
+  FNavList.Parent := FNavPanel;
+  FNavList.Align := alClient;
+  FNavList.OnClick := @NavListClicked;
+  FNavSplitter := TSplitter.Create(Self);
+  FNavSplitter.Parent := Self;
+  FNavSplitter.Align := alLeft;
+  FNavSplitter.Left := FNavPanel.Width + 1;
+  FNavSplitter.Visible := False;
+  FNavTimer := TTimer.Create(Self);
+  FNavTimer.Enabled := False;
+  FNavTimer.Interval := 400;      { the list made again a little after the typing stops }
+  FNavTimer.OnTimer := @NavTimerFired;
+end;
+
+procedure TLedVisualPane.ShowZoom;
+begin
+  if not FZoomBox.Focused then
+    FZoomBox.Text := IntToStr(Round(FEdit.Zoom * 100)) + '%';
+end;
+
+procedure TLedVisualPane.ZoomChosen(Sender: TObject);
+var
+  S: string;
+  V: Double;
+begin
+  if FZoomBox.ItemIndex >= 0 then
+    S := FZoomBox.Items[FZoomBox.ItemIndex]
+  else
+    S := Trim(FZoomBox.Text);
+  if S = 'Page width' then
+    FEdit.Zoom := FEdit.PageWidthZoom
+  else if S = 'Whole page' then
+    FEdit.Zoom := FEdit.WholePageZoom
+  else if TryStrToFloat(Trim(StringReplace(S, '%', '', [])), V) and (V >= 10) and (V <= 600) then
+    FEdit.Zoom := V / 100;
+  FZoomBox.ItemIndex := -1;
+  BackToPage;
+  ShowZoom;
+end;
+
+procedure TLedVisualPane.ZoomKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  if Key = VK_RETURN then
+  begin
+    Key := 0;
+    FZoomBox.ItemIndex := FZoomBox.Items.IndexOf(FZoomBox.Text);
+    ZoomChosen(Sender);
+  end
+  else if Key = VK_ESCAPE then
+  begin
+    Key := 0;
+    BackToPage;
+    ShowZoom;
+  end;
+end;
+
+procedure TLedVisualPane.ZoomInClicked(Sender: TObject);
+begin
+  FEdit.Zoom := FEdit.Zoom * 1.25;
+  ShowZoom;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ZoomOutClicked(Sender: TObject);
+begin
+  FEdit.Zoom := FEdit.Zoom / 1.25;
+  ShowZoom;
+  BackToPage;
+end;
+
+{ the toggles flip what they show and then show it: a button clicked from code is not pressed down first }
+procedure TLedVisualPane.MarksClicked(Sender: TObject);
+begin
+  FEdit.ShowMarks := not FEdit.ShowMarks;
+  FMarksBtn.Down := FEdit.ShowMarks;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NavClicked(Sender: TObject);
+begin
+  FNavPanel.Visible := not FNavPanel.Visible;
+  FNavSplitter.Visible := FNavPanel.Visible;
+  FNavBtn.Down := FNavPanel.Visible;
+  if FNavPanel.Visible then
+    FEdit.GetHeadings(FNavList.Items);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NavListClicked(Sender: TObject);
+begin
+  if FNavList.ItemIndex < 0 then Exit;
+  FEdit.GoToPos(PdPos(pd_block_id(PtrUInt(FNavList.Items.Objects[FNavList.ItemIndex])), 0));
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NavTimerFired(Sender: TObject);
+var
+  Keep: Integer;
+begin
+  FNavTimer.Enabled := False;
+  if not FNavPanel.Visible then Exit;
+  Keep := FNavList.TopIndex;
+  FEdit.GetHeadings(FNavList.Items);
+  if Keep < FNavList.Items.Count then
+    FNavList.TopIndex := Keep;
 end;
 
 procedure TLedVisualPane.ParaSpaceItemClicked(Sender: TObject);
@@ -1850,7 +2162,8 @@ end;
 procedure TLedVisualPane.TrackClicked(Sender: TObject);
 begin
   {$IFDEF LED_PARADE}
-  FEdit.TrackChanges := FTrack.Down;
+  FEdit.TrackChanges := not FEdit.TrackChanges;
+  FTrack.Down := FEdit.TrackChanges;
   {$ENDIF}
   BackToPage;
 end;
@@ -2269,6 +2582,13 @@ end;
 
 procedure TLedVisualPane.EditChanged(Sender: TObject);
 begin
+  {$IFDEF LED_PARADE}
+  if (FNavPanel <> nil) and FNavPanel.Visible then
+  begin   { the headings list made again once the typing pauses }
+    FNavTimer.Enabled := False;
+    FNavTimer.Enabled := True;
+  end;
+  {$ENDIF}
   if Assigned(FOnChange) then FOnChange(Self);
 end;
 
