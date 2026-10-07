@@ -25,7 +25,7 @@ implementation
 {$I led.parade.inc}
 
 uses
-  Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
+  Classes, SysUtils, DateUtils, Math, Forms, ComCtrls, Led.UI.TabClose,
   {$IFDEF MIMA}
   { the fork's own section; see Mima.UI.SelfTest }
   Mima.UI.SelfTest,
@@ -2247,6 +2247,20 @@ begin
   Check('the tab strip has a close button', Btn <> nil);
   if Btn = nil then Exit;
   Host := Btn.Parent;
+  { In hover mode (a program on LED may set it; Mima does) the cross is on
+    the tab under the pointer and nowhere until there is one: put the
+    pointer on the first tab, as a move over the strip would. }
+  if LedTabHoverClose then
+  begin
+    { the tab in front, which is the one the cross closed before hover mode,
+      so what is closed below -- and what is left for the checks after this
+      one -- is the same either way }
+    R := F.Notebook.TabRect(F.Notebook.ActivePageIndex);
+    if Assigned(F.Notebook.OnMouseMove) then
+      F.Notebook.OnMouseMove(F.Notebook, [], (R.Left + R.Right) div 2,
+        (R.Top + R.Bottom) div 2);
+    Pump;
+  end;
   Check('and it is showing', Btn.Visible and Host.Visible);
 
   { It has a window of its own, and that is the point of the host.
@@ -2306,7 +2320,15 @@ begin
     [Out_]), Out_ <= 1);
   Check('and at the right-hand end of it',
     Host.Left + Host.Width <= F.Notebook.Left + F.Notebook.Width);
-  CheckGt('well to the right of the middle', F.Notebook.Width div 2, Host.Left);
+  if LedTabHoverClose then
+  begin
+    { on the tab it is over, at that tab's right-hand end }
+    R := F.Notebook.TabRect(F.Notebook.ActivePageIndex);
+    CheckGt('on the right half of the tab under the pointer',
+      F.Notebook.Left + (R.Left + R.Right) div 2, Host.Left);
+  end
+  else
+    CheckGt('well to the right of the middle', F.Notebook.Width div 2, Host.Left);
 
 
   Before := F.TabCount;
@@ -4148,7 +4170,7 @@ begin
   Pump;
   Check('document is no longer modified after save', not Doc.Modified);
   CheckEq('tab caption follows the file name', ExtractFileName(Path),
-    F.ActiveTab.Sheet.Caption);
+    Trim(F.ActiveTab.Sheet.Caption));
 
   Before := Doc.Master.Lines.Text;
   LedLoadTextFile(Path, After, Info);
@@ -15852,6 +15874,38 @@ begin
 end;
 {$ENDIF}
 
+{ General > Show the close cross on the tab under the pointer: off by
+  default (medit's one cross at the end of the strip); on, the tabs make
+  room for it, and off again they do not. }
+procedure TestTabHoverClosePref(F: TLedMainForm);
+var
+  Tab: TLedTab;
+begin
+  Say('tab close cross preference');
+  {$IFNDEF MIMA}
+  LedPrefs.Remove(LedPrefTabHoverClose);
+  F.PrefsApplied(nil);
+  Check('off by default: one cross at the end of the strip', not LedTabHoverClose);
+  Tab := F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Check('a tab without room for a cross', Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption), 1) <> ' ');
+  LedPrefs.SetBool(LedPrefTabHoverClose, True);
+  F.PrefsApplied(nil);
+  Pump;
+  Check('on: the cross is on the tab under the pointer', LedTabHoverClose);
+  Check('and the tab makes room for it', Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption) -
+    Length(LedTabCaptionPad) + 1, Length(LedTabCaptionPad)) = LedTabCaptionPad);
+  LedPrefs.Remove(LedPrefTabHoverClose);
+  F.PrefsApplied(nil);
+  Pump;
+  Check('off again', not LedTabHoverClose and
+    (Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption), 1) <> ' '));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { Parade's own files: a .pdoc (BJData) and a .jdoc (JSON text) open as
   pages; a page is saved as either -- or as Word again -- by Save As, which
   converts rather than copies; and the File menu is in its sections. }
@@ -16694,6 +16748,7 @@ begin
   TestVisualEditor(F);
   TestVisualLineBreaking(F);
   TestParadeFiles(F);
+  TestTabHoverClosePref(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

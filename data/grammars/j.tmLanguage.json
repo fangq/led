@@ -91,7 +91,7 @@
      "name": "def.decimal"
     },
     {
-     "match": "\\b(?:assert\\\\\\.|break\\\\\\.|continue\\\\\\.|return\\\\\\.|do\\\\\\.|if\\\\\\.|else\\\\\\.|elseif\\\\\\.|end\\\\\\.|for\\\\\\.|select\\\\\\.|case\\\\\\.|fcase\\\\\\.|throw\\\\\\.|try\\\\\\.|catch\\\\\\.|catchd\\\\\\.|catcht\\\\\\.|while\\\\\\.|whilst\\\\\\.|for_\\\\%\\{valid\\-name\\}\\?\\\\\\.|goto_\\\\%\\{valid\\-name\\}\\?\\\\\\.|label_\\\\%\\{valid\\-name\\}\\?\\\\\\.)(?![\\.\\:])",
+     "match": "\\b(?:(?:assert\\.)|(?:break\\.)|(?:continue\\.)|(?:return\\.)|(?:do\\.)|(?:if\\.)|(?:else\\.)|(?:elseif\\.)|(?:end\\.)|(?:for\\.)|(?:select\\.)|(?:case\\.)|(?:fcase\\.)|(?:throw\\.)|(?:try\\.)|(?:catch\\.)|(?:catchd\\.)|(?:catcht\\.)|(?:while\\.)|(?:whilst\\.)|(?:for_(?:[a-zA-Z][a-zA-Z0-9_]*)?\\.)|(?:goto_(?:[a-zA-Z][a-zA-Z0-9_]*)?\\.)|(?:label_(?:[a-zA-Z][a-zA-Z0-9_]*)?\\.))(?![\\.\\:])",
      "name": "def.keyword"
     }
    ]

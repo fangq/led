@@ -19,14 +19,34 @@ unit Led.UI.TabClose;
 interface
 
 uses
-  Classes, SysUtils, Controls, ExtCtrls, ComCtrls, Buttons, ImgList,
-  Led.UI.Icons, Led.UI.Dpi;
+  Classes, SysUtils, Types, Controls, ExtCtrls, ComCtrls, Buttons, ImgList,
+  Forms, Led.UI.Icons, Led.UI.Dpi;
+
+var
+  { The cross shown on the tab under the pointer, at its right-hand end,
+    rather than once at the end of the strip.  A program built on LED turns
+    it on (Mima does, before its window shows); LED keeps medit's single
+    cross. }
+  LedTabHoverClose: Boolean = False;
+
+const
+  { Room at the end of a tab's caption for the hover cross to sit in, so it
+    does not cover the end of the name.  Added by whoever sets a caption,
+    and only while LedTabHoverClose is on. }
+  LedTabCaptionPad = '      ';
 
 type
   TLedTabClose = class(TComponent)
   private
     FHost: TPanel;
     FButton: TSpeedButton;
+    { hover mode: the strip the cross is over, and which of its tabs }
+    FHoverBook: TPageControl;
+    FHoverIndex: Integer;
+    procedure ButtonMouseLeave(Sender: TObject);
+    procedure ShowOnTab(ABook: TPageControl; AIndex: Integer);
+  protected
+    procedure Notification(AComponent: TComponent; Operation: TOperation); override;
   public
     { Builds the button, hidden until the first Place.  AOnClick is given the
       *button*, whose Tag is ATag, so one handler can serve several strips. }
@@ -45,7 +65,19 @@ type
       time a split was undone. }
     procedure Place(ABook: TPageControl);
 
+    { The strip's pointer moves and leaves, in hover mode.  Place hooks them
+      onto a strip that has no handlers of its own; one that has calls them
+      from its own (the editor's notebooks show a hint from theirs). }
+    procedure BookMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure BookMouseLeave(Sender: TObject);
+    { Takes the hover cross away: after a close, when the tabs have moved
+      under it; the next pointer move puts it back on whatever is there. }
+    procedure HideHover;
+
     property Button: TSpeedButton read FButton;
+    { In hover mode, the page whose tab the cross is on, or -1: the tab a
+      click closes, whichever is in front. }
+    property HoverIndex: Integer read FHoverIndex;
   end;
 
 implementation
@@ -102,10 +134,131 @@ begin
     from the toolbar's list.  At the toolbar's size, in the text colour, it
     was the biggest and darkest thing on the strip -- louder than the names
     of the files it closes. }
+  FButton.OnMouseLeave := @ButtonMouseLeave;
+  FHoverIndex := -1;
   FButton.Images := nil;
   FButton.Glyph.Assign(LedIconBitmap('close', QuietColour, LedScale96(11)));
   if FButton.Glyph.Empty then
     FButton.Caption := 'x';
+end;
+
+procedure TLedTabClose.Notification(AComponent: TComponent; Operation: TOperation);
+begin
+  inherited Notification(AComponent, Operation);
+  { the second notebook is freed by an unsplit, with the cross over it }
+  if (Operation = opRemove) and (AComponent = FHoverBook) then
+  begin
+    FHoverBook := nil;
+    FHoverIndex := -1;
+  end;
+end;
+
+procedure TLedTabClose.HideHover;
+begin
+  FHost.Visible := False;
+  FHoverIndex := -1;
+end;
+
+{ The cross on tab AIndex of ABook: square, at the tab's right-hand end and
+  centred on it, over the room LedTabCaptionPad left in the caption.  The
+  rectangle comes in the strip's coordinates on gtk2, which Place explains. }
+procedure TLedTabClose.ShowOnTab(ABook: TPageControl; AIndex: Integer);
+var
+  R: TRect;
+  Dx, Dy, H, Pad, Size: Integer;
+begin
+  if FHoverBook <> ABook then
+  begin
+    if FHoverBook <> nil then
+      FHoverBook.RemoveFreeNotification(Self);
+    FHoverBook := ABook;
+    ABook.FreeNotification(Self);
+  end;
+  R := ABook.TabRect(AIndex);
+  H := R.Bottom - R.Top;
+  if (H < LedScale96(8)) or (R.Right <= R.Left) then
+  begin
+    { No rectangle to be had: no handle yet, or a strip not on screen.  The
+      cross goes where it went before hover mode, at the end of the strip,
+      and still closes the tab it was asked for -- a cross in roughly the
+      right place beats none, as Place says of the same case. }
+    LedTabHoverClose := False;
+    try
+      Place(ABook);
+    finally
+      LedTabHoverClose := True;
+    end;
+    FHoverIndex := AIndex;
+    Exit;
+  end;
+  Dx := 0;
+  Dy := 0;
+  if R.Top < 0 then
+  begin
+    Dx := ABook.ClientOrigin.x - ABook.ControlOrigin.x;
+    Dy := ABook.ClientOrigin.y - ABook.ControlOrigin.y;
+  end;
+  Pad := LedScale96(3);
+  Size := H - 2 * LedScale96(4);
+  if Size > LedScale96(16) then Size := LedScale96(16);
+  if Size < LedScale96(8) then Size := LedScale96(8);
+
+  FHoverIndex := AIndex;
+  FHost.Parent := ABook.Parent;
+  FHost.SetBounds(ABook.Left + Dx + R.Right - Size - Pad,
+                  ABook.Top + Dy + R.Top + (H - Size) div 2, Size, Size);
+  FHost.Visible := True;
+  FHost.BringToFront;
+end;
+
+procedure TLedTabClose.BookMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: Integer);
+var
+  Book: TPageControl;
+  I, K: Integer;
+begin
+  if not LedTabHoverClose or not (Sender is TPageControl) then Exit;
+  Book := TPageControl(Sender);
+  if not Book.ShowTabs then
+  begin
+    HideHover;
+    Exit;
+  end;
+  I := Book.IndexOfTabAt(X, Y);
+  { a strip not on screen answers nothing; its rectangles still do }
+  if I < 0 then
+    for K := 0 to Book.PageCount - 1 do
+      if PtInRect(Book.TabRect(K), Point(X, Y)) then
+      begin
+        I := K;
+        Break;
+      end;
+  if I < 0 then
+    HideHover
+  else if (I <> FHoverIndex) or (FHoverBook <> Book) or not FHost.Visible then
+    ShowOnTab(Book, I);
+end;
+
+{ Off the strip: the cross goes, unless the pointer went onto the cross
+  itself, which is a window of its own and so a leave from the strip. }
+procedure TLedTabClose.BookMouseLeave(Sender: TObject);
+var
+  P: TPoint;
+begin
+  if not FHost.Visible then Exit;
+  P := FHost.ScreenToClient(Mouse.CursorPos);
+  if not PtInRect(FHost.ClientRect, P) then
+    HideHover;
+end;
+
+procedure TLedTabClose.ButtonMouseLeave(Sender: TObject);
+var
+  P: TPoint;
+begin
+  if not LedTabHoverClose or (FHoverBook = nil) then Exit;
+  P := FHoverBook.ScreenToClient(Mouse.CursorPos);
+  if FHoverBook.IndexOfTabAt(P.X, P.Y) <> FHoverIndex then
+    HideHover;
 end;
 
 procedure TLedTabClose.Place(ABook: TPageControl);
@@ -113,6 +266,26 @@ var
   Sz, Pad, Size, StripTop: Integer;
   R: TRect;
 begin
+  { Hover mode: no cross at the end of the strip; the strip's pointer moves
+    put one on the tab under it (see ShowOnTab). Placing is then only
+    wiring, and hiding what may be left over a tab that has gone. }
+  if LedTabHoverClose then
+  begin
+    if ABook <> nil then
+    begin
+      if not Assigned(ABook.OnMouseMove) then
+        ABook.OnMouseMove := @BookMouseMove;
+      if not Assigned(ABook.OnMouseLeave) then
+        ABook.OnMouseLeave := @BookMouseLeave;
+    end;
+    { a refresh places the strip again; the cross stays on its tab unless
+      that tab has gone, or the strip has }
+    if (ABook = nil) or (ABook <> FHoverBook) or not ABook.ShowTabs or
+       (FHoverIndex < 0) or (FHoverIndex >= ABook.PageCount) then
+      HideHover;
+    Exit;
+  end;
+
   { No strip, no button: with a single tab the strip is hidden, and there is
     nothing to put a cross at the end of. }
   if (ABook = nil) or (not ABook.ShowTabs) or (ABook.PageCount = 0) or

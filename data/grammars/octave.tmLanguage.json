@@ -112,7 +112,7 @@
    "name": "def.operator"
   },
   {
-   "match": "\\b(?:cell|char|double|\\(u\\)\\?int\\(8\\|16\\|32\\|64\\)|logical|single|struct)\\b",
+   "match": "\\b(?:cell|char|double|(?:(u)?int(8|16|32|64))|logical|single|struct)\\b",
    "name": "def.type"
   },
   {
@@ -140,7 +140,7 @@
    "name": "def.number"
   },
   {
-   "match": "\\b(?:e|eps|\\(J\\|j\\|I\\|i\\)|\\(Inf\\|inf\\)|\\(NaN\\|nan\\)|NA|ones|pi|rand|zeros)(?:\\b(?!\\s*\\())",
+   "match": "\\b(?:e|eps|(?:(J|j|I|i))|(?:(Inf|inf))|(?:(NaN|nan))|NA|ones|pi|rand|zeros)(?:\\b(?!\\s*\\())",
    "name": "def.special-constant"
   },
   {

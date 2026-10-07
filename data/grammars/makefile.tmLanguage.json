@@ -110,7 +110,7 @@
        ]
       },
       {
-       "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|filter\\-out|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
+       "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|(?:filter-out)|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
        "name": "def.function"
       }
      ]
@@ -126,7 +126,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|filter\\-out|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
+   "match": "\\b(?:addprefix|addsuffix|basename|call|dir|error|filter|(?:filter-out)|findstring|firstword|foreach|join|notdir|origin|patsubst|shell|sort|strip|subst|suffix|warning|wildcard|word|words)\\b",
    "name": "def.function"
   }
  ],

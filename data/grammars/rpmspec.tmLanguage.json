@@ -38,15 +38,15 @@
    ]
   },
   {
-   "match": "^(?:Auto\\[A\\-Za\\-z\\]\\+|\\[A\\-Za\\-z\\]\\+Arch|\\[A\\-Za\\-z\\]\\+Req|Build\\[A\\-Za\\-z\\]\\+|Conflicts|Enhances|Epoch|Group|Icon|License|Name|Obsoletes|Packager|Patch\\[0\\-9\\]\\*|Provides|Recommends|Release|Requires\\\\\\(\\?\\[a\\-z\\]\\*\\\\\\)\\?|Source\\[0\\-9\\]\\*|Suggests|Summary|Supplements|Url|URL|Vendor|Version):",
+   "match": "^(?:(?:Auto[A-Za-z]+)|(?:[A-Za-z]+Arch)|(?:[A-Za-z]+Req)|(?:Build[A-Za-z]+)|Conflicts|Enhances|Epoch|Group|Icon|License|Name|Obsoletes|Packager|(?:Patch[0-9]*)|Provides|Recommends|Release|(?:Requires\\(?[a-z]*\\)?)|(?:Source[0-9]*)|Suggests|Summary|Supplements|Url|URL|Vendor|Version):",
    "name": "def.keyword"
   },
   {
-   "match": "^%(?:global|description|package|prep|build|install|clean|check|pre\\[a\\-z\\]\\*|post\\[a\\-z\\]\\*|trigger\\[a\\-z\\]\\*|files)\\b",
+   "match": "^%(?:global|description|package|prep|build|install|clean|check|(?:pre[a-z]*)|(?:post[a-z]*)|(?:trigger[a-z]*)|files)\\b",
    "name": "def.type"
   },
   {
-   "match": "%(?:defattr|docdir|doc|license|setup|autosetup|config|configure|make|makeinstall|make_install|make_build|dir|ghost|patch\\[0\\-9\\]\\+|find_lang|exclude)\\b",
+   "match": "%(?:defattr|docdir|doc|license|setup|autosetup|config|configure|make|makeinstall|make_install|make_build|dir|ghost|(?:patch[0-9]+)|find_lang|exclude)\\b",
    "name": "def.preprocessor"
   },
   {

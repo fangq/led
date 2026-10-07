@@ -115,7 +115,7 @@ function LedEnsureReadable(AFore, ABack: TColor; AMinRatio: Double): TColor;
 implementation
 
 uses
-  SynTextMateSyn, Led.Core.Paths,
+  Math, SynTextMateSyn, Led.Core.Paths,
   SynHighlighterPas, SynHighlighterCpp, SynHighlighterPython,
   SynHighlighterXML, SynHighlighterHTML, SynHighlighterCss,
   SynHighlighterJScript, SynHighlighterJava, SynHighlighterPHP,
@@ -696,7 +696,8 @@ end;
 procedure LedApplyThemeToEditor(ATheme: TLedTheme; AEdit: TSynEdit);
 var
   S: TLedStyle;
-  GutterBack: TColor;
+  GutterBack, GutterFore: TColor;
+  Tint: Integer;
   Edge: TColor;
   Guard: Integer;
   Caret: TSynEditMarkupHighlightAllCaret;
@@ -761,42 +762,53 @@ begin
     end;
   end;
 
-  { Three of the eight shipped schemes -- classic, medit, tango -- say
-    nothing about line-numbers.  GtkSourceView then draws them in the
-    widget's ordinary text colours, whereas SynEdit falls back to a pale
-    grey that is barely legible on a light background.  So fall back the way
-    medit does, to the text style. }
-  if not ATheme.Find(LedStyleLineNumbers, S) then
-    if not ATheme.Find(LedStyleText, S) then
-      S := Default(TLedStyle);
+  { The gutter as medit draws it, whatever the scheme says about
+    line-numbers: the page's own background a step towards the middle --
+    lighter on a dark page, darker on a light one -- and the numbers in the
+    text's colour. Medit tints the text view's background (+0.08 on a dark
+    page, -0.06 on a light one) and draws the numbers in the view's text
+    style; oblivion's line-numbers style (aluminium5 on "#black") never
+    reaches its gutter at all, and following it here made a black band with
+    numbers barely lighter than it, where medit shows a slate one with the
+    text's pale grey. }
+  if not ATheme.Find(LedStyleText, S) then
+    S := Default(TLedStyle);
 
-  GutterBack := clNone;
   if lsfBackground in S.Flags then
     GutterBack := LedColourToTColor(S.Background)
-  else if AEdit.Color <> clNone then
+  else
     GutterBack := AEdit.Color;
+  if GutterBack = clNone then
+    GutterBack := clWindow;
+  GutterBack := ColorToRGB(GutterBack);
+  if LedColourLuma(GutterBack) > 127 then
+    Tint := -15                     { 0.06 of the way down }
+  else
+    Tint := 20;                     { 0.08 of the way up }
+  GutterBack := RGBToColor(
+    EnsureRange(Red(GutterBack) + Tint, 0, 255),
+    EnsureRange(Green(GutterBack) + Tint, 0, 255),
+    EnsureRange(Blue(GutterBack) + Tint, 0, 255));
 
   if lsfForeground in S.Flags then
-    AEdit.Gutter.LineNumberPart.MarkupInfo.Foreground :=
-      EnsureContrast(LedColourToTColor(S.Foreground), GutterBack,
-        LedMinGutterContrast);
-  if lsfBackground in S.Flags then
-  begin
-    AEdit.Gutter.LineNumberPart.MarkupInfo.Background :=
-      LedColourToTColor(S.Background);
-    AEdit.Gutter.Color := LedColourToTColor(S.Background);
-    AEdit.Gutter.MarksPart.MarkupInfo.Background := LedColourToTColor(S.Background);
-    AEdit.Gutter.CodeFoldPart.MarkupInfo.Background := LedColourToTColor(S.Background);
-    AEdit.Gutter.SeparatorPart.MarkupInfo.Background := LedColourToTColor(S.Background);
-  end;
+    GutterFore := LedColourToTColor(S.Foreground)
+  else
+    GutterFore := AEdit.Font.Color;
+  if GutterFore = clNone then
+    GutterFore := clWindowText;
+
+  AEdit.Gutter.LineNumberPart.MarkupInfo.Foreground :=
+    EnsureContrast(GutterFore, GutterBack, LedMinGutterContrast);
+  AEdit.Gutter.LineNumberPart.MarkupInfo.Background := GutterBack;
+  AEdit.Gutter.Color := GutterBack;
+  AEdit.Gutter.MarksPart.MarkupInfo.Background := GutterBack;
+  AEdit.Gutter.CodeFoldPart.MarkupInfo.Background := GutterBack;
+  AEdit.Gutter.SeparatorPart.MarkupInfo.Background := GutterBack;
   { The fold boxes and the vertical rule joining a block to its end are drawn
-    in the gutter's own foreground, so they inherit the same legibility
-    problem as the line numbers -- and they are thin strokes rather than
-    glyphs, so they need more separation, not less. }
-  if lsfForeground in S.Flags then
-    AEdit.Gutter.CodeFoldPart.MarkupInfo.Foreground :=
-      EnsureContrast(LedColourToTColor(S.Foreground), GutterBack,
-        LedMinFoldContrast);
+    in the gutter's own foreground, and they are thin strokes rather than
+    glyphs, so they need more separation from it, not less. }
+  AEdit.Gutter.CodeFoldPart.MarkupInfo.Foreground :=
+    EnsureContrast(GutterFore, GutterBack, LedMinFoldContrast);
 
   if ATheme.Find(LedStyleBracketMatch, S) then
   begin

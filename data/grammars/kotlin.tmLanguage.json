@@ -66,7 +66,7 @@
    ]
   },
   {
-   "match": "\\b(?:it|super|this@\\?)\\b",
+   "match": "\\b(?:it|super|(?:this@?))\\b",
    "name": "def.builtin"
   },
   {
@@ -93,7 +93,7 @@
    }
   },
   {
-   "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+   "match": "\\b(?:as|(?:break@?)|catch|(?:continue@?)|do|else|finally|for|if|in|is|(?:return@?)|throw|to|try|when|while)\\b",
    "name": "def.keyword"
   },
   {
@@ -188,7 +188,7 @@
          ]
         },
         {
-         "match": "\\b(?:it|super|this@\\?)\\b",
+         "match": "\\b(?:it|super|(?:this@?))\\b",
          "name": "def.builtin"
         },
         {
@@ -215,7 +215,7 @@
          }
         },
         {
-         "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+         "match": "\\b(?:as|(?:break@?)|catch|(?:continue@?)|do|else|finally|for|if|in|is|(?:return@?)|throw|to|try|when|while)\\b",
          "name": "def.keyword"
         },
         {
@@ -363,7 +363,7 @@
          ]
         },
         {
-         "match": "\\b(?:it|super|this@\\?)\\b",
+         "match": "\\b(?:it|super|(?:this@?))\\b",
          "name": "def.builtin"
         },
         {
@@ -390,7 +390,7 @@
          }
         },
         {
-         "match": "\\b(?:as|break@\\?|catch|continue@\\?|do|else|finally|for|if|in|is|return@\\?|throw|to|try|when|while)\\b",
+         "match": "\\b(?:as|(?:break@?)|catch|(?:continue@?)|do|else|finally|for|if|in|is|(?:return@?)|throw|to|try|when|while)\\b",
          "name": "def.keyword"
         },
         {

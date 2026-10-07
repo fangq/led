@@ -79,7 +79,7 @@
    "name": "def.keyword"
   },
   {
-   "match": "\\b(?:::|==|\\->)\\b",
+   "match": "\\b(?:(?:::)|(?:==)|(?:->))\\b",
    "name": "def.keyword"
   },
   {

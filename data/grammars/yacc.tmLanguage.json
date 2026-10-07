@@ -435,15 +435,15 @@
          "name": "def.keyword"
         },
         {
-         "match": "\\b(?:\\(_A\\|a\\)lignof|_Generic|offsetof|\\(_S\\|s\\)tatic_assert|sizeof|typeof)\\b",
+         "match": "\\b(?:(?:(_A|a)lignof)|_Generic|offsetof|(?:(_S|s)tatic_assert)|sizeof|typeof)\\b",
          "name": "def.operator"
         },
         {
-         "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|char\\(16\\|32\\)_t|double|float|int|\\(u\\)\\?int\\(_least\\|_fast\\)\\?\\(8\\|16\\|32\\|64\\)_t|\\(u\\)\\?intmax_t|\\(u\\)\\?intptr_t|long|ptrdiff_t|off\\(64\\)\\?_t|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
+         "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|(?:char(16|32)_t)|double|float|int|(?:(u)?int(_least|_fast)?(8|16|32|64)_t)|(?:(u)?intmax_t)|(?:(u)?intptr_t)|long|ptrdiff_t|(?:off(64)?_t)|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
          "name": "def.type"
         },
         {
-         "match": "\\b(?:\\(_A\\|a\\)lignas|_Atomic|\\(_N\\|n\\)oreturn|\\(_T\\|t\\)hread_local|auto|const|extern|inline|register|restrict|static|volatile)\\b",
+         "match": "\\b(?:(?:(_A|a)lignas)|_Atomic|(?:(_N|n)oreturn)|(?:(_T|t)hread_local)|auto|const|extern|inline|register|restrict|static|volatile)\\b",
          "name": "def.type"
         },
         {
@@ -467,7 +467,7 @@
      ]
     },
     {
-     "match": "^%(?:debug|defines|destructor|dprec|error\\-verbose|expect|glr\\-parser|initial\\-action|left|lex\\-param|locations|merge|name\\-prefix|no\\[_\\-\\]lines|nonassoc|output|parse\\-param|prec|pure\\[_\\-\\]parser|raw|require|right|start|token\\[_\\-\\]table|union)\\b",
+     "match": "^%(?:debug|defines|destructor|dprec|(?:error-verbose)|expect|(?:glr-parser)|(?:initial-action)|left|(?:lex-param)|locations|merge|(?:name-prefix)|(?:no[_-]lines)|nonassoc|output|(?:parse-param)|prec|(?:pure[_-]parser)|raw|require|right|start|(?:token[_-]table)|union)\\b",
      "name": "def.keyword"
     },
     {
@@ -1269,15 +1269,15 @@
              "name": "def.keyword"
             },
             {
-             "match": "\\b(?:\\(_A\\|a\\)lignof|_Generic|offsetof|\\(_S\\|s\\)tatic_assert|sizeof|typeof)\\b",
+             "match": "\\b(?:(?:(_A|a)lignof)|_Generic|offsetof|(?:(_S|s)tatic_assert)|sizeof|typeof)\\b",
              "name": "def.operator"
             },
             {
-             "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|char\\(16\\|32\\)_t|double|float|int|\\(u\\)\\?int\\(_least\\|_fast\\)\\?\\(8\\|16\\|32\\|64\\)_t|\\(u\\)\\?intmax_t|\\(u\\)\\?intptr_t|long|ptrdiff_t|off\\(64\\)\\?_t|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
+             "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|(?:char(16|32)_t)|double|float|int|(?:(u)?int(_least|_fast)?(8|16|32|64)_t)|(?:(u)?intmax_t)|(?:(u)?intptr_t)|long|ptrdiff_t|(?:off(64)?_t)|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
              "name": "def.type"
             },
             {
-             "match": "\\b(?:\\(_A\\|a\\)lignas|_Atomic|\\(_N\\|n\\)oreturn|\\(_T\\|t\\)hread_local|auto|const|extern|inline|register|restrict|static|volatile)\\b",
+             "match": "\\b(?:(?:(_A|a)lignas)|_Atomic|(?:(_N|n)oreturn)|(?:(_T|t)hread_local)|auto|const|extern|inline|register|restrict|static|volatile)\\b",
              "name": "def.type"
             },
             {
@@ -1730,15 +1730,15 @@
          "name": "def.keyword"
         },
         {
-         "match": "\\b(?:\\(_A\\|a\\)lignof|_Generic|offsetof|\\(_S\\|s\\)tatic_assert|sizeof|typeof)\\b",
+         "match": "\\b(?:(?:(_A|a)lignof)|_Generic|offsetof|(?:(_S|s)tatic_assert)|sizeof|typeof)\\b",
          "name": "def.operator"
         },
         {
-         "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|char\\(16\\|32\\)_t|double|float|int|\\(u\\)\\?int\\(_least\\|_fast\\)\\?\\(8\\|16\\|32\\|64\\)_t|\\(u\\)\\?intmax_t|\\(u\\)\\?intptr_t|long|ptrdiff_t|off\\(64\\)\\?_t|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
+         "match": "\\b(?:_Bool|_Complex|_Imaginary|bool|char|(?:char(16|32)_t)|double|float|int|(?:(u)?int(_least|_fast)?(8|16|32|64)_t)|(?:(u)?intmax_t)|(?:(u)?intptr_t)|long|ptrdiff_t|(?:off(64)?_t)|short|signed|size_t|ssize_t|unsigned|void|wchar_t|wint_t)\\b",
          "name": "def.type"
         },
         {
-         "match": "\\b(?:\\(_A\\|a\\)lignas|_Atomic|\\(_N\\|n\\)oreturn|\\(_T\\|t\\)hread_local|auto|const|extern|inline|register|restrict|static|volatile)\\b",
+         "match": "\\b(?:(?:(_A|a)lignas)|_Atomic|(?:(_N|n)oreturn)|(?:(_T|t)hread_local)|auto|const|extern|inline|register|restrict|static|volatile)\\b",
          "name": "def.type"
         },
         {

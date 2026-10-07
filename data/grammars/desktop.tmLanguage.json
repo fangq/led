@@ -83,7 +83,7 @@
      "name": "def.floating-point"
     },
     {
-     "match": "\\b(?:UTF\\\\\\-8|Legacy\\\\\\-Mixed)\\b",
+     "match": "\\b(?:(?:UTF\\-8)|(?:Legacy\\-Mixed))\\b",
      "name": "def.floating-point"
     },
     {

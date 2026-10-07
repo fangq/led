@@ -106,7 +106,7 @@
    "name": "def.preprocessor"
   },
   {
-   "match": "\\b(?:case\\ class|class|def|extends|forSome|mixin|object|trait|type|val|var|with)\\b",
+   "match": "\\b(?:(?:case class)|class|def|extends|forSome|mixin|object|trait|type|val|var|with)\\b",
    "name": "def.type"
   },
   {

@@ -239,7 +239,7 @@
    ]
   },
   {
-   "match": "#(?:hide|prune|ignore\\-exports)\\b",
+   "match": "#(?:hide|prune|(?:ignore-exports))\\b",
    "name": "def.doc-comment-element"
   }
  ]
