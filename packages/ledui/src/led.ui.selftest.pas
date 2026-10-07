@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade{$ENDIF},
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -70,6 +70,11 @@ uses
 type
   { The gtk widget behind each menu item, watched for being replaced. }
   TLedHandleArray = array of THandle;
+
+  {$IFDEF LED_PARADE}
+  { the page's wheel handling is protected }
+  TLedParadeWheel = class(TParadeEdit);
+  {$ENDIF}
 
   { The view chain is protected on TSynEdit. }
   TLedViewPeek = class(TLedEdit);
@@ -15745,6 +15750,103 @@ begin
 end;
 {$ENDIF}
 
+{ LED_SELFTEST_BENCH=file.docx: the time a long document takes to open in the visual editor, to page through
+  and to scroll, with LED's whole window around it (what a reader waits for); nothing else is run }
+procedure BenchVisual(F: TLedMainForm; const AFile: string);
+{$IFDEF LED_PARADE}
+var
+  Files: TStringList;
+  T0, T1: QWord;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  i: Integer;
+  Steps: array of Integer;
+
+  procedure Report(const ALabel: string);
+  var
+    k, Sum, Worst: Integer;
+  begin
+    Sum := 0;
+    Worst := 0;
+    for k := 0 to High(Steps) do
+    begin
+      Inc(Sum, Steps[k]);
+      if Steps[k] > Worst then
+        Worst := Steps[k];
+    end;
+    WriteLn(Format('  %s: %d steps, mean %d ms, worst %d ms', [ALabel, Length(Steps), Sum div Max(1, Length(Steps)),
+      Worst]));
+  end;
+
+begin
+  Say('benchmark: ' + AFile);
+  Files := TStringList.Create;
+  try
+    Files.Add(AFile);
+    T0 := GetTickCount64;
+    F.OpenFiles(Files);
+    Pump;
+    Tab := F.ActiveTab;
+    if (Tab = nil) or not Tab.VisualMode then
+    begin
+      WriteLn('  not opened as pages');
+      Exit;
+    end;
+    E := Tab.Visual.Page;
+    E.Invalidate;
+    E.Update;
+    Pump;
+    T1 := GetTickCount64;
+    WriteLn(Format('  open and first paint: %d ms, %d pages', [T1 - T0, E.PageCount]));
+    T0 := GetTickCount64;     { a reader's first look at the page: the pictures decode meanwhile }
+    while GetTickCount64 - T0 < 2000 do
+    begin
+      Pump;
+      Sleep(10);
+    end;
+    E.SetFocus;
+    SetLength(Steps, 0);
+    for i := 1 to 40 do
+    begin
+      T0 := GetTickCount64;
+      E.ProcessKey(VK_NEXT, []);
+      E.Repaint;
+      Pump;
+      SetLength(Steps, Length(Steps) + 1);
+      Steps[High(Steps)] := GetTickCount64 - T0;
+    end;
+    Report('page down');
+    SetLength(Steps, 0);
+    for i := 1 to 40 do
+    begin
+      T0 := GetTickCount64;
+      E.ProcessKey(VK_PRIOR, []);
+      E.Repaint;
+      Pump;
+      SetLength(Steps, Length(Steps) + 1);
+      Steps[High(Steps)] := GetTickCount64 - T0;
+    end;
+    Report('page up');
+    SetLength(Steps, 0);
+    for i := 1 to 60 do
+    begin
+      T0 := GetTickCount64;
+      TLedParadeWheel(E).DoMouseWheel([], -120, Point(100, 100));
+      E.Repaint;
+      Pump;
+      SetLength(Steps, Length(Steps) + 1);
+      Steps[High(Steps)] := GetTickCount64 - T0;
+    end;
+    Report('wheel down');
+  finally
+    Files.Free;
+  end;
+end;
+{$ELSE}
+begin
+end;
+{$ENDIF}
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -15835,6 +15937,14 @@ begin
   Check('as its pages, without being asked', Tab.VisualMode);
   if not Tab.VisualMode then Exit;
   Check('with its words', Pos('Dear reader.', Tab.Visual.PlainText) > 0);
+  { the dump of its bytes not made while it shows as pages; made when its text is shown }
+  Check('no hex dump made behind its pages', Tab.Document.HexPending and (Tab.Document.Master.Lines.Count <= 1));
+  Tab.LeaveVisual;
+  Pump;
+  Check('leaving the pages shows its bytes', not Tab.Document.HexPending and
+    (Pos('00000000  50 4b 03 04', Tab.Document.Master.Lines[0]) = 1));
+  Check('and does not make it modified', not Tab.Document.Modified);
+  Check('back to its pages', Tab.EnterVisual(Why) and Tab.VisualMode);
   Tab.Visual.InsertText('My ');
   Pump;
   Check('typing modifies it', Tab.Document.Modified);
@@ -16253,6 +16363,12 @@ begin
 
   { First, before anything else has had a chance to open a tab or move a
     caret: this section is about the state LED actually starts in. }
+  if GetEnvironmentVariable('LED_SELFTEST_BENCH') <> '' then
+  begin
+    BenchVisual(F, GetEnvironmentVariable('LED_SELFTEST_BENCH'));
+    Exit(0);
+  end;
+
   TestStartupDocument(F);
   TestBinaryFiles(F);
   TestBJDataFiles(F);

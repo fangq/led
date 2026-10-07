@@ -210,35 +210,59 @@ begin
   end;
 end;
 
-function LedHexDumpLine(const ARaw: string; AOffset: Integer): string;
-var
-  i, Index: Integer;
-  B: Byte;
-begin
-  Result := LowerCase(IntToHex(AOffset, 8)) + '  ';
+{ the width of a row: offset, the bytes in two groups, the bars and the text between them }
+const
+  RowWidth = OffsetWidth + LedHexBytesPerLine * 3 + 1 + 2 + LedHexBytesPerLine + 1;
 
+{ one row written into P (RowWidth characters), from ARaw's AOffset onwards: no strings made on the way, which
+  for a file of megabytes is the difference between opening it and waiting for it }
+procedure FillRow(P: PChar; const ARaw: string; AOffset: Integer);
+var
+  i, Index, k: Integer;
+  B: Byte;
+  V: Cardinal;
+begin
+  V := Cardinal(AOffset);
+  for k := 7 downto 0 do
+  begin
+    P[k] := HexDigits[(V and $0F) + 1];
+    V := V shr 4;
+  end;
+  P[8] := ' ';
+  P[9] := ' ';
+  k := OffsetWidth;
   for i := 0 to LedHexBytesPerLine - 1 do
   begin
     Index := AOffset + i + 1;
     if (Index >= 1) and (Index <= Length(ARaw)) then
     begin
       B := Byte(ARaw[Index]);
-      Result := Result + HexDigits[(B shr 4) + 1] + HexDigits[(B and $0F) + 1];
+      P[k] := HexDigits[(B shr 4) + 1];
+      P[k + 1] := HexDigits[(B and $0F) + 1];
     end
     else
+    begin
       { Padded, not omitted: the text column of a short last row has to start
         where every other row's does. }
-      Result := Result + '  ';
-    Result := Result + ' ';
-    if i = LedHexGroup - 1 then Result := Result + ' ';
+      P[k] := ' ';
+      P[k + 1] := ' ';
+    end;
+    P[k + 2] := ' ';
+    Inc(k, 3);
+    if i = LedHexGroup - 1 then
+    begin
+      P[k] := ' ';
+      Inc(k);
+    end;
   end;
-
-  Result := Result + ' |';
+  P[k] := ' ';
+  P[k + 1] := '|';
+  Inc(k, 2);
   for i := 0 to LedHexBytesPerLine - 1 do
   begin
     Index := AOffset + i + 1;
     if (Index < 1) or (Index > Length(ARaw)) then
-      Result := Result + ' '
+      P[k] := ' '
     else
     begin
       B := Byte(ARaw[Index]);
@@ -246,35 +270,42 @@ begin
         including the high half: what a byte above 127 looks like depends on
         an encoding, and the whole point here is that there is not one. }
       if (B >= 32) and (B < 127) then
-        Result := Result + Chr(B)
+        P[k] := Chr(B)
       else
-        Result := Result + '.';
+        P[k] := '.';
     end;
+    Inc(k);
   end;
-  Result := Result + '|';
+  P[k] := '|';
+end;
+
+function LedHexDumpLine(const ARaw: string; AOffset: Integer): string;
+begin
+  SetLength(Result, RowWidth);
+  FillRow(PChar(Result), ARaw, AOffset);
 end;
 
 function LedHexDump(const ARaw: string): string;
 var
   Rows, Row: Integer;
-  Out_: TStringList;
+  P: PChar;
 begin
   if ARaw = '' then Exit('');
 
-  Out_ := TStringList.Create;
-  try
-    Out_.LineBreak := #10;
-    { A partial last row still counts. }
-    Rows := (Length(ARaw) + LedHexBytesPerLine - 1) div LedHexBytesPerLine;
-    for Row := 0 to Rows - 1 do
-      Out_.Add(LedHexDumpLine(ARaw, Row * LedHexBytesPerLine));
-    Result := Out_.Text;
-    { TStringList.Text ends every line, including the last; the buffer this
-      feeds counts that as an extra empty line. }
-    if (Result <> '') and (Result[Length(Result)] = #10) then
-      SetLength(Result, Length(Result) - 1);
-  finally
-    Out_.Free;
+  { A partial last row still counts.  Rows joined by #10, none after the last:
+    the buffer this feeds would count one as an extra empty line. }
+  Rows := (Length(ARaw) + LedHexBytesPerLine - 1) div LedHexBytesPerLine;
+  SetLength(Result, Rows * (RowWidth + 1) - 1);
+  P := PChar(Result);
+  for Row := 0 to Rows - 1 do
+  begin
+    FillRow(P, ARaw, Row * LedHexBytesPerLine);
+    Inc(P, RowWidth);
+    if Row < Rows - 1 then
+    begin
+      P^ := #10;
+      Inc(P);
+    end;
   end;
 end;
 
