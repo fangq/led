@@ -14946,6 +14946,24 @@ begin
   end;
 end;
 
+{ the speed button under ARoot captioned ACaption (a tab's name), nil when none }
+function ButtonByCaption(ARoot: TWinControl; const ACaption: string): TSpeedButton;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to ARoot.ControlCount - 1 do
+  begin
+    if (ARoot.Controls[i] is TSpeedButton) and (TSpeedButton(ARoot.Controls[i]).Caption = ACaption) then
+      Exit(TSpeedButton(ARoot.Controls[i]));
+    if ARoot.Controls[i] is TWinControl then
+    begin
+      Result := ButtonByCaption(TWinControl(ARoot.Controls[i]), ACaption);
+      if Result <> nil then Exit;
+    end;
+  end;
+end;
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -15147,9 +15165,40 @@ begin
       Check('3 x 3 from its menu puts a table in, the caret in a cell', BI.kind = PD_BLOCK_CELL);
       pd_doc_block_info(Tab.Visual.Page.Doc, BI.parent, BI);
       Check('three cells a row', BI.child_count = 3);
+      Pump;
+      Pump;
+      Check('the Table tab shows in a table', (ButtonByCaption(Tab.Visual, 'Table') <> nil) and
+        ButtonByCaption(Tab.Visual, 'Table').Visible);
+      Btn := ControlByHint(Tab.Visual, 'A row or column next to the caret''s cell');
+      if Btn is TSpeedButton then
+      begin
+        TPopupMenu(TComponent(Btn.Tag)).Items[3].Click;    { column right }
+        Pump;
+        pd_doc_block_info(Tab.Visual.Page.Doc, Tab.Visual.Page.CaretPos.block, BI);
+        pd_doc_block_info(Tab.Visual.Page.Doc, BI.parent, BI);
+        pd_doc_block_info(Tab.Visual.Page.Doc, BI.parent, BI);
+        Check('its Insert menu adds a column', BI.child_count = 4);
+      end
+      else
+        Check('the Table tab''s Insert menu', False);
+      Tab.Visual.Page.Undo;
       Tab.Visual.Page.Undo;
       Pump;
+      Pump;
+      Check('and goes when the caret leaves the table', not ButtonByCaption(Tab.Visual, 'Table').Visible);
     end;
+    Btn := ControlByHint(Tab.Visual, 'Portrait or landscape (this section)');
+    if Btn is TSpeedButton then
+    begin
+      TPopupMenu(TComponent(Btn.Tag)).Items[1].Click;
+      with Tab.Visual.Page.CurrentSectionProps do
+        Check('the Layout tab turns the page', page_width > page_height);
+      TPopupMenu(TComponent(Btn.Tag)).Items[0].Click;
+      with Tab.Visual.Page.CurrentSectionProps do
+        Check('and back', page_width < page_height);
+    end
+    else
+      Check('the Layout tab has Orientation', False);
     {$ENDIF}
     Tab.Document.SaveToFile(Docx);
     P := TLedVisualPane.Create(nil);
