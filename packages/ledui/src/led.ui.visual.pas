@@ -102,6 +102,10 @@ type
     procedure ToggleBold;
     procedure ToggleItalic;
     procedure ToggleUnderline;
+    { Asks for a relay, a document and a token, and puts the shared document
+      in place of this one -- Join without the toolbar.  False when it was
+      cancelled or could not join (the reason has been shown). }
+    function JoinShared: Boolean;
 
     property Kind: TLedVisualKind read FKind;
     { Changed here since the last Load or MarkSaved. }
@@ -114,6 +118,12 @@ type
 
 { Whether this LED has the visual editor at all. }
 function LedVisualAvailable: Boolean;
+
+{ Whether this LED can share documents (Parade built with its yrs library). }
+function LedVisualCanShare: Boolean;
+
+{ An empty Word file, as Parade writes one: what a document joined starts as. }
+function LedVisualEmptyDocx: string;
 
 { What the visual editor would open this file as, by its name. }
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
@@ -140,6 +150,23 @@ const
 function LedVisualAvailable: Boolean;
 begin
   Result := {$IFDEF LED_PARADE}True{$ELSE}False{$ENDIF};
+end;
+
+function LedVisualCanShare: Boolean;
+begin
+  Result := {$IFDEF LED_PARADE_SYNC}True{$ELSE}False{$ENDIF};
+end;
+
+function LedVisualEmptyDocx: string;
+var
+  P: TLedVisualPane;
+begin
+  P := TLedVisualPane.Create(nil);
+  try
+    Result := P.Export(lvkDocx);
+  finally
+    P.Free;
+  end;
 end;
 
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
@@ -664,7 +691,7 @@ begin
     V[1] := ADoc;
     V[2] := Ini.ReadString('relay', 'token', '');
     V[3] := Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER'));
-    Result := InputQuery(ACaption, ['Relay address', 'Document', 'Token (from parade_relay.py token)', 'Your name'], V) and
+    Result := InputQuery(ACaption, ['Relay address', 'Document', 'Token (from the host''s Invite, or parade_relay token)', 'Your name'], V) and
       (Trim(V[0]) <> '') and (Trim(V[1]) <> '');
     if not Result then
       Exit;
@@ -708,20 +735,36 @@ begin
 end;
 
 procedure TLedVisualPane.JoinClicked(Sender: TObject);
-var
-  Server, Doc, Token, Who: string;
 begin
   if (FEdit.Modified or (Trim(FEdit.DocumentText) <> '')) and
      (MessageDlg('Join', 'The shared document replaces what this tab shows. Go on?', mtConfirmation,
       [mbYes, mbNo], 0) <> mrYes) then
     Exit;
+  JoinShared;
+end;
+{$ENDIF}
+
+function TLedVisualPane.JoinShared: Boolean;
+{$IFDEF LED_PARADE_SYNC}
+var
+  Server, Doc, Token, Who: string;
+begin
+  Result := False;
   Doc := '';
   if not AskConnection('Join a shared document', Server, Doc, Token, Who) then
     Exit;
-  if not FSync.Start(Server, Doc, Token, Who, False) then
+  Result := FSync.Start(Server, Doc, Token, Who, False);
+  if not Result then
     MessageDlg('Join', 'Could not join: ' + FSync.LastError, mtError, [mbOK], 0);
   BackToPage;
 end;
+{$ELSE}
+begin
+  Result := False;
+end;
+{$ENDIF}
+
+{$IFDEF LED_PARADE_SYNC}
 
 { the key this LED's relay signs its tokens with, made on first use and kept with the settings }
 function RelaySecret: RawByteString;

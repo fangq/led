@@ -106,6 +106,7 @@ type
     FFileName: string;
     FInfo: TLedTextInfo;
     FUntitledNo: Integer;
+    FUntitledExt: string;       // what an untitled document is, as a file name would say: '.docx
     FConfig: TLedDocConfig;
     FDiskAge: LongInt;          // mtime as of the last load or save
     FDiskSize: Int64;
@@ -277,6 +278,13 @@ type
       file name before there is anything to save.  False, with the reason,
       when the text is not a notebook. }
     function StartNotebook(const AText: string; out AError: string): Boolean;
+    { Make this untitled document a Word file holding ABytes, as opening a
+      .docx would -- for joining a shared document, which is a page before
+      it is a file. }
+    procedure StartWord(const ABytes: string);
+    { The name that says what the document is: the file's, or for an
+      untitled one its display name with what it was started as ('.docx'). }
+    function KindName: string;
 
     property FileName: string read FFileName;
     property Info: TLedTextInfo read FInfo;
@@ -2990,6 +2998,34 @@ begin
   ApplyConfigToViews;
   if Assigned(FOnChanged) then FOnChanged(Self);
   Result := True;
+end;
+
+procedure TLedDocument.StartWord(const ABytes: string);
+begin
+  FUntitledExt := '.docx';
+  FIsBinary := True;
+  FIsBJData := False;
+  FBytes := ABytes;
+  FHexDirty := False;
+  FVisualDirty := False;
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := LedHexDump(FBytes);
+    FMaster.ClearUndo;
+    FMaster.Modified := False;
+  finally
+    FMaster.EndUpdate;
+  end;
+  ApplyConfigToViews;
+  if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+function TLedDocument.KindName: string;
+begin
+  if IsUntitled then
+    Result := DisplayName + FUntitledExt
+  else
+    Result := FFileName;
 end;
 
 function TLedDocument.DisplayName: string;

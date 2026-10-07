@@ -14933,6 +14933,7 @@ var
   P: TLedVisualPane;
   L: TStringList;
   Before: Integer;
+  Doc: TLedDocument;
 begin
   Say('visual editor');
   if not LedVisualAvailable then
@@ -15027,6 +15028,35 @@ begin
   F.CloseActiveTab(False);
   Pump;
   CheckEqInt('every tab it opened is closed', Before, F.TabCount);
+
+  { What File > Join Shared Document starts with: an untitled Word file,
+    a page from the start, named when it is saved. }
+  Check('Join Shared Document is offered when sharing is built in',
+    F.actJoinShared.Visible = LedVisualCanShare);
+  Doc := F.Documents.NewDocument;
+  Doc.StartWord(LedVisualEmptyDocx);
+  Tab := F.AddTab(Doc);
+  Pump;
+  Check('an untitled Word document opens as a page',
+    (Tab <> nil) and Tab.Document.IsUntitled and Tab.VisualMode);
+  if (Tab <> nil) and Tab.VisualMode then
+  begin
+    Check('named as a Word file', LedVisualKindOf(Tab.Document.KindName) = lvkDocx);
+    Tab.Visual.InsertText('Shared words.');
+    Pump;
+    Check('typing in it modifies it', Tab.Document.Modified);
+    Tab.Document.SaveToFile(Docx);
+    P := TLedVisualPane.Create(nil);
+    try
+      Check('it saves as a Word file',
+        P.Load(LedReadRawFile(Docx), lvkDocx, Docx, Why) and (Pos('Shared words.', P.PlainText) > 0));
+    finally
+      P.Free;
+    end;
+  end;
+  F.CloseActiveTab(False);
+  Pump;
+  CheckEqInt('and it closes', Before, F.TabCount);
 
   DeleteFile(Md);
   DeleteFile(Docx);

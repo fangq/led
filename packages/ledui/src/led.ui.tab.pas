@@ -300,7 +300,7 @@ var
 begin
   Result := False;
   if not LedVisualAvailable then Exit;
-  Kind := LedVisualKindOf(FDocument.FileName);
+  Kind := LedVisualKindOf(FDocument.KindName);
   if Kind = lvkNone then Exit;
   { A .docx is bytes, and an HTML or Markdown file is text; one that was
     opened the other way round -- Open as Text on a .docx -- holds nothing
@@ -335,7 +335,7 @@ begin
   end;
   if not CanVisual then
   begin
-    if LedVisualKindOf(FDocument.FileName) = lvkNone then
+    if LedVisualKindOf(FDocument.KindName) = lvkNone then
       AWhy := 'the visual editor opens Markdown, HTML and Word (.docx) files'
     else
       AWhy := 'the file is not open as what its name says it is';
@@ -372,7 +372,7 @@ begin
   Result := False;
   AWhy := '';
   if (not FVisualMode) or (FVisual = nil) then Exit;
-  Kind := LedVisualKindOf(FDocument.FileName);
+  Kind := LedVisualKindOf(FDocument.KindName);
   if Kind = lvkDocx then
     Data := FDocument.Bytes
   else
