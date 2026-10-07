@@ -537,12 +537,13 @@ var
 
 
 { a file that opens as its pages (a Word document), by its name }
+{ a file shown as pages and kept as bytes: Word's, and Parade's own .pdoc (BJData) }
 function WordFileName(const AFileName: string): Boolean;
 var
   E: string;
 begin
   E := LowerCase(ExtractFileExt(AFileName));
-  Result := (E = '.docx') or (E = '.docm') or (E = '.dotx');
+  Result := (E = '.docx') or (E = '.docm') or (E = '.dotx') or (E = '.pdoc');
 end;
 
 function LedFilterSettings: TLedFilterSettings;
@@ -2553,8 +2554,11 @@ begin
   { A file that was meant to be BJData and is not goes to the dump even if it
     has no NUL in the first few kilobytes -- what is wrong with it is a thing
     to look at byte by byte, and the text editor cannot show that. }
+  { A .pdoc is BJData too, but a document for the pages, not the structure
+    view; a small one may hold no NUL, so its name says it is bytes. }
   Binary := (not BJData) and Detecting and
-    ((BJErr <> '') or LedLooksBinary(Raw));
+    ((BJErr <> '') or LedLooksBinary(Raw) or
+     (LowerCase(ExtractFileExt(AFileName)) = '.pdoc'));
 
   { Worked out into locals, and only written to the document once it has all
     succeeded.

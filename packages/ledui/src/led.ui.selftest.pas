@@ -15852,6 +15852,132 @@ begin
 end;
 {$ENDIF}
 
+{ Parade's own files: a .pdoc (BJData) and a .jdoc (JSON text) open as
+  pages; a page is saved as either -- or as Word again -- by Save As, which
+  converts rather than copies; and the File menu is in its sections. }
+procedure TestParadeFiles(F: TLedMainForm);
+var
+  Dir, Docx, Pdoc, Jdoc, Why, Raw: string;
+  P: TLedVisualPane;
+  L: TStringList;
+  Tab: TLedTab;
+  i, Before: Integer;
+  Seen: string;
+begin
+  Say('Parade documents (.pdoc, .jdoc)');
+  { the File menu: new, open, save, share, export, close, quit }
+  Seen := '';
+  for i := 0 to F.mnuFile.Count - 1 do
+    if F.mnuFile.Items[i].Caption = '-' then
+      Seen := Seen + '|'
+    else if F.mnuFile.Items[i].Action <> nil then
+      Seen := Seen + F.mnuFile.Items[i].Action.Name + ' ';
+  Check('the File menu is in its sections: ' + Seen,
+    (Pos('actNew ', Seen) < Pos('actOpen ', Seen)) and (Pos('actOpen ', Seen) < Pos('actSave ', Seen)) and
+    (Pos('actSaveAs ', Seen) < Pos('actShareDoc ', Seen)) and (Pos('actLeaveDoc ', Seen) < Pos('actExportHtml ', Seen)) and
+    (Pos('actPrint ', Seen) < Pos('actCloseTab ', Seen)) and (Pos('actCloseAll ', Seen) < Pos('actQuit ', Seen)));
+  Check('one section each', Pos('actNewWindow |actOpen ', Seen) + Pos('actSaveAs |actShareDoc ', Seen) > 0);
+  Check('Parade files are pages', (LedVisualKindOf('a.pdoc') = lvkPdoc) and (LedVisualKindOf('a.jdoc') = lvkJdoc) and
+    LedVisualKindIsBinary(lvkPdoc) and not LedVisualKindIsBinary(lvkJdoc));
+  if not LedVisualAvailable then
+  begin
+    WriteLn('  (built without Parade; nothing more to check)');
+    Exit;
+  end;
+  Dir := IncludeTrailingPathDelimiter(TempName('pdoc'));
+  ForceDirectories(Dir);
+  Docx := Dir + 'memo.docx';
+  Pdoc := Dir + 'memo.pdoc';
+  Jdoc := Dir + 'memo.jdoc';
+  P := TLedVisualPane.Create(nil);
+  try
+    Check('a page from Markdown', P.Load('# Memo'#10#10'Plain words.'#10, lvkMarkdown, '', Why));
+    WriteBytes(Docx, P.Export(lvkDocx));
+  finally
+    P.Free;
+  end;
+
+  Before := F.TabCount;
+  L := TStringList.Create;
+  try
+    L.Add(Docx);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the .docx opens as pages', False);
+    Exit;
+  end;
+  { Save As .pdoc: converted, the tab a .pdoc page now }
+  Tab.Visual.InsertText('New ');
+  Pump;
+  Check('saved as a .pdoc', Tab.SaveVisualAs(Pdoc, Why) and (Why = ''));
+  Raw := LedReadRawFile(Pdoc);
+  Check('which is BJData, not a zip or JSON', (Raw <> '') and (Copy(Raw, 1, 2) <> 'PK') and
+    (Pos('"_DataInfo_"', Raw) = 0) and (Pos('_DataInfo_', Raw) > 0));
+  Check('the tab is that file now, as pages', (Tab.Document.FileName = Pdoc) and Tab.VisualMode and
+    (Tab.Visual.Kind = lvkPdoc) and Tab.Document.IsBinary);
+  Check('with what was typed', Pos('New Memo', Tab.Visual.PlainText) > 0);
+  Check('and nothing left to save', not Tab.Document.Modified);
+  { and as .jdoc: text this time }
+  Check('saved as a .jdoc', Tab.SaveVisualAs(Jdoc, Why) and (Why = ''));
+  Check('which is JSON text', Pos('"_DataInfo_"', LedReadRawFile(Jdoc)) > 0);
+  Check('the tab a .jdoc page, a text file', (Tab.Visual.Kind = lvkJdoc) and not Tab.Document.IsBinary and
+    (Pos('New Memo', Tab.Visual.PlainText) > 0));
+  Check('the same format again is a plain save', not Tab.SaveVisualAs(Dir + 'other.jdoc', Why));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+
+  { a .pdoc opened is pages at once; typed into and saved, it stays a .pdoc }
+  L := TStringList.Create;
+  try
+    L.Add(Pdoc);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  Check('a .pdoc opens as its pages', (Tab <> nil) and Tab.VisualMode and (Tab.Visual.Kind = lvkPdoc));
+  if (Tab <> nil) and Tab.VisualMode then
+  begin
+    Tab.Visual.InsertText('Re ');
+    Pump;
+    Check('it saves', F.SaveDocument(Tab.Document));
+    P := TLedVisualPane.Create(nil);
+    try
+      Check('as a .pdoc with what was typed', P.Load(LedReadRawFile(Pdoc), lvkPdoc, Pdoc, Why) and
+        (Pos('Re New Memo', P.PlainText) > 0));
+    finally
+      P.Free;
+    end;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  L := TStringList.Create;
+  try
+    L.Add(Jdoc);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  Check('a .jdoc opens as its pages too', (Tab <> nil) and Tab.VisualMode and (Tab.Visual.Kind = lvkJdoc));
+  if Tab <> nil then
+  begin
+    Tab.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  CheckEqInt('every tab it opened is closed', Before, F.TabCount);
+end;
+
 { View > Visual editor > Line breaking as you type: hybrid unless set to
   optimal, given to every page and to what it opens, and changed on the open
   pages when Preferences is applied. }
@@ -16567,6 +16693,7 @@ begin
   WriteLn;
   TestVisualEditor(F);
   TestVisualLineBreaking(F);
+  TestParadeFiles(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
