@@ -15187,6 +15187,45 @@ begin
       Pump;
       Check('and goes when the caret leaves the table', not ButtonByCaption(Tab.Visual, 'Table').Visible);
     end;
+    { References: a table of contents from the menu, updatable }
+    Btn := ControlByHint(Tab.Visual, 'A table of contents of the headings, with their pages');
+    if Btn is TSpeedButton then
+    begin
+      TPopupMenu(TComponent(Btn.Tag)).Items[0].Click;
+      Pump;
+      Check('References puts in a table of contents', Pos('Contents', Tab.Visual.Page.DocumentText) > 0);
+      Check('which can be updated', Tab.Visual.Page.UpdateTableOfContents);
+      Tab.Visual.Page.Undo;
+      Tab.Visual.Page.Undo;
+      Pump;
+      Check('and taken out again', Pos('Contents', Tab.Visual.Page.DocumentText) = 0);
+    end
+    else
+      Check('the References tab has Table of contents', False);
+    { View: zoom, formatting marks }
+    Btn := ControlByHint(Tab.Visual, 'Zoom (also Ctrl+wheel)');
+    if Btn is TComboBox then
+    begin
+      TComboBox(Btn).ItemIndex := TComboBox(Btn).Items.IndexOf('200%');
+      TComboBox(Btn).OnSelect(Btn);
+      Check('View zooms to 200%', Abs(Tab.Visual.Page.Zoom - 2) < 1e-6);
+      TComboBox(Btn).ItemIndex := TComboBox(Btn).Items.IndexOf('Page width');
+      TComboBox(Btn).OnSelect(Btn);
+      Check('and to the page''s width', Abs(Tab.Visual.Page.Zoom - Tab.Visual.Page.PageWidthZoom) < 0.02);
+      Tab.Visual.Page.Zoom := 1;
+    end
+    else
+      Check('the View tab has a zoom box', False);
+    Btn := ControlByHint(Tab.Visual, 'Show formatting marks: where each paragraph ends');
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Check('formatting marks on', Tab.Visual.Page.ShowMarks);
+      TSpeedButton(Btn).Click;
+      Check('and off', not Tab.Visual.Page.ShowMarks);
+    end
+    else
+      Check('the View tab has formatting marks', False);
     Btn := ControlByHint(Tab.Visual, 'Portrait or landscape (this section)');
     if Btn is TSpeedButton then
     begin
