@@ -21,7 +21,8 @@ type
     FDir: string;
     function Rec: TLedRecovery;
     function MakeEntry(const AId, AFile, ADisplay: string): TLedRecoveryEntry;
-    procedure PutFile(const AName, AContent: string);
+    procedure PutFile(R: TLedRecovery; const AName, AContent: string);
+    procedure PutLegacy(const AName, AContent: string; AAge: TDateTime);
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -40,6 +41,11 @@ type
     procedure IdIsStableForAPathAndUniqueForUntitled;
     procedure EmptyBufferRoundTrips;
     procedure TextWithNewlinesAndUnicodeSurvives;
+    procedure ARunningEditorsJournalIsNotOffered;
+    procedure ADeadEditorsJournalIsOffered;
+    procedure ACleanExitLeavesOtherJournals;
+    procedure OwnEntriesAreNotOrphans;
+    procedure OldLayoutIsOfferedOnlyOnceStale;
   end;
 
 implementation
@@ -51,23 +57,29 @@ begin
   ForceDirectories(FDir);
 end;
 
-procedure TTestRecovery.TearDown;
+procedure RemoveTree(const ADir: string);
 var
   R: TSearchRec;
 begin
-  if DirectoryExists(FDir) then
-  begin
-    if FindFirst(IncludeTrailingPathDelimiter(FDir) + '*', faAnyFile, R) = 0 then
-      try
-        repeat
-          if (R.Name = '.') or (R.Name = '..') then Continue;
-          DeleteFile(IncludeTrailingPathDelimiter(FDir) + R.Name);
-        until FindNext(R) <> 0;
-      finally
-        FindClose(R);
-      end;
-    RemoveDir(FDir);
-  end;
+  if not DirectoryExists(ADir) then Exit;
+  if FindFirst(IncludeTrailingPathDelimiter(ADir) + '*', faAnyFile, R) = 0 then
+    try
+      repeat
+        if (R.Name = '.') or (R.Name = '..') then Continue;
+        if (R.Attr and faDirectory) <> 0 then
+          RemoveTree(IncludeTrailingPathDelimiter(ADir) + R.Name)
+        else
+          DeleteFile(IncludeTrailingPathDelimiter(ADir) + R.Name);
+      until FindNext(R) <> 0;
+    finally
+      FindClose(R);
+    end;
+  RemoveDir(ADir);
+end;
+
+procedure TTestRecovery.TearDown;
+begin
+  RemoveTree(FDir);
 end;
 
 function TTestRecovery.Rec: TLedRecovery;
@@ -90,11 +102,36 @@ begin
   Result.SavedAt := Now;
 end;
 
-procedure TTestRecovery.PutFile(const AName, AContent: string);
+procedure WriteText(const APath, AContent: string);
 var
   S: TFileStream;
 begin
-  S := TFileStream.Create(IncludeTrailingPathDelimiter(FDir) + AName, fmCreate);
+  S := TFileStream.Create(APath, fmCreate);
+  try
+    if AContent <> '' then
+      S.WriteBuffer(AContent[1], Length(AContent));
+  finally
+    S.Free;
+  end;
+end;
+
+{ In the old shared layout, straight into the recovery directory, last
+  written AAge ago. }
+procedure TTestRecovery.PutLegacy(const AName, AContent: string; AAge: TDateTime);
+var
+  Path: string;
+begin
+  Path := IncludeTrailingPathDelimiter(FDir) + AName;
+  WriteText(Path, AContent);
+  FileSetDate(Path, DateTimeToFileDate(Now - AAge));
+end;
+
+procedure TTestRecovery.PutFile(R: TLedRecovery; const AName, AContent: string);
+var
+  S: TFileStream;
+begin
+  ForceDirectories(R.SessionDir);
+  S := TFileStream.Create(IncludeTrailingPathDelimiter(R.SessionDir) + AName, fmCreate);
   try
     if AContent <> '' then
       S.WriteBuffer(AContent[1], Length(AContent));
@@ -207,9 +244,9 @@ begin
   R := Rec;
   try
     R.Store(MakeEntry('a', '/x', 'x'), 'the whole buffer');
-    PutFile('a.txt', 'the whole');      // shorter than the metadata claims
+    PutFile(R, 'a.txt', 'the whole');      // shorter than the metadata claims
     AssertEquals('not offered', 0, Length(R.Scan));
-    AssertFalse('and swept', FileExists(IncludeTrailingPathDelimiter(FDir) + 'a.json'));
+    AssertFalse('and swept', FileExists(IncludeTrailingPathDelimiter(R.SessionDir) + 'a.json'));
   finally
     R.Free;
   end;
@@ -222,7 +259,7 @@ begin
   R := Rec;
   try
     R.Store(MakeEntry('a', '/x', 'x'), 'body');
-    DeleteFile(IncludeTrailingPathDelimiter(FDir) + 'a.txt');
+    DeleteFile(IncludeTrailingPathDelimiter(R.SessionDir) + 'a.txt');
     AssertEquals('ignored', 0, Length(R.Scan));
   finally
     R.Free;
@@ -237,7 +274,7 @@ begin
     path, encoding or caret, so there is nothing to restore it *as*. }
   R := Rec;
   try
-    PutFile('orphan.txt', 'body with no metadata');
+    PutFile(R, 'orphan.txt', 'body with no metadata');
     AssertEquals('ignored', 0, Length(R.Scan));
   finally
     R.Free;
@@ -250,8 +287,8 @@ var
 begin
   R := Rec;
   try
-    PutFile('a.txt', 'body');
-    PutFile('a.json', '{ this is not json');
+    PutFile(R, 'a.txt', 'body');
+    PutFile(R, 'a.json', '{ this is not json');
     AssertEquals('ignored', 0, Length(R.Scan));
   finally
     R.Free;
@@ -264,8 +301,8 @@ var
 begin
   R := Rec;
   try
-    PutFile('a.txt', 'body');
-    PutFile('a.json', '{"version": 99, "fileName": "/x", "textLength": 4}');
+    PutFile(R, 'a.txt', 'body');
+    PutFile(R, 'a.json', '{"version": 99, "fileName": "/x", "textLength": 4}');
     AssertEquals('ignored', 0, Length(R.Scan));
   finally
     R.Free;
@@ -332,6 +369,111 @@ begin
     Got := R.Scan;
     AssertEquals('offered', 1, Length(Got));
     AssertEquals('byte-identical', Body, R.LoadText(Got[0]));
+  finally
+    R.Free;
+  end;
+end;
+
+{ Two editors at once.  The journal directory was shared, so a clean exit of
+  one cleared the other's entries, the other wrote them back seconds later,
+  and the next editor to start offered to recover a document that was open
+  in a window, after a shutdown that had been clean. }
+procedure TTestRecovery.ARunningEditorsJournalIsNotOffered;
+var
+  Running, Starting: TLedRecovery;
+begin
+  Running := Rec;
+  Starting := Rec;
+  try
+    Running.Store(MakeEntry('a', '/x', 'x'), 'open in a window');
+    AssertEquals('not offered while its editor runs', 0,
+      Length(Starting.ScanOrphans));
+    AssertEquals('and still journalled', 1, Length(Running.Scan));
+  finally
+    Starting.Free;
+    Running.Free;
+  end;
+end;
+
+procedure TTestRecovery.ADeadEditorsJournalIsOffered;
+var
+  Dead, Starting: TLedRecovery;
+  Got: TLedRecoveryEntries;
+  Folder: string;
+begin
+  Dead := Rec;
+  Dead.Store(MakeEntry('a', '/x', 'x'), 'the lost work');
+  Folder := Dead.SessionDir;
+  { Freed without Clear: the lock goes, as a killed process's does, and the
+    journal stays. }
+  Dead.Free;
+  Starting := Rec;
+  try
+    Got := Starting.ScanOrphans;
+    AssertEquals('offered', 1, Length(Got));
+    AssertEquals('its text', 'the lost work', Starting.LoadText(Got[0]));
+    Starting.ForgetOrphans(Got);
+    AssertFalse('forgotten, folder and all', DirectoryExists(Folder));
+    AssertFalse('and its lock', FileExists(Folder + '.lock'));
+    AssertEquals('not offered twice', 0, Length(Starting.ScanOrphans));
+  finally
+    Starting.Free;
+  end;
+end;
+
+procedure TTestRecovery.ACleanExitLeavesOtherJournals;
+var
+  A, B: TLedRecovery;
+begin
+  A := Rec;
+  B := Rec;
+  try
+    A.Store(MakeEntry('a', '/x', 'x'), 'one');
+    B.Store(MakeEntry('b', '/y', 'y'), 'two');
+    B.Clear;
+    AssertFalse('the exiting one is gone', B.HasPending);
+    AssertEquals('the other is untouched', 1, Length(A.Scan));
+  finally
+    B.Free;
+    A.Free;
+  end;
+end;
+
+procedure TTestRecovery.OwnEntriesAreNotOrphans;
+var
+  R: TLedRecovery;
+begin
+  R := Rec;
+  try
+    R.Store(MakeEntry('a', '/x', 'x'), 'mine');
+    AssertEquals('never offered back to itself', 0, Length(R.ScanOrphans));
+  finally
+    R.Free;
+  end;
+end;
+
+procedure TTestRecovery.OldLayoutIsOfferedOnlyOnceStale;
+var
+  R: TLedRecovery;
+  Got: TLedRecoveryEntries;
+const
+  Meta = '{"version": 1, "fileName": "/old", "textLength": 4}';
+begin
+  { An older editor, still running, rewrites its entries every few seconds:
+    fresh ones are its, and are left alone. }
+  PutLegacy('fresh.txt', 'body', 0);
+  PutLegacy('fresh.json', Meta, 0);
+  PutLegacy('stale.txt', 'body', 1);
+  PutLegacy('stale.json', Meta, 1);
+  R := Rec;
+  try
+    Got := R.ScanOrphans;
+    AssertEquals('only the stale one', 1, Length(Got));
+    AssertEquals('which', 'stale', Got[0].Id);
+    AssertEquals('its text', 'body', R.LoadText(Got[0]));
+    R.ForgetOrphans(Got);
+    AssertTrue('the fresh one is kept',
+      FileExists(IncludeTrailingPathDelimiter(FDir) + 'fresh.json'));
   finally
     R.Free;
   end;

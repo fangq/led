@@ -155,7 +155,7 @@ type
     FKernel: TLedKernel;
     FKernelTimer: TTimer;
     { in mima, the magic put in front of each code cell when the notebook's
-      matlab has to run inside a Python kernel: see NBKernelStart }
+      MATLAB has to run inside a Python kernel: see NBKernelStart }
     FCellMagic: string;
     { Output and execution counts live in the notebook rather than in the
       buffer, and SynEdit's Modified only knows about the buffer -- so a cell
@@ -2080,7 +2080,7 @@ begin
     by hand or converted, and python3 is the kernel they meant. }
   Name_ := FNotebook.KernelName;
 {$IFDEF MIMA}
-  { In mima a notebook is matlab unless it says otherwise: one naming no
+  { In mima a notebook is MATLAB unless it says otherwise: one naming no
     kernel runs on mima's.  Where that kernel is not installed the cells
     still run, through Python and the %%mima magic, rather than as Python. }
   FCellMagic := '';
@@ -3032,7 +3032,7 @@ function TLedDocument.DisplayName: string;
 begin
   if IsUntitled then
 {$IFDEF MIMA}
-    { one word: in matlab a file's name is the function or script it holds,
+    { one word: in MATLAB a file's name is the function or script it holds,
       and "Untitled 1.m" is neither }
     Result := Format('Untitled%d', [FUntitledNo])
 {$ELSE}

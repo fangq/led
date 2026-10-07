@@ -785,11 +785,13 @@ end;
 
 function LedBJInflatePreview(const AValue: TBJValue; AMax: Integer;
   out AText: string): Boolean;
+const
+  ShuffledMax = 64 * 1024 * 1024;
 var
-  T, Z, M: TBJValue;
+  T, Z, M, S: TBJValue;
   Cls: string;
-  W, Got, n, i, Shown: Integer;
-  Buf: array of Byte;
+  W, Got, n, i, b, Shown, Total, Sh: Integer;
+  Buf, All: array of Byte;
   Src: TBJPtrStream;
   Inf: TDecompressionStream;
 begin
@@ -823,9 +825,18 @@ begin
       Exit;
     end;
 
+    Sh := 0;
+    S := AValue.Find('_ArrayShuffle_');
+    if S.IsValid and S.IsNumber then Sh := Integer(S.AsInt64);
+
     { One element more than is shown, so the list can say whether it
-      stops or ends. }
-    SetLength(Buf, (AMax + 1) * W);
+      stops or ends.  A shuffled payload has byte b of element i at
+      b*N + i, so its first elements need nearly the whole stream: it is
+      inflated whole, up to ShuffledMax bytes, and put back together. }
+    if Sh > 1 then
+      SetLength(Buf, ShuffledMax + 1)
+    else
+      SetLength(Buf, (AMax + 1) * W);
     Got := 0;
     Src := TBJPtrStream.Create(Z.DataPtr, Z.DataSize);
     try
@@ -840,6 +851,24 @@ begin
       end;
     finally
       Src.Free;
+    end;
+
+    if Sh > 1 then
+    begin
+      if (Got > ShuffledMax) or (Sh <> W) then
+      begin
+        AText := 'no preview for a shuffled array this large';
+        Exit;
+      end;
+      Total := Got div W;
+      Shown := Total;
+      if Shown > AMax + 1 then Shown := AMax + 1;
+      SetLength(All, Shown * W);
+      for i := 0 to Shown - 1 do
+        for b := 0 to W - 1 do
+          All[i * W + b] := Buf[b * Total + i];
+      Buf := All;
+      Got := Shown * W;
     end;
 
     Shown := Got div W;

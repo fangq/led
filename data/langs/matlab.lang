@@ -22,7 +22,7 @@
  along with this library; if not, see <http://www.gnu.org/licenses/>.
 
 -->
-<language id="matlab" name="Matlab" version="2.0" _section="Scientific">
+<language id="matlab" name="MATLAB" version="2.0" _section="Scientific">
   <metadata>
     <property name="mimetypes">text/x-matlab</property>
     <property name="globs">*.m</property>
@@ -32,7 +32,7 @@
   </metadata>
 
   <!--
-    Note: Matlab language is a subset of the Octave language. When making
+    Note: MATLAB language is a subset of the Octave language. When making
     modification to this file check if they apply to both languages.
   -->
 
@@ -80,7 +80,7 @@
       </include>
     </context>
 
-    <!-- FIXME: Matlab probably has much more builtin functions
+    <!-- FIXME: MATLAB probably has much more builtin functions
      this is just the list that was already in the lang file before
      being split from octave.lang -->
     <context id="builtin" style-ref="builtin">

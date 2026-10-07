@@ -151,6 +151,11 @@
         <UnitName Value="Led.UI.TabClose"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.imagewin.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.ImageWin"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.spell.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Spell"/>

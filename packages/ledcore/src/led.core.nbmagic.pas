@@ -33,8 +33,8 @@ uses
 const
   { What a notebook is when it does not say: see the unit comment. }
 {$IFDEF MIMA}
-  { mima-ide is a matlab IDE, and its notebooks are mima's: a cell that
-    says nothing about itself in a notebook that says nothing is matlab }
+  { mima-ide is a MATLAB IDE, and its notebooks are mima's: a cell that
+    says nothing about itself in a notebook that says nothing is MATLAB }
   LedNBDefaultLanguage = 'matlab';
 {$ELSE}
   LedNBDefaultLanguage = 'python';

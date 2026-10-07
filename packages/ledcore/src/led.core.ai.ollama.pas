@@ -79,7 +79,16 @@ type
     FReplaces: Boolean;
     FWasCut: Boolean;
     FStoppedAt: TDateTime;
+    { The question in flight, kept so that it can be asked again without
+      thinking when the model turns out not to do any.  See Poll. }
+    FAsked: TLedAIRequest;
+    { Models this server has refused to think for, by name.  A session's
+      memory, not a preference: it is a fact about the model and the
+      reader should not have to know it. }
+    FNoThink: TStringList;
     procedure LetGoOfWorker;
+    procedure StartWorker(const ARequest: TLedAIRequest);
+    function WantsThinking: Boolean;
   protected
     { What differs between ollama and a server speaking OpenAI's API: where
       it is, where a chat goes, what a request says, how the stream reads,
@@ -670,6 +679,8 @@ constructor TLedAIOllama.Create(AChat: TLedAIChat);
 begin
   inherited Create(AChat);
   FQueue := TLedAIOllamaQueue.Create;
+  FNoThink := TStringList.Create;
+  FNoThink.CaseSensitive := False;
   if Available then SetState(laiIdle);
 end;
 
@@ -677,6 +688,7 @@ destructor TLedAIOllama.Destroy;
 begin
   Shutdown;
   FQueue.Release;
+  FNoThink.Free;
   inherited Destroy;
 end;
 
@@ -722,10 +734,26 @@ begin
   Result := BaseURL + '/api/chat';
 end;
 
+{ **Thinking is asked for unless this model has already said it cannot.**
+
+  A reasoning model keeps its working in a field of its own, and a reader
+  who can see it can tell a confident wrong answer from a careful one.  It
+  used to be off unless the reader found the preference, and the reason was
+  good: ollama answers `"<model>" does not support thinking` -- a hard
+  failure, not a quieter answer -- for a model that has none.
+
+  So it is asked for, and the one refusal is handled rather than avoided:
+  the name goes on a list and the same question is asked again without it,
+  once, before anybody sees an error.  See Poll. }
+function TLedAIOllama.WantsThinking: Boolean;
+begin
+  Result := LedPrefs.GetBool(LedPrefAIOllamaThink, True) and
+            (FNoThink.IndexOf(LowerCase(FModel)) < 0);
+end;
+
 function TLedAIOllama.ChatBody(const ARequest: TLedAIRequest): string;
 begin
-  Result := LedAIOllamaChatBody(FModel, FChat, ARequest,
-    LedPrefs.GetBool(LedPrefAIOllamaThink, False));
+  Result := LedAIOllamaChatBody(FModel, FChat, ARequest, WantsThinking);
 end;
 
 function TLedAIOllama.StreamFormat: Integer;
@@ -790,12 +818,23 @@ begin
   FStats := '';
   FReplaces := Req.Replaces;
 
-  Body := ChatBody(Req);
-
-  FWorker := TLedAIOllamaWorker.Create(FQueue, ChatURL, Body,
-    FSeq, LedPrefs.GetInt(LedPrefAITimeoutMs, 300000), StreamFormat, AuthToken);
-  SetState(laiBusy);
+  FAsked := Req;
+  StartWorker(Req);
   Result := True;
+end;
+
+{ The request on its way, from here or from the one retry in Poll.  The
+  sequence number is not touched: a retry is the same turn being asked
+  again, and the pane is already showing it. }
+procedure TLedAIOllama.StartWorker(const ARequest: TLedAIRequest);
+begin
+  FAnswer := '';
+  FThinking := '';
+  FStats := '';
+  FWorker := TLedAIOllamaWorker.Create(FQueue, ChatURL, ChatBody(ARequest),
+    FSeq, LedPrefs.GetInt(LedPrefAITimeoutMs, 300000), StreamFormat,
+    AuthToken);
+  SetState(laiBusy);
 end;
 
 procedure TLedAIOllama.LetGoOfWorker;
@@ -852,6 +891,18 @@ begin
       if Current(D.Seq) then
       begin
         LetGoOfWorker;
+        { The one failure that is not one: this model has no thinking to
+          show.  Noted against the name and asked again without it, so a
+          reader who never chose to think about thinking never hears about
+          it.  Only once -- the name is on the list before the retry, so a
+          second refusal is a real error. }
+        if WantsThinking and
+           (Pos('does not support thinking', LowerCase(D.Text)) > 0) then
+        begin
+          FNoThink.Add(LowerCase(FModel));
+          StartWorker(FAsked);
+          Continue;
+        end;
         Fail(D.Seq, D.Text);
       end;
       Continue;

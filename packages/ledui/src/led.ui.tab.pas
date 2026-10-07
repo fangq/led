@@ -29,6 +29,8 @@ type
     FViewBreakpointClick: TLedBreakpointClick;
     FViewHoverExpression: TLedHoverExpression;
     FViewBJEdit: TLedBJOpenEvent;
+    FViewDragOver: TDragOverEvent;
+    FViewDragDrop: TDragDropEvent;
     FMiniMap: TLedMiniMap;
     FShowMiniMap: Boolean;
     FVisual: TLedVisualPane;
@@ -43,6 +45,8 @@ type
     procedure SetViewBreakpointClick(AValue: TLedBreakpointClick);
     procedure SetViewHoverExpression(AValue: TLedHoverExpression);
     procedure SetViewBJEdit(AValue: TLedBJOpenEvent);
+    procedure SetViewDragOver(AValue: TDragOverEvent);
+    procedure SetViewDragDrop(AValue: TDragDropEvent);
     function GetViewCount: Integer;
     function GetView(AIndex: Integer): TLedEdit;
   public
@@ -77,6 +81,14 @@ type
       for the same reason as the two above: whichever half of a split tab the
       reader is looking at is the one they will press Return in. }
     property ViewBJEdit: TLedBJOpenEvent read FViewBJEdit write SetViewBJEdit;
+    { What a file dragged out of the file list lands on.  On every view for
+      the same reason as the three above: the editor area is covered by
+      them, so whichever one the reader is pointing at is the one that has
+      to take the drop. }
+    property ViewDragOver: TDragOverEvent
+      read FViewDragOver write SetViewDragOver;
+    property ViewDragDrop: TDragDropEvent
+      read FViewDragDrop write SetViewDragDrop;
     property Sheet: TTabSheet read FSheet write FSheet;
 
     { The minimap, and whether it is shown.
@@ -240,6 +252,24 @@ begin
     TLedEdit(FViews[i]).OnHoverExpression := AValue;
 end;
 
+procedure TLedTab.SetViewDragOver(AValue: TDragOverEvent);
+var
+  i: Integer;
+begin
+  FViewDragOver := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).OnDragOver := AValue;
+end;
+
+procedure TLedTab.SetViewDragDrop(AValue: TDragDropEvent);
+var
+  i: Integer;
+begin
+  FViewDragDrop := AValue;
+  for i := 0 to FViews.Count - 1 do
+    TLedEdit(FViews[i]).OnDragDrop := AValue;
+end;
+
 procedure TLedTab.SetViewBJEdit(AValue: TLedBJOpenEvent);
 var
   i: Integer;
@@ -259,6 +289,8 @@ begin
   Result.OnBreakpointClick := FViewBreakpointClick;
   Result.OnHoverExpression := FViewHoverExpression;
   Result.OnBJEdit := FViewBJEdit;
+  Result.OnDragOver := FViewDragOver;
+  Result.OnDragDrop := FViewDragDrop;
   FViews.Add(Result);
   if FActiveView = nil then
   begin

@@ -26,6 +26,32 @@
 // document instead.  A memo is a TCustomEdit, so copying out of the
 // transcript, and pasting into the question box, land where they are aimed.
 //
+// There is a third, which the first one made necessary.  A memo appended to
+// costs the length of what arrived -- but *measuring* it costs the length of
+// the answer so far, because the height of a turn is the whole of its text
+// wrapped at the pane's width.  Doing that per delta, and then moving every
+// bubble in the transcript whether or not it had moved, is quadratic in the
+// answer and linear in the conversation: twenty words arriving in one poll
+// measured 229 times.  The reader saw it as flicker.
+//
+// So: a turn says when its contents changed, Restack moves only what has
+// actually moved, a scroll box already at the bottom is not scrolled again,
+// and everything that arrives in one poll is laid out once at the end of it
+// -- BeginBatch and EndBatch, which the window wraps around its poll.  The
+// same twenty words now measure once.
+//
+// What was left after that was not a repaint at all but a *movement*, and it
+// was reported as a flash at the end of every line.  An answer taller than
+// the pane is one the pane is pinned to the bottom of, so each line that
+// wrapped grew the scroll range by a line and scrolled the whole transcript
+// up by one.  (Sampling the screen at 7 kHz through a streamed answer found
+// no blank frame, before the fix or after: nothing was being erased.  The
+// jump was the whole of it.)  So the turn being written stops growing at the
+// height of the pane and shows the end of its own text from there, the way a
+// terminal does; when it finishes it becomes a page of its full height and
+// can be read from the top.  Nothing in the pane moves while the words
+// arrive.
+//
 // The second decision is that nothing a model says ever reaches a document
 // on its own.  A reply arrives, and it sits there until the reader presses
 // Apply.  A model asked to proof-read a file sometimes answers "Certainly!
@@ -61,7 +87,12 @@ type
   TLedAIApply = (lapInsert, lapReplaceSelection, lapReplaceDocument,
                  { Opened as a document of its own, which is the answer to
                    "I want to keep this but not here". }
-                 lapNewDocument);
+                 lapNewDocument,
+                 { Somewhere that is not a document at all: the MATLAB
+                   fork's command line.  Offered only where there is one --
+                   see LedAIPromptName -- so a plain editor shows no button
+                   for a place it does not have. }
+                 lapToPrompt);
 
   TLedAIAskEvent = procedure(Sender: TObject; const APrompt: string;
     ATask: TLedAITask; AAttach: TLedAIAttach) of object;
@@ -90,6 +121,8 @@ type
     FReplaces: Boolean;
     FCut: Boolean;
     FLayingOut: Boolean;
+    { Its contents have changed since it was last measured.  See Grow. }
+    FDirty: Boolean;
     { What the button that puts this back into the file should be called:
       the consequence, not the word "apply". }
     FApplyName: string;
@@ -119,12 +152,14 @@ type
     procedure NewDocClicked(Sender: TObject);
     procedure ThinkClicked(Sender: TObject);
     procedure InsertClicked(Sender: TObject);
+    procedure PromptClicked(Sender: TObject);
     procedure ApplyClicked(Sender: TObject);
     function Page(AWidth: Integer): string;
     function PageHeight(const APage: string; AWidth: Integer): Integer;
   protected
     procedure Paint; override;
   public
+
     constructor CreateTurn(AOwner: TLedAIPane; AIndex: Integer;
       ARole: TLedAIRole; const AText: string);
     { Adds to a turn still being written. }
@@ -162,6 +197,9 @@ type
     function ThinkingShown: Boolean;
     function RenderedPage: string;
     function LiveText: string;
+    { Whether it needs measuring again.  Public because Restack is the one
+      that acts on it. }
+    function Dirty: Boolean;
     function ShownText: string;
     { The control the words are in, so a check can turn the wheel over it
       the way a reader would. }
@@ -187,6 +225,15 @@ type
     FBottom: TPanel;
     FTurns: TList;
     FLive: TLedAIBubble;
+    { How many turns the pane has measured.  Not a statistic: it is what
+      the check about flicker reads, because "the transcript is not laid
+      out again for every word of an answer" is a claim about work done
+      and measuring is the work.  Bumped by TLedAIBubble.Relayout. }
+    FMoves: Integer;
+    { Everything that arrived in one poll is laid out once, at the end of
+      it.  See BeginBatch. }
+    FBatch: Integer;
+    FGrew: Boolean;
     FThinking: Boolean;
     FThinkTimer: TTimer;
     FAskedAt: TDateTime;
@@ -211,6 +258,7 @@ type
     procedure ScrollToEnd;
     procedure RelayoutSoon(Data: PtrInt);
     procedure Restack;
+
     procedure LayoutBars;
     { One notch of the wheel, wherever it was turned.  True when there was
       something to scroll. }
@@ -220,6 +268,37 @@ type
     function DoMouseWheel(AShift: TShiftState; AWheelDelta: Integer;
       AMousePos: TPoint): Boolean; override;
   public
+    { **Everything that arrived together is laid out together.**
+
+      A poll brings whatever the backend has written since the last one,
+      which is usually several deltas, and each of them used to measure
+      the answer so far and move every bubble in the transcript.  Between
+      these two the words go in and the measuring waits.
+
+      Counted rather than flagged, so that a nested pair cannot end the
+      outer one early.  Unbalanced is harmless: the next EndBatch past
+      zero lays out and stops. }
+    procedure BeginBatch;
+    procedure EndBatch;
+    function Batching: Boolean;
+
+    { The layout work done so far -- see FMoves. }
+    property Moves: Integer read FMoves;
+
+    { Brings the bottom of a turn into view.  Used when a turn grows
+      downwards under the reader's hand -- the working being shown. }
+    procedure ShowBottomOf(ABubble: TLedAIBubble);
+
+    { What part of the transcript is on screen, in the coordinates the
+      turns are placed at.  For the check that a turn opened under the
+      reader's hand is one they can see. }
+    function ViewTop: Integer;
+    function ViewHeight: Integer;
+    { To the end of the transcript, which is where a reader watching an
+      answer arrive already is.  Public for the check about the working
+      opening below the fold. }
+    procedure ScrollToBottom;
+
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
 
@@ -498,6 +577,12 @@ begin
   BevelOuter := bvNone;
   Color := LedPageColours.Page;
   ParentColor := False;
+  { A turn grows by a line at a time while it is being written, and a
+    panel repainted whole on every resize is a panel that blinks at the
+    end of every line.  Only the strip that appeared needs painting, and
+    the buffer keeps even that off the screen until it is done. }
+  FullRepaint := False;
+  DoubleBuffered := True;
   { Both sides get one.  The reader's own words were kept and never shown,
     which made their half of the conversation a row of empty headings. }
   MakeLive;
@@ -681,6 +766,12 @@ begin
 
   Add('Copy', @CopyClicked);
   Add('Insert at caret', @InsertClicked);
+  { Where the program has a command line, an answer that is one line of
+    code is one keystroke from running.  It is *put* there and not run:
+    nothing a model says acts on its own, which is the rule the whole pane
+    is built on. }
+  if LedAIPromptName <> '' then
+    Add(LedAIPromptName, @PromptClicked);
   { Somewhere to put an answer that is worth keeping and does not belong in
     the file being edited -- which is most of them. }
   Add('New document', @NewDocClicked);
@@ -752,6 +843,11 @@ begin
   end;
   Relayout;
   FPane.Restack;
+  { And where it can be seen.  The working is the last thing in the turn,
+    so on a transcript scrolled to the bottom it opens below the fold and
+    pressing the button looks like nothing happening. }
+  if AOn then
+    FPane.ShowBottomOf(Self);
 end;
 
 function TLedAIBubble.Thinking: string;
@@ -762,6 +858,14 @@ end;
 function TLedAIBubble.ThinkingShown: Boolean;
 begin
   Result := FThinkBox <> nil;
+end;
+
+procedure TLedAIBubble.PromptClicked(Sender: TObject);
+begin
+  { Unfenced, like Apply: what goes on a command line is code, and three
+    backticks are not. }
+  if Assigned(FPane.FOnApply) then
+    FPane.FOnApply(FPane, FIndex, LedAIUnfence(FText), lapToPrompt);
 end;
 
 procedure TLedAIBubble.InsertClicked(Sender: TObject);
@@ -788,6 +892,22 @@ begin
     word of it. }
   FLive.SelStart := Length(FLive.Text);
   FLive.SelText := AText;
+  { With the box capped -- see Relayout -- the words arrive below its
+    bottom edge, so the end of the text is where the view has to be.  The
+    caret is already there; this is what makes the control follow it. }
+  if FLive.ScrollBars <> ssNone then
+  begin
+    FLive.SelStart := Length(FLive.Text);
+    FLive.SelLength := 0;
+  end;
+  FDirty := True;
+
+  { Measuring is the expensive half -- the memo's height is the whole
+    answer wrapped -- and a poll usually brings several deltas at once.
+    Inside a batch the measuring waits for the end of it; outside one,
+    which is where a check calls from, nothing has changed. }
+  if FPane.Batching then
+    Exit;
   Relayout;
   FPane.Restack;
 end;
@@ -795,6 +915,13 @@ end;
 { What this turn is showing, as opposed to what it is remembering.  A check
   that reads FText only proves the pane kept the words; the reader's
   complaint was that it kept them and showed nothing. }
+{ Whether what it is showing has changed since it was last laid out.
+  Read by Restack, which skips the ones that have not. }
+function TLedAIBubble.Dirty: Boolean;
+begin
+  Result := FDirty;
+end;
+
 function TLedAIBubble.ShownText: string;
 begin
   Result := '';
@@ -1012,12 +1139,17 @@ end;
 
 procedure TLedAIBubble.Relayout;
 var
-  Pad, Inner, Y: Integer;
+  Pad, Inner, Y, Tall, Cap: Integer;
 begin
   { Setting a height inside a scroll box lays the box out again, which can
     come back here.  Once is enough. }
   if FLayingOut then Exit;
   FLayingOut := True;
+  FDirty := False;
+  { Counted here because here is the cost: measuring a turn is wrapping
+    the whole of its text at the pane's width.  See TLedAIPane.Moves. }
+  if FPane <> nil then
+    Inc(FPane.FMoves);
   try
     { Room for the rounded edge to show, where there is one.  Children are
       placed by hand rather than aligned, so that the corners are not
@@ -1038,17 +1170,42 @@ begin
 
     if (FLive <> nil) and FLive.Visible then
     begin
-      { As tall as the words are once wrapped, so a turn never scrolls
-        inside itself -- the pane is what scrolls. }
-      { Measured a little narrower than it is drawn, and given a spare
+      { As tall as the words are once wrapped, so a turn does not scroll
+        inside itself -- the pane is what scrolls.
+
+        Measured a little narrower than it is drawn, and given a spare
         line.  A memo wraps inside its own margins, so text measured at the
         full width wraps into more lines than were paid for -- and the
         difference is not a scrollbar here, it is the end of the sentence
         simply not being shown. }
-      FLive.SetBounds(Pad, Y, Inner,
-        Max(LedScale96(16),
+      Tall := Max(LedScale96(16),
             TextBlockHeight(FLive.Font, FLive.Text, Inner - LedScale96(8)) +
-            TextTall(FLive.Font)));
+            TextTall(FLive.Font));
+
+      { **Up to the height of the pane, and no further.**
+
+        An answer being written grows a line at a time, and while it is
+        shorter than the pane that is all it does.  Once it is longer, the
+        pane is pinned to the bottom of it, so every line that wraps grows
+        the scroll range and scrolls the whole transcript up by a line --
+        a jump at the end of every line, which is the flicker that was
+        left after the layout work was dealt with.
+
+        Past that height the box keeps the height it has and shows the end
+        of its own text instead, the way a terminal does.  Nothing in the
+        pane moves, nothing is measured again, and the reader is looking
+        at the last lines either way -- which is where the words are
+        arriving.  When the turn finishes it becomes a page of its full
+        height and the transcript can be read from the top. }
+      Cap := FPane.ViewHeight - LedScale96(24);
+      if (Cap > LedScale96(80)) and (Tall > Cap) then
+      begin
+        Tall := Cap;
+        if FLive.ScrollBars = ssNone then
+          FLive.ScrollBars := ssAutoVertical;
+      end;
+
+      FLive.SetBounds(Pad, Y, Inner, Tall);
       Inc(Y, FLive.Height);
     end;
 
@@ -1293,6 +1450,15 @@ begin
   FRoll.HorzScrollBar.Visible := False;
   FRoll.Color := LedPageColours.Page;
   FRoll.ParentColor := False;
+  { **Drawn once per change, not twice.**
+
+    A line of an answer wrapping makes the turn one line taller, which
+    moves the scroll range, which scrolls, which repaints the box -- and
+    the LCL clears a control to its colour before the children paint over
+    it, so between the two there is a frame of bare background.  That is
+    the flash the reader sees at the end of every line.  Off-screen first
+    and blitted once is what double buffering is for. }
+  FRoll.DoubleBuffered := True;
 
   FThinkTimer := TTimer.Create(Self);
   FThinkTimer.Interval := 500;
@@ -1360,6 +1526,31 @@ end;
 { Every turn, in order, down the inside of the scroll box.  The box takes
   its scrolling range from where the children end up, so this is also what
   tells it how far there is to scroll. }
+procedure TLedAIPane.BeginBatch;
+begin
+  Inc(FBatch);
+end;
+
+procedure TLedAIPane.EndBatch;
+begin
+  if FBatch > 0 then
+    Dec(FBatch);
+  if FBatch > 0 then
+    Exit;
+  if not FGrew then
+    Exit;
+  FGrew := False;
+  if FLive <> nil then
+    FLive.Relayout;
+  Restack;
+  ScrollToEnd;
+end;
+
+function TLedAIPane.Batching: Boolean;
+begin
+  Result := FBatch > 0;
+end;
+
 procedure TLedAIPane.Restack;
 var
   i, Y, W, Left_, Wide: Integer;
@@ -1385,16 +1576,36 @@ begin
       Left_ := LedScale96(2);
       Wide := W;
     end;
-    B.SetBounds(Left_, Y, Wide, B.Height);
-    B.Relayout;
-    B.SetBounds(Left_, Y, Wide, B.Height);
+    { **Only what has actually moved.**
+
+      This runs on every delta of an answer being written -- a few times a
+      second, and several times within one poll -- and it used to set the
+      bounds of every bubble in the transcript twice over each time.  A
+      SetBounds that changes nothing still invalidates the control, so the
+      whole conversation was repainted per token: the reader saw it
+      flicker, and the cost grew with the length of the conversation.
+
+      Nothing above the turn being written moves while it is written, so
+      the work is skipped where the answer is already the one on screen.
+      The two calls remain for the one that *has* changed: Relayout needs
+      the width before it can measure, and it sets a height of its own
+      that has to be applied. }
+    if (B.Left <> Left_) or (B.Top <> Y) or (B.Width <> Wide) or B.Dirty then
+    begin
+      B.SetBounds(Left_, Y, Wide, B.Height);
+      B.Relayout;                        { which gives it a new height }
+      B.SetBounds(Left_, Y, Wide, B.Height);
+    end;
     Inc(Y, B.Height + LedScale96(6));
   end;
 
   { Said out loud rather than left to the box to work out from where its
     children happen to end: children placed by hand do not always tell it,
     and a range of nothing is a wheel that does nothing. }
-  if FRoll.HandleAllocated then FRoll.VertScrollBar.Range := Y;
+  { And only when it has moved: setting the range re-lays the scroll box
+    out and repaints it, which per token is the same flash again. }
+  if FRoll.HandleAllocated and (FRoll.VertScrollBar.Range <> Y) then
+    FRoll.VertScrollBar.Range := Y;
 end;
 
 function TLedAIPane.AddTurn(ARole: TLedAIRole;
@@ -1421,6 +1632,57 @@ begin
   end;
 end;
 
+{ Scrolls until the bottom of ABubble can be seen, and no further.
+
+  A turn already in view does not move.  A turn that fits in the pane is
+  not scrolled past its own top -- showing the end of a short answer while
+  its beginning goes off the top would be a strange thing to do to
+  somebody who pressed a button on it.
+
+  A turn *taller* than the pane is the case that matters, and the rule
+  reverses for it: what was asked for is the working, which is at the
+  bottom, so the bottom is what is shown.  Clamping to the top there put
+  the reader back at the beginning of an answer they had just read, with
+  the working they asked for still off the screen -- which looked exactly
+  like the button not working. }
+procedure TLedAIPane.ShowBottomOf(ABubble: TLedAIBubble);
+var
+  Want, View_, Bottom: Integer;
+begin
+  if (ABubble = nil) or (FRoll = nil) or not FRoll.HandleAllocated then
+    Exit;
+  View_ := FRoll.ClientHeight;
+  Bottom := ABubble.Top + ABubble.Height;
+  Want := FRoll.VertScrollBar.Position;
+  if Bottom > Want + View_ then
+    Want := Bottom - View_;
+  if (ABubble.Height <= View_) and (ABubble.Top < Want) then
+    Want := ABubble.Top;
+  if Want < 0 then
+    Want := 0;
+  if Want <> FRoll.VertScrollBar.Position then
+    FRoll.VertScrollBar.Position := Want;
+end;
+
+procedure TLedAIPane.ScrollToBottom;
+begin
+  ScrollToEnd;
+end;
+
+function TLedAIPane.ViewTop: Integer;
+begin
+  Result := 0;
+  if (FRoll <> nil) and FRoll.HandleAllocated then
+    Result := FRoll.VertScrollBar.Position;
+end;
+
+function TLedAIPane.ViewHeight: Integer;
+begin
+  Result := 0;
+  if FRoll <> nil then
+    Result := FRoll.ClientHeight;
+end;
+
 procedure TLedAIPane.ScrollToEnd;
 begin
   { A scroll box that has never been shown has no handle to scroll, and
@@ -1428,7 +1690,11 @@ begin
     pane built off screen, as every pane here is, would meet on the first
     answer it was given. }
   if not FRoll.HandleAllocated then Exit;
-  FRoll.VertScrollBar.Position := FRoll.VertScrollBar.Range;
+  { Only when it is not already there.  Setting the position to what it
+    already is still scrolls the box as far as the widget set is
+    concerned, which is one more repaint of everything in it per token. }
+  if FRoll.VertScrollBar.Position <> FRoll.VertScrollBar.Range then
+    FRoll.VertScrollBar.Position := FRoll.VertScrollBar.Range;
 end;
 
 { The wheel.
@@ -1594,6 +1860,12 @@ procedure TLedAIPane.AddWords(const AText: string);
 begin
   if FLive = nil then Exit;
   FLive.Grow(AText);
+  FGrew := True;
+  { Inside a batch the scroll waits with the measuring: a scroll box
+    scrolled to the same place it is already at still repaints
+    everything in it. }
+  if FBatch > 0 then
+    Exit;
   ScrollToEnd;
 end;
 
