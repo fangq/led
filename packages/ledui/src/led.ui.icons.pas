@@ -1176,6 +1176,82 @@ begin
         P.Line(8, 7, 8, 11.8);
         P.Width(1.2);
       end;
+    { The visual editor's paragraph buttons: lines of text as the alignment
+      would set them, a list's marks, the spacing between lines. }
+    'alignleft', 'aligncenter', 'alignright', 'alignjustify':
+      for i := 0 to 4 do
+      begin
+        if (N = 'alignjustify') or not Odd(i) then
+          P.Line(1.5, 2.5 + i * 2.75, 14.5, 2.5 + i * 2.75)
+        else if N = 'alignleft' then
+          P.Line(1.5, 2.5 + i * 2.75, 9.5, 2.5 + i * 2.75)
+        else if N = 'alignright' then
+          P.Line(6.5, 2.5 + i * 2.75, 14.5, 2.5 + i * 2.75)
+        else
+          P.Line(4, 2.5 + i * 2.75, 12, 2.5 + i * 2.75);
+      end;
+    'bullets':
+      for i := 0 to 2 do
+      begin
+        P.Ellipse(1.5, 2 + i * 4.5, 4.5, 5 + i * 4.5, True);
+        P.Line(7, 3.5 + i * 4.5, 14.5, 3.5 + i * 4.5);
+      end;
+    'numbering':
+      begin
+        { 1, 2, 3 in strokes: a numeral is all a reader needs to see }
+        P.Width(1);
+        P.Line(3, 1.5, 3, 5.5);
+        P.Poly([1.5, 7, 4.5, 7, 4.5, 8.5, 1.5, 10, 1.5, 11, 4.5, 11]);
+        P.Poly([1.5, 12, 4.5, 12, 4.5, 15, 1.5, 15]);
+        P.Line(2, 13.5, 4.5, 13.5);
+        P.Width(1.2);
+        for i := 0 to 2 do
+          P.Line(7, 3.5 + i * 4.5, 14.5, 3.5 + i * 4.5);
+      end;
+    'linespacing':
+      begin
+        for i := 0 to 3 do
+          P.Line(7, 2.5 + i * 3.6, 14.5, 2.5 + i * 3.6);
+        P.Line(3, 2.5, 3, 13.5);
+        P.Poly([1, 4.5, 3, 1.5, 5, 4.5], True);
+        P.Poly([1, 11.5, 3, 14.5, 5, 11.5], True);
+      end;
+    'clearformat':
+      begin
+        P.Poly([1.5, 13, 5.5, 2, 9.5, 13]);
+        P.Line(3, 9, 8, 9);
+        P.Colour(clRed);
+        P.Width(1.6);
+        P.Line(9, 9, 14.5, 14.5);
+        P.Line(14.5, 9, 9, 14.5);
+        P.Width(1.2);
+        P.Colour(AColour);
+      end;
+    'fontgrow', 'fontshrink':
+      begin
+        P.Poly([1.5, 14.5, 5.5, 3, 9.5, 14.5]);
+        P.Line(3, 10.5, 8, 10.5);
+        if N = 'fontgrow' then
+          P.Poly([10.5, 6, 12.5, 2.5, 14.5, 6], True)
+        else
+          P.Poly([10.5, 2.5, 12.5, 6, 14.5, 2.5], True);
+      end;
+    'textcolor':
+      begin
+        P.Poly([3, 11, 8, 1.5, 13, 11]);
+        P.Line(4.8, 7.5, 11.2, 7.5);
+        P.Colour(clRed);
+        P.Box(1.5, 12.5, 14.5, 15, True);
+        P.Colour(AColour);
+      end;
+    'highlight':
+      begin
+        P.Poly([4, 10, 10, 2, 13.5, 5, 7.5, 12.5, 4, 10]);
+        P.Line(4, 10, 3, 12);
+        P.Colour(clYellow);
+        P.Box(1.5, 12.5, 14.5, 15, True);
+        P.Colour(AColour);
+      end;
   end;
 end;
 
