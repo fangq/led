@@ -671,6 +671,24 @@ def _(c):
     lines(c, 58, [36, 84], [34, 34], width=8)
 
 
+@icon("formatpainter")
+def _(c):
+    # the brush's head
+    rrect(c, 14, 14, 86, 34, 10)
+    pale(c, ORANGE)
+    stroke(c, ORANGE)
+    # its handle, down from the head's right end and back to the middle
+    c.move_to(100, 31)
+    c.line_to(112, 31)
+    c.line_to(112, 62)
+    c.line_to(60, 62)
+    c.line_to(60, 76)
+    stroke(c)
+    rrect(c, 50, 76, 20, 40, 6)
+    c.set_source(grad())
+    c.fill()
+
+
 @icon("tblinsert")
 def _(c):
     grid(c, 10, 14, 88, 78, 3, 3)

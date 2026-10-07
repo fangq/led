@@ -15509,6 +15509,24 @@ begin
   end;
 end;
 
+{ the control under ARoot whose hint starts with AStart, nil when none }
+function ButtonByHintStart(ARoot: TWinControl; const AStart: string): TControl;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to ARoot.ControlCount - 1 do
+  begin
+    if Copy(ARoot.Controls[i].Hint, 1, Length(AStart)) = AStart then
+      Exit(ARoot.Controls[i]);
+    if ARoot.Controls[i] is TWinControl then
+    begin
+      Result := ButtonByHintStart(TWinControl(ARoot.Controls[i]), AStart);
+      if Result <> nil then Exit;
+    end;
+  end;
+end;
+
 { the speed button under ARoot captioned ACaption (a tab's name), nil when none }
 function ButtonByCaption(ARoot: TWinControl; const ACaption: string): TSpeedButton;
 var
@@ -15704,6 +15722,17 @@ begin
     else
       Check('a Numbering button', False);
     Check('Review is a tab of its own', ControlByHint(Tab.Visual, 'Record edits as tracked changes') <> nil);
+    Btn := ButtonByHintStart(Tab.Visual, 'Format painter');
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Check('the format painter turns on', Tab.Visual.Page.FormatPainterOn);
+      TSpeedButton(Btn).Click;
+      Check('and off', not Tab.Visual.Page.FormatPainterOn);
+    end
+    else
+      Check('the Home tab has the format painter', False);
+    Check('and the style panel', ButtonByHintStart(Tab.Visual, 'Paragraph styles') <> nil);
 
     { the Insert tab's menus }
     Tab.Visual.Page.ProcessKey(VK_END, [ssCtrl]);
