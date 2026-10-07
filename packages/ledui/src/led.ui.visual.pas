@@ -39,6 +39,8 @@ type
     FKind: TLedVisualKind;
     FTabStrip: TPanel;          { the tabs' names, one button each, and the sharing status }
     FBars: array of TFlowPanel; { a row of controls per tab; one shown }
+    FBarHost: TPanel;           { holds the bars: as tall as the tallest one, so a tab switch moves nothing }
+    FBarWidth: Integer;         { the width the host's height was found at }
     FBar: TFlowPanel;           { the one being filled while the constructor builds them }
     FTabBtns: array of TSpeedButton;
     FTableTab: Integer;         { the Table tab's index, shown only while the caret is in a table (-1: none) }
@@ -169,6 +171,8 @@ type
     procedure NavListClicked(Sender: TObject);
     procedure NavTimerFired(Sender: TObject);
     {$ENDIF}
+    procedure FitBarHost;
+    procedure BarResized(Sender: TObject);
     function AddTab(const ACaption: string): TFlowPanel;
     procedure TabClicked(Sender: TObject);
     procedure AddSeparator;
@@ -594,10 +598,20 @@ begin
   B.OnClick := @TabClicked;
   SetLength(FTabBtns, Length(FTabBtns) + 1);
   FTabBtns[High(FTabBtns)] := B;
+  if FBarHost = nil then
+  begin
+    FBarHost := TPanel.Create(Self);
+    FBarHost.Parent := Self;
+    FBarHost.Align := alTop;
+    FBarHost.Top := 1000;     { under the tabs, above the page }
+    FBarHost.BevelOuter := bvNone;
+    FBarHost.Caption := '';
+    FBarHost.Height := LedScale96(36);
+  end;
   Result := TFlowPanel.Create(Self);
-  Result.Parent := Self;
+  Result.Parent := FBarHost;
   Result.Align := alTop;
-  Result.Top := 1000 + Length(FBars);     { under the tabs, above the page }
+  Result.OnResize := @BarResized;     { its rows wrapped again: the holder may need to grow }
   Result.BevelOuter := bvNone;
   Result.Caption := '';
   Result.AutoSize := True;
@@ -615,11 +629,45 @@ var
   i: Integer;
 begin
   if (AIndex < 0) or (AIndex > High(FBars)) then Exit;
-  for i := 0 to High(FBars) do
-    FBars[i].Visible := i = AIndex;
+  FBarHost.DisableAlign;
+  try
+    for i := 0 to High(FBars) do
+      FBars[i].Visible := i = AIndex;
+  finally
+    FBarHost.EnableAlign;
+  end;
+  FitBarHost;
   for i := 0 to FTabStrip.ControlCount - 1 do
     if (FTabStrip.Controls[i] is TSpeedButton) and (FTabStrip.Controls[i].Tag = AIndex) then
       TSpeedButton(FTabStrip.Controls[i]).Down := True;
+end;
+
+procedure TLedVisualPane.BarResized(Sender: TObject);
+begin
+  if TControl(Sender).Visible then
+    FitBarHost;
+end;
+
+{ The bars' holder only grows, to the tallest bar seen at this width: were it as tall as the bar shown, a tab
+  whose row wraps (Home) and one whose row does not would move the page up and down on every switch, and the
+  page is drawn again whole each time it is resized -- slow over a remote display. A new width starts again. }
+procedure TLedVisualPane.FitBarHost;
+var
+  i, H: Integer;
+begin
+  if FBarHost = nil then Exit;
+  if FBarHost.Width <> FBarWidth then
+  begin
+    FBarWidth := FBarHost.Width;
+    H := 0;
+  end
+  else
+    H := FBarHost.Height;
+  for i := 0 to High(FBars) do
+    if FBars[i].Visible then
+      H := Max(H, FBars[i].Height + FBars[i].BorderSpacing.Bottom);
+  if H <> FBarHost.Height then
+    FBarHost.Height := H;
 end;
 
 procedure TLedVisualPane.TabClicked(Sender: TObject);
