@@ -22,6 +22,8 @@ function LedRunSelfTest: Integer;
 
 implementation
 
+{$I led.parade.inc}
+
 uses
   Classes, SysUtils, DateUtils, Math, Forms, ComCtrls,
   {$IFDEF MIMA}
@@ -35,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -14926,6 +14928,24 @@ end;
   translation back is not the identity, so it is not made for nothing -- and
   then they are in both, the buffer's change one step in its undo history.
   A .docx opens as pages without being asked and saves its bytes. }
+{ the control under ARoot whose hint is AHint (a toolbar button or box), nil when none }
+function ControlByHint(ARoot: TWinControl; const AHint: string): TControl;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to ARoot.ControlCount - 1 do
+  begin
+    if ARoot.Controls[i].Hint = AHint then
+      Exit(ARoot.Controls[i]);
+    if ARoot.Controls[i] is TWinControl then
+    begin
+      Result := ControlByHint(TWinControl(ARoot.Controls[i]), AHint);
+      if Result <> nil then Exit;
+    end;
+  end;
+end;
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -14934,6 +14954,7 @@ var
   L: TStringList;
   Before: Integer;
   Doc: TLedDocument;
+  Btn: TControl;
 begin
   Say('visual editor');
   if not LedVisualAvailable then
@@ -15045,6 +15066,61 @@ begin
     Tab.Visual.InsertText('Shared words.');
     Pump;
     Check('typing in it modifies it', Tab.Document.Modified);
+
+    { the Home tab's controls, clicked as a reader would }
+    {$IFDEF LED_PARADE}
+    Tab.Visual.Page.SelectAll;
+    Pump;
+    Btn := ControlByHint(Tab.Visual, 'Bold (Ctrl+B)');
+    Check('the Home tab has Bold', Btn is TSpeedButton);
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Pump;
+      Check('Bold makes the selection bold', Tab.Visual.Page.CurrentCharProps.weight = 700);
+      Check('and shows it down', TSpeedButton(Btn).Down);
+    end;
+    Btn := ControlByHint(Tab.Visual, 'Font size');
+    Check('a size box', Btn is TComboBox);
+    if Btn is TComboBox then
+    begin
+      TComboBox(Btn).ItemIndex := TComboBox(Btn).Items.IndexOf('18');
+      TComboBox(Btn).OnSelect(Btn);
+      Pump;
+      Check('choosing 18 sets it', Tab.Visual.Page.CurrentCharProps.size = 18 * PD_SP_PER_PT);
+    end;
+    Btn := ControlByHint(Tab.Visual, 'Font colour');
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Check('the colour button colours it', Tab.Visual.Page.CurrentCharProps.color and $FFFFFF = $C00000);
+    end
+    else
+      Check('a colour button', False);
+    Btn := ControlByHint(Tab.Visual, 'Centre');
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Pump;
+      Check('Centre centres it', Tab.Visual.Page.CurrentParaProps.align = PD_ALIGN_CENTER);
+    end
+    else
+      Check('a Centre button', False);
+    Btn := ControlByHint(Tab.Visual, 'Numbering');
+    if Btn is TSpeedButton then
+    begin
+      TSpeedButton(Btn).Click;
+      Pump;
+      Check('Numbering numbers it', Tab.Visual.Page.CurrentListFormat = PD_NUM_DECIMAL);
+      Check('and shows it down', TSpeedButton(Btn).Down);
+      TSpeedButton(Btn).Click;
+      Pump;
+      Check('and again takes it off', Tab.Visual.Page.CurrentListFormat = -1);
+    end
+    else
+      Check('a Numbering button', False);
+    Check('Review is a tab of its own', ControlByHint(Tab.Visual, 'Record edits as tracked changes') <> nil);
+    {$ENDIF}
     Tab.Document.SaveToFile(Docx);
     P := TLedVisualPane.Create(nil);
     try

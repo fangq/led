@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  Dialogs, LCLType
+  Dialogs, LCLType, Menus
   {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay{$ENDIF};
 
@@ -37,7 +37,9 @@ type
   TLedVisualPane = class(TPanel)
   private
     FKind: TLedVisualKind;
-    FBar: TPanel;
+    FTabStrip: TPanel;          { the tabs' names, one button each, and the sharing status }
+    FBars: array of TFlowPanel; { a row of controls per tab; one shown }
+    FBar: TFlowPanel;           { the one being filled while the constructor builds them }
     FStyle: TComboBox;
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
@@ -60,6 +62,51 @@ type
     procedure SyncChanged(Sender: TObject);
     function AskConnection(const ACaption: string; var AServer, ADoc, AToken, AName: string): Boolean;
     {$ENDIF}
+  private
+    {$IFDEF LED_PARADE}
+    { the Home tab }
+    FFont, FSize: TComboBox;
+    FBoldBtn, FItalicBtn, FUnderBtn, FStrikeBtn, FSupBtn, FSubBtn: TSpeedButton;
+    FBulletBtn, FNumberBtn: TSpeedButton;
+    FAlignBtns: array[0..3] of TSpeedButton;
+    FColorMenu, FHighlightMenu, FSpacingMenu: TPopupMenu;
+    FTextColor, FHighlightColor: Integer;   { $RRGGBB the colour buttons put on; -1: automatic / none }
+    FStylesShown: Integer;      { the document's style count when the list was last filled }
+    procedure BuildHome;
+    procedure RefreshStyles;
+    procedure SelectionChanged(Sender: TObject);
+    procedure UndoClicked(Sender: TObject);
+    procedure RedoClicked(Sender: TObject);
+    procedure CutClicked(Sender: TObject);
+    procedure CopyClicked(Sender: TObject);
+    procedure PasteClicked(Sender: TObject);
+    procedure FontChosen(Sender: TObject);
+    procedure SizeChosen(Sender: TObject);
+    procedure ComboKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure GrowClicked(Sender: TObject);
+    procedure ShrinkClicked(Sender: TObject);
+    procedure StrikeClicked(Sender: TObject);
+    procedure SupClicked(Sender: TObject);
+    procedure SubClicked(Sender: TObject);
+    procedure ColorClicked(Sender: TObject);
+    procedure HighlightClicked(Sender: TObject);
+    procedure ColorItemClicked(Sender: TObject);
+    procedure HighlightItemClicked(Sender: TObject);
+    procedure MenuDropClicked(Sender: TObject);
+    procedure ClearClicked(Sender: TObject);
+    procedure BulletsClicked(Sender: TObject);
+    procedure NumberingClicked(Sender: TObject);
+    procedure IndentLessClicked(Sender: TObject);
+    procedure IndentMoreClicked(Sender: TObject);
+    procedure AlignClicked(Sender: TObject);
+    procedure LineSpacingItemClicked(Sender: TObject);
+    procedure ParaSpaceItemClicked(Sender: TObject);
+    {$ENDIF}
+    function AddTab(const ACaption: string): TFlowPanel;
+    procedure TabClicked(Sender: TObject);
+    procedure AddSeparator;
+    function AddIconButton(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
+    function AddToggle(const ACaption, AHint: string; AStyle: TFontStyles; AOnClick: TNotifyEvent): TSpeedButton;
     function AddButton(const ACaption, AHint: string; AStyle: TFontStyles;
       AOnClick: TNotifyEvent): TSpeedButton;
     procedure StyleChosen(Sender: TObject);
@@ -115,6 +162,12 @@ type
     { The control that takes the focus and the keys.  nil without Parade. }
     property Editor: TWinControl read GetEditor;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    {$IFDEF LED_PARADE}
+    { the page itself, for scripting and tests }
+    property Page: TParadeEdit read FEdit;
+    {$ENDIF}
+    { the tab shown in the toolbar: 0 Home, 1 Review, 2 Share }
+    procedure ShowTab(AIndex: Integer);
   end;
 
 { Whether this LED has the visual editor at all. }
@@ -138,7 +191,7 @@ function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -326,42 +379,62 @@ begin
   BevelOuter := bvNone;
   Caption := '';
 
-  FBar := TPanel.Create(Self);
-  FBar.Parent := Self;
-  FBar.Align := alTop;
-  FBar.BevelOuter := bvNone;
-  FBar.Caption := '';
-  FBar.AutoSize := True;
-  FBar.ChildSizing.LeftRightSpacing := LedScale96(4);
-  FBar.ChildSizing.TopBottomSpacing := LedScale96(2);
-  FBar.ChildSizing.HorizontalSpacing := LedScale96(2);
-  FBar.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
-  FBar.ChildSizing.ControlsPerLine := 100;
+  { The toolbar: tabs, as a word processor's -- Home for the font and the
+    paragraph, Review for tracked changes and comments, Share for editing
+    together -- each a row of controls that wraps when the pane is narrow. }
+  FTabStrip := TPanel.Create(Self);
+  FTabStrip.Parent := Self;
+  FTabStrip.Align := alTop;
+  FTabStrip.BevelOuter := bvNone;
+  FTabStrip.Caption := '';
+  FTabStrip.AutoSize := True;
+  FTabStrip.ChildSizing.LeftRightSpacing := LedScale96(4);
+  FTabStrip.ChildSizing.TopBottomSpacing := LedScale96(1);
+  FTabStrip.ChildSizing.HorizontalSpacing := LedScale96(2);
+  FTabStrip.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  FTabStrip.ChildSizing.ControlsPerLine := 100;
 
+  {$IFDEF LED_PARADE}
+  FEdit := TParadeEdit.Create(Self);
+  FEdit.Parent := Self;
+  FEdit.Align := alClient;
+  AddFonts(FEdit);
+  FEdit.OnChange := @EditChanged;
+  FEdit.OnSelectionChange := @SelectionChanged;
+  {$ENDIF}
+
+  AddTab('Home');
   FStyle := TComboBox.Create(Self);
-  FStyle.Parent := FBar;
   FStyle.Style := csDropDownList;
-  FStyle.Width := LedScale96(120);
+  FStyle.Width := LedScale96(130);
   FStyle.Hint := 'Paragraph style';
   FStyle.ShowHint := True;
   for i := Low(StyleNames) to High(StyleNames) do
     FStyle.Items.Add(StyleNames[i]);
   FStyle.ItemIndex := 0;
   FStyle.OnSelect := @StyleChosen;
-
-  AddButton('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
-  AddButton('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
-  AddButton('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
+  {$IFDEF LED_PARADE}
+  BuildHome;
+  {$ELSE}
+  FStyle.Parent := FBar;
+  AddToggle('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
+  AddToggle('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
+  AddToggle('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
+  {$ENDIF}
 
   { review: tracked changes and comments }
-  FTrack := AddButton('Track', 'Record edits as tracked changes', [], @TrackClicked);
+  AddTab('Review');
+  FTrack := AddButton('Track changes', 'Record edits as tracked changes', [], @TrackClicked);
   FTrack.AllowAllUp := True;
   FTrack.GroupIndex := 1;
-  AddButton('<', 'Previous change or comment', [], @PrevClicked);
-  AddButton('>', 'Next change or comment', [], @NextClicked);
+  AddSeparator;
+  AddButton('< Previous', 'Previous change or comment', [], @PrevClicked);
+  AddButton('Next >', 'Next change or comment', [], @NextClicked);
   AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked);
   AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked);
-  AddButton('Comment', 'Comment on the selection, or reply to the comment at the caret', [], @CommentClicked);
+  AddSeparator;
+  AddIconButton('comment', 'Comment on the selection, or reply to the comment at the caret', @CommentClicked);
+  AddSeparator;
   FMarkup := TComboBox.Create(Self);
   FMarkup.Parent := FBar;
   FMarkup.Style := csDropDownList;
@@ -375,29 +448,84 @@ begin
   FMarkup.ItemIndex := 0;
   FMarkup.OnSelect := @MarkupChosen;
 
-  {$IFDEF LED_PARADE}
-  FEdit := TParadeEdit.Create(Self);
-  FEdit.Parent := Self;
-  FEdit.Align := alClient;
-  AddFonts(FEdit);
-  FEdit.OnChange := @EditChanged;
-  {$ENDIF}
-
   {$IFDEF LED_PARADE_SYNC}
-  { a shared document: everyone editing it at once, through a relay (Parade's tools/parade_relay.py) }
+  { a shared document: everyone editing it at once, through a relay }
+  AddTab('Share');
   FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
   FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
   FHostBtn := AddButton('Host', 'Share this document through a relay LED runs itself, and invite others', [],
     @HostClicked);
   FSyncStatus := TLabel.Create(Self);
-  FSyncStatus.Parent := FBar;
+  FSyncStatus.Parent := FTabStrip;    { on the tabs' row: seen whichever tab is open }
   FSyncStatus.Caption := '';
   FSyncStatus.Layout := tlCenter;
+  FSyncStatus.BorderSpacing.Left := LedScale96(12);
   FSync := TParadeSync.Create(Self, FEdit);
   FSync.OnStateChange := @SyncChanged;
   FSync.OutboxDir := IncludeTrailingPathDelimiter(LedConfigDir) + 'outbox';   { edits made offline outlive a quit }
   FRelay := TParadeRelay.Create(Self);
   {$ENDIF}
+  ShowTab(0);
+end;
+
+function TLedVisualPane.AddTab(const ACaption: string): TFlowPanel;
+var
+  B: TSpeedButton;
+begin
+  B := TSpeedButton.Create(Self);
+  B.Parent := FTabStrip;
+  B.Caption := ACaption;
+  B.Flat := True;
+  B.GroupIndex := 50;           { one down at a time: the open tab }
+  B.AllowAllUp := False;
+  B.Tag := Length(FBars);
+  B.Constraints.MinWidth := LedScale96(64);
+  B.Height := LedScale96(22);
+  B.OnClick := @TabClicked;
+  Result := TFlowPanel.Create(Self);
+  Result.Parent := Self;
+  Result.Align := alTop;
+  Result.Top := 1000 + Length(FBars);     { under the tabs, above the page }
+  Result.BevelOuter := bvNone;
+  Result.Caption := '';
+  Result.AutoSize := True;
+  Result.AutoWrap := True;
+  Result.BorderSpacing.Left := LedScale96(4);
+  Result.BorderSpacing.Bottom := LedScale96(2);
+  Result.Visible := False;
+  SetLength(FBars, Length(FBars) + 1);
+  FBars[High(FBars)] := Result;
+  FBar := Result;
+end;
+
+procedure TLedVisualPane.ShowTab(AIndex: Integer);
+var
+  i: Integer;
+begin
+  if (AIndex < 0) or (AIndex > High(FBars)) then Exit;
+  for i := 0 to High(FBars) do
+    FBars[i].Visible := i = AIndex;
+  for i := 0 to FTabStrip.ControlCount - 1 do
+    if (FTabStrip.Controls[i] is TSpeedButton) and (FTabStrip.Controls[i].Tag = AIndex) then
+      TSpeedButton(FTabStrip.Controls[i]).Down := True;
+end;
+
+procedure TLedVisualPane.TabClicked(Sender: TObject);
+begin
+  ShowTab(TSpeedButton(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.AddSeparator;
+var
+  B: TBevel;
+begin
+  B := TBevel.Create(Self);
+  B.Parent := FBar;
+  B.Shape := bsLeftLine;
+  B.Width := LedScale96(6);
+  B.Height := LedScale96(24);
+  B.BorderSpacing.Left := LedScale96(4);
 end;
 
 function TLedVisualPane.AddButton(const ACaption, AHint: string;
@@ -412,12 +540,498 @@ begin
   Result.Hint := AHint;
   Result.ShowHint := True;
   Result.Flat := True;
-  { A minimum rather than a width: the bar lays its children out itself and
-    would shrink a button to its one-letter caption. }
+  { as wide as its caption needs, never narrower than an icon button }
+  Result.AutoSize := ACaption <> '';
   Result.Constraints.MinWidth := LedScale96(26);
-  Result.Height := FStyle.Height;
+  Result.Width := LedScale96(26);
+  Result.Height := LedScale96(26);
+  Result.BorderSpacing.Around := LedScale96(1);
   Result.OnClick := AOnClick;
 end;
+
+function TLedVisualPane.AddIconButton(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
+begin
+  Result := AddButton('', AHint, [], AOnClick);
+  Result.Width := LedScale96(26);
+  Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+end;
+
+var
+  ToggleGroups: Integer = 100;
+
+function TLedVisualPane.AddToggle(const ACaption, AHint: string; AStyle: TFontStyles;
+  AOnClick: TNotifyEvent): TSpeedButton;
+begin
+  Result := AddButton(ACaption, AHint, AStyle, AOnClick);
+  { a group of its own: down and up again on its own, showing the state at the caret }
+  Inc(ToggleGroups);
+  Result.GroupIndex := ToggleGroups;
+  Result.AllowAllUp := True;
+end;
+
+{$IFDEF LED_PARADE}
+{ $RRGGBB, as Parade has colours, from an LCL colour }
+function ToRGB(C: TColor): Integer;
+begin
+  C := ColorToRGB(C);
+  Result := (Red(C) shl 16) or (Green(C) shl 8) or Blue(C);
+end;
+
+function FromRGB(V: Integer): TColor;
+begin
+  Result := RGBToColor((V shr 16) and $FF, (V shr 8) and $FF, V and $FF);
+end;
+
+{ a colour's swatch, for a menu item }
+procedure Swatch(AItem: TMenuItem; AColour: TColor; ANone: Boolean);
+var
+  S: Integer;
+begin
+  S := LedScale96(14);
+  AItem.Bitmap.SetSize(S, S);
+  with AItem.Bitmap.Canvas do
+  begin
+    Brush.Color := clWhite;
+    FillRect(0, 0, S, S);
+    if not ANone then
+    begin
+      Brush.Color := AColour;
+      FillRect(1, 1, S - 1, S - 1);
+    end
+    else
+    begin
+      Pen.Color := clRed;
+      Line(1, S - 1, S - 1, 1);
+    end;
+    Brush.Style := bsClear;
+    Pen.Color := clGray;
+    Rectangle(0, 0, S, S);
+  end;
+end;
+
+procedure TLedVisualPane.BuildHome;
+const
+  TextColours: array[0..9] of Integer = ($000000, $7F7F7F, $C00000, $FF0000, $FFC000, $FFFF00, $00B050,
+    $00B0F0, $0070C0, $7030A0);
+  TextColourNames: array[0..9] of string = ('Black', 'Grey', 'Dark red', 'Red', 'Orange', 'Yellow', 'Green',
+    'Light blue', 'Blue', 'Purple');
+  Highlights: array[0..6] of Integer = ($FFFF00, $00FF00, $00FFFF, $FF00FF, $C0C0C0, $FFC000, $9DC3E6);
+  HighlightNames: array[0..6] of string = ('Yellow', 'Bright green', 'Turquoise', 'Pink', 'Grey', 'Orange',
+    'Light blue');
+  Spacings: array[0..5] of Integer = (1000, 1150, 1500, 2000, 2500, 3000);
+  AlignIcons: array[0..3] of string = ('alignleft', 'aligncenter', 'alignright', 'alignjustify');
+  AlignHints: array[0..3] of string = ('Align left', 'Centre', 'Align right', 'Justify');
+  AlignValues: array[0..3] of Integer = (PD_ALIGN_LEFT, PD_ALIGN_CENTER, PD_ALIGN_RIGHT, PD_ALIGN_JUSTIFY);
+  Sizes: array[0..15] of string = ('8', '9', '10', '10.5', '11', '12', '14', '16', '18', '20', '24', '28', '36',
+    '48', '72', '96');
+var
+  i: Integer;
+  M: TMenuItem;
+  B: TSpeedButton;
+
+  function Item(AMenu: TPopupMenu; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
+  begin
+    Result := TMenuItem.Create(AMenu);
+    Result.Caption := ACaption;
+    Result.Tag := ATag;
+    Result.OnClick := AClick;
+    AMenu.Items.Add(Result);
+  end;
+
+  procedure Line(AMenu: TPopupMenu);
+  begin
+    Item(AMenu, '-', 0, nil);
+  end;
+
+  { the narrow arrow beside a button that opens its menu }
+  procedure Drop(AMenu: TPopupMenu; const AHint: string);
+  begin
+    B := AddButton(#$E2#$96#$BE, AHint, [], @MenuDropClicked);    { a small down triangle }
+    B.Width := LedScale96(14);
+    B.Tag := PtrInt(AMenu);
+    B.BorderSpacing.Left := 0;
+  end;
+
+begin
+  FTextColor := $C00000;
+  FHighlightColor := $FFFF00;
+
+  { undo, and the clipboard }
+  AddIconButton('undo', 'Undo (Ctrl+Z)', @UndoClicked);
+  AddIconButton('redo', 'Redo (Ctrl+Y)', @RedoClicked);
+  AddSeparator;
+  AddIconButton('paste', 'Paste (Ctrl+V)', @PasteClicked);
+  AddIconButton('cut', 'Cut (Ctrl+X)', @CutClicked);
+  AddIconButton('copy', 'Copy (Ctrl+C)', @CopyClicked);
+  AddSeparator;
+
+  { the font }
+  FFont := TComboBox.Create(Self);
+  FFont.Parent := FBar;
+  FFont.Style := csDropDown;      { a family the list does not have can still be typed }
+  FFont.Width := LedScale96(170);
+  FFont.Hint := 'Font';
+  FFont.ShowHint := True;
+  FFont.DropDownCount := 20;
+  FEdit.GetFontFamilies(FFont.Items);
+  FFont.OnSelect := @FontChosen;
+  FFont.OnKeyDown := @ComboKeyDown;
+  FFont.BorderSpacing.Around := LedScale96(1);
+  FSize := TComboBox.Create(Self);
+  FSize.Parent := FBar;
+  FSize.Style := csDropDown;
+  FSize.Width := LedScale96(58);
+  FSize.Hint := 'Font size';
+  FSize.ShowHint := True;
+  FSize.DropDownCount := 16;
+  for i := 0 to High(Sizes) do
+    FSize.Items.Add(Sizes[i]);
+  FSize.OnSelect := @SizeChosen;
+  FSize.OnKeyDown := @ComboKeyDown;
+  FSize.BorderSpacing.Around := LedScale96(1);
+  AddIconButton('fontgrow', 'Bigger (Ctrl+])', @GrowClicked);
+  AddIconButton('fontshrink', 'Smaller (Ctrl+[)', @ShrinkClicked);
+  AddSeparator;
+  FBoldBtn := AddToggle('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
+  FItalicBtn := AddToggle('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
+  FUnderBtn := AddToggle('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
+  FStrikeBtn := AddToggle('S', 'Strikethrough', [fsStrikeOut], @StrikeClicked);
+  FSupBtn := AddToggle('x' + #$C2#$B2, 'Superscript', [], @SupClicked);
+  FSubBtn := AddToggle('x' + #$E2#$82#$82, 'Subscript', [], @SubClicked);
+  AddSeparator;
+
+  { colours: the button puts on the last one chosen, the arrow chooses another }
+  FColorMenu := TPopupMenu.Create(Self);
+  M := Item(FColorMenu, 'Automatic', -1, @ColorItemClicked);
+  Swatch(M, clBlack, False);
+  Line(FColorMenu);
+  for i := 0 to High(TextColours) do
+    Swatch(Item(FColorMenu, TextColourNames[i], TextColours[i], @ColorItemClicked), FromRGB(TextColours[i]), False);
+  Line(FColorMenu);
+  Item(FColorMenu, 'More colours...', -2, @ColorItemClicked);
+  AddIconButton('textcolor', 'Font colour', @ColorClicked);
+  Drop(FColorMenu, 'Choose the font colour');
+  FHighlightMenu := TPopupMenu.Create(Self);
+  for i := 0 to High(Highlights) do
+    Swatch(Item(FHighlightMenu, HighlightNames[i], Highlights[i], @HighlightItemClicked), FromRGB(Highlights[i]),
+      False);
+  Line(FHighlightMenu);
+  Swatch(Item(FHighlightMenu, 'No highlight', -1, @HighlightItemClicked), clWhite, True);
+  AddIconButton('highlight', 'Highlight', @HighlightClicked);
+  Drop(FHighlightMenu, 'Choose the highlight colour');
+  AddIconButton('clearformat', 'Clear formatting (the selection''s own; its style stays)', @ClearClicked);
+  AddSeparator;
+
+  { the paragraph }
+  FBulletBtn := AddIconButton('bullets', 'Bullets', @BulletsClicked);
+  FBulletBtn.GroupIndex := 60;
+  FBulletBtn.AllowAllUp := True;
+  FNumberBtn := AddIconButton('numbering', 'Numbering', @NumberingClicked);
+  FNumberBtn.GroupIndex := 61;
+  FNumberBtn.AllowAllUp := True;
+  AddIconButton('unindent', 'Decrease indent (in a list: a level up)', @IndentLessClicked);
+  AddIconButton('indent', 'Increase indent (in a list: a level down)', @IndentMoreClicked);
+  AddSeparator;
+  for i := 0 to 3 do
+  begin
+    FAlignBtns[i] := AddIconButton(AlignIcons[i], AlignHints[i], @AlignClicked);
+    FAlignBtns[i].GroupIndex := 62;     { one of the four }
+    FAlignBtns[i].Tag := AlignValues[i];
+  end;
+  FSpacingMenu := TPopupMenu.Create(Self);
+  for i := 0 to High(Spacings) do
+    Item(FSpacingMenu, FormatFloat('0.0#', Spacings[i] / 1000), Spacings[i], @LineSpacingItemClicked)
+      .RadioItem := True;
+  Line(FSpacingMenu);
+  Item(FSpacingMenu, 'No space before', 0, @ParaSpaceItemClicked);
+  Item(FSpacingMenu, '6 pt before', 6, @ParaSpaceItemClicked);
+  Item(FSpacingMenu, '12 pt before', 12, @ParaSpaceItemClicked);
+  Line(FSpacingMenu);
+  Item(FSpacingMenu, 'No space after', 1000, @ParaSpaceItemClicked);
+  Item(FSpacingMenu, '6 pt after', 1006, @ParaSpaceItemClicked);
+  Item(FSpacingMenu, '12 pt after', 1012, @ParaSpaceItemClicked);
+  B := AddIconButton('linespacing', 'Line and paragraph spacing', @MenuDropClicked);
+  B.Tag := PtrInt(FSpacingMenu);
+  AddSeparator;
+
+  { the paragraph's style }
+  FStyle.Parent := FBar;
+  FStyle.BorderSpacing.Around := LedScale96(1);
+end;
+
+procedure TLedVisualPane.RefreshStyles;
+var
+  L: TStringList;
+  i, k: Integer;
+begin
+  L := TStringList.Create;
+  try
+    FEdit.GetParagraphStyles(L);
+    if L.Count = FStylesShown then Exit;
+    FStylesShown := L.Count;
+    FStyle.Items.BeginUpdate;
+    try
+      FStyle.Items.Clear;
+      { the usual ones first, in the order a reader looks for them, then the document's own }
+      for i := Low(StyleNames) to High(StyleNames) do
+      begin
+        k := L.IndexOf(StyleNames[i]);
+        if k >= 0 then
+        begin
+          FStyle.Items.Add(StyleNames[i]);
+          L.Delete(k);
+        end;
+      end;
+      L.Sort;
+      FStyle.Items.AddStrings(L);
+    finally
+      FStyle.Items.EndUpdate;
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+{ the controls show what is at the caret: its font, its paragraph's alignment and list, its style }
+procedure TLedVisualPane.SelectionChanged(Sender: TObject);
+var
+  P: pd_char_props;
+  Pp: pd_para_props;
+  i, L: Integer;
+begin
+  if FFont = nil then Exit;
+  P := FEdit.CurrentCharProps;
+  if not FFont.Focused then
+    FFont.Text := P.family;
+  if not FSize.Focused then
+    FSize.Text := FormatFloat('0.#', P.size / PD_SP_PER_PT);
+  FBoldBtn.Down := P.weight >= 600;
+  FItalicBtn.Down := P.italic <> 0;
+  FUnderBtn.Down := P.underline <> 0;
+  FStrikeBtn.Down := P.strike <> 0;
+  FSupBtn.Down := P.shift = PD_SHIFT_SUPER;
+  FSubBtn.Down := P.shift = PD_SHIFT_SUB;
+  Pp := FEdit.CurrentParaProps;
+  for i := 0 to 3 do
+    if FAlignBtns[i].Tag = Pp.align then
+      FAlignBtns[i].Down := True;
+  for i := 0 to FSpacingMenu.Items.Count - 1 do
+    if FSpacingMenu.Items[i].RadioItem then
+      FSpacingMenu.Items[i].Checked := FSpacingMenu.Items[i].Tag = Pp.line_spacing;
+  L := FEdit.CurrentListFormat;
+  FBulletBtn.Down := L = PD_NUM_BULLET;
+  FNumberBtn.Down := (L >= 0) and (L <> PD_NUM_BULLET);
+  RefreshStyles;
+  if not FStyle.DroppedDown then
+    FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
+end;
+
+procedure TLedVisualPane.UndoClicked(Sender: TObject);
+begin
+  FEdit.Undo;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.RedoClicked(Sender: TObject);
+begin
+  FEdit.Redo;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CutClicked(Sender: TObject);
+begin
+  FEdit.CutToClipboard;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CopyClicked(Sender: TObject);
+begin
+  FEdit.CopyToClipboard;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.PasteClicked(Sender: TObject);
+begin
+  FEdit.PasteFromClipboard;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.FontChosen(Sender: TObject);
+begin
+  if FFont.ItemIndex >= 0 then
+    FEdit.SetFontFamily(FFont.Items[FFont.ItemIndex])
+  else
+    FEdit.SetFontFamily(Trim(FFont.Text));
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SizeChosen(Sender: TObject);
+var
+  S: string;
+  V: Double;
+begin
+  if FSize.ItemIndex >= 0 then
+    S := FSize.Items[FSize.ItemIndex]
+  else
+    S := Trim(FSize.Text);
+  if TryStrToFloat(StringReplace(S, ',', '.', []), V, DefaultFormatSettings) or TryStrToFloat(S, V) then
+    FEdit.SetFontSize(V);
+  BackToPage;
+end;
+
+{ Enter in the font or size box puts it on; Escape goes back to the page as it was }
+procedure TLedVisualPane.ComboKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  if Key = VK_RETURN then
+  begin
+    Key := 0;
+    TComboBox(Sender).ItemIndex := TComboBox(Sender).Items.IndexOf(TComboBox(Sender).Text);
+    if Sender = FFont then FontChosen(Sender) else SizeChosen(Sender);
+  end
+  else if Key = VK_ESCAPE then
+  begin
+    Key := 0;
+    BackToPage;
+    SelectionChanged(nil);
+  end;
+end;
+
+procedure TLedVisualPane.GrowClicked(Sender: TObject);
+begin
+  FEdit.StepFontSize(True);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShrinkClicked(Sender: TObject);
+begin
+  FEdit.StepFontSize(False);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.StrikeClicked(Sender: TObject);
+begin
+  FEdit.ToggleStrike;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SupClicked(Sender: TObject);
+begin
+  FEdit.ToggleSuperscript;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SubClicked(Sender: TObject);
+begin
+  FEdit.ToggleSubscript;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ColorClicked(Sender: TObject);
+begin
+  FEdit.SetTextColor(FTextColor);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.HighlightClicked(Sender: TObject);
+begin
+  FEdit.SetHighlight(FHighlightColor);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ColorItemClicked(Sender: TObject);
+var
+  D: TColorDialog;
+begin
+  if TMenuItem(Sender).Tag = -2 then
+  begin   { more colours }
+    D := TColorDialog.Create(nil);
+    try
+      if FTextColor >= 0 then
+        D.Color := FromRGB(FTextColor);
+      if not D.Execute then
+      begin
+        BackToPage;
+        Exit;
+      end;
+      FTextColor := ToRGB(D.Color);
+    finally
+      D.Free;
+    end;
+  end
+  else
+    FTextColor := TMenuItem(Sender).Tag;
+  ColorClicked(Sender);
+end;
+
+procedure TLedVisualPane.HighlightItemClicked(Sender: TObject);
+begin
+  FHighlightColor := TMenuItem(Sender).Tag;
+  HighlightClicked(Sender);
+end;
+
+procedure TLedVisualPane.MenuDropClicked(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P := TControl(Sender).ClientToScreen(Point(0, TControl(Sender).Height));
+  TPopupMenu(TComponent(TControl(Sender).Tag)).PopUp(P.X, P.Y);
+end;
+
+procedure TLedVisualPane.ClearClicked(Sender: TObject);
+begin
+  FEdit.ClearFormatting;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.BulletsClicked(Sender: TObject);
+begin
+  FEdit.ToggleList(PD_NUM_BULLET);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NumberingClicked(Sender: TObject);
+begin
+  FEdit.ToggleList(PD_NUM_DECIMAL);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.IndentLessClicked(Sender: TObject);
+begin
+  FEdit.ChangeIndent(False);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.IndentMoreClicked(Sender: TObject);
+begin
+  FEdit.ChangeIndent(True);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.AlignClicked(Sender: TObject);
+begin
+  FEdit.SetAlignment(TSpeedButton(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.LineSpacingItemClicked(Sender: TObject);
+begin
+  FEdit.SetLineSpacing(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ParaSpaceItemClicked(Sender: TObject);
+var
+  T: Integer;
+begin
+  T := TMenuItem(Sender).Tag;
+  if T >= 1000 then
+    FEdit.SetParaSpacing(-1, T - 1000)
+  else
+    FEdit.SetParaSpacing(T, -1);
+  BackToPage;
+end;
+{$ENDIF}
+
 
 function TLedVisualPane.GetEditor: TWinControl;
 begin
@@ -1040,6 +1654,10 @@ begin
     VK_B: Pane.ToggleBold;
     VK_I: Pane.ToggleItalic;
     VK_U: Pane.ToggleUnderline;
+    {$IFDEF LED_PARADE}
+    VK_OEM_6: Pane.Page.StepFontSize(True);     { Ctrl+] and Ctrl+[, as word processors have them }
+    VK_OEM_4: Pane.Page.StepFontSize(False);
+    {$ENDIF}
   else
     Result := False;
   end;
