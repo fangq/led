@@ -101,6 +101,9 @@ const
   LedPrefMiniMap         = 'Editor/minimap';
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
+  { the visual editor's line breaking as one types: 'hybrid' (lines away from
+    the edit hold still) or 'optimal' (each edited paragraph re-broken whole) }
+  LedPrefLineBreaking    = 'Visual/line_breaking';
 
   { Crash recovery.  New keys rather than medit's auto_save/auto_save_interval,
     which mean something different: those write the user's actual file behind

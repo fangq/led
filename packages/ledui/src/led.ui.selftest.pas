@@ -15847,6 +15847,73 @@ begin
 end;
 {$ENDIF}
 
+{ View > Visual editor > Line breaking as you type: hybrid unless set to
+  optimal, given to every page and to what it opens, and changed on the open
+  pages when Preferences is applied. }
+procedure TestVisualLineBreaking(F: TLedMainForm);
+var
+  P: TLedVisualPane;
+  Why, Md: string;
+  i, Row: Integer;
+  Tab: TLedTab;
+begin
+  Say('visual editor line breaking');
+  Row := -1;
+  for i := 0 to LedPrefItemCount - 1 do
+    if LedPrefItemAt(i).Key = LedPrefLineBreaking then
+      Row := i;
+  Check('Preferences has a line breaking row', Row >= 0);
+  if Row >= 0 then
+    Check('hybrid or optimal, hybrid first', (LedPrefItemAt(Row).Choices = 'hybrid,optimal') and
+      (LedPrefItemAt(Row).DefStr = 'hybrid'));
+  if not LedVisualAvailable then
+  begin
+    WriteLn('  (built without Parade; nothing more to check)');
+    Exit;
+  end;
+  {$IFDEF LED_PARADE}
+  LedPrefs.Remove(LedPrefLineBreaking);
+  P := TLedVisualPane.Create(nil);
+  try
+    Check('a page breaks lines hybrid by default', P.Page.HybridBreaking);
+    LedPrefs.SetStr(LedPrefLineBreaking, 'optimal');
+    P.ApplyPrefs;
+    Check('optimal once Preferences says so', not P.Page.HybridBreaking);
+    Check('and so does what it opens next', P.Load('Some words.'#10, lvkMarkdown, '', Why) and
+      not P.Page.HybridBreaking and (pd_doc_stable_breaks(P.Page.Doc) = 0));
+    LedPrefs.SetStr(LedPrefLineBreaking, 'hybrid');
+    P.ApplyPrefs;
+    Check('back to hybrid', P.Page.HybridBreaking and (pd_doc_stable_breaks(P.Page.Doc) = 1));
+  finally
+    P.Free;
+  end;
+
+  { an open page follows Preferences when it is applied }
+  Md := IncludeTrailingPathDelimiter(TempName('breaking')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page.'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if Tab.EnterVisual(Why) then
+  begin
+    Pump;
+    Check('an open page is hybrid', Tab.Visual.Page.HybridBreaking);
+    LedPrefs.SetStr(LedPrefLineBreaking, 'optimal');
+    F.PrefsApplied(nil);
+    Check('and optimal when Preferences is applied', not Tab.Visual.Page.HybridBreaking);
+    Tab.LeaveVisual;
+    Pump;
+  end
+  else
+    Check('the page opens: ' + Why, False);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  LedPrefs.Remove(LedPrefLineBreaking);
+  F.PrefsApplied(nil);
+  {$ENDIF}
+end;
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -16494,6 +16561,7 @@ begin
   TestDropFiles(F);
   WriteLn;
   TestVisualEditor(F);
+  TestVisualLineBreaking(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
