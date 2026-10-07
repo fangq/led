@@ -30,7 +30,8 @@ uses
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
 type
-  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx);
+  { lvkPdoc: Parade's own document, BJData (binary); lvkJdoc: the same as JSON text }
+  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc);
 
   { The page view, a strip of buttons above it.  One per tab, made when the
     tab is first switched to it. }
@@ -252,7 +253,8 @@ type
     { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
       Table (shown in a table); without Parade: 0 Home, 1 Review }
     procedure ShowTab(AIndex: Integer);
-    { the preferences that reach the page: line breaking as one types }
+    { the preferences that reach the page: line breaking as one types (for a
+      .pdoc or .jdoc, only what it opens next: it carries its own) }
     procedure ApplyPrefs;
   end;
 
@@ -267,6 +269,8 @@ function LedVisualEmptyDocx: string;
 
 { What the visual editor would open this file as, by its name. }
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
+{ a file of the kind is bytes (Word, .pdoc), not text }
+function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
 
 { The keys the visual editor takes before the window's shortcuts do: Ctrl+B
   is bold in a page and Toggle Bookmark everywhere else, and the window would
@@ -317,7 +321,14 @@ begin
   if (E = '.md') or (E = '.markdown') then Exit(lvkMarkdown);
   if (E = '.html') or (E = '.htm') or (E = '.xhtml') then Exit(lvkHtml);
   if E = '.docx' then Exit(lvkDocx);
+  if E = '.pdoc' then Exit(lvkPdoc);
+  if E = '.jdoc' then Exit(lvkJdoc);
   Result := lvkNone;
+end;
+
+function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
+begin
+  Result := AKind in [lvkDocx, lvkPdoc];
 end;
 
 {$IFDEF LED_PARADE}
@@ -327,6 +338,7 @@ begin
     lvkMarkdown: Result := PD_CONV_MARKDOWN;
     lvkHtml: Result := PD_CONV_HTML;
     lvkDocx: Result := PD_CONV_DOCX;
+    lvkPdoc, lvkJdoc: Result := PD_CONV_JDATA;
   else
     Result := -1;
   end;
@@ -2561,7 +2573,8 @@ begin
   { what a document opened or joined from now on gets, and the one shown: the
     formats LED opens here carry no setting of their own }
   FEdit.HybridDefault := LowerCase(LedPrefs.GetStr(LedPrefLineBreaking, 'hybrid')) <> 'optimal';
-  FEdit.HybridBreaking := FEdit.HybridDefault;
+  if not (FKind in [lvkPdoc, lvkJdoc]) then     { a Parade document keeps the one saved with it }
+    FEdit.HybridBreaking := FEdit.HybridDefault;
   {$ENDIF}
 end;
 
@@ -2577,7 +2590,7 @@ begin
   {$IFDEF LED_PARADE}
   if AKind = lvkNone then
   begin
-    AWhy := 'the visual editor opens Markdown, HTML and Word (.docx) files';
+    AWhy := 'the visual editor opens Markdown, HTML, Word (.docx) and Parade (.pdoc, .jdoc) files';
     Exit;
   end;
   S := TStringStream.Create(AData);
@@ -2619,7 +2632,7 @@ begin
   {$IFDEF LED_PARADE}
   S := TStringStream.Create('');
   try
-    FEdit.SaveToStream(S, ParadeFormat(AKind));
+    FEdit.SaveToStream(S, ParadeFormat(AKind), AKind = lvkPdoc);
     Result := S.DataString;
   finally
     S.Free;

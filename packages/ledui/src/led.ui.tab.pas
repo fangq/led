@@ -13,7 +13,7 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
   Led.UI.Document, Led.UI.Edit, Led.UI.Focus,
   Led.UI.MiniMap,
-  Led.UI.Splitter, Led.UI.Visual;
+  Led.UI.Splitter, Led.UI.Visual, Led.Core.FileIO, Led.Core.Prefs;
 
 const
   LedMaxViewsPerTab = 4;
@@ -120,6 +120,12 @@ type
     { The page made again from the document, after it was reloaded from
       disk underneath it. }
     function ReloadVisual(out AWhy: string): Boolean;
+    { Save As to another of the page's formats (Word to .pdoc, Markdown to
+      .jdoc): the page written out in that format and the document reopened
+      from it, as a page.  False with nothing done when the name is not
+      another such format, or the tab is not a page: the save is then the
+      document's own. }
+    function SaveVisualAs(const AFileName: string; out AWhy: string): Boolean;
     property VisualMode: Boolean read FVisualMode;
     property Visual: TLedVisualPane read FVisual;
   end;
@@ -334,10 +340,10 @@ begin
   if not LedVisualAvailable then Exit;
   Kind := LedVisualKindOf(FDocument.KindName);
   if Kind = lvkNone then Exit;
-  { A .docx is bytes, and an HTML or Markdown file is text; one that was
-    opened the other way round -- Open as Text on a .docx -- holds nothing
-    the page could be made from. }
-  Result := (Kind = lvkDocx) = FDocument.IsBinary;
+  { A .docx or .pdoc is bytes, and an HTML, Markdown or .jdoc file is text;
+    one that was opened the other way round -- Open as Text on a .docx --
+    holds nothing the page could be made from. }
+  Result := LedVisualKindIsBinary(Kind) = FDocument.IsBinary;
 end;
 
 procedure TLedTab.ShowViews(AShow: Boolean);
@@ -368,7 +374,7 @@ begin
   if not CanVisual then
   begin
     if LedVisualKindOf(FDocument.KindName) = lvkNone then
-      AWhy := 'the visual editor opens Markdown, HTML and Word (.docx) files'
+      AWhy := 'the visual editor opens Markdown, HTML, Word (.docx) and Parade (.pdoc, .jdoc) files'
     else
       AWhy := 'the file is not open as what its name says it is';
     Exit;
@@ -406,7 +412,7 @@ begin
   AWhy := '';
   if (not FVisualMode) or (FVisual = nil) then Exit;
   Kind := LedVisualKindOf(FDocument.KindName);
-  if Kind = lvkDocx then
+  if LedVisualKindIsBinary(Kind) then
     Data := FDocument.Bytes
   else
     Data := FDocument.Master.Lines.Text;
@@ -429,6 +435,26 @@ begin
   LedTryFocus(FActiveView);
 end;
 
+function TLedTab.SaveVisualAs(const AFileName: string; out AWhy: string): Boolean;
+var
+  Kind: TLedVisualKind;
+  Data: string;
+begin
+  Result := False;
+  AWhy := '';
+  Kind := LedVisualKindOf(AFileName);
+  if (not FVisualMode) or (FVisual = nil) or (Kind = lvkNone) or (Kind = FVisual.Kind) then
+    Exit;
+  Data := FVisual.Export(Kind);
+  LedWriteRawFile(AFileName, Data, LedPrefs.GetBool(LedPrefMakeBackups, False));
+  { what was typed is in the file written; the document is that file now, bytes or text as its kind is }
+  FVisual.MarkSaved;
+  FDocument.LoadFromFile(AFileName, '');
+  Result := True;
+  if not ReloadVisual(AWhy) then
+    AWhy := 'saved, but the page could not be made again: ' + AWhy;
+end;
+
 procedure TLedTab.VisualChanged(Sender: TObject);
 begin
   FDocument.NoteVisualEdit;
@@ -440,7 +466,7 @@ var
 begin
   if FVisual = nil then Exit;
   Data := FVisual.Export;
-  if FVisual.Kind = lvkDocx then
+  if LedVisualKindIsBinary(FVisual.Kind) then
     FDocument.TakeVisualBytes(Data)
   else
     FDocument.TakeVisualText(Data);

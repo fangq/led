@@ -633,15 +633,6 @@ object LedMainForm: TLedMainForm
       object mi_NewNotebook: TMenuItem
         Action = actNewNotebook
       end
-      object mi_JoinShared: TMenuItem
-        Action = actJoinShared
-      end
-      object mi_ShareDoc: TMenuItem
-        Action = actShareDoc
-      end
-      object mi_LeaveDoc: TMenuItem
-        Action = actLeaveDoc
-      end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow
       end
@@ -655,12 +646,12 @@ object LedMainForm: TLedMainForm
         Caption = 'Open &Recent'
         OnClick = miOpenRecentClick
       end
+      object mi_OpenAsText: TMenuItem
+        Action = actOpenAsText
+      end
       object miReopenEncoding: TMenuItem
         Caption = 'Reopen &with Encoding'
         OnClick = miReopenEncodingClick
-      end
-      object mi_OpenAsText: TMenuItem
-        Action = actOpenAsText
       end
       object mi_Reload: TMenuItem
         Action = actReload
@@ -677,17 +668,29 @@ object LedMainForm: TLedMainForm
       object miSep3: TMenuItem
         Caption = '-'
       end
+      object mi_ShareDoc: TMenuItem
+        Action = actShareDoc
+      end
+      object mi_JoinShared: TMenuItem
+        Action = actJoinShared
+      end
+      object mi_LeaveDoc: TMenuItem
+        Action = actLeaveDoc
+      end
+      object miSepShare: TMenuItem
+        Caption = '-'
+      end
+      object mi_ExportHtml: TMenuItem
+        Action = actExportHtml
+      end
+      object mi_PrintPdf: TMenuItem
+        Action = actPrintPdf
+      end
       object mi_PageSetup: TMenuItem
         Action = actPageSetup
       end
       object mi_Print: TMenuItem
         Action = actPrint
-      end
-      object mi_PrintPdf: TMenuItem
-        Action = actPrintPdf
-      end
-      object mi_ExportHtml: TMenuItem
-        Action = actExportHtml
       end
       object miSep4: TMenuItem
         Caption = '-'

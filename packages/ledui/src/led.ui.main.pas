@@ -204,6 +204,7 @@ type
     mi_Save: TMenuItem;
     mi_SaveAs: TMenuItem;
     miSep3: TMenuItem;
+    miSepShare: TMenuItem;
     mi_PageSetup: TMenuItem;
     mi_Print: TMenuItem;
     mi_PrintPdf: TMenuItem;
@@ -1089,6 +1090,7 @@ begin
   actJoinShared.Visible := LedVisualCanShare;
   actShareDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
+  miSepShare.Visible := LedVisualCanShare;
   { Shared with every other window in this process; see LedDocuments. }
   FDocs := LedDocuments;
   LedWindows.Add(Self);
@@ -5705,11 +5707,11 @@ begin
     and must not be allowed to raise; FormShow focuses the editor once the
     window is up. }
   LedTryFocus(Result.ActiveView);
-  { A Word file opens as its pages, however it was opened -- a dialog, the
+  { A Word or Parade (.pdoc, .jdoc) file opens as its pages, however it was opened -- a dialog, the
     command line, a session.  The alternative is a hex dump of a zip
     archive, which nobody opening a .docx was asking to see; when the pages
     cannot be made, the dump is still there, with the reason. }
-  if (LedVisualKindOf(ADoc.KindName) = lvkDocx) and Result.CanVisual then
+  if (LedVisualKindOf(ADoc.KindName) in [lvkDocx, lvkPdoc, lvkJdoc]) and Result.CanVisual then
     try
       if not Result.EnterVisual(Why) then
         ReportError('Visual editor: ' + Why);
@@ -6050,6 +6052,8 @@ begin
       lvkMarkdown: StatusBar1.Panels[3].Text := 'Visual (Markdown)';
       lvkHtml: StatusBar1.Panels[3].Text := 'Visual (HTML)';
       lvkDocx: StatusBar1.Panels[3].Text := 'Visual (Word)';
+      lvkPdoc: StatusBar1.Panels[3].Text := 'Visual (Parade)';
+      lvkJdoc: StatusBar1.Panels[3].Text := 'Visual (Parade JSON)';
     end;
   end;
   {$IFDEF LED_PARADE_SYNC}
@@ -6862,6 +6866,7 @@ end;
 procedure TLedMainForm.actSaveAsExecute(Sender: TObject);
 var
   Tab: TLedTab;
+  Why: string;
 begin
   Tab := ActiveTab;
   if Tab = nil then Exit;
@@ -6884,7 +6889,14 @@ begin
     { a notebook stays one: the extension is what reopens it as cells }
     if Tab.Document.IsNotebook and not LedNBIsNotebookName(SaveDialog1.FileName) then
       SaveDialog1.FileName := SaveDialog1.FileName + '.ipynb';
-    Tab.Document.SaveToFile(SaveDialog1.FileName);
+    { a page saved as another of its formats (Word as .pdoc, .md as .jdoc) is converted, not copied }
+    if Tab.SaveVisualAs(SaveDialog1.FileName, Why) then
+    begin
+      if Why <> '' then
+        ReportError('Visual editor: ' + Why);
+    end
+    else
+      Tab.Document.SaveToFile(SaveDialog1.FileName);
     RefreshTabCaption(Tab);
     UpdateStatusBar;
     { A new name can mean a new language and new filename rules. }
