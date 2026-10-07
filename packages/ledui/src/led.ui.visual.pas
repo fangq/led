@@ -27,7 +27,7 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Dialogs, LCLType
   {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF}
-  {$IFDEF LED_PARADE_SYNC}, paradesync{$ENDIF};
+  {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay{$ENDIF};
 
 type
   TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx);
@@ -47,10 +47,15 @@ type
     {$ENDIF}
     {$IFDEF LED_PARADE_SYNC}
     FSync: TParadeSync;
-    FShareBtn, FJoinBtn: TSpeedButton;
+    FRelay: TParadeRelay;       { the relay this LED runs when it hosts the document }
+    FHostDoc, FHostAddress, FFileName: string;
+    FShareBtn, FJoinBtn, FHostBtn: TSpeedButton;
     FSyncStatus: TLabel;
     procedure ShareClicked(Sender: TObject);
     procedure JoinClicked(Sender: TObject);
+    procedure HostClicked(Sender: TObject);
+    procedure ShowInvite;
+    procedure StopSharing;
     procedure SyncChanged(Sender: TObject);
     function AskConnection(const ACaption: string; var AServer, ADoc, AToken, AName: string): Boolean;
     {$ENDIF}
@@ -123,7 +128,7 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi
-  {$IFDEF LED_PARADE_SYNC}, IniFiles, Led.Core.Paths{$ENDIF};
+  {$IFDEF LED_PARADE_SYNC}, IniFiles, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
   { The paragraph styles every Parade document is made with, in the order a
@@ -354,6 +359,8 @@ begin
   { a shared document: everyone editing it at once, through a relay (Parade's tools/parade_relay.py) }
   FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
   FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
+  FHostBtn := AddButton('Host', 'Share this document through a relay LED runs itself, and invite others', [],
+    @HostClicked);
   FSyncStatus := TLabel.Create(Self);
   FSyncStatus.Parent := FBar;
   FSyncStatus.Caption := '';
@@ -361,6 +368,7 @@ begin
   FSync := TParadeSync.Create(Self, FEdit);
   FSync.OnStateChange := @SyncChanged;
   FSync.OutboxDir := IncludeTrailingPathDelimiter(LedConfigDir) + 'outbox';   { edits made offline outlive a quit }
+  FRelay := TParadeRelay.Create(Self);
   {$ENDIF}
 end;
 
@@ -407,6 +415,9 @@ begin
   try
     try
       FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
+      {$IFDEF LED_PARADE_SYNC}
+      FFileName := AFileName;   { a name to host it under }
+      {$ENDIF}
     except
       on E: Exception do
       begin
@@ -669,13 +680,22 @@ begin
   end;
 end;
 
+procedure TLedVisualPane.StopSharing;
+begin
+  FSync.Stop;
+  if FRelay.Active then
+    FRelay.Stop;    { hosting ends with it: the others are told they are offline }
+  FHostDoc := '';
+  SyncChanged(nil);
+end;
+
 procedure TLedVisualPane.ShareClicked(Sender: TObject);
 var
   Server, Doc, Token, Who: string;
 begin
   if FSync.State <> pssOff then
   begin   { Share is Leave while shared }
-    FSync.Stop;
+    StopSharing;
     BackToPage;
     Exit;
   end;
@@ -703,18 +723,202 @@ begin
   BackToPage;
 end;
 
+{ the key this LED's relay signs its tokens with, made on first use and kept with the settings }
+function RelaySecret: RawByteString;
+var
+  F: string;
+begin
+  F := IncludeTrailingPathDelimiter(LedConfigDir) + 'relay.secret';
+  if not FileExists(F) then
+  begin
+    ForceDirectories(LedConfigDir);
+    with TStringList.Create do
+    try
+      Text := ParadeNewSecret;
+      SaveToFile(F);
+    finally
+      Free;
+    end;
+    {$IFDEF UNIX}
+    FpChmod(F, &600);
+    {$ENDIF}
+  end;
+  Result := ParadeReadSecret(F);
+end;
+
+function ThisHostName: string;
+begin
+  {$IFDEF UNIX}
+  Result := GetHostName;
+  {$ELSE}
+  Result := GetEnvironmentVariable('COMPUTERNAME');
+  {$ENDIF}
+  if Result = '' then
+    Result := 'localhost';
+end;
+
+procedure TLedVisualPane.HostClicked(Sender: TObject);
+var
+  V: array of string;
+  Ini: TIniFile;
+  Doc, Who: string;
+  Port: Integer;
+  Everyone: Boolean;
+begin
+  if FRelay.Active then
+  begin   { Host is Invite while hosting }
+    ShowInvite;
+    Exit;
+  end;
+  if FSync.State <> pssOff then
+  begin
+    MessageDlg('Host', 'This document is shared already: Leave first.', mtInformation, [mbOK], 0);
+    Exit;
+  end;
+  Ini := CollabIni;
+  try
+    SetLength(V, 4);
+    V[0] := ChangeFileExt(ExtractFileName(FFileName), '');
+    if V[0] = '' then
+      V[0] := Ini.ReadString('host', 'document', 'document');
+    V[1] := Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER'));
+    V[2] := IntToStr(Ini.ReadInteger('host', 'port', 8765));
+    V[3] := Ini.ReadString('host', 'network', 'yes');
+    if not InputQuery('Host this document',
+      ['Document name', 'Your name', 'Port', 'Let other machines in (yes / no: this machine only)'], V) or
+      (Trim(V[0]) = '') then
+      Exit;
+    Doc := Trim(V[0]);
+    Who := Trim(V[1]);
+    Port := StrToIntDef(Trim(V[2]), 8765);
+    Everyone := not SameText(Trim(V[3]), 'no');
+    Ini.WriteString('host', 'document', Doc);
+    Ini.WriteString('relay', 'name', Who);
+    Ini.WriteInteger('host', 'port', Port);
+    Ini.WriteString('host', 'network', BoolToStr(Everyone, 'yes', 'no'));
+  finally
+    Ini.Free;
+  end;
+  try
+    FRelay.Secret := RelaySecret;
+  except
+    on E: Exception do
+    begin
+      MessageDlg('Host', 'No signing key: ' + E.Message, mtError, [mbOK], 0);
+      Exit;
+    end;
+  end;
+  FRelay.DbFile := IncludeTrailingPathDelimiter(LedConfigDir) + 'relay.sqlite';
+  FRelay.Port := Port;
+  if Everyone then
+    FRelay.Host := '0.0.0.0'
+  else
+    FRelay.Host := '127.0.0.1';
+  if not FRelay.Start then
+  begin
+    MessageDlg('Host', 'The relay did not start: ' + FRelay.LastError, mtError, [mbOK], 0);
+    Exit;
+  end;
+  if not FSync.Start(Format('http://127.0.0.1:%d', [Port]), Doc, ParadeMakeToken(FRelay.Secret, Who, Doc, 'editor', 3650),
+    Who, True) then
+  begin
+    { hosted here before: its log is still here, and it is what the others have }
+    if (FRelay.Store.Last(Doc) > 0) and (MessageDlg('Host', Format('"%s" was hosted here before. Open it as the others ' +
+      'left it, in place of this tab''s text?', [Doc]), mtConfirmation, [mbYes, mbNo], 0) = mrYes) then
+    begin
+      if not FSync.Start(Format('http://127.0.0.1:%d', [Port]), Doc,
+        ParadeMakeToken(FRelay.Secret, Who, Doc, 'editor', 3650), Who, False) then
+      begin
+        MessageDlg('Host', 'Could not open it: ' + FSync.LastError, mtError, [mbOK], 0);
+        FRelay.Stop;
+        Exit;
+      end;
+    end
+    else
+    begin
+      if FRelay.Store.Last(Doc) = 0 then
+        MessageDlg('Host', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
+      FRelay.Stop;
+      Exit;
+    end;
+  end;
+  FHostDoc := Doc;
+  if Everyone then
+    FHostAddress := Format('http://%s:%d', [ThisHostName, Port])
+  else
+    FHostAddress := Format('http://127.0.0.1:%d', [Port]);
+  SyncChanged(nil);
+  ShowInvite;
+  BackToPage;
+end;
+
+{ what the others need to join: the address, the document, a token for each role }
+procedure TLedVisualPane.ShowInvite;
+var
+  F: TForm;
+  M: TMemo;
+  B: TButton;
+begin
+  F := TForm.CreateNew(nil);
+  try
+    F.Caption := 'Invite to "' + FHostDoc + '"';
+    F.Position := poMainFormCenter;
+    F.SetBounds(0, 0, 720, 360);
+    M := TMemo.Create(F);
+    M.Parent := F;
+    M.Align := alClient;
+    M.ReadOnly := True;
+    M.WordWrap := True;
+    M.ScrollBars := ssAutoVertical;
+    M.Lines.Add('Send these to whoever is to join (Join, in their LED), good for 30 days:');
+    M.Lines.Add('');
+    M.Lines.Add('Relay address: ' + FHostAddress);
+    M.Lines.Add('Document: ' + FHostDoc);
+    M.Lines.Add('');
+    M.Lines.Add('To edit:');
+    M.Lines.Add(ParadeMakeToken(FRelay.Secret, 'guest', FHostDoc, 'editor', 30));
+    M.Lines.Add('');
+    M.Lines.Add('To read only:');
+    M.Lines.Add(ParadeMakeToken(FRelay.Secret, 'reader', FHostDoc, 'viewer', 30));
+    M.Lines.Add('');
+    M.Lines.Add('The document stays reachable while this LED shares it (until Leave).');
+    B := TButton.Create(F);
+    B.Parent := F;
+    B.Align := alBottom;
+    B.Caption := 'OK';
+    B.ModalResult := mrOK;
+    B.Default := True;
+    F.ShowModal;
+  finally
+    F.Free;
+  end;
+end;
+
 procedure TLedVisualPane.SyncChanged(Sender: TObject);
 var
   S: string;
 begin
   if FSync.State = pssOff then
   begin
+    if FRelay.Active then
+      FRelay.Stop;    { the shared document went (another one opened in the tab): hosting ends }
     FSyncStatus.Caption := '';
     FShareBtn.Caption := 'Share';
+    FHostBtn.Caption := 'Host';
     FJoinBtn.Enabled := True;
+    FHostBtn.Enabled := True;
     Exit;
   end;
+  if FRelay.Active then
+  begin
+    FHostBtn.Caption := 'Invite';
+    FHostBtn.Enabled := True;
+  end
+  else
+    FHostBtn.Enabled := False;
   S := 'shared: ' + ParadeSyncStateName(FSync.State);
+  if FRelay.Active then
+    S := 'hosting ' + FHostAddress + ', ' + ParadeSyncStateName(FSync.State);
   if FSync.PeerCount > 0 then
     S := S + Format(', %d other(s) here', [FSync.PeerCount]);
   if FEdit.ReadOnly then
