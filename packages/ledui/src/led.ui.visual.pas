@@ -41,7 +41,9 @@ type
     FBars: array of TFlowPanel; { a row of controls per tab; one shown }
     FBarHost: TPanel;           { holds the bars: as tall as the tallest one, so a tab switch moves nothing }
     FBarWidth: Integer;         { the width the host's height was found at }
-    FBar: TFlowPanel;           { the one being filled while the constructor builds them }
+    FBar: TWinControl;          { what the constructor is filling: a tab's bar, or a row of a group in it }
+    FBarSave: TWinControl;      { the bar a two-row group is in }
+    FGroup: TPanel;             { the two-row group being filled }
     FTabBtns: array of TSpeedButton;
     FTableTab: Integer;         { the Table tab's index, shown only while the caret is in a table (-1: none) }
     FStyle: TComboBox;
@@ -76,6 +78,11 @@ type
     FColorMenu, FHighlightMenu, FSpacingMenu: TPopupMenu;
     FTextColor, FHighlightColor: Integer;   { $RRGGBB the colour buttons put on; -1: automatic / none }
     FStylesShown: Integer;      { the document's style count when the list was last filled }
+    FGallery: TCustomControl;   { the style panel: the styles drawn as they look, to click }
+    FPainterBtn: TSpeedButton;
+    procedure PainterClicked(Sender: TObject);
+    procedure PainterDblClicked(Sender: TObject);
+    procedure GalleryPicked(Sender: TObject);
     procedure BuildHome;
     procedure RefreshStyles;
     procedure SelectionChanged(Sender: TObject);
@@ -119,7 +126,8 @@ type
     FHeaderRowBtn: TSpeedButton;
     FUpdating: Boolean;
     function MenuItem(AMenu: TPopupMenu; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
-    function MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu): TSpeedButton;
+    { a button opening AMenu: big (a picture over its name) or small (one beside it, for a two-row group) }
+    function MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu; ABig: Boolean = True): TSpeedButton;
     function NumberBox(const ACaption, AHint: string; AMax, AStep: Double; ADecimals: Integer): TFloatSpinEdit;
     procedure BuildLayout;
     procedure MarginsItemClicked(Sender: TObject);
@@ -173,6 +181,9 @@ type
     {$ENDIF}
     procedure FitBarHost;
     procedure BarResized(Sender: TObject);
+    procedure BeginRows;
+    procedure NextRow;
+    procedure EndRows;
     function AddTab(const ACaption: string): TFlowPanel;
     procedure TabClicked(Sender: TObject);
     procedure AddSeparator;
@@ -264,7 +275,7 @@ function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Math
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Math, StrUtils
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -444,7 +455,247 @@ begin
 end;
 {$ENDIF}
 
+{ the toolbar's height: two rows of small buttons, or one row of big ones (a picture over a name) }
+function BarHeight: Integer;
+begin
+  Result := 2 * LedScale96(30) + LedScale96(2);
+end;
+
+{$IFDEF LED_PARADE}
+type
+  { The style panel: the paragraph styles drawn as they look -- their font, size, weight, slant and colour,
+    the size kept to what fits -- in two rows of tiles, the caret's style marked; a click gives the paragraph
+    the style, the wheel or the arrows at the right go through the rest. }
+  TLedStyleGallery = class(TCustomControl)
+  private
+    FNames: TStringList;
+    FFamily: array of string;
+    FPoints: array of Double;
+    FBold, FItalic: array of Boolean;
+    FColor: array of TColor;
+    FFirst, FHot: Integer;
+    FCurrent, FPicked: string;
+    FOnPick: TNotifyEvent;
+    procedure SetCurrent(const AValue: string);
+    function TileW: Integer;
+    function TileH: Integer;
+    function Cols: Integer;
+    function TileAt(X, Y: Integer): Integer;
+  protected
+    procedure Paint; override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseLeave; override;
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    { the styles named in ANames, as the document defines them }
+    procedure Fill(AEdit: TParadeEdit; ANames: TStrings);
+    property Current: string read FCurrent write SetCurrent;
+    property Picked: string read FPicked;
+    property OnPick: TNotifyEvent read FOnPick write FOnPick;
+  end;
+
+constructor TLedStyleGallery.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FNames := TStringList.Create;
+  FHot := -1;
+  TabStop := False;     { a click leaves the caret in the page }
+  ControlStyle := ControlStyle + [csOpaque];
+end;
+
+destructor TLedStyleGallery.Destroy;
+begin
+  FNames.Free;
+  inherited Destroy;
+end;
+
+procedure TLedStyleGallery.Fill(AEdit: TParadeEdit; ANames: TStrings);
+var
+  i: Integer;
+  St: pd_style_id;
+  Cp: pd_char_props;
+begin
+  FNames.Assign(ANames);
+  SetLength(FFamily, FNames.Count);
+  SetLength(FPoints, FNames.Count);
+  SetLength(FBold, FNames.Count);
+  SetLength(FItalic, FNames.Count);
+  SetLength(FColor, FNames.Count);
+  for i := 0 to FNames.Count - 1 do
+  begin
+    FillChar(Cp, SizeOf(Cp), 0);
+    St := pd_doc_style_find(AEdit.Doc, PAnsiChar(FNames[i]));
+    if St <> 0 then
+      pd_doc_style_resolve(AEdit.Doc, St, nil, @Cp);
+    FFamily[i] := Cp.family;
+    FPoints[i] := Cp.size / PD_SP_PER_PT;
+    FBold[i] := Cp.weight >= 600;
+    FItalic[i] := Cp.italic <> 0;
+    if Cp.color and $FFFFFF <> 0 then
+      FColor[i] := RGBToColor((Cp.color shr 16) and $FF, (Cp.color shr 8) and $FF, Cp.color and $FF)
+    else
+      FColor[i] := clBlack;
+  end;
+  if FFirst >= FNames.Count then
+    FFirst := 0;
+  Invalidate;
+end;
+
+procedure TLedStyleGallery.SetCurrent(const AValue: string);
+var
+  K: Integer;
+begin
+  if AValue = FCurrent then Exit;
+  FCurrent := AValue;
+  { the caret's style in view }
+  K := FNames.IndexOf(AValue);
+  if (K >= 0) and (Cols > 0) and ((K < FFirst) or (K >= FFirst + 2 * Cols)) then
+    { its row, or the row above it when it is in the last: both rows full as far as the styles go }
+    FFirst := Max(0, Min((K div Cols) * Cols, ((FNames.Count - 1) div Cols) * Cols - Cols));
+  Invalidate;
+end;
+
+function TLedStyleGallery.TileW: Integer;
+begin
+  Result := LedScale96(86);
+end;
+
+function TLedStyleGallery.TileH: Integer;
+begin
+  Result := (ClientHeight - LedScale96(2)) div 2;
+end;
+
+function TLedStyleGallery.Cols: Integer;
+begin
+  Result := Max(1, (ClientWidth - LedScale96(18)) div TileW);
+end;
+
+function TLedStyleGallery.TileAt(X, Y: Integer): Integer;
+var
+  C, R: Integer;
+begin
+  Result := -1;
+  if X >= Cols * TileW then
+    Exit;
+  C := X div TileW;
+  R := Y div (TileH + LedScale96(2));
+  if (R < 0) or (R > 1) then
+    Exit;
+  Result := FFirst + R * Cols + C;
+  if Result >= FNames.Count then
+    Result := -1;
+end;
+
+procedure TLedStyleGallery.Paint;
+var
+  i, K, X, Y, AX: Integer;
+  R: TRect;
+  Pt: Double;
+begin
+  Canvas.Brush.Color := clBtnFace;
+  Canvas.FillRect(ClientRect);
+  for i := 0 to 2 * Cols - 1 do
+  begin
+    K := FFirst + i;
+    if K >= FNames.Count then
+      Break;
+    X := (i mod Cols) * TileW;
+    Y := (i div Cols) * (TileH + LedScale96(2));
+    R := Rect(X + 1, Y, X + TileW - 2, Y + TileH);
+    if FNames[K] = FCurrent then
+      Canvas.Brush.Color := RGBToColor(214, 228, 252)
+    else if K = FHot then
+      Canvas.Brush.Color := RGBToColor(236, 242, 252)
+    else
+      Canvas.Brush.Color := clWindow;
+    Canvas.Pen.Color := IfThen(FNames[K] = FCurrent, RGBToColor(80, 120, 230), RGBToColor(200, 204, 214));
+    Canvas.Rectangle(R);
+    { the name in the style's own look, at a size that fits the tile }
+    Canvas.Font.Name := IfThen(FFamily[K] <> '', FFamily[K], 'default');
+    Pt := FPoints[K];
+    if Pt <= 0 then Pt := 11;
+    Canvas.Font.Size := Max(7, Min(Round(Pt), 13));
+    Canvas.Font.Style := [];
+    if FBold[K] then Canvas.Font.Style := Canvas.Font.Style + [fsBold];
+    if FItalic[K] then Canvas.Font.Style := Canvas.Font.Style + [fsItalic];
+    Canvas.Font.Color := FColor[K];
+    Canvas.Brush.Style := bsClear;
+    Canvas.TextRect(Rect(R.Left + 3, R.Top + 1, R.Right - 3, R.Bottom - 1), R.Left + LedScale96(5),
+      R.Top + (TileH - Canvas.TextHeight(FNames[K])) div 2, FNames[K]);
+    Canvas.Brush.Style := bsSolid;
+  end;
+  { the arrows to go through the rest: up a row, down a row }
+  AX := Cols * TileW + LedScale96(2);
+  Canvas.Font.Name := 'default';
+  Canvas.Font.Size := 8;
+  Canvas.Font.Style := [];
+  Canvas.Font.Color := IfThen(FFirst > 0, clBtnText, clGrayText);
+  Canvas.TextOut(AX + 2, LedScale96(6), #$E2#$96#$B2);
+  Canvas.Font.Color := IfThen(FFirst + 2 * Cols < FNames.Count, clBtnText, clGrayText);
+  Canvas.TextOut(AX + 2, ClientHeight - LedScale96(20), #$E2#$96#$BC);
+end;
+
+procedure TLedStyleGallery.MouseMove(Shift: TShiftState; X, Y: Integer);
+var
+  K: Integer;
+begin
+  inherited MouseMove(Shift, X, Y);
+  K := TileAt(X, Y);
+  if K <> FHot then
+  begin
+    FHot := K;
+    Invalidate;
+  end;
+end;
+
+procedure TLedStyleGallery.MouseLeave;
+begin
+  inherited MouseLeave;
+  if FHot >= 0 then
+  begin
+    FHot := -1;
+    Invalidate;
+  end;
+end;
+
+procedure TLedStyleGallery.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  K: Integer;
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  if X >= Cols * TileW then
+  begin   { the arrows }
+    if Y < ClientHeight div 2 then
+      FFirst := Max(0, FFirst - Cols)
+    else if FFirst + 2 * Cols < FNames.Count then
+      Inc(FFirst, Cols);
+    Invalidate;
+    Exit;
+  end;
+  K := TileAt(X, Y);
+  if K < 0 then Exit;
+  FPicked := FNames[K];
+  if Assigned(FOnPick) then
+    FOnPick(Self);
+end;
+
+function TLedStyleGallery.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+begin
+  if WheelDelta > 0 then
+    FFirst := Max(0, FFirst - Cols)
+  else if FFirst + 2 * Cols < FNames.Count then
+    Inc(FFirst, Cols);
+  Invalidate;
+  Result := True;
+end;
+{$ENDIF}
+
 procedure SetIcon(AButton: TSpeedButton; const AIcon: string); forward;
+procedure SetSmallIcon(AButton: TSpeedButton; const AIcon: string); forward;
 
 { TLedVisualPane }
 
@@ -489,6 +740,8 @@ begin
   FStyle := TComboBox.Create(Self);
   FStyle.Style := csDropDownList;
   FStyle.Width := LedScale96(130);
+  FStyle.Constraints.MinWidth := LedScale96(130);
+  FStyle.Constraints.MaxWidth := LedScale96(130);
   FStyle.Hint := 'Paragraph style';
   FStyle.ShowHint := True;
   for i := Low(StyleNames) to High(StyleNames) do
@@ -521,18 +774,30 @@ begin
   FTrack.AllowAllUp := True;
   FTrack.GroupIndex := 1;
   AddSeparator;
-  SetIcon(AddButton('Previous', 'Previous change or comment', [], @PrevClicked), 'prevchange');
-  SetIcon(AddButton('Next', 'Next change or comment', [], @NextClicked), 'nextchange');
-  SetIcon(AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked), 'accept');
-  SetIcon(AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked), 'reject');
+  BeginRows;
+  SetSmallIcon(AddButton('Previous', 'Previous change or comment', [], @PrevClicked), 'prevchange');
+  SetSmallIcon(AddButton('Accept', 'Accept the change (the selection''s changes)', [], @AcceptClicked), 'accept');
+  NextRow;
+  SetSmallIcon(AddButton('Next', 'Next change or comment', [], @NextClicked), 'nextchange');
+  SetSmallIcon(AddButton('Reject', 'Reject the change (the selection''s changes)', [], @RejectClicked), 'reject');
+  EndRows;
   AddSeparator;
   SetIcon(AddButton('Comment', 'Comment on the selection, or reply to the comment at the caret', [], @CommentClicked),
     'addcomment');
   AddSeparator;
+  BeginRows;
+  with TLabel.Create(Self) do
+  begin
+    Parent := FBar;
+    Caption := 'Show changes as';
+  end;
+  NextRow;
   FMarkup := TComboBox.Create(Self);
   FMarkup.Parent := FBar;
   FMarkup.Style := csDropDownList;
   FMarkup.Width := LedScale96(110);
+  FMarkup.Constraints.MinWidth := LedScale96(110);
+  FMarkup.Constraints.MaxWidth := LedScale96(110);
   FMarkup.Hint := 'How tracked changes show';
   FMarkup.ShowHint := True;
   FMarkup.Items.Add('Balloons');
@@ -541,6 +806,7 @@ begin
   FMarkup.Items.Add('Original');
   FMarkup.ItemIndex := 0;
   FMarkup.OnSelect := @MarkupChosen;
+  EndRows;
 
   {$IFDEF LED_PARADE}
   AddTab('View');
@@ -552,11 +818,14 @@ begin
   AddTab('Share');
   FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
   SetIcon(FShareBtn, 'share');
+  BeginRows;
   FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
-  SetIcon(FJoinBtn, 'join');
+  SetSmallIcon(FJoinBtn, 'join');
+  NextRow;
   FHostBtn := AddButton('Host', 'Share this document through a relay LED runs itself, and invite others', [],
     @HostClicked);
-  SetIcon(FHostBtn, 'host');
+  SetSmallIcon(FHostBtn, 'host');
+  EndRows;
   FSyncStatus := TLabel.Create(Self);
   FSyncStatus.Parent := FTabStrip;    { on the tabs' row: seen whichever tab is open }
   FSyncStatus.Caption := '';
@@ -606,7 +875,7 @@ begin
     FBarHost.Top := 1000;     { under the tabs, above the page }
     FBarHost.BevelOuter := bvNone;
     FBarHost.Caption := '';
-    FBarHost.Height := LedScale96(36);
+    FBarHost.Height := BarHeight + LedScale96(6);
   end;
   Result := TFlowPanel.Create(Self);
   Result.Parent := FBarHost;
@@ -663,6 +932,7 @@ begin
   end
   else
     H := FBarHost.Height;
+  H := Max(H, BarHeight + LedScale96(6));    { two rows of small buttons, or one of big ones }
   for i := 0 to High(FBars) do
     if FBars[i].Visible then
       H := Max(H, FBars[i].Height + FBars[i].BorderSpacing.Bottom);
@@ -684,7 +954,7 @@ begin
   B.Parent := FBar;
   B.Shape := bsLeftLine;
   B.Width := LedScale96(6);
-  B.Height := LedScale96(24);
+  B.Height := BarHeight;
   B.BorderSpacing.Left := LedScale96(4);
 end;
 
@@ -720,10 +990,72 @@ var
   ToggleGroups: Integer = 100;
 
 { a picture on a button made with a caption: the two side by side }
+{ a button with a name made a big one: its picture over its name, as tall as the two rows }
 procedure SetIcon(AButton: TSpeedButton; const AIcon: string);
 begin
+  AButton.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(32));
+  AButton.Layout := blGlyphTop;
+  AButton.Spacing := LedScale96(2);
+  AButton.Margin := LedScale96(3);
+  AButton.Constraints.MinWidth := LedScale96(52);
+  AButton.Constraints.MinHeight := BarHeight;
+  AButton.Height := BarHeight;
+end;
+
+{ a button with a name kept small, for a two-row group: a small picture beside its name }
+procedure SetSmallIcon(AButton: TSpeedButton; const AIcon: string);
+begin
   AButton.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
+  AButton.Layout := blGlyphLeft;
   AButton.Spacing := LedScale96(4);
+  AButton.Margin := LedScale96(3);
+end;
+
+{ two rows of small controls side by side in a bar, the second under the first: Home's font and paragraph
+  groups, the Layout tab's boxes }
+procedure TLedVisualPane.BeginRows;
+var
+  R: TPanel;
+begin
+  FBarSave := FBar;
+  FGroup := TPanel.Create(Self);
+  FGroup.Parent := FBar;
+  FGroup.BevelOuter := bvNone;
+  FGroup.Caption := '';
+  FGroup.AutoSize := True;
+  FGroup.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  FGroup.ChildSizing.ControlsPerLine := 1;
+  FGroup.ChildSizing.VerticalSpacing := LedScale96(2);
+  FGroup.BorderSpacing.Around := LedScale96(1);
+  R := TPanel.Create(Self);
+  R.Parent := FGroup;
+  R.BevelOuter := bvNone;
+  R.Caption := '';
+  R.AutoSize := True;
+  R.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  R.ChildSizing.ControlsPerLine := 100;
+  R.ChildSizing.HorizontalSpacing := LedScale96(1);
+  FBar := R;
+end;
+
+procedure TLedVisualPane.NextRow;
+var
+  R: TPanel;
+begin
+  R := TPanel.Create(Self);
+  R.Parent := FGroup;
+  R.BevelOuter := bvNone;
+  R.Caption := '';
+  R.AutoSize := True;
+  R.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  R.ChildSizing.ControlsPerLine := 100;
+  R.ChildSizing.HorizontalSpacing := LedScale96(1);
+  FBar := R;
+end;
+
+procedure TLedVisualPane.EndRows;
+begin
+  FBar := FBarSave;
 end;
 
 function TLedVisualPane.AddIconToggle(const AIcon, AHint: string; AOnClick: TNotifyEvent): TSpeedButton;
@@ -831,22 +1163,26 @@ begin
   FTextColor := $C00000;
   FHighlightColor := $FFFF00;
 
-  { the font }
+  { the font: its name and size, then how it looks }
+  BeginRows;
   FFont := TComboBox.Create(Self);
   FFont.Parent := FBar;
   FFont.Style := csDropDown;      { a family the list does not have can still be typed }
-  FFont.Width := LedScale96(170);
+  FFont.Width := LedScale96(150);
+  FFont.Constraints.MinWidth := LedScale96(150);
+  FFont.Constraints.MaxWidth := LedScale96(150);
   FFont.Hint := 'Font';
   FFont.ShowHint := True;
   FFont.DropDownCount := 20;
   FEdit.GetFontFamilies(FFont.Items);
   FFont.OnSelect := @FontChosen;
   FFont.OnKeyDown := @ComboKeyDown;
-  FFont.BorderSpacing.Around := LedScale96(1);
   FSize := TComboBox.Create(Self);
   FSize.Parent := FBar;
   FSize.Style := csDropDown;
   FSize.Width := LedScale96(58);
+  FSize.Constraints.MinWidth := LedScale96(58);
+  FSize.Constraints.MaxWidth := LedScale96(58);
   FSize.Hint := 'Font size';
   FSize.ShowHint := True;
   FSize.DropDownCount := 16;
@@ -854,18 +1190,19 @@ begin
     FSize.Items.Add(Sizes[i]);
   FSize.OnSelect := @SizeChosen;
   FSize.OnKeyDown := @ComboKeyDown;
-  FSize.BorderSpacing.Around := LedScale96(1);
   AddIconButton('fontgrow', 'Bigger (Ctrl+])', @GrowClicked);
   AddIconButton('fontshrink', 'Smaller (Ctrl+[)', @ShrinkClicked);
-  AddSeparator;
+  AddIconButton('clearformat', 'Clear formatting (the selection''s own; its style stays)', @ClearClicked);
+  FPainterBtn := AddIconToggle('formatpainter', 'Format painter: the look at the caret onto the next selection ' +
+    '(double-click: onto every one, until Escape)', @PainterClicked);
+  FPainterBtn.OnDblClick := @PainterDblClicked;
+  NextRow;
   FBoldBtn := AddIconToggle('fmtbold', 'Bold (Ctrl+B)', @BoldClicked);
   FItalicBtn := AddIconToggle('fmtitalic', 'Italic (Ctrl+I)', @ItalicClicked);
   FUnderBtn := AddIconToggle('fmtunderline', 'Underline (Ctrl+U)', @UnderlineClicked);
   FStrikeBtn := AddIconToggle('fmtstrike', 'Strikethrough', @StrikeClicked);
-  FSupBtn := AddIconToggle('fmtsuper', 'Superscript', @SupClicked);
   FSubBtn := AddIconToggle('fmtsub', 'Subscript', @SubClicked);
-  AddSeparator;
-
+  FSupBtn := AddIconToggle('fmtsuper', 'Superscript', @SupClicked);
   { colours: the button puts on the last one chosen, the arrow chooses another }
   FColorMenu := TPopupMenu.Create(Self);
   M := Item(FColorMenu, 'Automatic', -1, @ColorItemClicked);
@@ -885,10 +1222,11 @@ begin
   Swatch(Item(FHighlightMenu, 'No highlight', -1, @HighlightItemClicked), clWhite, True);
   AddIconButton('highlight', 'Highlight', @HighlightClicked);
   Drop(FHighlightMenu, 'Choose the highlight colour');
-  AddIconButton('clearformat', 'Clear formatting (the selection''s own; its style stays)', @ClearClicked);
+  EndRows;
   AddSeparator;
 
-  { the paragraph }
+  { the paragraph: lists, indents and spacing, then alignment }
+  BeginRows;
   FBulletBtn := AddIconButton('bullets', 'Bullets', @BulletsClicked);
   FBulletBtn.GroupIndex := 60;
   FBulletBtn.AllowAllUp := True;
@@ -897,13 +1235,6 @@ begin
   FNumberBtn.AllowAllUp := True;
   AddIconButton('unindent', 'Decrease indent (in a list: a level up)', @IndentLessClicked);
   AddIconButton('indent', 'Increase indent (in a list: a level down)', @IndentMoreClicked);
-  AddSeparator;
-  for i := 0 to 3 do
-  begin
-    FAlignBtns[i] := AddIconButton(AlignIcons[i], AlignHints[i], @AlignClicked);
-    FAlignBtns[i].GroupIndex := 62;     { one of the four }
-    FAlignBtns[i].Tag := AlignValues[i];
-  end;
   FSpacingMenu := TPopupMenu.Create(Self);
   for i := 0 to High(Spacings) do
     Item(FSpacingMenu, FormatFloat('0.0#', Spacings[i] / 1000), Spacings[i], @LineSpacingItemClicked)
@@ -918,11 +1249,35 @@ begin
   Item(FSpacingMenu, '12 pt after', 1012, @ParaSpaceItemClicked);
   B := AddIconButton('linespacing', 'Line and paragraph spacing', @MenuDropClicked);
   B.Tag := PtrInt(FSpacingMenu);
+  NextRow;
+  for i := 0 to 3 do
+  begin
+    FAlignBtns[i] := AddIconButton(AlignIcons[i], AlignHints[i], @AlignClicked);
+    FAlignBtns[i].GroupIndex := 62;     { one of the four }
+    FAlignBtns[i].Tag := AlignValues[i];
+  end;
+  EndRows;
   AddSeparator;
 
-  { the paragraph's style }
+  { the styles: the panel shows them as they look, the box lists them all }
+  BeginRows;
   FStyle.Parent := FBar;
-  FStyle.BorderSpacing.Around := LedScale96(1);
+  NextRow;
+  with TLabel.Create(Self) do
+  begin
+    Parent := FBar;
+    Caption := 'Styles';
+    BorderSpacing.Left := LedScale96(4);
+  end;
+  EndRows;
+  FGallery := TLedStyleGallery.Create(Self);
+  FGallery.Parent := FBar;
+  FGallery.Width := LedScale96(3 * 86 + 18);
+  FGallery.Height := BarHeight;
+  FGallery.Hint := 'Paragraph styles: click one to give the paragraph it';
+  FGallery.ShowHint := True;
+  TLedStyleGallery(FGallery).OnPick := @GalleryPicked;
+  FGallery.BorderSpacing.Around := LedScale96(1);
 end;
 
 procedure TLedVisualPane.RefreshStyles;
@@ -953,6 +1308,8 @@ begin
     finally
       FStyle.Items.EndUpdate;
     end;
+    if FGallery <> nil then
+      TLedStyleGallery(FGallery).Fill(FEdit, FStyle.Items);
   finally
     L.Free;
   end;
@@ -972,6 +1329,7 @@ begin
   if not FSize.Focused then
     FSize.Text := FormatFloat('0.#', P.size / PD_SP_PER_PT);
   FBoldBtn.Down := P.weight >= 600;
+  FPainterBtn.Down := FEdit.FormatPainterOn;
   FItalicBtn.Down := P.italic <> 0;
   FUnderBtn.Down := P.underline <> 0;
   FStrikeBtn.Down := P.strike <> 0;
@@ -990,6 +1348,8 @@ begin
   RefreshStyles;
   if not FStyle.DroppedDown then
     FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
+  if FGallery <> nil then
+    TLedStyleGallery(FGallery).Current := FEdit.CurrentStyleName;
   FitWidth;     { the paper may have changed (landscape, another size) }
   ShowZoom;
   { the Layout tab's boxes and menus }
@@ -1022,6 +1382,31 @@ begin
       FTabBtns[FTableTab].Visible := False;
     end;
   end;
+end;
+
+{ the painter: on for one selection, off again when clicked while on }
+procedure TLedVisualPane.PainterClicked(Sender: TObject);
+begin
+  if FEdit.FormatPainterOn then
+    FEdit.StopFormatPainter
+  else
+    FEdit.StartFormatPainter(False);
+  FPainterBtn.Down := FEdit.FormatPainterOn;
+  BackToPage;
+end;
+
+{ double-clicked: on for every selection, until Escape or another click }
+procedure TLedVisualPane.PainterDblClicked(Sender: TObject);
+begin
+  FEdit.StartFormatPainter(True);
+  FPainterBtn.Down := True;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.GalleryPicked(Sender: TObject);
+begin
+  FEdit.SetParagraphStyle(TLedStyleGallery(FGallery).Picked);
+  BackToPage;
 end;
 
 procedure TLedVisualPane.FontChosen(Sender: TObject);
@@ -1210,7 +1595,8 @@ var
   end;
 
   { a button with a picture and a name, opening AMenu when it has one }
-  function Big(const AIcon, ACaption, AHint: string; AClick: TNotifyEvent; AMenu: TPopupMenu = nil): TSpeedButton;
+  function Big(const AIcon, ACaption, AHint: string; AClick: TNotifyEvent; AMenu: TPopupMenu = nil;
+    ABig: Boolean = True): TSpeedButton;
   begin
     if AMenu <> nil then
     begin
@@ -1219,11 +1605,14 @@ var
     end
     else
       Result := AddButton(ACaption, AHint, [], AClick);
-    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
-    Result.Spacing := LedScale96(4);
+    if ABig then
+      SetIcon(Result, AIcon)
+    else
+      SetSmallIcon(Result, AIcon);
   end;
 
 begin
+  { the big ones: what is put in most; the others two by two beside them }
   M := TPopupMenu.Create(Self);
   for i := 0 to High(TableSizes) do
     Item(M, TableSizes[i], i, @TableItemClicked);
@@ -1231,27 +1620,29 @@ begin
   Item(M, 'Other size...', -1, @TableItemClicked);
   Big('inserttable', 'Table', 'Insert a table at the caret', nil, M);
   Big('insertpicture', 'Picture', 'Insert a picture from a file (PNG, JPEG, GIF)', @PictureClicked);
-  Big('insertlink', 'Link', 'Make the selection a link, or insert one', @LinkClicked);
-  AddSeparator;
-  M := TPopupMenu.Create(Self);
-  Item(M, 'Page break', PD_BREAK_PAGE, @BreakItemClicked);
-  Item(M, 'Column break', PD_BREAK_COLUMN, @BreakItemClicked);
-  Item(M, 'Horizontal line', PD_BREAK_RULE, @BreakItemClicked);
-  Big('insertbreak', 'Break', 'A page or column break, or a horizontal line', nil, M);
   M := TPopupMenu.Create(Self);
   Item(M, 'In the line...', 0, @EquationItemClicked);
   Item(M, 'On a line of its own...', 1, @EquationItemClicked);
   Big('insertequation', 'Equation', 'An equation, written in LaTeX', nil, M);
   AddSeparator;
+  BeginRows;
+  Big('insertlink', 'Link', 'Make the selection a link, or insert one', @LinkClicked, nil, False);
   M := TPopupMenu.Create(Self);
   Item(M, 'Page number', PD_FIELD_PAGE, @FieldItemClicked);
   Item(M, 'Number of pages', PD_FIELD_PAGES, @FieldItemClicked);
   Item(M, 'Date', PD_FIELD_DATE, @FieldItemClicked);
-  Big('insertfield', 'Field', 'A page number, the number of pages or the date, kept up to date', nil, M);
+  Big('insertfield', 'Field', 'A page number, the number of pages or the date, kept up to date', nil, M, False);
+  NextRow;
+  M := TPopupMenu.Create(Self);
+  Item(M, 'Page break', PD_BREAK_PAGE, @BreakItemClicked);
+  Item(M, 'Column break', PD_BREAK_COLUMN, @BreakItemClicked);
+  Item(M, 'Horizontal line', PD_BREAK_RULE, @BreakItemClicked);
+  Big('insertbreak', 'Break', 'A page or column break, or a horizontal line', nil, M, False);
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Symbols) do
     Item(M, Symbols[i], i, @SymbolItemClicked);
-  Big('insertsymbol', 'Symbol', 'A symbol the keyboard does not have', nil, M);
+  Big('insertsymbol', 'Symbol', 'A symbol the keyboard does not have', nil, M, False);
+  EndRows;
 end;
 
 procedure TLedVisualPane.TableItemClicked(Sender: TObject);
@@ -1379,15 +1770,16 @@ begin
   AMenu.Items.Add(Result);
 end;
 
-function TLedVisualPane.MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu): TSpeedButton;
+function TLedVisualPane.MenuButton(const AIcon, ACaption, AHint: string; AMenu: TPopupMenu;
+  ABig: Boolean): TSpeedButton;
 begin
   Result := AddButton(ACaption + ' ' + #$E2#$96#$BE, AHint, [], @MenuDropClicked);
   Result.Tag := PtrInt(AMenu);
-  if AIcon <> '' then
-  begin
-    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(20));
-    Result.Spacing := LedScale96(4);
-  end;
+  if AIcon = '' then
+  else if ABig then
+    SetIcon(Result, AIcon)
+  else
+    SetSmallIcon(Result, AIcon);
 end;
 
 function TLedVisualPane.NumberBox(const ACaption, AHint: string; AMax, AStep: Double;
@@ -1410,10 +1802,13 @@ begin
   L.Parent := Box;
   L.Caption := ACaption;
   L.Layout := tlCenter;
-  L.AutoSize := True;
+  L.AutoSize := False;      { the same width for all: the boxes line up in their two rows }
+  L.Width := LedScale96(84);
+  L.Height := LedScale96(26);
   Result := TFloatSpinEdit.Create(Self);
   Result.Parent := Box;
   Result.Width := LedScale96(64);
+  Result.Constraints.MinWidth := LedScale96(64);
   Result.MinValue := 0;
   Result.MaxValue := AMax;
   Result.Increment := AStep;
@@ -1426,7 +1821,7 @@ end;
 
 procedure TLedVisualPane.BuildLayout;
 var
-  M: TPopupMenu;
+  M, LnMenu: TPopupMenu;
 begin
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Normal (1" all round)', 0, @MarginsItemClicked);
@@ -1462,12 +1857,24 @@ begin
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Section break, next page', 2, @LayoutBreakItemClicked);
   MenuItem(M, 'Section break, continuous', 3, @LayoutBreakItemClicked);
-  MenuButton('insertbreak', 'Breaks', 'A page or column break, or a new section with page settings of its own', M);
   AddSeparator;
-  SetIcon(AddButton('Header...', 'The text at the top of every page; {page}, {pages} and {date} are kept up to date',
+  BeginRows;
+  MenuButton('insertbreak', 'Breaks', 'A page or column break, or a new section with page settings of its own', M, False);
+  NextRow;
+  LnMenu := TPopupMenu.Create(Self);
+  MenuItem(LnMenu, 'None', 0, @LineNumberItemClicked);
+  MenuItem(LnMenu, 'Every line', 1, @LineNumberItemClicked);
+  MenuItem(LnMenu, 'Every 5 lines', 5, @LineNumberItemClicked);
+  MenuButton('linenumbers', 'Line numbers', 'Lines numbered in the margin', LnMenu, False);
+  EndRows;
+  AddSeparator;
+  BeginRows;
+  SetSmallIcon(AddButton('Header...', 'The text at the top of every page; {page}, {pages} and {date} are kept up to date',
     [], @HeaderClicked), 'header');
-  SetIcon(AddButton('Footer...', 'The text at the bottom of every page; {page}, {pages} and {date} are kept up to date',
+  NextRow;
+  SetSmallIcon(AddButton('Footer...', 'The text at the bottom of every page; {page}, {pages} and {date} are kept up to date',
     [], @FooterClicked), 'footer');
+  EndRows;
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Bottom of the page, centred', 0, @PageNumberItemClicked);
   MenuItem(M, '"Page N of M" at the bottom', 1, @PageNumberItemClicked);
@@ -1476,16 +1883,14 @@ begin
   MenuItem(M, 'Start at...', 3, @PageNumberItemClicked);
   MenuItem(M, 'Remove', 4, @PageNumberItemClicked);
   MenuButton('pagenumbers', 'Page numbers', 'Page numbers in the header or footer', M);
-  M := TPopupMenu.Create(Self);
-  MenuItem(M, 'None', 0, @LineNumberItemClicked);
-  MenuItem(M, 'Every line', 1, @LineNumberItemClicked);
-  MenuItem(M, 'Every 5 lines', 5, @LineNumberItemClicked);
-  MenuButton('linenumbers', 'Line numbers', 'Lines numbered in the margin', M);
   AddSeparator;
+  BeginRows;
   FIndentLeft := NumberBox('Indent left', 'The paragraph''s left indent, in inches', 10, 0.25, 2);
-  FIndentRight := NumberBox('Indent right', 'The paragraph''s right indent, in inches', 10, 0.25, 2);
   FSpaceBefore := NumberBox('Space before', 'Space before the paragraph, in points', 500, 6, 0);
+  NextRow;
+  FIndentRight := NumberBox('Indent right', 'The paragraph''s right indent, in inches', 10, 0.25, 2);
   FSpaceAfter := NumberBox('Space after', 'Space after the paragraph, in points', 500, 6, 0);
+  EndRows;
 end;
 
 procedure TLedVisualPane.MarginsItemClicked(Sender: TObject);
@@ -1688,23 +2093,29 @@ begin
   MenuItem(M, 'With the cell below', 1, @TableMergeItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Split the merged cell', 2, @TableMergeItemClicked);
-  MenuButton('tblmerge', 'Merge', 'Join cells into one, or split one back', M);
+  BeginRows;
+  MenuButton('tblmerge', 'Merge', 'Join cells into one, or split one back', M, False);
+  NextRow;
+  FHeaderRowBtn := AddToggle('Header row', 'Repeat the first row at the top of every page the table runs onto', [],
+    @HeaderRowClicked);
+  SetSmallIcon(FHeaderRowBtn, 'headerrow');
+  EndRows;
   AddSeparator;
+  BeginRows;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Shades) do
     Swatch(MenuItem(M, ShadeNames[i], Shades[i], @ShadingItemClicked), FromRGB(Shades[i]), False);
   MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No shading', -1, @ShadingItemClicked), clWhite, True);
-  MenuButton('shading', 'Shading', 'A colour behind the selected cells', M);
+  MenuButton('shading', 'Shading', 'A colour behind the selected cells', M, False);
+  NextRow;
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'None', 0, @BordersItemClicked);
   MenuItem(M, 'Thin (0.5 pt)', 5, @BordersItemClicked);
   MenuItem(M, 'Medium (1 pt)', 10, @BordersItemClicked);
   MenuItem(M, 'Thick (1.5 pt)', 15, @BordersItemClicked);
-  MenuButton('borders', 'Borders', 'The table''s rules', M);
-  FHeaderRowBtn := AddToggle('Header row', 'Repeat the first row at the top of every page the table runs onto', [],
-    @HeaderRowClicked);
-  SetIcon(FHeaderRowBtn, 'headerrow');
+  MenuButton('borders', 'Borders', 'The table''s rules', M, False);
+  EndRows;
   SetIcon(AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked), 'distribute');
 end;
 
@@ -1781,15 +2192,17 @@ begin
   MenuItem(M, 'Footnote...', 0, @NoteItemClicked);
   MenuItem(M, 'Endnote...', 1, @NoteItemClicked);
   MenuButton('insertnote', 'Note', 'A footnote or an endnote at the caret', M);
-  AddSeparator;
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Figure...', 0, @CaptionItemClicked);
   MenuItem(M, 'Table...', 1, @CaptionItemClicked);
   MenuItem(M, 'Equation...', 2, @CaptionItemClicked);
   MenuButton('caption', 'Caption', 'A numbered caption under the caret''s paragraph: Figure 1, Table 1, ...', M);
-  SetIcon(AddButton('Cross-reference...', 'A reference to a caption or heading: its number, page or text, kept up to date',
+  BeginRows;
+  SetSmallIcon(AddButton('Cross-reference...', 'A reference to a caption or heading: its number, page or text, kept up to date',
     [], @CrossRefClicked), 'crossref');
-  SetIcon(AddButton('Bookmark...', 'A named place, for links to #name', [], @BookmarkClicked), 'bookmark');
+  NextRow;
+  SetSmallIcon(AddButton('Bookmark...', 'A named place, for links to #name', [], @BookmarkClicked), 'bookmark');
+  EndRows;
 end;
 
 procedure TLedVisualPane.TocItemClicked(Sender: TObject);
@@ -1910,10 +2323,13 @@ const
 var
   i: Integer;
 begin
+  BeginRows;
   FZoomBox := TComboBox.Create(Self);
   FZoomBox.Parent := FBar;
   FZoomBox.Style := csDropDown;
   FZoomBox.Width := LedScale96(100);
+  FZoomBox.Constraints.MinWidth := LedScale96(100);
+  FZoomBox.Constraints.MaxWidth := LedScale96(100);
   FZoomBox.Hint := 'Zoom (also Ctrl+wheel)';
   FZoomBox.ShowHint := True;
   for i := 0 to High(Zooms) do
@@ -1922,13 +2338,19 @@ begin
   FZoomBox.OnSelect := @ZoomChosen;
   FZoomBox.OnKeyDown := @ZoomKeyDown;
   FZoomBox.BorderSpacing.Around := LedScale96(1);
+  NextRow;
   AddIconButton('zoomout', 'Zoom out', @ZoomOutClicked);
   AddIconButton('zoomin', 'Zoom in', @ZoomInClicked);
+  EndRows;
   AddSeparator;
-  FMarksBtn := AddIconToggle('formatmarks', 'Show formatting marks: where each paragraph ends', @MarksClicked);
+  BeginRows;
+  FMarksBtn := AddToggle('Marks', 'Show formatting marks: where each paragraph ends', [], @MarksClicked);
+  SetSmallIcon(FMarksBtn, 'formatmarks');
+  NextRow;
   FNavBtn := AddToggle('Navigation', 'A list of the headings beside the page: click one to go there', [],
     @NavClicked);
-  SetIcon(FNavBtn, 'navigation');
+  SetSmallIcon(FNavBtn, 'navigation');
+  EndRows;
 
   { the navigation list, hidden until asked for }
   FNavPanel := TPanel.Create(Self);

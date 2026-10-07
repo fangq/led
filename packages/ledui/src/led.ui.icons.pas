@@ -153,7 +153,7 @@ uses
   The MATLAB logo is the MATLAB fork's (Mima) alone: its file ships there,
   and LED draws a page with an M for the name instead. }
 const
-  ArtworkNames: array[0..{$IFDEF MIMA}101{$ELSE}100{$ENDIF}] of string = (
+  ArtworkNames: array[0..{$IFDEF MIMA}102{$ELSE}101{$ENDIF}] of string = (
     'assistant', 'back', 'breakpoint', 'browser', 'codeform', 'copy',
     'cut', 'debug', 'files', 'find', 'forward', 'help', 'home',
     {$IFDEF MIMA}'matlab', {$ENDIF}'new', 'newfile', 'newfolder', 'notebook', 'open',
@@ -171,7 +171,8 @@ const
     'inserttable', 'join', 'linenumbers', 'linespacing', 'margins', 'navigation',
     'nextchange', 'numbering', 'orientation', 'pagenumbers', 'pagesize', 'prevchange',
     'reject', 'shading', 'share', 'tbldelete', 'tblinsert', 'tblmerge',
-    'textcolor', 'toc', 'trackchanges', 'unindent', 'zoomin', 'zoomout');
+    'textcolor', 'toc', 'trackchanges', 'unindent', 'zoomin', 'zoomout',
+    'formatpainter');
 
 function LedIconArtwork(const AName: string): string;
 var
@@ -345,7 +346,7 @@ const
 
   { Kept in one place so the toolbar, the menus and the tab headers all agree
     on what index means what. }
-  IconNames: array[0..129] of string = (
+  IconNames: array[0..130] of string = (
     'new', 'open', 'save', 'saveas', 'close', 'reload', 'print', 'quit',
     'undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall',
     'indent', 'unindent', 'comment', 'uncomment',
@@ -406,7 +407,8 @@ const
     'linespacing', 'margins', 'navigation', 'nextchange', 'numbering', 'orientation',
     'pagenumbers', 'pagesize', 'prevchange', 'reject', 'shading', 'share',
     'tbldelete', 'tblinsert', 'tblmerge', 'textcolor', 'toc', 'trackchanges',
-    'zoomin', 'zoomout'
+    'zoomin', 'zoomout',
+    'formatpainter'
   );
 
 
