@@ -379,27 +379,19 @@ object LedMainForm: TLedMainForm
     end
     object actJoinShared: TAction
       Caption = '&Join Shared Document...'
-      Hint = 'Join Shared Document|Open a document someone shares through a relay (their Host/Invite gives the address and a token)'
+      Hint = 'Join|Open a document someone shares with you, from the link they sent'
+      ImageIndex = 109
       OnExecute = actJoinSharedExecute
     end
     object actShareDoc: TAction
       Caption = 'S&hare Document...'
-      Hint = 'Share Document|Edit this document together with others, through a relay you name'
+      Hint = 'Share|Edit this document together with others: links to send them (while shared: the links again)'
+      ImageIndex = 121
       OnExecute = actShareDocExecute
     end
-    object actHostDoc: TAction
-      Caption = 'Host Document...'
-      Hint = 'Host Document|Share this document through a relay this LED runs, and invite others'
-      OnExecute = actHostDocExecute
-    end
-    object actInviteDoc: TAction
-      Caption = 'Invite...'
-      Hint = 'Invite|The links to send to whoever is to join the document this LED hosts'
-      OnExecute = actInviteDocExecute
-    end
     object actLeaveDoc: TAction
-      Caption = 'Leave Shared Document'
-      Hint = 'Leave Shared Document|Stop editing together; the document stays as it is'
+      Caption = 'Stop Sharing'
+      Hint = 'Stop Sharing|Stop editing together; the document stays as it is'
       OnExecute = actLeaveDocExecute
     end
     object actNewWindow: TAction
@@ -646,12 +638,6 @@ object LedMainForm: TLedMainForm
       end
       object mi_ShareDoc: TMenuItem
         Action = actShareDoc
-      end
-      object mi_HostDoc: TMenuItem
-        Action = actHostDoc
-      end
-      object mi_InviteDoc: TMenuItem
-        Action = actInviteDoc
       end
       object mi_LeaveDoc: TMenuItem
         Action = actLeaveDoc
@@ -1255,6 +1241,23 @@ object LedMainForm: TLedMainForm
       Left = 385
       Top = 2
       Action = actStopTool
+    end
+    object tbSep6: TToolButton
+      Left = 409
+      Height = 24
+      Top = 2
+      Caption = '-'
+      Style = tbsDivider
+    end
+    object tbShare: TToolButton
+      Left = 433
+      Top = 2
+      Action = actShareDoc
+    end
+    object tbJoin: TToolButton
+      Left = 457
+      Top = 2
+      Action = actJoinShared
     end
   end
   object PopupEditor: TPopupMenu

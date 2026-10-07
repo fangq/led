@@ -57,11 +57,7 @@ type
     FSync: TParadeSync;
     FCollab: TLedCollab;        { sharing, hosting, inviting: the same for a page as for a text }
     FFileName: string;
-    FShareBtn, FJoinBtn, FHostBtn: TSpeedButton;
     FSyncStatus: TLabel;
-    procedure ShareClicked(Sender: TObject);
-    procedure JoinClicked(Sender: TObject);
-    procedure HostClicked(Sender: TObject);
     procedure SyncChanged(Sender: TObject);
     function DocName: string;
     {$ENDIF}
@@ -818,18 +814,8 @@ begin
   {$ENDIF}
 
   {$IFDEF LED_PARADE_SYNC}
-  { a shared document: everyone editing it at once, through a relay }
-  AddTab('Share');
-  FShareBtn := AddButton('Share', 'Share this document through a relay, for others to edit with you', [], @ShareClicked);
-  SetIcon(FShareBtn, 'share');
-  BeginRows;
-  FJoinBtn := AddButton('Join', 'Open a shared document from a relay in place of this one', [], @JoinClicked);
-  SetSmallIcon(FJoinBtn, 'join');
-  NextRow;
-  FHostBtn := AddButton('Host', 'Share this document through a relay LED runs itself, and invite others', [],
-    @HostClicked);
-  SetSmallIcon(FHostBtn, 'host');
-  EndRows;
+  { a shared document: everyone editing it at once, through a relay (Share and Join are on LED's own toolbar,
+    for every kind of document); how the session is doing, on the tabs' row }
   FSyncStatus := TLabel.Create(Self);
   FSyncStatus.Parent := FTabStrip;    { on the tabs' row: seen whichever tab is open }
   FSyncStatus.Caption := '';
@@ -2848,38 +2834,9 @@ begin
   Result := ChangeFileExt(ExtractFileName(FFileName), '');
 end;
 
-procedure TLedVisualPane.ShareClicked(Sender: TObject);
-begin
-  if FCollab.Active then
-    FCollab.Leave       { Share is Leave while shared }
-  else
-    FCollab.Share('');
-  BackToPage;
-end;
-
-procedure TLedVisualPane.JoinClicked(Sender: TObject);
-begin
-  if (FEdit.Modified or (Trim(FEdit.DocumentText) <> '')) and
-     (MessageDlg('Join', 'The shared document replaces what this tab shows. Go on?', mtConfirmation,
-      [mbYes, mbNo], 0) <> mrYes) then
-    Exit;
-  JoinShared;
-end;
-
 function TLedVisualPane.JoinWith(const Server, Doc, Token, Who: string): Boolean;
 begin
   Result := FCollab.JoinWith(Server, Doc, Token, Who);
-  BackToPage;
-end;
-
-procedure TLedVisualPane.HostClicked(Sender: TObject);
-begin
-  if FCollab.Hosting then
-    FCollab.Invite      { Host is Invite while hosting }
-  else if FCollab.Active then
-    MessageDlg('Host', 'This document is shared already: Leave first.', mtInformation, [mbOK], 0)
-  else
-    FCollab.Host(DocName);
   BackToPage;
 end;
 
@@ -2890,25 +2847,12 @@ begin
   if not FCollab.Active then
   begin
     FSyncStatus.Caption := '';
-    FShareBtn.Caption := 'Share';
-    FHostBtn.Caption := 'Host';
-    FJoinBtn.Enabled := True;
-    FHostBtn.Enabled := True;
     Exit;
   end;
-  if FCollab.Hosting then
-  begin
-    FHostBtn.Caption := 'Invite';
-    FHostBtn.Enabled := True;
-  end
-  else
-    FHostBtn.Enabled := False;
   S := FCollab.StatusText;
   if FEdit.ReadOnly then
     S := S + ' (read only)';
   FSyncStatus.Caption := S;
-  FShareBtn.Caption := 'Leave';
-  FJoinBtn.Enabled := False;
 end;
 {$ENDIF}
 

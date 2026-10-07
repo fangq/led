@@ -211,18 +211,22 @@ The visual editor is built in when a Parade checkout sits beside LED
 
 ### Editing together
 
-**File ▸ Share / Host / Invite / Leave** share the document in front with
-other LEDs, live: each sees the others' typing as it happens, their carets
-and selections in their colours, and `Ctrl+Z` takes back only one's own
-edits. It works for any text tab (code, notes, a Makefile) as well as for
-the visual editor's pages.
+**Share** and **Join** on the toolbar (and in the File menu) work for any
+document: a text tab (code, notes, a Makefile) or the visual editor's pages.
+Each sees the others' typing as it happens, their carets and selections in
+their colours, and `Ctrl+Z` takes back only one's own edits.
 
-- **Host** runs the relay inside this LED and shows an invitation link per
-  role (editor, commenter, viewer) to send to the others; **Share** uses a
-  relay someone else runs.
-- **File ▸ Join Shared Document** takes a link. A shared text opens in a new
-  text tab, coloured as its name says (`hello.pas` is Pascal); a shared Word
-  document opens as pages.
+- **Share** asks for the document's name and where it is shared from, then
+  gives two links to send, *can edit* and *can view*, each with a Copy
+  button. Press Share again while shared for the links, or to stop sharing.
+  - *From this computer* (the default): LED runs the relay itself, and the
+    others connect to this machine (its port must be reachable from theirs).
+  - *Through a relay server*: one that is always on, run by you or your
+    group (`parade_relay serve`). Give its address and its key, and LED
+    makes the links; given only a token, the one link it can offer lets
+    others in as you.
+- **Join** takes a link. A shared text opens in a new text tab, coloured as
+  its name says (`hello.pas` is Pascal); a shared Word document as pages.
 - What is typed while the network is down is kept, on disk too, and sent
   when it comes back. The status bar says how the session is doing and who
   else is there.
