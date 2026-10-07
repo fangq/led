@@ -55,8 +55,6 @@ type
     actNew: TAction;
     actJoinShared: TAction;
     actShareDoc: TAction;
-    actHostDoc: TAction;
-    actInviteDoc: TAction;
     actLeaveDoc: TAction;
     actOpen: TAction;
     actSave: TAction;
@@ -333,6 +331,9 @@ type
     tbReplace: TToolButton;
     tbSep5: TToolButton;
     tbStopTool: TToolButton;
+    tbSep6: TToolButton;
+    tbShare: TToolButton;
+    tbJoin: TToolButton;
     PopupEditor: TPopupMenu;
     miSpelling: TMenuItem;
     mcSpellSep: TMenuItem;
@@ -429,8 +430,6 @@ type
     procedure actNewNotebookExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
     procedure actShareDocExecute(Sender: TObject);
-    procedure actHostDocExecute(Sender: TObject);
-    procedure actInviteDocExecute(Sender: TObject);
     procedure actLeaveDocExecute(Sender: TObject);
     {$IFDEF LED_PARADE_SYNC}
     { the active tab's sharing: its page's, or its text's (nil: a text tab not shared yet, unless AMake) }
@@ -1089,8 +1088,6 @@ begin
   { File > Join Shared Document is there when this LED can share }
   actJoinShared.Visible := LedVisualCanShare;
   actShareDoc.Visible := LedVisualCanShare;
-  actHostDoc.Visible := LedVisualCanShare;
-  actInviteDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
   { Shared with every other window in this process; see LedDocuments. }
   FDocs := LedDocuments;
@@ -6835,49 +6832,12 @@ begin
   if C = nil then
     ReportError('There is no document here to share (a text, or a page in the visual editor).')
   else if C.Active then
-    MessageDlg('Share', 'This document is shared already.', mtInformation, [mbOK], 0)
+    C.Invite        { shared: its links again, and Stop sharing }
   else
     C.Share(ShareName(ActiveTab));
   UpdateStatusBar;
   {$ELSE}
   ReportError('This LED was built without Parade''s collaboration (its yrs library).');
-  {$ENDIF}
-end;
-
-procedure TLedMainForm.actHostDocExecute(Sender: TObject);
-{$IFDEF LED_PARADE_SYNC}
-var
-  C: TLedCollab;
-{$ENDIF}
-begin
-  {$IFDEF LED_PARADE_SYNC}
-  C := TabCollab(True);
-  if C = nil then
-    ReportError('There is no document here to host (a text, or a page in the visual editor).')
-  else if C.Hosting then
-    C.Invite
-  else if C.Active then
-    MessageDlg('Host', 'This document is shared already: Leave first.', mtInformation, [mbOK], 0)
-  else
-    C.Host(ShareName(ActiveTab));
-  UpdateStatusBar;
-  {$ELSE}
-  ReportError('This LED was built without Parade''s collaboration (its yrs library).');
-  {$ENDIF}
-end;
-
-procedure TLedMainForm.actInviteDocExecute(Sender: TObject);
-{$IFDEF LED_PARADE_SYNC}
-var
-  C: TLedCollab;
-{$ENDIF}
-begin
-  {$IFDEF LED_PARADE_SYNC}
-  C := TabCollab(False);
-  if (C = nil) or not C.Active then
-    MessageDlg('Invite', 'Host this document first (File > Host Document).', mtInformation, [mbOK], 0)
-  else
-    C.Invite;
   {$ENDIF}
 end;
 

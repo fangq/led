@@ -20,7 +20,7 @@ interface
 
 {$IFDEF LED_PARADE_SYNC}
 uses
-  Classes, SysUtils, Controls, Forms, StdCtrls, Dialogs, Graphics, Clipbrd, IniFiles,
+  Classes, SysUtils, Controls, Forms, StdCtrls, ExtCtrls, Dialogs, Graphics, Clipbrd, IniFiles,
   SynEdit, SynEditMarkup, SynEditMiscClasses, SynEditTypes, SynEditKeyCmds, LazSynEditText, LCLType,
   parade, paradesync, paraderelay, paradetextsync;
 
@@ -96,18 +96,22 @@ type
     FHostDoc, FHostAddress: string;
     FHosting: Boolean;
     FOnChange: TNotifyEvent;
+    { what the links are made with: the relay's key (this LED's, or a relay's the user gave), else the token
+      the user was given (a link with it lets in as that token does) }
+    FLinkServer, FLinkDoc, FLinkToken: string;
+    FLinkKey: RawByteString;
     procedure SyncChanged(Sender: TObject);
     procedure CopyClicked(Sender: TObject);
+    function StartHere(const Doc, Who: string; Port: Integer; Everyone: Boolean): Boolean;
   public
     { a session (which AOwner owns) for this kind of document }
     constructor Create(AOwner: TComponent; ASync: TParadeSync; AKind: TLedCollabKind); reintroduce;
-    { the editor's document shared through a relay the user names (ADoc: the name it is offered) }
+    { the editor's document shared, the way Overleaf shares one: asked where from -- this computer (LED runs
+      the relay: the default) or a relay server -- then the links for the others shown (ADoc: its name) }
     function Share(const ADoc: string): Boolean;
-    { shared through a relay this LED runs: hosted, the invitation shown }
-    function Host(const ADoc: string): Boolean;
     { joined (the editor's document replaced by the shared one) }
     function JoinWith(const Server, Doc, Token, Who: string): Boolean;
-    { the links to send, a window to copy them from (hosting only) }
+    { the links to send, a window to copy them from, and to stop sharing in }
     procedure Invite;
     procedure Leave;
     function Active: Boolean;
@@ -741,6 +745,8 @@ begin
     FHosting := False;
     HostRelease;
   end;
+  if FSync.State = pssOff then
+    FLinkServer := '';
   if Assigned(FOnChange) then
     FOnChange(Self);
 end;
@@ -750,74 +756,218 @@ begin
   Result := FSync.State <> pssOff;
 end;
 
+{ the Share dialog: the document's name, yours, and where it is shared from; False when cancelled }
+function AskShare(var Doc, Who: string; out Here: Boolean; out Port: Integer; out Everyone: Boolean;
+  out Server, KeyOrToken: string): Boolean;
+var
+  F: TForm;
+  Panel: TPanel;
+  EDoc, EWho, EPort, EServer, EKey: TEdit;
+  RHere, RRelay: TRadioButton;
+  CNet: TCheckBox;
+  Ini: TIniFile;
+  Y: Integer;
+
+  function Lbl(const ACaption: string; AX, AY: Integer): TLabel;
+  begin
+    Result := TLabel.Create(F);
+    Result.Parent := F;
+    Result.Caption := ACaption;
+    Result.Left := LedScale96(AX);
+    Result.Top := LedScale96(AY) + 3;
+  end;
+
+  function Ed(const AText: string; AX, AY, AW: Integer): TEdit;
+  begin
+    Result := TEdit.Create(F);
+    Result.Parent := F;
+    Result.Text := AText;
+    Result.SetBounds(LedScale96(AX), LedScale96(AY), LedScale96(AW), Result.Height);
+  end;
+
+  function Btn(const ACaption: string; AResult: TModalResult; AX: Integer): TButton;
+  begin
+    Result := TButton.Create(F);
+    Result.Parent := Panel;
+    Result.Caption := ACaption;
+    Result.ModalResult := AResult;
+    Result.SetBounds(LedScale96(AX), LedScale96(8), LedScale96(96), LedScale96(28));
+  end;
+
+begin
+  Result := False;
+  Ini := CollabIni;
+  F := TForm.CreateNew(nil);
+  try
+    F.Caption := 'Share "' + Doc + '"';
+    F.Position := poMainFormCenter;
+    F.BorderStyle := bsDialog;
+    F.ClientWidth := LedScale96(520);
+    Y := 12;
+    Lbl('Document name', 12, Y);
+    EDoc := Ed(Doc, 150, Y, 356);
+    Inc(Y, 32);
+    Lbl('Your name', 12, Y);
+    EWho := Ed(Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER')), 150, Y, 356);
+    Inc(Y, 40);
+    RHere := TRadioButton.Create(F);
+    RHere.Parent := F;
+    RHere.Caption := 'From this computer: LED runs the relay; the others connect to ' + ThisHostName;
+    RHere.SetBounds(LedScale96(12), LedScale96(Y), LedScale96(500), LedScale96(22));
+    Inc(Y, 28);
+    Lbl('Port', 36, Y);
+    EPort := Ed(IntToStr(Ini.ReadInteger('host', 'port', 8765)), 150, Y, 80);
+    CNet := TCheckBox.Create(F);
+    CNet.Parent := F;
+    CNet.Caption := 'Other machines can connect';
+    CNet.Checked := Ini.ReadString('host', 'network', 'yes') <> 'no';
+    CNet.SetBounds(LedScale96(250), LedScale96(Y), LedScale96(260), LedScale96(22));
+    Inc(Y, 40);
+    RRelay := TRadioButton.Create(F);
+    RRelay.Parent := F;
+    RRelay.Caption := 'Through a relay server (one that is always on, run by you or your group)';
+    RRelay.SetBounds(LedScale96(12), LedScale96(Y), LedScale96(500), LedScale96(22));
+    Inc(Y, 28);
+    Lbl('Address', 36, Y);
+    EServer := Ed(Ini.ReadString('relay', 'server', 'https://'), 150, Y, 356);
+    Inc(Y, 32);
+    Lbl('Key or token', 36, Y);
+    EKey := Ed(Ini.ReadString('relay', 'token', ''), 150, Y, 356);
+    EKey.PasswordChar := '*';
+    EKey.Hint := 'The relay''s key (parade_relay secret) lets LED make the links for the others; a token ' +
+      '(parade_relay token) only lets you in, and the link it makes lets others in as you';
+    EKey.ShowHint := True;
+    Inc(Y, 36);
+    RHere.Checked := Ini.ReadString('share', 'from', 'here') <> 'relay';
+    RRelay.Checked := not RHere.Checked;
+    Panel := TPanel.Create(F);
+    Panel.Parent := F;
+    Panel.BevelOuter := bvNone;
+    Panel.SetBounds(0, LedScale96(Y), F.ClientWidth, LedScale96(44));
+    Btn('Share', mrOK, 300).Default := True;
+    Btn('Cancel', mrCancel, 410).Cancel := True;
+    F.ClientHeight := LedScale96(Y + 44);
+    if (F.ShowModal <> mrOK) or (Trim(EDoc.Text) = '') then
+      Exit;
+    Doc := Trim(EDoc.Text);
+    Who := Trim(EWho.Text);
+    Here := RHere.Checked;
+    Port := StrToIntDef(Trim(EPort.Text), 8765);
+    Everyone := CNet.Checked;
+    Server := Trim(EServer.Text);
+    KeyOrToken := Trim(EKey.Text);
+    if not Here and ((Server = '') or (Server = 'https://') or (KeyOrToken = '')) then
+    begin
+      MessageDlg('Share', 'A relay server needs its address and its key (or a token from whoever runs it).',
+        mtError, [mbOK], 0);
+      Exit;
+    end;
+    Ini.WriteString('relay', 'name', Who);
+    Ini.WriteString('share', 'from', BoolToStr(Here, 'here', 'relay'));
+    Ini.WriteInteger('host', 'port', Port);
+    Ini.WriteString('host', 'network', BoolToStr(Everyone, 'yes', 'no'));
+    if not Here then
+    begin
+      Ini.WriteString('relay', 'server', Server);
+      Ini.WriteString('relay', 'token', KeyOrToken);
+    end;
+    Result := True;
+  finally
+    F.Free;
+    Ini.Free;
+  end;
+end;
+
+{ a token (header.payload.signature), not a key }
+function IsToken(const S: string): Boolean;
+var
+  i, Dots: Integer;
+begin
+  Dots := 0;
+  for i := 1 to Length(S) do
+    Inc(Dots, Ord(S[i] = '.'));
+  Result := Dots = 2;
+end;
+
 function TLedCollab.Share(const ADoc: string): Boolean;
 var
-  Server, Doc, Token, Who: string;
+  Doc, Who, Server, KeyOrToken, Token: string;
+  Here, Everyone: Boolean;
+  Port: Integer;
 begin
   Doc := ADoc;
-  Result := LedAskConnection('Share this document', Server, Doc, Token, Who);
+  Result := AskShare(Doc, Who, Here, Port, Everyone, Server, KeyOrToken);
   if not Result then
     Exit;
-  Result := FSync.Start(Server, Doc, Token, Who, True);
-  if not Result then
-    MessageDlg('Share', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
+  if Here then
+    Result := StartHere(Doc, Who, Port, Everyone)
+  else
+  begin
+    if IsToken(KeyOrToken) then
+    begin
+      Token := KeyOrToken;
+      FLinkKey := '';
+      FLinkToken := Token;
+    end
+    else if Length(KeyOrToken) < 32 then
+    begin
+      MessageDlg('Share', 'That is neither a relay''s key (32 characters or more) nor a token.', mtError, [mbOK], 0);
+      Exit(False);
+    end
+    else
+    begin
+      FLinkKey := KeyOrToken;
+      FLinkToken := '';
+      Token := ParadeMakeToken(FLinkKey, Who, Doc, 'editor', 3650);
+    end;
+    Result := FSync.Start(Server, Doc, Token, Who, True);
+    if not Result then
+    begin
+      MessageDlg('Share', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
+      Exit;
+    end;
+    FLinkServer := Server;
+    FLinkDoc := Doc;
+  end;
+  if Result then
+    Invite;
 end;
 
 function TLedCollab.JoinWith(const Server, Doc, Token, Who: string): Boolean;
 begin
   Result := FSync.Start(Server, Doc, Token, Who, False);
   if not Result then
-    MessageDlg('Join', 'Could not join: ' + FSync.LastError, mtError, [mbOK], 0);
+    MessageDlg('Join', 'Could not join: ' + FSync.LastError, mtError, [mbOK], 0)
+  else
+  begin     { Share then gives the link that let this LED in }
+    FLinkServer := Server;
+    FLinkDoc := Doc;
+    FLinkToken := Token;
+    FLinkKey := '';
+  end;
 end;
 
-function TLedCollab.Host(const ADoc: string): Boolean;
+{ shared from this computer: LED's own relay started (or the one already running for another document) }
+function TLedCollab.StartHere(const Doc, Who: string; Port: Integer; Everyone: Boolean): Boolean;
 var
-  V: array of string;
-  Ini: TIniFile;
-  Doc, Who, Why, Url: string;
-  Port: Integer;
-  Everyone: Boolean;
+  Why, Url: string;
 begin
   Result := False;
-  Ini := CollabIni;
-  try
-    SetLength(V, 4);
-    V[0] := ADoc;
-    if V[0] = '' then
-      V[0] := Ini.ReadString('host', 'document', 'document');
-    V[1] := Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER'));
-    V[2] := IntToStr(Ini.ReadInteger('host', 'port', 8765));
-    V[3] := Ini.ReadString('host', 'network', 'yes');
-    if not InputQuery('Host this document',
-      ['Document name', 'Your name', 'Port', 'Let other machines in (yes / no: this machine only)'], V) or
-      (Trim(V[0]) = '') then
-      Exit;
-    Doc := Trim(V[0]);
-    Who := Trim(V[1]);
-    Port := StrToIntDef(Trim(V[2]), 8765);
-    Everyone := not SameText(Trim(V[3]), 'no');
-    Ini.WriteString('host', 'document', Doc);
-    Ini.WriteString('relay', 'name', Who);
-    Ini.WriteInteger('host', 'port', Port);
-    Ini.WriteString('host', 'network', BoolToStr(Everyone, 'yes', 'no'));
-  finally
-    Ini.Free;
-  end;
   if not HostStart(Port, Everyone, Why) then
   begin
-    MessageDlg('Host', 'Could not host: ' + Why, mtError, [mbOK], 0);
+    MessageDlg('Share', 'Could not share from this computer: ' + Why, mtError, [mbOK], 0);
     Exit;
   end;
   Url := Format('http://127.0.0.1:%d', [Port]);
   if not FSync.Start(Url, Doc, ParadeMakeToken(HostRelay.Secret, Who, Doc, 'editor', 3650), Who, True) then
   begin
-    { hosted here before: its log is still here, and it is what the others have }
-    if (HostRelay.Store.Last(Doc) > 0) and (MessageDlg('Host', Format('"%s" was hosted here before. Open it as the ' +
-      'others left it, in place of this tab''s text?', [Doc]), mtConfirmation, [mbYes, mbNo], 0) = mrYes) then
+    { shared from here before: its log is still here, and it is what the others have }
+    if (HostRelay.Store.Last(Doc) > 0) and (MessageDlg('Share', Format('"%s" was shared from here before. Open it ' +
+      'as the others left it, in place of this tab''s text?', [Doc]), mtConfirmation, [mbYes, mbNo], 0) = mrYes) then
     begin
       if not FSync.Start(Url, Doc, ParadeMakeToken(HostRelay.Secret, Who, Doc, 'editor', 3650), Who, False) then
       begin
-        MessageDlg('Host', 'Could not open it: ' + FSync.LastError, mtError, [mbOK], 0);
+        MessageDlg('Share', 'Could not open it: ' + FSync.LastError, mtError, [mbOK], 0);
         HostRelease;
         Exit;
       end;
@@ -825,7 +975,7 @@ begin
     else
     begin
       if HostRelay.Store.Last(Doc) = 0 then
-        MessageDlg('Host', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
+        MessageDlg('Share', 'Could not share: ' + FSync.LastError, mtError, [mbOK], 0);
       HostRelease;
       Exit;
     end;
@@ -836,8 +986,11 @@ begin
     FHostAddress := Format('http://%s:%d', [ThisHostName, Port])
   else
     FHostAddress := Url;
+  FLinkServer := FHostAddress;
+  FLinkDoc := Doc;
+  FLinkKey := HostRelay.Secret;
+  FLinkToken := '';
   SyncChanged(nil);
-  Invite;
   Result := True;
 end;
 
@@ -865,66 +1018,116 @@ begin
 end;
 
 { what the others need to join: a link for each role, which carries the relay, the document, a token and
-  what kind of document it is }
+  what kind of document it is; and Stop sharing }
 procedure TLedCollab.Invite;
 var
   F: TForm;
   M: TMemo;
-  B: TButton;
+  Panel: TPanel;
   EditLink, ReadLink: string;
 
-  procedure CopyButton(const ACaption, AText: string);
+  procedure Row(const ACaption, ALink: string);
   var
+    P: TPanel;
+    L: TLabel;
+    E: TEdit;
     C: TButton;
   begin
+    P := TPanel.Create(F);
+    P.Parent := F;
+    P.Align := alTop;
+    P.BevelOuter := bvNone;
+    P.Height := LedScale96(34);
+    P.Top := F.ClientHeight;    { after the ones before it }
+    L := TLabel.Create(F);
+    L.Parent := P;
+    L.Caption := ACaption;
+    L.Align := alLeft;
+    L.Layout := tlCenter;
+    L.AutoSize := False;
+    L.Width := LedScale96(90);
+    L.BorderSpacing.Left := LedScale96(12);
     C := TButton.Create(F);
-    C.Parent := F;
-    C.Align := alBottom;
-    C.Caption := ACaption;
-    C.Hint := AText;
+    C.Parent := P;
+    C.Caption := 'Copy';
+    C.Hint := ALink;
     C.OnClick := @CopyClicked;
+    C.Align := alRight;
+    C.BorderSpacing.Around := LedScale96(4);
+    C.Width := LedScale96(80);
+    E := TEdit.Create(F);
+    E.Parent := P;
+    E.Text := ALink;
+    E.ReadOnly := True;
+    E.Align := alClient;      { between the label and Copy }
+    E.BorderSpacing.Around := LedScale96(4);
+  end;
+
+  function Btn(const ACaption: string; AResult: TModalResult): TButton;
+  begin
+    Result := TButton.Create(F);
+    Result.Parent := Panel;
+    Result.Caption := ACaption;
+    Result.ModalResult := AResult;
+    Result.Align := alRight;
+    Result.BorderSpacing.Around := LedScale96(6);
+    Result.Width := LedScale96(120);
   end;
 
 begin
-  if not FHosting or (HostRelay = nil) then
+  if not Active or (FLinkServer = '') then
   begin
-    MessageDlg('Invite', 'Invitations come from the LED that hosts the document (Host).', mtInformation, [mbOK], 0);
+    MessageDlg('Share', 'This document is not shared from here: Share it first.', mtInformation, [mbOK], 0);
     Exit;
   end;
-  EditLink := ParadeInviteLink(FHostAddress, FHostDoc, ParadeMakeToken(HostRelay.Secret, 'guest', FHostDoc, 'editor',
-    30), KindWord(FKind));
-  ReadLink := ParadeInviteLink(FHostAddress, FHostDoc, ParadeMakeToken(HostRelay.Secret, 'reader', FHostDoc, 'viewer',
-    30), KindWord(FKind));
+  if FLinkKey <> '' then
+  begin
+    EditLink := ParadeInviteLink(FLinkServer, FLinkDoc, ParadeMakeToken(FLinkKey, 'guest', FLinkDoc, 'editor', 30),
+      KindWord(FKind));
+    ReadLink := ParadeInviteLink(FLinkServer, FLinkDoc, ParadeMakeToken(FLinkKey, 'reader', FLinkDoc, 'viewer', 30),
+      KindWord(FKind));
+  end
+  else
+  begin
+    EditLink := ParadeInviteLink(FLinkServer, FLinkDoc, FLinkToken, KindWord(FKind));
+    ReadLink := '';
+  end;
   F := TForm.CreateNew(nil);
   try
-    F.Caption := 'Invite to "' + FHostDoc + '"';
+    F.Caption := 'Share "' + FLinkDoc + '"';
     F.Position := poMainFormCenter;
-    F.SetBounds(0, 0, LedScale96(720), LedScale96(360));
+    F.SetBounds(0, 0, LedScale96(680), LedScale96(250));
     M := TMemo.Create(F);
     M.Parent := F;
-    M.Align := alClient;
+    M.Align := alTop;
+    M.Height := LedScale96(70);
     M.ReadOnly := True;
     M.WordWrap := True;
-    M.ScrollBars := ssAutoVertical;
-    M.Lines.Add('Send a link to whoever is to join: in their LED, File > Join Shared Document, and paste it. ' +
-      'Each is good for 30 days; whoever has one can get in, so send it privately.');
-    M.Lines.Add('');
-    M.Lines.Add('To edit:');
-    M.Lines.Add(EditLink);
-    M.Lines.Add('');
-    M.Lines.Add('To read only:');
-    M.Lines.Add(ReadLink);
-    M.Lines.Add('');
-    M.Lines.Add('The document stays reachable while this LED shares it (until Leave).');
-    CopyButton('Copy the link to read', ReadLink);
-    CopyButton('Copy the link to edit', EditLink);
-    B := TButton.Create(F);
-    B.Parent := F;
-    B.Align := alBottom;
-    B.Caption := 'OK';
-    B.ModalResult := mrOK;
-    B.Default := True;
-    F.ShowModal;
+    M.BorderStyle := bsNone;
+    M.Color := clBtnFace;
+    if FLinkKey <> '' then
+      M.Lines.Add('Send a link to whoever is to join; they open it with Join (on the toolbar) in their LED. Links ' +
+        'are good for 30 days, and whoever has one can get in: send them privately.')
+    else
+      M.Lines.Add('This is the link you came in with: whoever has it gets in as you do, so send it only to ' +
+        'people you trust. (Whoever shared the document can make links of their own for others.)');
+    if FHosting then
+      M.Lines.Add('The document is reachable while this LED shares it.');
+    Row('Can edit', EditLink);
+    if ReadLink <> '' then
+      Row('Can view', ReadLink);
+    Panel := TPanel.Create(F);
+    Panel.Parent := F;
+    Panel.Align := alBottom;
+    Panel.BevelOuter := bvNone;
+    Panel.Height := LedScale96(44);
+    Btn('Done', mrOK).Default := True;
+    if (FLinkKey <> '') or FHosting then
+      Btn('Stop sharing', mrAbort)
+    else
+      Btn('Leave', mrAbort);
+    if F.ShowModal = mrAbort then
+      Leave;
   finally
     F.Free;
   end;

@@ -15546,6 +15546,47 @@ begin
 end;
 
 {$IFDEF LED_PARADE_SYNC}
+type
+  { closes the Share dialog from inside its modal loop: what it has noted, then Cancel }
+  TLedShareProbe = class
+    Radios, Edits: Integer;
+    Seen: Boolean;
+    Shot: string;
+    procedure Close(Data: PtrInt);
+  end;
+
+procedure TLedShareProbe.Close(Data: PtrInt);
+var
+  Fm: TCustomForm;
+  i: Integer;
+  Dir: string;
+begin
+  Fm := Screen.ActiveCustomForm;
+  if (Fm = nil) or (Pos('Share', Fm.Caption) <> 1) then
+  begin
+    Application.QueueAsyncCall(@Close, Data + 1);   { not up yet }
+    Exit;
+  end;
+  Seen := True;
+  for i := 0 to Fm.ComponentCount - 1 do
+  begin
+    Inc(Radios, Ord(Fm.Components[i] is TRadioButton));
+    Inc(Edits, Ord(Fm.Components[i] is TEdit));
+  end;
+  Dir := GetEnvironmentVariable('LED_SELFTEST_SHOTS');
+  if (Dir <> '') and FileExists('/usr/bin/import') then
+  begin
+    Fm.Repaint;
+    Application.ProcessMessages;
+    if Shot = '' then
+      Shot := 'share_dialog.png';
+    ExecuteProcess('/usr/bin/import', ['-window', 'root', IncludeTrailingPathDelimiter(Dir) + Shot]);
+  end;
+  Fm.ModalResult := mrCancel;
+end;
+{$ENDIF}
+
+{$IFDEF LED_PARADE_SYNC}
 function TabText(T: TLedTab): string;
 begin
   Result := T.Document.Master.Lines.Text;
@@ -15580,6 +15621,7 @@ var
   SA, SB: TLedTextSession;
   Url, Secret: string;
   T0: QWord;
+  Probe: TLedShareProbe;
 begin
   Say('a shared text');
   Secret := 'led-selftest-not-a-secret-0123456789';
@@ -15641,6 +15683,16 @@ begin
     until (SB.Target.PeerCaretCount > 0) or (GetTickCount64 - T0 > 15000);
     Check('the other''s caret is drawn', SB.Target.PeerCaretCount > 0);
     Check('the status bar says it is shared', SB.Collab.StatusText <> '');
+    { the joiner's Share: the link that let it in, and Stop sharing }
+    Probe := TLedShareProbe.Create;
+    try
+      Probe.Shot := 'share_links.png';
+      Application.QueueAsyncCall(@Probe.Close, 0);
+      SB.Collab.Invite;
+      Check('Share while shared shows the links', Probe.Seen and (Probe.Edits >= 1) and SB.Collab.Active);
+    finally
+      Probe.Free;
+    end;
 
     SA.Collab.Leave;
     Check('one can leave', not SA.Collab.Active and SB.Collab.Active);
@@ -15654,6 +15706,39 @@ begin
   finally
     Relay.Free;
   end;
+end;
+{$ELSE}
+begin
+end;
+{$ENDIF}
+
+{ Share and Join on LED's own toolbar, for every kind of document; Share's one dialog asks where from }
+procedure TestShareToolbar(F: TLedMainForm);
+{$IFDEF LED_PARADE_SYNC}
+var
+  P: TLedShareProbe;
+  T: TLedTab;
+  S: TLedTextSession;
+begin
+  Say('sharing from the toolbar');
+  Check('Share is on the toolbar', (F.FindComponent('tbShare') <> nil) and
+    (TToolButton(F.FindComponent('tbShare')).Action = F.actShareDoc) and F.actShareDoc.Visible);
+  Check('and Join', (F.FindComponent('tbJoin') <> nil) and (TToolButton(F.FindComponent('tbJoin')).Action =
+    F.actJoinShared) and F.actJoinShared.Visible);
+  T := F.AddTab(F.Documents.NewDocument);
+  T.Document.Master.Lines.Text := 'a text to share';
+  S := TLedTextSession.Ensure(T);
+  P := TLedShareProbe.Create;
+  try
+    Application.QueueAsyncCall(@P.Close, 0);
+    Check('cancelled, nothing is shared', not S.Collab.Share('notes.txt') and not S.Collab.Active);
+    Check('one dialog: this computer or a relay server', P.Seen and (P.Radios = 2) and (P.Edits >= 5));
+  finally
+    P.Free;
+  end;
+  T.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
 end;
 {$ELSE}
 begin
@@ -16294,6 +16379,7 @@ begin
   WriteLn;
   TestVisualEditor(F);
   TestSharedText(F);
+  TestShareToolbar(F);
   WriteLn;
   TestSplitterMinimums(F);
   WriteLn;
