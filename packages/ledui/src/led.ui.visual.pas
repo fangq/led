@@ -75,11 +75,6 @@ type
     procedure BuildHome;
     procedure RefreshStyles;
     procedure SelectionChanged(Sender: TObject);
-    procedure UndoClicked(Sender: TObject);
-    procedure RedoClicked(Sender: TObject);
-    procedure CutClicked(Sender: TObject);
-    procedure CopyClicked(Sender: TObject);
-    procedure PasteClicked(Sender: TObject);
     procedure FontChosen(Sender: TObject);
     procedure SizeChosen(Sender: TObject);
     procedure ComboKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -656,15 +651,6 @@ begin
   FTextColor := $C00000;
   FHighlightColor := $FFFF00;
 
-  { undo, and the clipboard }
-  AddIconButton('undo', 'Undo (Ctrl+Z)', @UndoClicked);
-  AddIconButton('redo', 'Redo (Ctrl+Y)', @RedoClicked);
-  AddSeparator;
-  AddIconButton('paste', 'Paste (Ctrl+V)', @PasteClicked);
-  AddIconButton('cut', 'Cut (Ctrl+X)', @CutClicked);
-  AddIconButton('copy', 'Copy (Ctrl+C)', @CopyClicked);
-  AddSeparator;
-
   { the font }
   FFont := TComboBox.Create(Self);
   FFont.Parent := FBar;
@@ -824,36 +810,6 @@ begin
   RefreshStyles;
   if not FStyle.DroppedDown then
     FStyle.ItemIndex := FStyle.Items.IndexOf(FEdit.CurrentStyleName);
-end;
-
-procedure TLedVisualPane.UndoClicked(Sender: TObject);
-begin
-  FEdit.Undo;
-  BackToPage;
-end;
-
-procedure TLedVisualPane.RedoClicked(Sender: TObject);
-begin
-  FEdit.Redo;
-  BackToPage;
-end;
-
-procedure TLedVisualPane.CutClicked(Sender: TObject);
-begin
-  FEdit.CutToClipboard;
-  BackToPage;
-end;
-
-procedure TLedVisualPane.CopyClicked(Sender: TObject);
-begin
-  FEdit.CopyToClipboard;
-  BackToPage;
-end;
-
-procedure TLedVisualPane.PasteClicked(Sender: TObject);
-begin
-  FEdit.PasteFromClipboard;
-  BackToPage;
 end;
 
 procedure TLedVisualPane.FontChosen(Sender: TObject);
