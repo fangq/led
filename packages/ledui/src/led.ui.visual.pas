@@ -360,6 +360,7 @@ begin
   FSyncStatus.Layout := tlCenter;
   FSync := TParadeSync.Create(Self, FEdit);
   FSync.OnStateChange := @SyncChanged;
+  FSync.OutboxDir := IncludeTrailingPathDelimiter(LedConfigDir) + 'outbox';   { edits made offline outlive a quit }
   {$ENDIF}
 end;
 
