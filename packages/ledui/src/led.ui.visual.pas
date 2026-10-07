@@ -434,6 +434,8 @@ begin
       AEdit.SetMathFont(Maths[i]);
       Break;
     end;
+  { and every other font installed, for the font list: loaded when text first uses one }
+  AEdit.AddSystemFonts;
 end;
 {$ENDIF}
 

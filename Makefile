@@ -98,7 +98,8 @@ parade:
 	$(MAKE) -C $(PARADE) SYNC=yrs BUILD=build-sync build-sync/pascal/lib/libparade.a
 	mkdir -p $(PARADE_LIB)
 	cp -p $(PARADE)/build-sync/pascal/lib/libparade.a $(PARADE_YRS) $(PARADE)/pascal/parade.pas \
-	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradesync.pas $(PARADE)/pascal/paraderelay.pas $(PARADE_LIB)/
+	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE)/pascal/paradesync.pas \
+	      $(PARADE)/pascal/paraderelay.pas $(PARADE_LIB)/
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n{$$DEFINE LED_PARADE_SYNC}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 else
@@ -107,7 +108,7 @@ parade:
 	mkdir -p $(PARADE_LIB)
 	rm -f $(PARADE_LIB)/libyrs.a $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas
 	cp -p $(PARADE)/build/pascal/lib/libparade.a $(PARADE)/pascal/parade.pas \
-	      $(PARADE)/pascal/paradeedit.pas $(PARADE_LIB)/
+	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE_LIB)/
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 endif
@@ -121,7 +122,7 @@ endif
 # The cross builds go without it: libparade.a here is for this machine.
 noparade:
 	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
-	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/libparade.a \
+	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/paradefonts.pas $(PARADE_LIB)/libparade.a \
 	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/libyrs.a
 
 # ---- builds ----------------------------------------------------------------
