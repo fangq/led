@@ -178,6 +178,9 @@ type
     FBJUndo: array of TLedBJUndo;
     FBJUndoCount: Integer;
     FHexDirty: Boolean;
+    { a Word file opening as its pages: the dump of its bytes not made until the text is shown (megabytes
+      of it, which nobody reading the pages looks at) }
+    FHexPending: Boolean;
     { Changed in the visual editor and not yet written back -- see
       FlushVisual.  The buffer and the bytes do not know, so Modified asks
       this as well. }
@@ -463,6 +466,9 @@ type
     procedure TakeVisualText(const AText: string);
     procedure TakeVisualBytes(const ABytes: string);
     procedure FlushVisual;
+    { the hex dump put in the buffer, if it was left for when it is shown }
+    procedure EnsureHexText;
+    property HexPending: Boolean read FHexPending;
     property OnFlushVisual: TNotifyEvent read FOnFlushVisual write FOnFlushVisual;
     { The file itself, when IsBinary. }
     property Bytes: string read FBytes;
@@ -528,6 +534,16 @@ var
   FUserConfig: TLedDocConfig = nil;
   FTheme: TLedTheme = nil;
   FThemeResolved: Boolean = False;
+
+
+{ a file that opens as its pages (a Word document), by its name }
+function WordFileName(const AFileName: string): Boolean;
+var
+  E: string;
+begin
+  E := LowerCase(ExtractFileExt(AFileName));
+  Result := (E = '.docx') or (E = '.docm') or (E = '.dotx');
+end;
 
 function LedFilterSettings: TLedFilterSettings;
 begin
@@ -2446,7 +2462,7 @@ begin
     FHexUndoCount := 0;
     FBJUndoCount := 0;
     SetLength(FBJUndo, 0);
-    if IsHexDump then
+    if IsHexDump and not FHexPending then
     begin
       FMaster.BeginUpdate;
       try
@@ -2457,6 +2473,24 @@ begin
     end;
   end;
   if Assigned(FOnChanged) then FOnChanged(Self);
+end;
+
+procedure TLedDocument.EnsureHexText;
+var
+  WasModified: Boolean;
+begin
+  if not FHexPending then
+    Exit;
+  FHexPending := False;
+  WasModified := FMaster.Modified;
+  FMaster.BeginUpdate;
+  try
+    FMaster.Lines.Text := LedHexDump(FBytes);
+    FMaster.ClearUndo;
+    FMaster.Modified := WasModified;
+  finally
+    FMaster.EndUpdate;
+  end;
 end;
 
 procedure TLedDocument.FlushVisual;
@@ -2548,6 +2582,8 @@ begin
       { The rows are already walked, so this renders them rather than
         reading the file a second time. }
       Text := LedBJRowsText(BJRows)
+    else if WordFileName(AFileName) then
+      Text := ''    { shown as pages: the dump when the text is (EnsureHexText) }
     else
       Text := LedHexDump(Raw);
     { Claim neither.  The buffer is a rendering of the bytes, so it has no
@@ -2610,6 +2646,7 @@ begin
   FBJError := BJErr;
   FBJErrorOffset := BJOffset;
   if FIsBinary then FBytes := Raw else FBytes := '';
+  FHexPending := Binary and not BJData and WordFileName(AFileName);
   FHexUndoCount := 0;
   FBJUndoCount := 0;
   SetLength(FBJUndo, 0);
@@ -3008,9 +3045,10 @@ begin
   FBytes := ABytes;
   FHexDirty := False;
   FVisualDirty := False;
+  FHexPending := True;      { a new Word file opens as its pages }
   FMaster.BeginUpdate;
   try
-    FMaster.Lines.Text := LedHexDump(FBytes);
+    FMaster.Lines.Text := '';
     FMaster.ClearUndo;
     FMaster.Modified := False;
   finally

@@ -387,6 +387,7 @@ begin
   begin
     FVisualMode := False;
     if Made then FreeAndNil(FVisual);
+    FDocument.EnsureHexText;    { the pages could not be made: the bytes are what is shown }
     Exit;
   end;
   FDocument.OnFlushVisual := @VisualFlush;
@@ -420,6 +421,7 @@ begin
   FDocument.OnFlushVisual := nil;
   FVisualMode := False;
   FVisual.Visible := False;
+  FDocument.EnsureHexText;
   ShowViews(True);
   { Made again next time, from the text as it is then: a page kept from now
     would not know what is typed into the text in between. }

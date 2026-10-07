@@ -5715,6 +5715,8 @@ begin
       on E: Exception do
         ReportError('Visual editor: ' + E.Message);
     end;
+  if not Result.VisualMode then
+    ADoc.EnsureHexText;     { shown as text: the dump a Word file left for this }
   UpdateStatusBar;
 end;
 
