@@ -432,6 +432,25 @@ def _(c):
     text(c, "#", 64, 64, 60)
 
 
+@icon("insertform")
+def _(c):
+    # a ticked box beside a line, and a drop-down field below
+    body(c, 12, 14, 40, 40, 10)
+    c.move_to(21, 34)
+    c.line_to(30, 44)
+    c.line_to(45, 22)
+    stroke(c, GREEN, 9)
+    lines(c, 64, [34], [50], width=9)
+    body(c, 12, 70, 104, 40, 10)
+    lines(c, 26, [90], [44], width=8)
+    c.move_to(84, 84)
+    c.line_to(104, 84)
+    c.line_to(94, 97)
+    c.close_path()
+    c.set_source(grad())
+    c.fill()
+
+
 @icon("insertsymbol")
 def _(c):
     text(c, "Ω", 64, 64, 104)
