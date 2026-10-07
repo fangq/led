@@ -55,6 +55,7 @@ type
     procedure JoinClicked(Sender: TObject);
     procedure HostClicked(Sender: TObject);
     procedure ShowInvite;
+    procedure InviteCopyClicked(Sender: TObject);
     procedure StopSharing;
     procedure SyncChanged(Sender: TObject);
     function AskConnection(const ACaption: string; var AServer, ADoc, AToken, AName: string): Boolean;
@@ -138,7 +139,7 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi
-  {$IFDEF LED_PARADE_SYNC}, IniFiles, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
+  {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
   { The paragraph styles every Parade document is made with, in the order a
@@ -748,11 +749,36 @@ function TLedVisualPane.JoinShared: Boolean;
 {$IFDEF LED_PARADE_SYNC}
 var
   Server, Doc, Token, Who: string;
+  V: array of string;
+  Ini: TIniFile;
 begin
   Result := False;
-  Doc := '';
-  if not AskConnection('Join a shared document', Server, Doc, Token, Who) then
+  { the invitation link the host sent (Host > Invite): relay, document and token in one }
+  Ini := CollabIni;
+  try
+    SetLength(V, 2);
+    V[0] := '';
+    V[1] := Ini.ReadString('relay', 'name', GetEnvironmentVariable('USER'));
+    if not InputQuery('Join a shared document', ['Invitation link (blank: enter the relay, document and token)',
+      'Your name'], V) then
+      Exit;
+    Who := Trim(V[1]);
+    Ini.WriteString('relay', 'name', Who);
+  finally
+    Ini.Free;
+  end;
+  if Trim(V[0]) = '' then
+  begin
+    Doc := '';
+    if not AskConnection('Join a shared document', Server, Doc, Token, Who) then
+      Exit;
+  end
+  else if not ParadeParseInvite(V[0], Server, Doc, Token) then
+  begin
+    MessageDlg('Join', 'That is not an invitation link: it looks like http://host:8765/d/document#t=... ' +
+      '(ask the host for Host > Invite).', mtError, [mbOK], 0);
     Exit;
+  end;
   Result := FSync.Start(Server, Doc, Token, Who, False);
   if not Result then
     MessageDlg('Join', 'Could not join: ' + FSync.LastError, mtError, [mbOK], 0);
@@ -895,13 +921,29 @@ begin
   BackToPage;
 end;
 
-{ what the others need to join: the address, the document, a token for each role }
+{ what the others need to join: a link for each role, which carries the relay, the document and a token }
 procedure TLedVisualPane.ShowInvite;
 var
   F: TForm;
   M: TMemo;
   B: TButton;
+  Edit, Read: string;
+
+  procedure CopyButton(const ACaption, AText: string);
+  var
+    C: TButton;
+  begin
+    C := TButton.Create(F);
+    C.Parent := F;
+    C.Align := alBottom;
+    C.Caption := ACaption;
+    C.Hint := AText;
+    C.OnClick := @InviteCopyClicked;
+  end;
+
 begin
+  Edit := ParadeInviteLink(FHostAddress, FHostDoc, ParadeMakeToken(FRelay.Secret, 'guest', FHostDoc, 'editor', 30));
+  Read := ParadeInviteLink(FHostAddress, FHostDoc, ParadeMakeToken(FRelay.Secret, 'reader', FHostDoc, 'viewer', 30));
   F := TForm.CreateNew(nil);
   try
     F.Caption := 'Invite to "' + FHostDoc + '"';
@@ -913,18 +955,18 @@ begin
     M.ReadOnly := True;
     M.WordWrap := True;
     M.ScrollBars := ssAutoVertical;
-    M.Lines.Add('Send these to whoever is to join (Join, in their LED), good for 30 days:');
-    M.Lines.Add('');
-    M.Lines.Add('Relay address: ' + FHostAddress);
-    M.Lines.Add('Document: ' + FHostDoc);
+    M.Lines.Add('Send a link to whoever is to join: in their LED, File > Join Shared Document, and paste it. ' +
+      'Each is good for 30 days; whoever has one can get in, so send it privately.');
     M.Lines.Add('');
     M.Lines.Add('To edit:');
-    M.Lines.Add(ParadeMakeToken(FRelay.Secret, 'guest', FHostDoc, 'editor', 30));
+    M.Lines.Add(Edit);
     M.Lines.Add('');
     M.Lines.Add('To read only:');
-    M.Lines.Add(ParadeMakeToken(FRelay.Secret, 'reader', FHostDoc, 'viewer', 30));
+    M.Lines.Add(Read);
     M.Lines.Add('');
     M.Lines.Add('The document stays reachable while this LED shares it (until Leave).');
+    CopyButton('Copy the link to read', Read);
+    CopyButton('Copy the link to edit', Edit);
     B := TButton.Create(F);
     B.Parent := F;
     B.Align := alBottom;
@@ -935,6 +977,12 @@ begin
   finally
     F.Free;
   end;
+end;
+
+procedure TLedVisualPane.InviteCopyClicked(Sender: TObject);
+begin
+  Clipboard.AsText := TButton(Sender).Hint;
+  TButton(Sender).Caption := 'Copied';
 end;
 
 procedure TLedVisualPane.SyncChanged(Sender: TObject);
