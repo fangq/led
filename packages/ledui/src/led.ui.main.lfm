@@ -382,6 +382,26 @@ object LedMainForm: TLedMainForm
       Hint = 'Join Shared Document|Open a document someone shares through a relay (their Host/Invite gives the address and a token)'
       OnExecute = actJoinSharedExecute
     end
+    object actShareDoc: TAction
+      Caption = 'S&hare Document...'
+      Hint = 'Share Document|Edit this document together with others, through a relay you name'
+      OnExecute = actShareDocExecute
+    end
+    object actHostDoc: TAction
+      Caption = 'Host Document...'
+      Hint = 'Host Document|Share this document through a relay this LED runs, and invite others'
+      OnExecute = actHostDocExecute
+    end
+    object actInviteDoc: TAction
+      Caption = 'Invite...'
+      Hint = 'Invite|The links to send to whoever is to join the document this LED hosts'
+      OnExecute = actInviteDocExecute
+    end
+    object actLeaveDoc: TAction
+      Caption = 'Leave Shared Document'
+      Hint = 'Leave Shared Document|Stop editing together; the document stays as it is'
+      OnExecute = actLeaveDocExecute
+    end
     object actNewWindow: TAction
       Caption = 'New &Window'
       ShortCut = 24654
@@ -623,6 +643,18 @@ object LedMainForm: TLedMainForm
       end
       object mi_JoinShared: TMenuItem
         Action = actJoinShared
+      end
+      object mi_ShareDoc: TMenuItem
+        Action = actShareDoc
+      end
+      object mi_HostDoc: TMenuItem
+        Action = actHostDoc
+      end
+      object mi_InviteDoc: TMenuItem
+        Action = actInviteDoc
+      end
+      object mi_LeaveDoc: TMenuItem
+        Action = actLeaveDoc
       end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow

@@ -10,6 +10,8 @@ unit Led.UI.Main;
 
 interface
 
+{$I led.parade.inc}
+
 uses
   Classes, SysUtils, Forms, Controls, Dialogs, Menus, ActnList, ComCtrls,
   ExtCtrls, Math, Graphics, ImgList, Clipbrd, LCLIntf, ToolWin, Buttons,
@@ -39,7 +41,8 @@ uses
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
-  Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, LCLProc, LazFileUtils;
+  Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, LCLProc, LazFileUtils
+  {$IFDEF LED_PARADE_SYNC}, Led.UI.Collab{$ENDIF};
 
 { Every open window, in creation order.  Needed so that opening a file which
   is already on screen somewhere can raise that window rather than making a
@@ -51,6 +54,10 @@ type
     ActionList1: TActionList;
     actNew: TAction;
     actJoinShared: TAction;
+    actShareDoc: TAction;
+    actHostDoc: TAction;
+    actInviteDoc: TAction;
+    actLeaveDoc: TAction;
     actOpen: TAction;
     actSave: TAction;
     actSaveAs: TAction;
@@ -184,6 +191,10 @@ type
     mnuFile: TMenuItem;
     mi_New: TMenuItem;
     mi_JoinShared: TMenuItem;
+    mi_ShareDoc: TMenuItem;
+    mi_HostDoc: TMenuItem;
+    mi_InviteDoc: TMenuItem;
+    mi_LeaveDoc: TMenuItem;
     mi_NewWindow: TMenuItem;
     miSep1: TMenuItem;
     mi_Open: TMenuItem;
@@ -417,6 +428,15 @@ type
     procedure actNewExecute(Sender: TObject);
     procedure actNewNotebookExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
+    procedure actShareDocExecute(Sender: TObject);
+    procedure actHostDocExecute(Sender: TObject);
+    procedure actInviteDocExecute(Sender: TObject);
+    procedure actLeaveDocExecute(Sender: TObject);
+    {$IFDEF LED_PARADE_SYNC}
+    { the active tab's sharing: its page's, or its text's (nil: a text tab not shared yet, unless AMake) }
+    function TabCollab(AMake: Boolean): TLedCollab;
+    procedure CollabChanged(Sender: TObject);
+    {$ENDIF}
     procedure actOpenExecute(Sender: TObject);
     procedure actQuitExecute(Sender: TObject);
     procedure actSaveAsExecute(Sender: TObject);
@@ -1068,6 +1088,10 @@ begin
   BuildIcons;
   { File > Join Shared Document is there when this LED can share }
   actJoinShared.Visible := LedVisualCanShare;
+  actShareDoc.Visible := LedVisualCanShare;
+  actHostDoc.Visible := LedVisualCanShare;
+  actInviteDoc.Visible := LedVisualCanShare;
+  actLeaveDoc.Visible := LedVisualCanShare;
   { Shared with every other window in this process; see LedDocuments. }
   FDocs := LedDocuments;
   LedWindows.Add(Self);
@@ -3201,7 +3225,19 @@ begin
 end;
 
 procedure TLedMainForm.actUndoExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  S: TLedTextSession;
+{$ENDIF}
 begin
+  {$IFDEF LED_PARADE_SYNC}
+  S := TLedTextSession.ForTab(ActiveTab);
+  if (S <> nil) and S.Collab.Active and (CurrentVisual = nil) then
+  begin   { a shared text: one's own edits, not the editor's own list the others' edits upset }
+    S.Target.Undo(False);
+    Exit;
+  end;
+  {$ENDIF}
   if CurrentVisual <> nil then
   begin
     CurrentVisual.Undo;
@@ -3212,7 +3248,19 @@ begin
 end;
 
 procedure TLedMainForm.actRedoExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  S: TLedTextSession;
+{$ENDIF}
 begin
+  {$IFDEF LED_PARADE_SYNC}
+  S := TLedTextSession.ForTab(ActiveTab);
+  if (S <> nil) and S.Collab.Active and (CurrentVisual = nil) then
+  begin
+    S.Target.Undo(True);
+    Exit;
+  end;
+  {$ENDIF}
   if CurrentVisual <> nil then
     CurrentVisual.Redo
   else if CurrentView <> nil then
@@ -6003,6 +6051,11 @@ begin
       lvkDocx: StatusBar1.Panels[3].Text := 'Visual (Word)';
     end;
   end;
+  {$IFDEF LED_PARADE_SYNC}
+  if (ActiveTab <> nil) and not ActiveTab.VisualMode and (TLedTextSession.ForTab(ActiveTab) <> nil) and
+     TLedTextSession.ForTab(ActiveTab).Collab.Active then
+    StatusBar1.Panels[3].Text := StatusBar1.Panels[3].Text + ' - ' + TLedTextSession.ForTab(ActiveTab).Collab.StatusText;
+  {$ENDIF}
   if V.InsertMode then
     StatusBar1.Panels[4].Text := 'INS'
   else
@@ -6692,24 +6745,154 @@ begin
 end;
 
 procedure TLedMainForm.actJoinSharedExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
 var
   Doc: TLedDocument;
   Tab: TLedTab;
+  Server, DocName, Token, Who: string;
+  Kind: TLedCollabKind;
+  Lang: TLedLangInfo;
+{$ENDIF}
 begin
-  if not LedVisualCanShare then
+  {$IFDEF LED_PARADE_SYNC}
+  if not LedAskJoin(Server, DocName, Token, Who, Kind) then
+    Exit;
+  Doc := FDocs.NewDocument;
+  if Kind = lckText then
   begin
-    ReportError('This LED was built without Parade''s collaboration (its yrs library).');
+    { an untitled text, coloured as its name says (a shared "hello.pas" is Pascal) }
+    Tab := AddTab(Doc);
+    Lang := LedLanguages.FindForFile(DocName, '');
+    if Lang <> nil then
+      Doc.SetLanguage(Lang.Id);
+    if (Tab = nil) or not TLedTextSession.Ensure(Tab).Collab.JoinWith(Server, DocName, Token, Who) then
+      CloseActiveTab(False)
+    else
+      TLedTextSession.ForTab(Tab).Collab.OnChange := @CollabChanged;
+    UpdateStatusBar;
     Exit;
   end;
   { an untitled Word document, as New makes an untitled file: the shared
     document goes into its page, and it is named when it is first saved }
-  Doc := FDocs.NewDocument;
   Doc.StartWord(LedVisualEmptyDocx);
   Tab := AddTab(Doc);
   if (Tab = nil) or (not Tab.VisualMode) or (Tab.Visual = nil) then
     Exit;    { AddTab has said why }
-  if not Tab.Visual.JoinShared then
+  if not Tab.Visual.JoinWith(Server, DocName, Token, Who) then
     CloseActiveTab(False);
+  {$ELSE}
+  ReportError('This LED was built without Parade''s collaboration (its yrs library).');
+  {$ENDIF}
+end;
+
+{$IFDEF LED_PARADE_SYNC}
+function TLedMainForm.TabCollab(AMake: Boolean): TLedCollab;
+var
+  S: TLedTextSession;
+begin
+  Result := nil;
+  if ActiveTab = nil then
+    Exit;
+  if ActiveTab.VisualMode and (ActiveTab.Visual <> nil) then
+    Exit(ActiveTab.Visual.Collab);
+  if ActiveTab.Document.IsBinary or ActiveTab.Document.IsNotebook then
+    Exit;     { a dump or a notebook: not a text to share }
+  if AMake then
+    S := TLedTextSession.Ensure(ActiveTab)
+  else
+    S := TLedTextSession.ForTab(ActiveTab);
+  if S <> nil then
+  begin
+    S.Collab.OnChange := @CollabChanged;
+    Result := S.Collab;
+  end;
+end;
+
+procedure TLedMainForm.CollabChanged(Sender: TObject);
+begin
+  UpdateStatusBar;
+end;
+
+{ the name a tab's document is offered under: its file's (with the extension, so a joiner's tab is coloured
+  as this one is) }
+function ShareName(ATab: TLedTab): string;
+begin
+  if ATab.Document.IsUntitled then
+    Result := ATab.Document.DisplayName
+  else
+    Result := ExtractFileName(ATab.Document.FileName);
+end;
+{$ENDIF}
+
+procedure TLedMainForm.actShareDocExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  C: TLedCollab;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE_SYNC}
+  C := TabCollab(True);
+  if C = nil then
+    ReportError('There is no document here to share (a text, or a page in the visual editor).')
+  else if C.Active then
+    MessageDlg('Share', 'This document is shared already.', mtInformation, [mbOK], 0)
+  else
+    C.Share(ShareName(ActiveTab));
+  UpdateStatusBar;
+  {$ELSE}
+  ReportError('This LED was built without Parade''s collaboration (its yrs library).');
+  {$ENDIF}
+end;
+
+procedure TLedMainForm.actHostDocExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  C: TLedCollab;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE_SYNC}
+  C := TabCollab(True);
+  if C = nil then
+    ReportError('There is no document here to host (a text, or a page in the visual editor).')
+  else if C.Hosting then
+    C.Invite
+  else if C.Active then
+    MessageDlg('Host', 'This document is shared already: Leave first.', mtInformation, [mbOK], 0)
+  else
+    C.Host(ShareName(ActiveTab));
+  UpdateStatusBar;
+  {$ELSE}
+  ReportError('This LED was built without Parade''s collaboration (its yrs library).');
+  {$ENDIF}
+end;
+
+procedure TLedMainForm.actInviteDocExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  C: TLedCollab;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE_SYNC}
+  C := TabCollab(False);
+  if (C = nil) or not C.Active then
+    MessageDlg('Invite', 'Host this document first (File > Host Document).', mtInformation, [mbOK], 0)
+  else
+    C.Invite;
+  {$ENDIF}
+end;
+
+procedure TLedMainForm.actLeaveDocExecute(Sender: TObject);
+{$IFDEF LED_PARADE_SYNC}
+var
+  C: TLedCollab;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE_SYNC}
+  C := TabCollab(False);
+  if (C <> nil) and C.Active then
+    C.Leave;
+  UpdateStatusBar;
+  {$ENDIF}
 end;
 
 procedure TLedMainForm.actSaveAsExecute(Sender: TObject);
