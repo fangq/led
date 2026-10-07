@@ -96,6 +96,16 @@ type
     procedure AlignClicked(Sender: TObject);
     procedure LineSpacingItemClicked(Sender: TObject);
     procedure ParaSpaceItemClicked(Sender: TObject);
+    { the Insert tab }
+    procedure BuildInsert;
+    procedure TableItemClicked(Sender: TObject);
+    procedure PictureClicked(Sender: TObject);
+    procedure LinkClicked(Sender: TObject);
+    procedure BreakItemClicked(Sender: TObject);
+    procedure EquationItemClicked(Sender: TObject);
+    procedure NoteItemClicked(Sender: TObject);
+    procedure FieldItemClicked(Sender: TObject);
+    procedure SymbolItemClicked(Sender: TObject);
     {$ENDIF}
     function AddTab(const ACaption: string): TFlowPanel;
     procedure TabClicked(Sender: TObject);
@@ -161,7 +171,7 @@ type
     { the page itself, for scripting and tests }
     property Page: TParadeEdit read FEdit;
     {$ENDIF}
-    { the tab shown in the toolbar: 0 Home, 1 Review, 2 Share }
+    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Review, 3 Share (without Parade: 0 Home, 1 Review) }
     procedure ShowTab(AIndex: Integer);
   end;
 
@@ -375,8 +385,9 @@ begin
   Caption := '';
 
   { The toolbar: tabs, as a word processor's -- Home for the font and the
-    paragraph, Review for tracked changes and comments, Share for editing
-    together -- each a row of controls that wraps when the pane is narrow. }
+    paragraph, Insert for tables, pictures, links and the like, Review for
+    tracked changes and comments, Share for editing together -- each a row
+    of controls that wraps when the pane is narrow. }
   FTabStrip := TPanel.Create(Self);
   FTabStrip.Parent := Self;
   FTabStrip.Align := alTop;
@@ -415,6 +426,11 @@ begin
   AddToggle('B', 'Bold (Ctrl+B)', [fsBold], @BoldClicked);
   AddToggle('I', 'Italic (Ctrl+I)', [fsItalic], @ItalicClicked);
   AddToggle('U', 'Underline (Ctrl+U)', [fsUnderline], @UnderlineClicked);
+  {$ENDIF}
+
+  {$IFDEF LED_PARADE}
+  AddTab('Insert');
+  BuildInsert;
   {$ENDIF}
 
   { review: tracked changes and comments }
@@ -972,6 +988,190 @@ end;
 procedure TLedVisualPane.LineSpacingItemClicked(Sender: TObject);
 begin
   FEdit.SetLineSpacing(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+{ the Insert tab: objects at the caret }
+procedure TLedVisualPane.BuildInsert;
+const
+  TableSizes: array[0..5] of string = ('2 x 2', '2 x 3', '3 x 3', '3 x 4', '4 x 4', '5 x 5');
+  Symbols: array[0..29] of string = (
+    #$C2#$A9, #$C2#$AE, #$E2#$84#$A2, #$C2#$A7, #$C2#$B6, #$C2#$B0, #$C2#$B1, #$C3#$97, #$C3#$B7, #$E2#$80#$94,
+    #$E2#$80#$93, #$E2#$80#$A6, #$E2#$82#$AC, #$C2#$A3, #$C2#$A5, #$CE#$B1, #$CE#$B2, #$CE#$B3, #$CE#$B4, #$CE#$BC,
+    #$CF#$80, #$CE#$A3, #$CE#$A9, #$E2#$88#$9E, #$E2#$89#$A4, #$E2#$89#$A5, #$E2#$89#$A0, #$E2#$89#$88,
+    #$E2#$86#$92, #$E2#$80#$A2);
+var
+  i: Integer;
+  M: TPopupMenu;
+
+  function Item(AMenu: TPopupMenu; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
+  begin
+    Result := TMenuItem.Create(AMenu);
+    Result.Caption := ACaption;
+    Result.Tag := ATag;
+    Result.OnClick := AClick;
+    AMenu.Items.Add(Result);
+  end;
+
+  { a button with a picture and a name, opening AMenu when it has one }
+  function Big(const AIcon, ACaption, AHint: string; AClick: TNotifyEvent; AMenu: TPopupMenu = nil): TSpeedButton;
+  begin
+    if AMenu <> nil then
+    begin
+      Result := AddButton(ACaption + ' ' + #$E2#$96#$BE, AHint, [], @MenuDropClicked);
+      Result.Tag := PtrInt(AMenu);
+    end
+    else
+      Result := AddButton(ACaption, AHint, [], AClick);
+    Result.Glyph := LedIconBitmap(AIcon, clBtnText, LedScale96(16));
+    Result.Spacing := LedScale96(4);
+  end;
+
+begin
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(TableSizes) do
+    Item(M, TableSizes[i], i, @TableItemClicked);
+  Item(M, '-', 0, nil);
+  Item(M, 'Other size...', -1, @TableItemClicked);
+  Big('inserttable', 'Table', 'Insert a table at the caret', nil, M);
+  Big('insertpicture', 'Picture', 'Insert a picture from a file (PNG, JPEG, GIF)', @PictureClicked);
+  Big('insertlink', 'Link', 'Make the selection a link, or insert one', @LinkClicked);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  Item(M, 'Page break', PD_BREAK_PAGE, @BreakItemClicked);
+  Item(M, 'Column break', PD_BREAK_COLUMN, @BreakItemClicked);
+  Item(M, 'Horizontal line', PD_BREAK_RULE, @BreakItemClicked);
+  Big('insertbreak', 'Break', 'A page or column break, or a horizontal line', nil, M);
+  M := TPopupMenu.Create(Self);
+  Item(M, 'In the line...', 0, @EquationItemClicked);
+  Item(M, 'On a line of its own...', 1, @EquationItemClicked);
+  Big('insertequation', 'Equation', 'An equation, written in LaTeX', nil, M);
+  M := TPopupMenu.Create(Self);
+  Item(M, 'Footnote...', 0, @NoteItemClicked);
+  Item(M, 'Endnote...', 1, @NoteItemClicked);
+  Big('insertnote', 'Note', 'A footnote or an endnote at the caret', nil, M);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  Item(M, 'Page number', PD_FIELD_PAGE, @FieldItemClicked);
+  Item(M, 'Number of pages', PD_FIELD_PAGES, @FieldItemClicked);
+  Item(M, 'Date', PD_FIELD_DATE, @FieldItemClicked);
+  Big('insertfield', 'Field', 'A page number, the number of pages or the date, kept up to date', nil, M);
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(Symbols) do
+    Item(M, Symbols[i], i, @SymbolItemClicked);
+  Big('insertsymbol', 'Symbol', 'A symbol the keyboard does not have', nil, M);
+end;
+
+procedure TLedVisualPane.TableItemClicked(Sender: TObject);
+var
+  V: array of string;
+  R, C: Integer;
+  S: string;
+begin
+  if TMenuItem(Sender).Tag >= 0 then
+  begin
+    S := TMenuItem(Sender).Caption;      { "rows x columns" }
+    R := StrToIntDef(Trim(Copy(S, 1, Pos('x', S) - 1)), 2);
+    C := StrToIntDef(Trim(Copy(S, Pos('x', S) + 1, 9)), 2);
+  end
+  else
+  begin
+    SetLength(V, 2);
+    V[0] := '3';
+    V[1] := '3';
+    if not InputQuery('Insert table', ['Rows', 'Columns'], V) then
+    begin
+      BackToPage;
+      Exit;
+    end;
+    R := StrToIntDef(Trim(V[0]), 0);
+    C := StrToIntDef(Trim(V[1]), 0);
+    if (R < 1) or (C < 1) or (R > 500) or (C > 32) then
+    begin
+      MessageDlg('Insert table', 'Rows from 1 to 500, columns from 1 to 32.', mtError, [mbOK], 0);
+      Exit;
+    end;
+  end;
+  FEdit.InsertTable(R, C);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.PictureClicked(Sender: TObject);
+var
+  D: TOpenDialog;
+begin
+  D := TOpenDialog.Create(nil);
+  try
+    D.Title := 'Insert picture';
+    D.Filter := 'Pictures (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif|All files|*';
+    if D.Execute and not FEdit.InsertPicture(D.FileName) then
+      MessageDlg('Insert picture', 'Could not read ' + D.FileName + ' as a PNG, JPEG or GIF picture.', mtError,
+        [mbOK], 0);
+  finally
+    D.Free;
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.LinkClicked(Sender: TObject);
+var
+  V: array of string;
+begin
+  if SelAvail then
+  begin   { the selection becomes the link's text }
+    SetLength(V, 1);
+    V[0] := 'https://';
+    if InputQuery('Link', ['Address'], V) and (Trim(V[0]) <> '') and (Trim(V[0]) <> 'https://') then
+      FEdit.InsertLink(Trim(V[0]), '');
+  end
+  else
+  begin
+    SetLength(V, 2);
+    V[0] := 'https://';
+    V[1] := '';
+    if InputQuery('Insert link', ['Address', 'Text to show (blank: the address)'], V) and (Trim(V[0]) <> '') and
+       (Trim(V[0]) <> 'https://') then
+      FEdit.InsertLink(Trim(V[0]), V[1]);
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.BreakItemClicked(Sender: TObject);
+begin
+  FEdit.InsertBreak(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.EquationItemClicked(Sender: TObject);
+var
+  S: string;
+begin
+  S := '';
+  if InputQuery('Equation', 'The equation in LaTeX (e.g. E = mc^2, \frac{a}{b}, \sum_{i=1}^n x_i):', S) and
+     (Trim(S) <> '') then
+    FEdit.InsertEquation(Trim(S), TMenuItem(Sender).Tag = 1);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NoteItemClicked(Sender: TObject);
+var
+  S: string;
+begin
+  S := '';
+  if InputQuery(TMenuItem(Sender).Caption, 'The note''s text:', S) then
+    FEdit.InsertNote(S, TMenuItem(Sender).Tag = 1);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.FieldItemClicked(Sender: TObject);
+begin
+  FEdit.InsertField(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SymbolItemClicked(Sender: TObject);
+begin
+  FEdit.InsertText(TMenuItem(Sender).Caption);
   BackToPage;
 end;
 
