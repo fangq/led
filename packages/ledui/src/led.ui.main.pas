@@ -50,6 +50,7 @@ type
   TLedMainForm = class(TForm)
     ActionList1: TActionList;
     actNew: TAction;
+    actJoinShared: TAction;
     actOpen: TAction;
     actSave: TAction;
     actSaveAs: TAction;
@@ -182,6 +183,7 @@ type
     MainMenu1: TMainMenu;
     mnuFile: TMenuItem;
     mi_New: TMenuItem;
+    mi_JoinShared: TMenuItem;
     mi_NewWindow: TMenuItem;
     miSep1: TMenuItem;
     mi_Open: TMenuItem;
@@ -414,6 +416,7 @@ type
     procedure actCycleViewsExecute(Sender: TObject);
     procedure actNewExecute(Sender: TObject);
     procedure actNewNotebookExecute(Sender: TObject);
+    procedure actJoinSharedExecute(Sender: TObject);
     procedure actOpenExecute(Sender: TObject);
     procedure actQuitExecute(Sender: TObject);
     procedure actSaveAsExecute(Sender: TObject);
@@ -1051,6 +1054,8 @@ end;
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
   BuildIcons;
+  { File > Join Shared Document is there when this LED can share }
+  actJoinShared.Visible := LedVisualCanShare;
   { Shared with every other window in this process; see LedDocuments. }
   FDocs := LedDocuments;
   LedWindows.Add(Self);
@@ -5428,7 +5433,7 @@ begin
     command line, a session.  The alternative is a hex dump of a zip
     archive, which nobody opening a .docx was asking to see; when the pages
     cannot be made, the dump is still there, with the reason. }
-  if (LedVisualKindOf(ADoc.FileName) = lvkDocx) and Result.CanVisual then
+  if (LedVisualKindOf(ADoc.KindName) = lvkDocx) and Result.CanVisual then
     try
       if not Result.EnterVisual(Why) then
         ReportError('Visual editor: ' + Why);
@@ -6430,6 +6435,27 @@ begin
   FDock.ShowPane('notebook');
 end;
 
+procedure TLedMainForm.actJoinSharedExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
+  Tab: TLedTab;
+begin
+  if not LedVisualCanShare then
+  begin
+    ReportError('This LED was built without Parade''s collaboration (its yrs library).');
+    Exit;
+  end;
+  { an untitled Word document, as New makes an untitled file: the shared
+    document goes into its page, and it is named when it is first saved }
+  Doc := FDocs.NewDocument;
+  Doc.StartWord(LedVisualEmptyDocx);
+  Tab := AddTab(Doc);
+  if (Tab = nil) or (not Tab.VisualMode) or (Tab.Visual = nil) then
+    Exit;    { AddTab has said why }
+  if not Tab.Visual.JoinShared then
+    CloseActiveTab(False);
+end;
+
 procedure TLedMainForm.actSaveAsExecute(Sender: TObject);
 var
   Tab: TLedTab;
@@ -6441,6 +6467,9 @@ begin
   { an untitled document is offered its own name: a notebook as a .ipynb }
   else if Tab.Document.IsNotebook then
     SaveDialog1.FileName := Tab.Document.DisplayName + '.ipynb'
+  { and a Word file (a shared document joined) as a .docx }
+  else if Tab.Document.KindName <> Tab.Document.DisplayName then
+    SaveDialog1.FileName := Tab.Document.KindName
 {$IFDEF MIMA}
   else
     SaveDialog1.FileName := Tab.Document.DisplayName + '.m'

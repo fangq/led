@@ -377,6 +377,11 @@ object LedMainForm: TLedMainForm
       ImageIndex = 63
       OnExecute = actNewNotebookExecute
     end
+    object actJoinShared: TAction
+      Caption = '&Join Shared Document...'
+      Hint = 'Join Shared Document|Open a document someone shares through a relay (their Host/Invite gives the address and a token)'
+      OnExecute = actJoinSharedExecute
+    end
     object actNewWindow: TAction
       Caption = 'New &Window'
       ShortCut = 24654
@@ -615,6 +620,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_NewNotebook: TMenuItem
         Action = actNewNotebook
+      end
+      object mi_JoinShared: TMenuItem
+        Action = actJoinShared
       end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow
