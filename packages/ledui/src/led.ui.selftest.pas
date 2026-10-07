@@ -15699,13 +15699,18 @@ begin
       Probe.Free;
     end;
 
+    T0 := GetTickCount64;
     SA.Collab.Leave;
     Check('one can leave', not SA.Collab.Active and SB.Collab.Active);
+    { at once: a long poll waiting on the relay is cut short, not waited out }
+    Check(Format('and at once (%d ms)', [GetTickCount64 - T0]), GetTickCount64 - T0 < 2000);
     A.Document.Master.Modified := False;
     B.Document.Master.Modified := False;
+    T0 := GetTickCount64;
     F.CloseActiveTab(False);    { B, the last made, closed still in the session }
     Pump;
     Check('and a tab closes in one', F.Notebook.ActivePage <> nil);
+    Check(Format('at once too (%d ms)', [GetTickCount64 - T0]), GetTickCount64 - T0 < 2000);
     F.CloseActiveTab(False);
     Pump;
   finally
