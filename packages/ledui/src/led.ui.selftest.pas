@@ -15979,6 +15979,21 @@ begin
   E.ProcessKey(VK_ESCAPE, []);
   Pump;
   Check('Escape again: back to the text, the tab gone', not Tab.Visual.ShapeTabShown);
+  { a shape put in where there is no canvas: a canvas made for it, the shape selected, the tab up }
+  E.ProcessKey(VK_END, [ssCtrl]);
+  Check('a shape from Insert comes in a canvas of its own', E.InsertShape('hexagon') and
+    E.SelectedShape(At, Sid) and (Sid = 0) and (Length(E.DrawingShapes(At)) = 1));
+  Pump;
+  Check('with the Shape tab', Tab.Visual.ShapeTabShown);
+  Check('another, drawn in it next', E.InsertShape('ellipse') and (E.DrawKind = 'ellipse'));
+  if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+  begin   { the tab as it shows, for a look }
+    F.Repaint;
+    Pump;
+    ExecuteProcess('/usr/bin/import', ['-window', 'root',
+      IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'shape_tab.png']);
+  end;
+  E.ProcessKey(VK_ESCAPE, []);
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
