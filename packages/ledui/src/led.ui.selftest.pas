@@ -16002,6 +16002,98 @@ begin
   {$ENDIF}
 end;
 
+{ The status bar: the counts of a selection, in a text and on a page, and the page the caret is on of how many }
+procedure TestStatusCounts(F: TLedMainForm);
+var
+  W, C: Integer;
+  InWord: Boolean;
+  Txt: string;
+  L: TStringList;
+  {$IFDEF LED_PARADE}
+  Src, Docx: string;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  {$ENDIF}
+begin
+  Say('status bar counts');
+  W := 0; C := 0; InWord := False;
+  LedCountText('Hello world, '#$E4#$B8#$AD#$E6#$96#$87#10'second  line', W, C, InWord);
+  Check('words: runs of non-space, each CJK character one', W = 6);
+  Check('characters: all but the line breaks', C = 27);
+  W := 0; C := 0; InWord := False;
+  LedCountText('to', W, C, InWord);
+  LedCountText('gether', W, C, InWord);
+  Check('a word split across pieces is one', (W = 1) and (C = 8));
+  Check('one word, one character: singular', LedSelectionCounts(1, 1) = ', 1 word, 1 character selected');
+  Check('nothing selected: nothing said', LedSelectionCounts(0, 0) = '');
+
+  Txt := IncludeTrailingPathDelimiter(TempName('statuscounts')) + 'counts.txt';
+  ForceDirectories(ExtractFileDir(Txt));
+  WriteBytes(Txt, 'Hello world, '#$E4#$B8#$AD#$E6#$96#$87#10'second line'#10);
+  L := TStringList.Create;
+  try
+    L.Add(Txt);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  if F.ActiveView <> nil then
+  begin
+    Check('a text: line and column, no counts', F.StatusBar1.Panels[0].Text = 'Line 1  Col 1');
+    F.ActiveView.SelectAll;
+    Pump;
+    Check('a text selected: its words and characters', Pos(', 6 words, 26 characters selected',
+      F.StatusBar1.Panels[0].Text) > 0);
+    Check('and the column wide enough to say it', F.StatusBar1.Panels[0].Width >
+      F.StatusBar1.Canvas.TextWidth(F.StatusBar1.Panels[0].Text));
+    F.CloseActiveTab(False);
+    Pump;
+  end
+  else
+    Check('the text opens', False);
+
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/canvas_caption.docx');
+  if not FileExists(Src) then
+  begin
+    WriteLn('  (no ', Src, '; no page to check)');
+    Exit;
+  end;
+  Docx := IncludeTrailingPathDelimiter(TempName('statuscounts')) + 'pages.docx';
+  WriteBytes(Docx, LedReadRawFile(Src));
+  L := TStringList.Create;
+  try
+    L.Add(Docx);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the Word file opens as pages', False);
+    Exit;
+  end;
+  E := Tab.Visual.Page;
+  Check('a page: which, of how many', F.StatusBar1.Panels[0].Text = Format('Page 1 of %d', [E.PageCount]));
+  E.SelectAll;
+  Pump;
+  W := 0; C := 0; InWord := False;
+  LedCountText(E.SelectedText, W, C, InWord);
+  Check('the page''s text selected: its words and characters, after the page', (W > 0) and
+    (F.StatusBar1.Panels[0].Text = Format('Page %d of %d', [E.PageCount, E.PageCount]) + LedSelectionCounts(W, C)));
+  E.ProcessKey(VK_HOME, [ssCtrl]);
+  Pump;
+  Check('the caret back at the start: page 1, no counts', F.StatusBar1.Panels[0].Text =
+    Format('Page 1 of %d', [E.PageCount]));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { The icons as they were made, kept on disk: the start reads them back
   rather than decoding and resampling a hundred PNGs (most of a second). }
 procedure TestIconCache(F: TLedMainForm);
@@ -16918,6 +17010,7 @@ begin
   TestIconCache(F);
   TestVisualDeleteKey(F);
   TestVisualShapeTab(F);
+  TestStatusCounts(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

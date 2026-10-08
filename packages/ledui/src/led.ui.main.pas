@@ -899,6 +899,7 @@ type
       a binary view is the only thing telling the reader which of the two
       they are looking at. }
     procedure UpdateStatusBar;
+    procedure VisualStatusChange(Sender: TObject);
     procedure SetMiniMaps(AOn: Boolean);
     procedure MakeTogglesCheckable;
     { Whether the clipboard holds text, cached -- and never asked of the X
@@ -5757,6 +5758,7 @@ begin
   ADoc.OnChanged := @DocChanged;
   ADoc.OnConfirmExpand := @ConfirmBJExpand;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
+  Result.OnVisualStatus := @VisualStatusChange;
   Result.ActiveView.OnMouseWheel := @ViewMouseWheel;
   Result.ViewPopupMenu := PopupEditor;
   Result.ViewBreakpointClick := @DebugGutterClick;
@@ -5887,6 +5889,13 @@ begin
     the last one for a quarter of a second is showing the wrong file. }
   RefreshPreview(True);
   RefreshNotebookPane;
+end;
+
+{ only the tab in front says what is in the status bar }
+procedure TLedMainForm.VisualStatusChange(Sender: TObject);
+begin
+  if (ActiveTab <> nil) and ActiveTab.VisualMode and (Sender = ActiveTab.Visual) then
+    UpdateStatusBar;
 end;
 
 procedure TLedMainForm.ViewStatusChange(Sender: TObject;
@@ -6070,6 +6079,8 @@ procedure TLedMainForm.UpdateStatusBar;
 var
   V: TLedEdit;
   D: TLedDocument;
+  Words, Chars: Integer;
+  InWord: Boolean;
 begin
   V := ActiveView;
   if V = nil then
@@ -6086,6 +6097,14 @@ begin
   D := TLedDocument(V.Document);
   StatusBar1.Panels[0].Text :=
     Format('Line %d  Col %d', [V.CaretY, V.CaretX]);
+  if V.SelAvail and not D.IsBinary then
+  begin
+    Words := 0;
+    Chars := 0;
+    InWord := False;
+    LedCountText(V.SelText, Words, Chars, InWord);
+    StatusBar1.Panels[0].Text := StatusBar1.Panels[0].Text + LedSelectionCounts(Words, Chars);
+  end;
   if D.IsBinary then
   begin
     { A dump has no encoding and no line ending of its own -- showing the
@@ -6119,7 +6138,7 @@ begin
     nothing. }
   if (ActiveTab <> nil) and ActiveTab.VisualMode then
   begin
-    StatusBar1.Panels[0].Text := '';
+    StatusBar1.Panels[0].Text := ActiveTab.Visual.StatusText;
     case ActiveTab.Visual.Kind of
       lvkMarkdown: StatusBar1.Panels[3].Text := 'Visual (Markdown)';
       lvkHtml: StatusBar1.Panels[3].Text := 'Visual (HTML)';
@@ -6133,6 +6152,8 @@ begin
      TLedTextSession.ForTab(ActiveTab).Collab.Active then
     StatusBar1.Panels[3].Text := StatusBar1.Panels[3].Text + ' - ' + TLedTextSession.ForTab(ActiveTab).Collab.StatusText;
   {$ENDIF}
+  { the column as wide as what it says: a page and a selection's counts are longer than a line and column }
+  StatusBar1.Panels[0].Width := Max(160, StatusBar1.Canvas.TextWidth(StatusBar1.Panels[0].Text) + 24);
   if V.InsertMode then
     StatusBar1.Panels[4].Text := 'INS'
   else

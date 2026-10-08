@@ -52,6 +52,7 @@ type
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
     FOnChange: TNotifyEvent;
+    FOnStatus: TNotifyEvent;
     {$IFDEF LED_PARADE}
     FEdit: TParadeEdit;
     {$ENDIF}
@@ -258,6 +259,10 @@ type
     { The control that takes the focus and the keys.  nil without Parade. }
     property Editor: TWinControl read GetEditor;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    { The caret or the selection moved: what the status bar says of the page has changed }
+    property OnStatus: TNotifyEvent read FOnStatus write FOnStatus;
+    { For the status bar: the caret's page of how many, and the selection's words and characters when there is one }
+    function StatusText: string;
     {$IFDEF LED_PARADE}
     { the page itself, for scripting and tests }
     property Page: TParadeEdit read FEdit;
@@ -291,6 +296,13 @@ function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
   otherwise always win -- see Led.UI.EditKeys. }
 function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
   AControl: TWinControl): Boolean;
+
+{ The words and characters of UTF-8 text, added to Words and Chars, as a word processor counts them: a word is a run
+  of anything but white space, and each Chinese, Japanese or Korean character is a word of its own; the characters
+  are every one but the line breaks.  InWord carries a word across calls, for text that comes in pieces. }
+procedure LedCountText(const S: string; var Words, Chars: Integer; var InWord: Boolean);
+{ ", 12 words, 68 characters" for a selection, '' for none }
+function LedSelectionCounts(Words, Chars: Integer): string;
 
 implementation
 
@@ -1349,6 +1361,8 @@ var
   ShapeAt: pd_pos;
   ShapeSid: Integer;
 begin
+  if Assigned(FOnStatus) then
+    FOnStatus(Self);
   if FFont = nil then Exit;
   P := FEdit.CurrentCharProps;
   if not FFont.Focused then
@@ -3073,6 +3087,104 @@ begin
   end;
   {$ENDIF}
   if Assigned(FOnChange) then FOnChange(Self);
+end;
+
+procedure LedCountText(const S: string; var Words, Chars: Integer; var InWord: Boolean);
+var
+  i, n, k: Integer;
+  c: Cardinal;
+begin
+  i := 1;
+  n := Length(S);
+  while i <= n do
+  begin
+    c := Ord(S[i]);
+    k := 1;
+    if c >= $F0 then begin c := c and $07; k := 4; end
+    else if c >= $E0 then begin c := c and $0F; k := 3; end
+    else if c >= $C0 then begin c := c and $1F; k := 2; end;
+    while (k > 1) and (i + 1 <= n) and (Ord(S[i + 1]) and $C0 = $80) do
+    begin
+      Inc(i);
+      c := (c shl 6) or (Ord(S[i]) and $3F);
+      Dec(k);
+    end;
+    Inc(i);
+    if (c = 10) or (c = 13) or (c = $FFFC) then     { line breaks, and the objects the text stands in for }
+    begin
+      InWord := InWord and (c = $FFFC);
+      Continue;
+    end;
+    Inc(Chars);
+    if (c = 32) or (c = 9) or (c = $A0) or (c = $3000) or ((c >= $2000) and (c <= $200A)) or (c = $2028) or
+       (c = $2029) then
+      InWord := False
+    else if ((c >= $2E80) and (c <= $9FFF)) or ((c >= $AC00) and (c <= $D7AF)) or ((c >= $F900) and (c <= $FAFF)) or
+       ((c >= $FF66) and (c <= $FF9F)) or ((c >= $20000) and (c <= $3FFFF)) then
+    begin   { CJK: each a word, ending the one before it }
+      Inc(Words);
+      InWord := False;
+    end
+    else if not InWord then
+    begin
+      Inc(Words);
+      InWord := True;
+    end;
+  end;
+end;
+
+function LedSelectionCounts(Words, Chars: Integer): string;
+const
+  Plural: array[Boolean] of string = ('s', '');
+begin
+  if Chars = 0 then
+    Result := ''
+  else
+    Result := Format(', %.0n word%s, %.0n character%s selected', [Words * 1.0, Plural[Words = 1], Chars * 1.0,
+      Plural[Chars = 1]]);
+end;
+
+function TLedVisualPane.StatusText: string;
+{$IFDEF LED_PARADE}
+var
+  PageNo: Int32;
+  X, Base, Asc, Desc: pd_sp;
+  A, B: pd_pos;
+  Blk: pd_block_id;
+  S: string;
+  Lo, Hi, Words, Chars: Integer;
+  InWord: Boolean;
+{$ENDIF}
+begin
+  Result := '';
+  {$IFDEF LED_PARADE}
+  if (FEdit = nil) or (FEdit.Layout = nil) then
+    Exit;
+  if (FEdit.PageCount > 0) and (pd_layout_caret(FEdit.Layout, FEdit.CaretPos, PageNo, X, Base, Asc, Desc) = PD_OK) then
+    Result := Format('Page %d of %d', [PageNo + 1, FEdit.PageCount])
+  else if FEdit.PageCount > 0 then
+    Result := Format('%d pages', [FEdit.PageCount]);
+  if FEdit.SelectionRange(A, B) then
+  begin   { paragraph by paragraph, as the selection's text is made, without making it }
+    Words := 0;
+    Chars := 0;
+    InWord := False;
+    Blk := A.block;
+    while Blk <> 0 do
+    begin
+      S := FEdit.ParaText(Blk);
+      if Blk = A.block then Lo := A.offset else Lo := 0;
+      if Blk = B.block then Hi := B.offset else Hi := Length(S);
+      if Hi > Lo then
+        LedCountText(Copy(S, Lo + 1, Hi - Lo), Words, Chars, InWord);
+      if Blk = B.block then
+        Break;
+      InWord := False;
+      Blk := pd_doc_next_paragraph(FEdit.Doc, Blk);
+    end;
+    Result := Result + LedSelectionCounts(Words, Chars);
+  end;
+  {$ENDIF}
 end;
 
 function LedVisualClaimKey(AKey: Word; AShift: TShiftState;
