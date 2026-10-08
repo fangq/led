@@ -15874,6 +15874,45 @@ begin
 end;
 {$ENDIF}
 
+{ The Delete key on a page: the page's, not the text views hidden behind it (it deleted a character there, out of
+  sight, and nothing on the page). }
+procedure TestVisualDeleteKey(F: TLedMainForm);
+var
+  Md, Why, Before: string;
+  Tab: TLedTab;
+begin
+  Say('Delete on a page');
+  if not LedVisualAvailable then
+  begin
+    WriteLn('  (built without Parade; nothing to check)');
+    Exit;
+  end;
+  Md := IncludeTrailingPathDelimiter(TempName('delkey')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page.'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump;
+  Before := Tab.Document.Master.Lines.Text;
+  {$IFDEF LED_PARADE}
+  Tab.Visual.Page.SelectAll;
+  {$ENDIF}
+  F.actDelete.Execute;
+  Pump;
+  Check('Delete takes the selection off the page', Pos('Words', Tab.Visual.PlainText) = 0);
+  CheckEq('and leaves the text behind it alone until it is written back', Before, Tab.Document.Master.Lines.Text);
+  Tab.LeaveVisual;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+end;
+
 { The icons as they were made, kept on disk: the start reads them back
   rather than decoding and resampling a hundred PNGs (most of a second). }
 procedure TestIconCache(F: TLedMainForm);
@@ -16788,6 +16827,7 @@ begin
   TestParadeFiles(F);
   TestTabHoverClosePref(F);
   TestIconCache(F);
+  TestVisualDeleteKey(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

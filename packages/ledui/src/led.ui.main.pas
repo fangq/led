@@ -7336,6 +7336,11 @@ end;
 
 procedure TLedMainForm.actDeleteExecute(Sender: TObject);
 begin
+  if CurrentVisual <> nil then
+  begin   { the page's, not the text hidden behind it: a character, the selection, a drawing or a shape of it }
+    CurrentVisual.DeleteKey;
+    Exit;
+  end;
   if CurrentView = nil then Exit;
   if CurrentView.SelAvail then
     CurrentView.ClearSelection

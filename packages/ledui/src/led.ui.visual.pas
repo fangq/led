@@ -228,6 +228,8 @@ type
     procedure ToggleBold;
     procedure ToggleItalic;
     procedure ToggleUnderline;
+    { the Delete key, as the page has it: a character, the selection, a selected drawing or shape of one }
+    procedure DeleteKey;
     { Asks for a relay, a document and a token, and puts the shared document
       in place of this one -- Join without the toolbar.  False when it was
       cancelled or could not join (the reason has been shown). }
@@ -2565,6 +2567,13 @@ end;
 function TLedVisualPane.GetEditor: TWinControl;
 begin
   Result := {$IFDEF LED_PARADE}FEdit{$ELSE}nil{$ENDIF};
+end;
+
+procedure TLedVisualPane.DeleteKey;
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.ProcessKey(VK_DELETE, []);
+  {$ENDIF}
 end;
 
 procedure TLedVisualPane.ApplyPrefs;
