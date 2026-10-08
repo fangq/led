@@ -16003,6 +16003,41 @@ begin
 end;
 
 { The status bar: the counts of a selection, in a text and on a page, and the page the caret is on of how many }
+{ File > New Portable Document: an untitled Parade document, a page from the start, saved as a .pdoc }
+procedure TestNewPdoc(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  Path: string;
+begin
+  Say('new portable document');
+  Check('New Portable Document is offered when the pages are built in',
+    F.actNewPdoc.Visible = LedVisualAvailable);
+  if not LedVisualAvailable then Exit;
+  F.actNewPdoc.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  Check('it opens as an untitled page', (Tab <> nil) and Tab.Document.IsUntitled and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  Check('named as a Parade document', LedVisualKindOf(Tab.Document.KindName) = lvkPdoc);
+  Check('the page is a Parade document', Tab.Visual.Kind = lvkPdoc);
+  Tab.Visual.InsertText('Portable words.');
+  Pump;
+  Check('typing in it modifies it', Tab.Document.Modified);
+  Path := TempName('new.pdoc');
+  Tab.Document.SaveToFile(Path);
+  F.CloseActiveTab(False);
+  Pump;
+  Check('saved as BJData, not JSON', FileExists(Path) and (Pos('"_DataInfo_"', LedReadRawFile(Path)) = 0));
+  Tab := F.AddTab(F.Documents.OpenFile(Path));
+  Pump;
+  Check('it reopens as a page', (Tab <> nil) and Tab.VisualMode);
+  if (Tab <> nil) and Tab.VisualMode then
+    Check('with what was typed', Pos('Portable words.', Tab.Visual.Export(lvkMarkdown)) > 0);
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestStatusCounts(F: TLedMainForm);
 var
   W, C: Integer;
@@ -17011,6 +17046,7 @@ begin
   TestVisualDeleteKey(F);
   TestVisualShapeTab(F);
   TestStatusCounts(F);
+  TestNewPdoc(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

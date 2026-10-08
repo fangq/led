@@ -285,6 +285,8 @@ function LedVisualCanShare: Boolean;
 
 { An empty Word file, as Parade writes one: what a document joined starts as. }
 function LedVisualEmptyDocx: string;
+{ An empty document of a kind the pages are kept as (lvkDocx, lvkPdoc). }
+function LedVisualEmpty(AKind: TLedVisualKind): string;
 
 { What the visual editor would open this file as, by its name. }
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
@@ -328,12 +330,17 @@ begin
 end;
 
 function LedVisualEmptyDocx: string;
+begin
+  Result := LedVisualEmpty(lvkDocx);
+end;
+
+function LedVisualEmpty(AKind: TLedVisualKind): string;
 var
   P: TLedVisualPane;
 begin
   P := TLedVisualPane.Create(nil);
   try
-    Result := P.Export(lvkDocx);
+    Result := P.Export(AKind);
   finally
     P.Free;
   end;
