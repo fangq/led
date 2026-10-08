@@ -30,6 +30,11 @@ type
 
 { Fills AImages with one bitmap per name in ANames, in that order, so the
   index of a name is its index in the list.  Returns the list for chaining. }
+{ The icon files decoded while a window was built, let go: they are kept
+  from one list to the next (the toolbar's, the tab heads', the buttons'),
+  and are a few megabytes. }
+procedure LedIconSourcesRelease;
+
 function LedBuildIconList(AImages: TImageList; const ANames: array of string;
   AColour: TColor): TImageList;
 
@@ -197,6 +202,235 @@ begin
     end;
 end;
 
+type
+  { one pixel, premultiplied: colour times coverage, and the coverage }
+  TPremul = record
+    R, G, B, A: Single;
+  end;
+
+  { a source decoded once: the toolbar's list and the tab heads' both read
+    the same 128-pixel file, and the decode is half the cost of the two }
+  TArtSource = class
+    W, H: Integer;
+    Px: array of TPremul;
+  end;
+
+{ ---- the icons as they were last made, on disk -------------------------
+
+  Decoding a hundred PNGs and resampling each to the toolbar's size was most
+  of the start: two hundred milliseconds with the resampling made cheap,
+  more than a second before.  What comes out is the same every time for the
+  same file at the same size, so it is kept in <config>/cache/icons.bin and
+  read back whole -- a few hundred kilobytes -- and a file changed since (its
+  time or its length) is made again.  A missing, short or foreign cache is
+  simply not used. }
+type
+  TIconCached = class
+    Age, Len: Int64;            { the source file's, when this was made }
+    Px: TBytes;                 { ASize x ASize, B8G8R8A8, top to bottom }
+  end;
+
+const
+  IconCacheMagic = 'LEDICON1';
+
+var
+  IconCache: TStringList = nil;     { 'size|file' -> TIconCached }
+  IconCacheDirty: Boolean = False;
+
+function IconCacheFile: string;
+begin
+  Result := LedConfigFile('cache' + PathDelim + 'icons.bin');
+end;
+
+procedure IconCacheLoad;
+var
+  F: TFileStream;
+  N, i, KL, PL: Integer;
+  Key: string;
+  M: array[0..7] of Char;
+  E: TIconCached;
+begin
+  IconCache := TStringList.Create;
+  IconCache.Sorted := True;
+  IconCache.OwnsObjects := True;
+  if not FileExists(IconCacheFile) then
+    Exit;
+  try
+    F := TFileStream.Create(IconCacheFile, fmOpenRead or fmShareDenyNone);
+    try
+      F.ReadBuffer(M, 8);
+      if M <> IconCacheMagic then
+        Exit;
+      N := F.ReadDWord;
+      for i := 1 to N do
+      begin
+        KL := F.ReadDWord;
+        if (KL <= 0) or (KL > 4096) then Exit;
+        SetLength(Key, KL);
+        F.ReadBuffer(Key[1], KL);
+        E := TIconCached.Create;
+        F.ReadBuffer(E.Age, 8);
+        F.ReadBuffer(E.Len, 8);
+        PL := F.ReadDWord;
+        if (PL < 0) or (PL > 64 * 1024 * 1024) then
+        begin
+          E.Free;
+          Exit;
+        end;
+        SetLength(E.Px, PL);
+        if PL > 0 then
+          F.ReadBuffer(E.Px[0], PL);
+        if IconCache.IndexOf(Key) < 0 then
+          IconCache.AddObject(Key, E)
+        else
+          E.Free;
+      end;
+    finally
+      F.Free;
+    end;
+  except
+    IconCache.Clear;      { torn or foreign: made again }
+  end;
+end;
+
+procedure IconCacheSave;
+var
+  F: TFileStream;
+  i: Integer;
+  E: TIconCached;
+  Tmp: string;
+begin
+  if (IconCache = nil) or not IconCacheDirty then
+    Exit;
+  IconCacheDirty := False;
+  try
+    ForceDirectories(ExtractFileDir(IconCacheFile));
+    Tmp := IconCacheFile + '.tmp';
+    F := TFileStream.Create(Tmp, fmCreate);
+    try
+      F.WriteBuffer(IconCacheMagic[1], 8);
+      F.WriteDWord(IconCache.Count);
+      for i := 0 to IconCache.Count - 1 do
+      begin
+        E := TIconCached(IconCache.Objects[i]);
+        F.WriteDWord(Length(IconCache[i]));
+        F.WriteBuffer(IconCache[i][1], Length(IconCache[i]));
+        F.WriteBuffer(E.Age, 8);
+        F.WriteBuffer(E.Len, 8);
+        F.WriteDWord(Length(E.Px));
+        if Length(E.Px) > 0 then
+          F.WriteBuffer(E.Px[0], Length(E.Px));
+      end;
+    finally
+      F.Free;
+    end;
+    { whole or not at all: another LED starting reads either the old one or this }
+    RenameFile(Tmp, IconCacheFile);
+  except
+    { a cache that cannot be written is a slower next start, nothing worse }
+  end;
+end;
+
+{ the file's time and length, which say whether what was made from it still stands }
+function FileStamp(const AFile: string; out AAge, ALen: Int64): Boolean;
+var
+  R: TSearchRec;
+begin
+  Result := FindFirst(AFile, faAnyFile, R) = 0;
+  if Result then
+  begin
+    AAge := R.Time;
+    ALen := R.Size;
+  end;
+  FindClose(R);
+end;
+
+{ the made icon, as a bitmap, from its pixels }
+function IconFromPixels(const APx: TBytes; ASize: Integer): TBitmap;
+var
+  Img: TLazIntfImage;
+  Desc: TRawImageDescription;
+begin
+  Result := nil;
+  Img := TLazIntfImage.Create(0, 0);
+  try
+    Desc.Init_BPP32_B8G8R8A8_BIO_TTB(ASize, ASize);
+    Img.DataDescription := Desc;
+    Img.SetSize(ASize, ASize);
+    if Length(APx) <> Img.DataDescription.BytesPerLine * ASize then
+      Exit;
+    Move(APx[0], Img.PixelData^, Length(APx));
+    Result := TBitmap.Create;
+    Result.LoadFromIntfImage(Img);
+  finally
+    Img.Free;
+  end;
+end;
+
+var
+  ArtSources: TStringList = nil;   { by file name, while a window is being built }
+
+{ The file decoded into premultiplied pixels, from the cache when it is there; nil if it is not a picture. }
+function ArtSource(const AFile: string): TArtSource;
+var
+  Png: TPortableNetworkGraphic;
+  Img: TLazIntfImage;
+  x, y, i: Integer;
+  C: TFPColor;
+begin
+  if ArtSources = nil then
+  begin
+    ArtSources := TStringList.Create;
+    ArtSources.Sorted := True;
+    ArtSources.OwnsObjects := True;
+  end;
+  i := ArtSources.IndexOf(AFile);
+  if i >= 0 then
+    Exit(TArtSource(ArtSources.Objects[i]));
+  Result := nil;
+  Png := TPortableNetworkGraphic.Create;
+  Img := nil;
+  try
+    try
+      Png.LoadFromFile(AFile);
+    except
+      { A file that is not a picture is not worth failing to start over:
+        the caller falls back to the drawn icon. }
+      Exit;
+    end;
+    Img := Png.CreateIntfImage;
+    if (Img = nil) or (Img.Width = 0) or (Img.Height = 0) then Exit;
+    Result := TArtSource.Create;
+    Result.W := Img.Width;
+    Result.H := Img.Height;
+    SetLength(Result.Px, Img.Width * Img.Height);
+    for y := 0 to Img.Height - 1 do
+      for x := 0 to Img.Width - 1 do
+      begin
+        C := Img.Colors[x, y];
+        { premultiplied: colour counts for as much as it covers }
+        with Result.Px[y * Img.Width + x] do
+        begin
+          R := C.Red * (C.Alpha / 65535);
+          G := C.Green * (C.Alpha / 65535);
+          B := C.Blue * (C.Alpha / 65535);
+          A := C.Alpha / 65535;
+        end;
+      end;
+    ArtSources.AddObject(AFile, Result);
+  finally
+    Img.Free;
+    Png.Free;
+  end;
+end;
+
+procedure LedIconSourcesRelease;
+begin
+  FreeAndNil(ArtSources);
+  IconCacheSave;
+  FreeAndNil(IconCache);      { read again from disk when an icon is next wanted }
+end;
+
 { Reads an icon file and resamples it to ASize, keeping its alpha.
 
   The resampling is here rather than left to the widget set because a
@@ -210,7 +444,7 @@ end;
   divided by the coverage -- or a pixel next to a transparent one would be
   dragged towards whatever colour happened to be stored under the
   transparency. }
-function LoadIconArtwork(const AFile: string; ASize: Integer): TBitmap;
+function MakeIconArtwork(const AFile: string; ASize: Integer; out APx: TBytes): TBitmap;
 { **Cubic, not a box average.**
 
   The artwork is drawn at 128 and shown at whatever the toolbar's buttons
@@ -254,75 +488,108 @@ function LoadIconArtwork(const AFile: string; ASize: Integer): TBitmap;
   end;
 
 var
-  Png: TPortableNetworkGraphic;
-  Src, Dst: TLazIntfImage;
+  Src: TArtSource;
+  Dst: TLazIntfImage;
   Desc: TRawImageDescription;
-  x, y, sx, sy, x0, x1, y0, y1: Integer;
-  ScaleX, ScaleY, SupX, SupY, Cx, Cy, W, Wy, Sum: Double;
+  Tmp: array of TPremul;    { the horizontal pass: ASize wide, the source's height }
+  Wts: array of Single;
+  x, y, sx, sy, x0, x1, k: Integer;
+  ScaleX, ScaleY, SupX, SupY, Cx, Cy, Wt, SumX, SumY: Double;
   AccR, AccG, AccB, AccA: Double;
   C: TFPColor;
+  P: TPremul;
 begin
   Result := nil;
-  Png := TPortableNetworkGraphic.Create;
-  Src := nil;
-  Dst := nil;
+  Src := ArtSource(AFile);
+  if Src = nil then
+    Exit;
+  Dst := TLazIntfImage.Create(0, 0);
   try
-    try
-      Png.LoadFromFile(AFile);
-    except
-      { A file that is not a picture is not worth failing to start over:
-        the caller falls back to the drawn icon. }
-      Exit;
-    end;
-    Src := Png.CreateIntfImage;
-    if (Src = nil) or (Src.Width = 0) or (Src.Height = 0) then Exit;
-
     Desc.Init_BPP32_B8G8R8A8_BIO_TTB(ASize, ASize);
-    Dst := TLazIntfImage.Create(0, 0);
     Dst.DataDescription := Desc;
     Dst.SetSize(ASize, ASize);
 
     { How many source pixels to a destination one, and how far the kernel
       has to reach to cover them.  Never less than one: enlarging is
       interpolation and the kernel keeps its own width. }
-    ScaleX := Src.Width / ASize;
-    ScaleY := Src.Height / ASize;
+    ScaleX := Src.W / ASize;
+    ScaleY := Src.H / ASize;
     SupX := 2 * ScaleX;
     SupY := 2 * ScaleY;
     if SupX < 2 then SupX := 2;
     if SupY < 2 then SupY := 2;
 
+    { **In two passes.**  The kernel is a product of an x weight and a y
+      weight, and where it is cut off at the border depends on x alone and
+      on y alone, so filtering the rows and then the columns is the same
+      sum as the two-dimensional one -- forty source pixels a destination
+      pixel rather than four hundred.  Done the other way, the start spent
+      most of a second here. }
+    SetLength(Tmp, ASize * Src.H);
+    SetLength(Wts, Src.W + Src.H + 8);
+    for x := 0 to ASize - 1 do
+    begin
+      Cx := (x + 0.5) * ScaleX - 0.5;
+      x0 := Trunc(Cx - SupX); if x0 < 0 then x0 := 0;
+      x1 := Trunc(Cx + SupX) + 1; if x1 > Src.W - 1 then x1 := Src.W - 1;
+      SumX := 0;
+      for sx := x0 to x1 do
+      begin
+        Wts[sx - x0] := Cubic((sx - Cx) / (SupX / 2));
+        SumX := SumX + Wts[sx - x0];
+      end;
+      for sy := 0 to Src.H - 1 do
+      begin
+        AccR := 0; AccG := 0; AccB := 0; AccA := 0;
+        k := sy * Src.W;
+        for sx := x0 to x1 do
+        begin
+          Wt := Wts[sx - x0];
+          if Wt = 0 then Continue;
+          P := Src.Px[k + sx];
+          AccR := AccR + Wt * P.R;
+          AccG := AccG + Wt * P.G;
+          AccB := AccB + Wt * P.B;
+          AccA := AccA + Wt * P.A;
+        end;
+        P.R := AccR; P.G := AccG; P.B := AccB; P.A := AccA;
+        Tmp[sy * ASize + x] := P;
+      end;
+    end;
+
     for y := 0 to ASize - 1 do
     begin
       Cy := (y + 0.5) * ScaleY - 0.5;
-      y0 := Trunc(Cy - SupY); if y0 < 0 then y0 := 0;
-      y1 := Trunc(Cy + SupY) + 1; if y1 > Src.Height - 1 then y1 := Src.Height - 1;
+      x0 := Trunc(Cy - SupY); if x0 < 0 then x0 := 0;
+      x1 := Trunc(Cy + SupY) + 1; if x1 > Src.H - 1 then x1 := Src.H - 1;
+      SumY := 0;
+      for sy := x0 to x1 do
+      begin
+        Wts[sy - x0] := Cubic((sy - Cy) / (SupY / 2));
+        SumY := SumY + Wts[sy - x0];
+      end;
       for x := 0 to ASize - 1 do
       begin
+        { the x weights' sum for this column, as the horizontal pass had it }
         Cx := (x + 0.5) * ScaleX - 0.5;
-        x0 := Trunc(Cx - SupX); if x0 < 0 then x0 := 0;
-        x1 := Trunc(Cx + SupX) + 1; if x1 > Src.Width - 1 then x1 := Src.Width - 1;
-
-        AccR := 0; AccG := 0; AccB := 0; AccA := 0; Sum := 0;
-        for sy := y0 to y1 do
+        sx := Trunc(Cx - SupX); if sx < 0 then sx := 0;
+        k := Trunc(Cx + SupX) + 1; if k > Src.W - 1 then k := Src.W - 1;
+        SumX := 0;
+        for sy := sx to k do
+          SumX := SumX + Cubic((sy - Cx) / (SupX / 2));
+        AccR := 0; AccG := 0; AccB := 0; AccA := 0;
+        for sy := x0 to x1 do
         begin
-          Wy := Cubic((sy - Cy) / (SupY / 2));
-          if Wy = 0 then Continue;
-          for sx := x0 to x1 do
-          begin
-            W := Wy * Cubic((sx - Cx) / (SupX / 2));
-            if W = 0 then Continue;
-            C := Src.Colors[sx, sy];
-            { premultiplied: colour counts for as much as it covers }
-            AccR := AccR + W * C.Red * C.Alpha;
-            AccG := AccG + W * C.Green * C.Alpha;
-            AccB := AccB + W * C.Blue * C.Alpha;
-            AccA := AccA + W * C.Alpha;
-            Sum := Sum + W;
-          end;
+          Wt := Wts[sy - x0];
+          if Wt = 0 then Continue;
+          P := Tmp[sy * ASize + x];
+          AccR := AccR + Wt * P.R;
+          AccG := AccG + Wt * P.G;
+          AccB := AccB + Wt * P.B;
+          AccA := AccA + Wt * P.A;
         end;
 
-        if (Sum <= 0) or (AccA <= 0) then
+        if (SumX * SumY <= 0) or (AccA <= 0) then
           C := FPColor(0, 0, 0, 0)
         else
         begin
@@ -333,18 +600,56 @@ begin
           C.Blue  := ClampWord(AccB / AccA);
           { A cubic overshoots -- that is where the sharpening comes from --
             so alpha is clamped rather than trusted. }
-          C.Alpha := ClampWord(AccA / Sum);
+          C.Alpha := ClampWord(65535 * AccA / (SumX * SumY));
         end;
         Dst.Colors[x, y] := C;
       end;
     end;
 
+    SetLength(APx, Dst.DataDescription.BytesPerLine * ASize);
+    Move(Dst.PixelData^, APx[0], Length(APx));
     Result := TBitmap.Create;
     Result.LoadFromIntfImage(Dst);
   finally
     Dst.Free;
-    Src.Free;
-    Png.Free;
+  end;
+end;
+
+{ The icon file at ASize: from the cache when the file has not changed since, made (and kept) otherwise. }
+function LoadIconArtwork(const AFile: string; ASize: Integer): TBitmap;
+var
+  Key: string;
+  Age, Len: Int64;
+  i: Integer;
+  E: TIconCached;
+  Px: TBytes;
+begin
+  if IconCache = nil then
+    IconCacheLoad;
+  Key := IntToStr(ASize) + '|' + AFile;
+  if not FileStamp(AFile, Age, Len) then
+    Exit(nil);
+  i := IconCache.IndexOf(Key);
+  if i >= 0 then
+  begin
+    E := TIconCached(IconCache.Objects[i]);
+    if (E.Age = Age) and (E.Len = Len) then
+    begin
+      Result := IconFromPixels(E.Px, ASize);
+      if Result <> nil then
+        Exit;
+    end;
+    IconCache.Delete(i);
+  end;
+  Result := MakeIconArtwork(AFile, ASize, Px);
+  if Result <> nil then
+  begin
+    E := TIconCached.Create;
+    E.Age := Age;
+    E.Len := Len;
+    E.Px := Px;
+    IconCache.AddObject(Key, E);
+    IconCacheDirty := True;
   end;
 end;
 
@@ -1595,5 +1900,8 @@ end;
 
 finalization
   FGlyph.Free;
+  ArtSources.Free;
+  IconCacheSave;          { what was made after the window was up (a dialog's buttons) }
+  IconCache.Free;
 
 end.

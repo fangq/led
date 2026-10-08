@@ -15874,6 +15874,44 @@ begin
 end;
 {$ENDIF}
 
+{ The icons as they were made, kept on disk: the start reads them back
+  rather than decoding and resampling a hundred PNGs (most of a second). }
+procedure TestIconCache(F: TLedMainForm);
+var
+  Cache: string;
+  A, B: TBitmap;
+  Same: Boolean;
+  x, y: Integer;
+begin
+  Say('icon cache');
+  Cache := LedConfigFile('cache' + PathDelim + 'icons.bin');
+  Check('the start left the made icons on disk', FileExists(Cache) and (FileSize(Cache) > 1000));
+  A := LedIconArtworkBitmap('save', 40);         { made now: a size the start did not use }
+  LedIconSourcesRelease;
+  B := LedIconArtworkBitmap('save', 40);         { and read back }
+  try
+    Check('an icon comes back from the cache', (A <> nil) and (B <> nil));
+    if (A <> nil) and (B <> nil) then
+    begin
+      Same := (A.Width = B.Width) and (A.Height = B.Height);
+      for y := 0 to A.Height - 1 do
+        for x := 0 to A.Width - 1 do
+          if Same and (A.Canvas.Pixels[x, y] <> B.Canvas.Pixels[x, y]) then
+            Same := False;
+      Check('the same as when it was made', Same);
+    end;
+  finally
+    A.Free;
+    B.Free;
+  end;
+  { a damaged cache is not used, and is made again }
+  WriteBytes(Cache, 'LEDICON1' + #255#255);
+  LedIconSourcesRelease;
+  A := LedIconArtworkBitmap('open', 40);
+  Check('a torn cache is no harm', A <> nil);
+  A.Free;
+end;
+
 { General > Show the close cross on the tab under the pointer: off by
   default (medit's one cross at the end of the strip); on, the tabs make
   room for it, and off again they do not. }
@@ -16749,6 +16787,7 @@ begin
   TestVisualLineBreaking(F);
   TestParadeFiles(F);
   TestTabHoverClosePref(F);
+  TestIconCache(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

@@ -20,7 +20,7 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
-  Led.UI.TabClose, Led.UI.ImageWin, Led.UI.About,
+  Led.UI.TabClose, Led.UI.ImageWin, Led.UI.About, Led.Core.StartTrace,
   Led.Core.Outline,
   Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude,
   fpjson,
@@ -1099,7 +1099,9 @@ end;
 
 procedure TLedMainForm.FormCreate(Sender: TObject);
 begin
+  LedStartTrace('FormCreate begins');
   BuildIcons;
+  LedStartTrace('FormCreate: icons built');
   { File > Join Shared Document is there when this LED can share }
   actJoinShared.Visible := LedVisualCanShare;
   actShareDoc.Visible := LedVisualCanShare;
@@ -1131,6 +1133,7 @@ begin
     which keys are not its to handle. }
   ReserveActionShortcuts;
   FShortcuts.Load;
+  LedStartTrace('FormCreate: recent files, search, shortcuts');
   { After Load, so a hint quotes the shortcut the user actually has. }
   FillActionHints;
 
@@ -1139,6 +1142,7 @@ begin
     replaces rather than duplicates the one that came with led. }
   FTools.LoadDirectory(LedConfigFile('tools'));
   FTools.LoadDirectory(LedDataFile('tools'));
+  LedStartTrace('FormCreate: tools loaded');
   FRunner := TLedToolRunner.Create(Self);
   FRunner.OnFinished := @BuildFinished;
 
@@ -1167,6 +1171,7 @@ begin
     other: changed here they take effect now rather than at the next
     start. }
   AIRefresh;
+  LedStartTrace('FormCreate: dock made, AI refreshed');
   FDock.OnPaneShown := @PaneShown;
 
   { Dropping files on the window opens them.  Set here rather than in the
@@ -1237,6 +1242,7 @@ begin
   FDock.AddPane(ledRight, 'symbols', 'Outline', FSymbols, 'symbols');
   FDock.EdgeVisible[ledRight] := False;
   FDock.AddPane(ledBottom, 'output', 'Output', FOutput, 'output');
+  LedStartTrace('FormCreate: output, browser, project, outline panes');
 
   { The preview and the terminal used to be registered the first time their
     action ran, which meant a saved layout naming them was restored before
@@ -1278,6 +1284,7 @@ begin
     nothing by that name and skips it, which is the right thing to do. }
   FDock.AddPane(ledRight, 'preview', 'Preview', FViewPane, 'preview');
   FDock.AddPaneAlias('notebook', 'preview');
+  LedStartTrace('FormCreate: preview and notebook panes');
 
   { Except where there is no pseudo-terminal to be had.  Registering it there
     would put a button on the rail for a pane that can only apologise. }
@@ -1325,6 +1332,7 @@ begin
   FDebugger.OnConsole := @DebugConsole;
   FDebugger.OnViewFor := @DebugViewFor;
   FDebugger.OnStateChanged := @DebugStateChanged;
+  LedStartTrace('FormCreate: terminal and debugger panes');
 
   { Registered whether or not there is anything installed to talk to.  A
     pane missing at startup is a pane the saved layout cannot find, and
@@ -1348,6 +1356,7 @@ begin
   FAITimer.Enabled := False;
   FAITimer.OnTimer := @AITick;
   AIChooseBackend;
+  LedStartTrace('FormCreate: AI pane, backend chosen');
 
   FDock.EdgeVisible[ledLeft] := False;
   FDock.EdgeVisible[ledBottom] := False;
@@ -1355,6 +1364,7 @@ begin
   { Restore where the user last put the panes.  A layout from an older build
     is discarded rather than fought with, leaving the defaults. }
   FDock.LoadLayout(LedConfigFile('layout.xml'));
+  LedStartTrace('FormCreate: layout loaded');
 
   { ...and then put the window on the screen it was started from.
 
@@ -1401,6 +1411,7 @@ begin
   ToolBar1.Visible := LedPrefs.GetBool('Editor/show_toolbar', True);
   actShowToolbar.Checked := ToolBar1.Visible;
   ApplyTabCloseMode;
+  LedStartTrace('FormCreate: window placed, toolbars');
 
   if RestoreSession then
     { A restored position is kept, but on this launch's monitor. }
@@ -1415,9 +1426,13 @@ begin
 
   { Before the menus are filled and before anything ticks one. }
   MakeTogglesCheckable;
+  LedStartTrace('FormCreate: session restored');
   PopulateAllMenus;
+  LedStartTrace('FormCreate: menus populated');
 
   LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
+  LedIconSourcesRelease;    { decoded for the lists and buttons above }
+  LedStartTrace('FormCreate ends');
 end;
 
 procedure TLedMainForm.PopulateAllMenus;
