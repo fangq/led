@@ -15986,6 +15986,17 @@ begin
   Pump;
   Check('with the Shape tab', Tab.Visual.ShapeTabShown);
   Check('another, drawn in it next', E.InsertShape('ellipse') and (E.DrawKind = 'ellipse'));
+  E.ProcessKey(VK_ESCAPE, []);    { not drawn: the hexagon again }
+  E.ProcessKey(VK_TAB, []);
+  Check('the tab turns, flips and edits points', (ButtonByCaption(Tab.Visual, 'Rotate ' + #$E2#$96#$BE) <> nil) and
+    (ButtonByCaption(Tab.Visual, 'Edit Points') <> nil) and (ButtonByCaption(Tab.Visual, 'Colours ' + #$E2#$96#$BE) <> nil));
+  if E.SelectedShape(At, Sid) and (Sid >= 0) then
+  begin
+    if ButtonByCaption(Tab.Visual, 'Edit Points') <> nil then
+      ButtonByCaption(Tab.Visual, 'Edit Points').Click;
+    Check('Edit Points from the tab', E.EditingPoints);
+    E.ProcessKey(VK_ESCAPE, []);
+  end;
   if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
   begin   { the tab as it shows, for a look }
     F.Repaint;
