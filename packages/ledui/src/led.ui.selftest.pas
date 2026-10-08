@@ -15913,6 +15913,77 @@ begin
   Pump;
 end;
 
+{ A shape of a drawing selected on a page: the Shape tab comes up with it, and goes when the shape does.
+  The drawing is Parade's test file, from beside LED. }
+procedure TestVisualShapeTab(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Src, Docx: string;
+  L: TStringList;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  Para: pd_block_id;
+  Pg: Int32;
+  X, Base, Asc, Desc: pd_sp;
+  At: pd_pos;
+  Sid: Integer;
+  Xml: string;
+{$ENDIF}
+begin
+  Say('the Shape tab');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/canvas_caption.docx');
+  if not FileExists(Src) then
+  begin
+    WriteLn('  (no ', Src, '; nothing to check)');
+    Exit;
+  end;
+  Docx := IncludeTrailingPathDelimiter(TempName('shapetab')) + 'canvas.docx';
+  ForceDirectories(ExtractFileDir(Docx));
+  WriteBytes(Docx, LedReadRawFile(Src));
+  L := TStringList.Create;
+  try
+    L.Add(Docx);
+    F.OpenFiles(L);
+  finally
+    L.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the drawing''s file opens as pages', False);
+    Exit;
+  end;
+  E := Tab.Visual.Page;
+  Para := pd_doc_child(E.Doc, pd_doc_child(E.Doc, pd_doc_root(E.Doc), 0), 1);
+  if pd_layout_caret(E.Layout, PdPos(Para, 0), Pg, X, Base, Asc, Desc) <> PD_OK then
+  begin
+    Check('the drawing is laid out', False);
+    Exit;
+  end;
+  Check('no Shape tab with the caret in text', not Tab.Visual.ShapeTabShown);
+  E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
+  Pump;
+  Check('nor with the whole drawing selected', not Tab.Visual.ShapeTabShown);
+  E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
+  Pump;
+  Check('a shape selected: its tab comes up', E.SelectedShape(At, Sid) and (Sid = 0) and
+    Tab.Visual.ShapeTabShown);
+  Check('a fill from it goes into the drawing', E.SetShapeFill($00C47244, False) and E.KeptXml(Xml) and
+    (Pos('val="4472C4"', Xml) > 0));
+  Check('and makes the file modified', Tab.Document.Modified);
+  E.ProcessKey(VK_ESCAPE, []);
+  Pump;
+  Check('Escape: the tab goes with the shape', not Tab.Visual.ShapeTabShown);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ELSE}
+  WriteLn('  (built without Parade; nothing to check)');
+  {$ENDIF}
+end;
+
 { The icons as they were made, kept on disk: the start reads them back
   rather than decoding and resampling a hundred PNGs (most of a second). }
 procedure TestIconCache(F: TLedMainForm);
@@ -16828,6 +16899,7 @@ begin
   TestTabHoverClosePref(F);
   TestIconCache(F);
   TestVisualDeleteKey(F);
+  TestVisualShapeTab(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

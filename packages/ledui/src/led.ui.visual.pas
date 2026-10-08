@@ -47,6 +47,7 @@ type
     FGroup: TPanel;             { the two-row group being filled }
     FTabBtns: array of TSpeedButton;
     FTableTab: Integer;         { the Table tab's index, shown only while the caret is in a table (-1: none) }
+    FShapeTab: Integer;         { the Shape tab's, shown only while a shape of a drawing is selected (-1: none) }
     FStyle: TComboBox;
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
@@ -137,6 +138,12 @@ type
     procedure LineNumberItemClicked(Sender: TObject);
     procedure ParaBoxChanged(Sender: TObject);
     procedure BuildTable;
+    procedure BuildShape;
+    procedure ShapeFillItemClicked(Sender: TObject);
+    procedure ShapeLineItemClicked(Sender: TObject);
+    procedure ShapeOrderItemClicked(Sender: TObject);
+    procedure GroupClicked(Sender: TObject);
+    procedure UngroupClicked(Sender: TObject);
     procedure TableInsertItemClicked(Sender: TObject);
     procedure TableDeleteItemClicked(Sender: TObject);
     procedure TableMergeItemClicked(Sender: TObject);
@@ -251,6 +258,8 @@ type
     {$IFDEF LED_PARADE}
     { the page itself, for scripting and tests }
     property Page: TParadeEdit read FEdit;
+    { the Shape tab, there while a shape is selected; for tests }
+    function ShapeTabShown: Boolean;
     {$ENDIF}
     { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
       Table (shown in a table); without Parade: 0 Home, 1 Review }
@@ -775,6 +784,7 @@ begin
   {$ENDIF}
 
   FTableTab := -1;
+  FShapeTab := -1;
   {$IFDEF LED_PARADE}
   AddTab('Insert');
   BuildInsert;
@@ -849,6 +859,11 @@ begin
   BuildTable;
   FTableTab := High(FBars);
   FTabBtns[FTableTab].Visible := False;
+  { and one while a shape of a drawing is selected }
+  AddTab('Shape');
+  BuildShape;
+  FShapeTab := High(FBars);
+  FTabBtns[FShapeTab].Visible := False;
   {$ENDIF}
   {$IFDEF LED_PARADE_SYNC}
   { the sharing status after the last tab }
@@ -1328,6 +1343,8 @@ var
   P: pd_char_props;
   Pp: pd_para_props;
   i, L: Integer;
+  ShapeAt: pd_pos;
+  ShapeSid: Integer;
 begin
   if FFont = nil then Exit;
   P := FEdit.CurrentCharProps;
@@ -1387,6 +1404,24 @@ begin
       if FBars[FTableTab].Visible then
         ShowTab(0);
       FTabBtns[FTableTab].Visible := False;
+    end;
+  end;
+  { the Shape tab: there while a shape is selected, and opened when one is first selected }
+  if FShapeTab >= 0 then
+  begin
+    if FEdit.SelectedShape(ShapeAt, ShapeSid) and (ShapeSid >= 0) then
+    begin
+      if not FTabBtns[FShapeTab].Visible then
+      begin
+        FTabBtns[FShapeTab].Visible := True;
+        ShowTab(FShapeTab);
+      end;
+    end
+    else if FTabBtns[FShapeTab].Visible then
+    begin
+      if FBars[FShapeTab].Visible then
+        ShowTab(0);
+      FTabBtns[FShapeTab].Visible := False;
     end;
   end;
 end;
@@ -2171,6 +2206,92 @@ begin
   MenuButton('borders', 'Borders', 'The table''s rules', M, False);
   EndRows;
   SetIcon(AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked), 'distribute');
+end;
+
+function TLedVisualPane.ShapeTabShown: Boolean;
+begin
+  Result := (FShapeTab >= 0) and FTabBtns[FShapeTab].Visible and FBars[FShapeTab].Visible;
+end;
+
+{ the Shape tab: a shape's fill and outline, its place in the order, groups -- what Word's Shape Format has first }
+procedure TLedVisualPane.BuildShape;
+const
+  Colours: array[0..9] of Integer = ($FFFFFF, $000000, $4472C4, $ED7D31, $A5A5A5, $FFC000, $5B9BD5, $70AD47,
+    $C00000, $7030A0);
+  ColourNames: array[0..9] of string = ('White', 'Black', 'Blue', 'Orange', 'Grey', 'Gold', 'Light blue', 'Green',
+    'Dark red', 'Purple');
+var
+  M: TPopupMenu;
+  i: Integer;
+begin
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(Colours) do
+    Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeFillItemClicked), FromRGB(Colours[i]), False);
+  MenuItem(M, '-', 0, nil);
+  Swatch(MenuItem(M, 'No fill', -1, @ShapeFillItemClicked), clWhite, True);
+  MenuButton('shading', 'Fill', 'The colour inside the selected shape', M);
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(Colours) do
+    Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeLineItemClicked), FromRGB(Colours[i]), False);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Thin (0.75 pt)', -75, @ShapeLineItemClicked);
+  MenuItem(M, 'Medium (1.5 pt)', -150, @ShapeLineItemClicked);
+  MenuItem(M, 'Thick (3 pt)', -300, @ShapeLineItemClicked);
+  MenuItem(M, '-', 0, nil);
+  Swatch(MenuItem(M, 'No outline', -1, @ShapeLineItemClicked), clWhite, True);
+  MenuButton('borders', 'Outline', 'The selected shape''s line: its colour and width', M);
+  AddSeparator;
+  BeginRows;
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Bring forward', 0, @ShapeOrderItemClicked);
+  MenuItem(M, 'Bring to front', 2, @ShapeOrderItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Send backward', 1, @ShapeOrderItemClicked);
+  MenuItem(M, 'Send to back', 3, @ShapeOrderItemClicked);
+  MenuButton('', 'Arrange', 'Which shapes the selected one is drawn over', M, False);
+  NextRow;
+  AddButton('Group', 'The selected shapes (Shift+click for more) made one', [], @GroupClicked);
+  AddButton('Ungroup', 'The group the selected shape is in taken apart', [], @UngroupClicked);
+  EndRows;
+end;
+
+procedure TLedVisualPane.ShapeFillItemClicked(Sender: TObject);
+begin
+  FEdit.SetShapeFill(FromRGB(Max(0, TMenuItem(Sender).Tag)), TMenuItem(Sender).Tag = -1);
+  BackToPage;
+end;
+
+{ a colour (the tag, an RGB), a width (minus hundredths of a point), or none (-1) }
+procedure TLedVisualPane.ShapeLineItemClicked(Sender: TObject);
+var
+  T: Integer;
+begin
+  T := TMenuItem(Sender).Tag;
+  if T = -1 then
+    FEdit.SetShapeLine(clBlack, 0, True)
+  else if T < 0 then
+    FEdit.SetShapeLine(clNone, -T / 100, False)
+  else
+    FEdit.SetShapeLine(FromRGB(T), 0, False);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShapeOrderItemClicked(Sender: TObject);
+begin
+  FEdit.ShapeOrder(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.GroupClicked(Sender: TObject);
+begin
+  FEdit.GroupShapes;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.UngroupClicked(Sender: TObject);
+begin
+  FEdit.UngroupShape;
+  BackToPage;
 end;
 
 procedure TLedVisualPane.TableInsertItemClicked(Sender: TObject);
