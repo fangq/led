@@ -284,7 +284,7 @@ type
     { Make this untitled document a Word file holding ABytes, as opening a
       .docx would -- for joining a shared document, which is a page before
       it is a file. }
-    procedure StartWord(const ABytes: string);
+    procedure StartWord(const ABytes: string; const AExt: string = '.docx');
     { The name that says what the document is: the file's, or for an
       untitled one its display name with what it was started as ('.docx'). }
     function KindName: string;
@@ -3041,9 +3041,10 @@ begin
   Result := True;
 end;
 
-procedure TLedDocument.StartWord(const ABytes: string);
+{ an untitled page document: a Word file, or (AExt '.pdoc') Parade's own }
+procedure TLedDocument.StartWord(const ABytes: string; const AExt: string);
 begin
-  FUntitledExt := '.docx';
+  FUntitledExt := AExt;
   FIsBinary := True;
   FIsBJData := False;
   FBytes := ABytes;

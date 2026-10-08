@@ -53,6 +53,7 @@ type
   TLedMainForm = class(TForm)
     ActionList1: TActionList;
     actNew: TAction;
+    actNewPdoc: TAction;
     actJoinShared: TAction;
     actShareDoc: TAction;
     actLeaveDoc: TAction;
@@ -429,6 +430,7 @@ type
     procedure actCycleViewsExecute(Sender: TObject);
     procedure actNewExecute(Sender: TObject);
     procedure actNewNotebookExecute(Sender: TObject);
+    procedure actNewPdocExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
     procedure actShareDocExecute(Sender: TObject);
     procedure actLeaveDocExecute(Sender: TObject);
@@ -1105,6 +1107,7 @@ begin
   LedStartTrace('FormCreate: icons built');
   { File > Join Shared Document is there when this LED can share }
   actJoinShared.Visible := LedVisualCanShare;
+  actNewPdoc.Visible := LedVisualAvailable;
   actShareDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
   miSepShare.Visible := LedVisualCanShare;
@@ -6840,6 +6843,16 @@ begin
     notebook with the pane closed is an empty JSON document, which is not
     what the button says it makes. }
   FDock.ShowPane('notebook');
+end;
+
+{ A new Parade document (.pdoc, BJData): untitled, as New makes a file, and open as its pages }
+procedure TLedMainForm.actNewPdocExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
+begin
+  Doc := FDocs.NewDocument;
+  Doc.StartWord(LedVisualEmpty(lvkPdoc), '.pdoc');
+  AddTab(Doc);    { says why, if this LED has no visual editor }
 end;
 
 procedure TLedMainForm.actJoinSharedExecute(Sender: TObject);

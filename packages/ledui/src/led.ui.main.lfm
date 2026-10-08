@@ -377,6 +377,11 @@ object LedMainForm: TLedMainForm
       ImageIndex = 63
       OnExecute = actNewNotebookExecute
     end
+    object actNewPdoc: TAction
+      Caption = 'New &Portable Document'
+      Hint = 'New Portable Document|Create a Parade document (.pdoc) and edit it as pages'
+      OnExecute = actNewPdocExecute
+    end
     object actJoinShared: TAction
       Caption = '&Join Shared Document...'
       Hint = 'Join|Open a document someone shares with you, from the link they sent'
@@ -632,6 +637,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_NewNotebook: TMenuItem
         Action = actNewNotebook
+      end
+      object mi_NewPdoc: TMenuItem
+        Action = actNewPdoc
       end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow
