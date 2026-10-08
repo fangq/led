@@ -15965,17 +15965,20 @@ begin
   Check('no Shape tab with the caret in text', not Tab.Visual.ShapeTabShown);
   E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
   Pump;
-  Check('nor with the whole drawing selected', not Tab.Visual.ShapeTabShown);
+  Check('a drawing selected: the Shape tab comes up', Tab.Visual.ShapeTabShown);
   E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
   Pump;
-  Check('a shape selected: its tab comes up', E.SelectedShape(At, Sid) and (Sid = 0) and
+  Check('a shape selected: the tab stays', E.SelectedShape(At, Sid) and (Sid = 0) and
     Tab.Visual.ShapeTabShown);
   Check('a fill from it goes into the drawing', E.SetShapeFill($00C47244, False) and E.KeptXml(Xml) and
     (Pos('val="4472C4"', Xml) > 0));
   Check('and makes the file modified', Tab.Document.Modified);
   E.ProcessKey(VK_ESCAPE, []);
   Pump;
-  Check('Escape: the tab goes with the shape', not Tab.Visual.ShapeTabShown);
+  Check('Escape: back to the drawing, the tab still there', Tab.Visual.ShapeTabShown);
+  E.ProcessKey(VK_ESCAPE, []);
+  Pump;
+  Check('Escape again: back to the text, the tab gone', not Tab.Visual.ShapeTabShown);
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;

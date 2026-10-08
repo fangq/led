@@ -635,7 +635,7 @@ begin
     else if K = FHot then
       Canvas.Brush.Color := RGBToColor(236, 242, 252)
     else
-      Canvas.Brush.Color := clWindow;
+      Canvas.Brush.Color := clWhite;    { the page's own white, in a dark theme too: the styles look as on it }
     Canvas.Pen.Color := IfThen(FNames[K] = FCurrent, RGBToColor(80, 120, 230), RGBToColor(200, 204, 214));
     Canvas.Rectangle(R);
     { the name in the style's own look, at a size that fits the tile }
@@ -1406,10 +1406,10 @@ begin
       FTabBtns[FTableTab].Visible := False;
     end;
   end;
-  { the Shape tab: there while a shape is selected, and opened when one is first selected }
+  { the Shape tab: there while a drawing or a shape of it is selected, and opened when one is first selected }
   if FShapeTab >= 0 then
   begin
-    if FEdit.SelectedShape(ShapeAt, ShapeSid) and (ShapeSid >= 0) then
+    if FEdit.SelectedShape(ShapeAt, ShapeSid) then
     begin
       if not FTabBtns[FShapeTab].Visible then
       begin
