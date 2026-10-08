@@ -13,6 +13,8 @@ uses
   {$IFDEF UNIX}
   cthreads,
   {$ENDIF}
+  { First, so that its clock starts before every other unit's initialization. }
+  Led.Core.StartTrace,
   { Before Interfaces, and that is the point of it: Interfaces' own
     initialization runs gtk_init, which builds pango's font map, and a font
     registered after that is not seen.  See Led.Core.AppFont. }
@@ -22,6 +24,20 @@ uses
   Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons,
   Led.UI.EditKeys, Led.UI.ErrLog,
   Led.UI.XError;
+
+type
+  { the first idle after the window is up: the end of the start, for LED_STARTUP_TRACE }
+  TStartIdle = class
+    procedure Idle(Sender: TObject; var Done: Boolean);
+  end;
+
+procedure TStartIdle.Idle(Sender: TObject; var Done: Boolean);
+begin
+  Application.RemoveOnIdleHandler(@Idle);
+  LedStartTrace('first idle: the window is up');
+  if LedStartTraceQuit then
+    Application.Terminate;
+end;
 
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every
@@ -102,7 +118,9 @@ begin
     if Cmd.SelfTest then
       LedPrepareSelfTestSandbox;
 
+    LedStartTrace('units initialized, command line read');
     Application.Initialize;
+    LedStartTrace('Application.Initialize');
     { After Initialize, so it replaces the handler GTK installs rather than
       being replaced by it.  See Led.UI.XError: over ssh X forwarding the
       server refuses shared memory, and GTK's handler answers that by
@@ -127,6 +145,7 @@ begin
     LedSkipFrameProbe;
     LedInstallEditKeyGuard;
     Application.CreateForm(TLedMainForm, LedMainForm);
+    LedStartTrace('main form created');
     { The window icon, from the PNG copy of the artwork embedded by
       packaging/windows/led.rc.
 
@@ -140,6 +159,7 @@ begin
     LedApplyWindowIcon;
 
     LedApplyAdaptiveScale;
+    LedStartTrace('window icon, scale');
     LedMainForm.AdoptInstance(Inst);
 
     if Cmd.SelfTest then
@@ -150,6 +170,9 @@ begin
       Exit(LedRunOpenBench(Cmd));
 
     LedMainForm.ApplyCommandLine(Cmd, GetCurrentDir);
+    LedStartTrace('command line applied');
+    if LedStartTraceOn then
+      Application.AddOnIdleHandler(@TStartIdle(nil).Idle);
     Application.Run;
   finally
     Cmd.Free;

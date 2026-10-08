@@ -311,6 +311,11 @@
         <UnitName Value="Led.Core.Paths"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledcore/src/led.core.starttrace.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.Core.StartTrace"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.prefs.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Prefs"/>
