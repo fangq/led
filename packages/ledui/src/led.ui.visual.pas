@@ -144,6 +144,10 @@ type
     procedure ShapeKindClicked(Sender: TObject);
     procedure CanvasClicked(Sender: TObject);
     procedure ShapeFillItemClicked(Sender: TObject);
+    procedure ShapeRotateItemClicked(Sender: TObject);
+    procedure ShapeThemeItemClicked(Sender: TObject);
+    procedure EditPointsClicked(Sender: TObject);
+    function PickColour(var AColour: TColor): Boolean;
     procedure ShapeLineItemClicked(Sender: TObject);
     procedure ShapeOrderItemClicked(Sender: TObject);
     procedure GroupClicked(Sender: TObject);
@@ -2283,6 +2287,14 @@ begin
   Result := (FShapeTab >= 0) and FTabBtns[FShapeTab].Visible and FBars[FShapeTab].Visible;
 end;
 
+const
+  { a new shape's fill and outline: Office's accents, each outlined a shade darker }
+  Themes: array[0..8, 0..1] of Integer = (($4472C4, $2F528F), ($ED7D31, $AE5A21), ($A5A5A5, $787878),
+    ($FFC000, $BC8C00), ($5B9BD5, $41719C), ($70AD47, $507E32), ($C00000, $8C0000), ($7030A0, $4E2270),
+    ($FFFFFF, $000000));
+  ThemeNames: array[0..8] of string = ('Blue', 'Orange', 'Grey', 'Gold', 'Light blue', 'Green', 'Dark red', 'Purple',
+    'White, outlined black');
+
 { the Shape tab: what is drawn in a canvas, and a shape's fill and outline, its place in the order, groups -- what Word's Shape Format has first }
 procedure TLedVisualPane.BuildShape;
 const
@@ -2299,12 +2311,14 @@ begin
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do
     Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeFillItemClicked), FromRGB(Colours[i]), False);
+  MenuItem(M, 'More colours...', -2, @ShapeFillItemClicked);
   MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No fill', -1, @ShapeFillItemClicked), clWhite, True);
   MenuButton('shading', 'Fill', 'The colour inside the selected shape', M);
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do
     Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeLineItemClicked), FromRGB(Colours[i]), False);
+  MenuItem(M, 'More colours...', -2, @ShapeLineItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Thin (0.75 pt)', -75, @ShapeLineItemClicked);
   MenuItem(M, 'Medium (1.5 pt)', -150, @ShapeLineItemClicked);
@@ -2312,6 +2326,23 @@ begin
   MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No outline', -1, @ShapeLineItemClicked), clWhite, True);
   MenuButton('borders', 'Outline', 'The selected shape''s line: its colour and width', M);
+  M := TPopupMenu.Create(Self);
+  for i := 0 to High(Themes) do
+    Swatch(MenuItem(M, ThemeNames[i], i, @ShapeThemeItemClicked), FromRGB(Themes[i, 0]), False);
+  MenuButton('shapetheme', 'Colours', 'The colours new shapes are drawn in (and the selected shape, recoloured)', M);
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Rotate right 90' + #$C2#$B0, 0, @ShapeRotateItemClicked);
+  MenuItem(M, 'Rotate left 90' + #$C2#$B0, 1, @ShapeRotateItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Flip horizontal', 2, @ShapeRotateItemClicked);
+  MenuItem(M, 'Flip vertical', 3, @ShapeRotateItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'No rotation', 4, @ShapeRotateItemClicked);
+  MenuButton('rotate', 'Rotate', 'Turn or flip the selected shape (or drag its round handle; Shift: by 15' +
+    #$C2#$B0 + ')', M);
+  SetIcon(AddButton('Edit Points', 'The selected shape''s outline as points to drag (or double-click the shape)', [],
+    @EditPointsClicked), 'editpoints');
   AddSeparator;
   BeginRows;
   M := TPopupMenu.Create(Self);
@@ -2327,9 +2358,71 @@ begin
   EndRows;
 end;
 
-procedure TLedVisualPane.ShapeFillItemClicked(Sender: TObject);
+{ a colour from the system's dialog, starting at AColour; False when it was closed without one }
+function TLedVisualPane.PickColour(var AColour: TColor): Boolean;
+var
+  D: TColorDialog;
 begin
-  FEdit.SetShapeFill(FromRGB(Max(0, TMenuItem(Sender).Tag)), TMenuItem(Sender).Tag = -1);
+  D := TColorDialog.Create(nil);
+  try
+    D.Color := AColour;
+    Result := D.Execute;
+    if Result then
+      AColour := D.Color;
+  finally
+    D.Free;
+  end;
+end;
+
+procedure TLedVisualPane.ShapeFillItemClicked(Sender: TObject);
+var
+  C: TColor;
+begin
+  if TMenuItem(Sender).Tag = -2 then
+  begin
+    C := FEdit.ShapeFillColor;
+    if PickColour(C) then
+      FEdit.SetShapeFill(C, False);
+  end
+  else
+    FEdit.SetShapeFill(FromRGB(Max(0, TMenuItem(Sender).Tag)), TMenuItem(Sender).Tag = -1);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShapeRotateItemClicked(Sender: TObject);
+var
+  G: TParadeShapeGeom;
+begin
+  case TMenuItem(Sender).Tag of
+    0, 1:
+      if FEdit.SelectedShapeGeom(G) then
+        FEdit.RotateShape(G.Rot + IfThen(TMenuItem(Sender).Tag = 0, 90, -90));
+    2: FEdit.FlipShape(True);
+    3: FEdit.FlipShape(False);
+    4: FEdit.RotateShape(0);
+  end;
+  BackToPage;
+end;
+
+{ the colours new shapes are drawn in, remembered; the selected shape recoloured with them }
+procedure TLedVisualPane.ShapeThemeItemClicked(Sender: TObject);
+var
+  T: Integer;
+  At: pd_pos;
+  Sid: Integer;
+begin
+  T := TMenuItem(Sender).Tag;
+  FEdit.ShapeFillColor := FromRGB(Themes[T, 0]);
+  FEdit.ShapeLineColor := FromRGB(Themes[T, 1]);
+  LedPrefs.SetInt(LedPrefShapeTheme, T);
+  if FEdit.SelectedShape(At, Sid) then
+    FEdit.SetShapeStyle(FEdit.ShapeFillColor, FEdit.ShapeLineColor);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.EditPointsClicked(Sender: TObject);
+begin
+  FEdit.EditShapePoints;
   BackToPage;
 end;
 
@@ -2337,9 +2430,16 @@ end;
 procedure TLedVisualPane.ShapeLineItemClicked(Sender: TObject);
 var
   T: Integer;
+  C: TColor;
 begin
   T := TMenuItem(Sender).Tag;
-  if T = -1 then
+  if T = -2 then
+  begin
+    C := FEdit.ShapeLineColor;
+    if PickColour(C) then
+      FEdit.SetShapeLine(C, 0, False);
+  end
+  else if T = -1 then
     FEdit.SetShapeLine(clBlack, 0, True)
   else if T < 0 then
     FEdit.SetShapeLine(clNone, -T / 100, False)
@@ -2770,11 +2870,18 @@ begin
 end;
 
 procedure TLedVisualPane.ApplyPrefs;
+{$IFDEF LED_PARADE}
+var
+  T: Integer;
+{$ENDIF}
 begin
   {$IFDEF LED_PARADE}
   { what a document opened or joined from now on gets, and the one shown: the
     formats LED opens here carry no setting of their own }
   FEdit.HybridDefault := LowerCase(LedPrefs.GetStr(LedPrefLineBreaking, 'hybrid')) <> 'optimal';
+  T := EnsureRange(LedPrefs.GetInt(LedPrefShapeTheme, 0), 0, High(Themes));   { the colours new shapes take }
+  FEdit.ShapeFillColor := FromRGB(Themes[T, 0]);
+  FEdit.ShapeLineColor := FromRGB(Themes[T, 1]);
   if not (FKind in [lvkPdoc, lvkJdoc]) then     { a Parade document keeps the one saved with it }
     FEdit.HybridBreaking := FEdit.HybridDefault;
   {$ENDIF}

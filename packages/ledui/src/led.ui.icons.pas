@@ -1720,6 +1720,28 @@ begin
         P.Box(1.5, 1.5, 9.5, 9.5);
         P.Box(6.5, 6.5, 14.5, 14.5, True);
       end;
+    'rotate':
+      begin   { most of a circle, an arrowhead at its end }
+        P.Poly([8, 2, 11.5, 2.9, 13.8, 5.5, 14.5, 8, 13.8, 11, 11.5, 13.3, 8, 14.2, 4.5, 13.3, 2.2, 11, 1.5, 8,
+          2.2, 5]);
+        P.Poly([0.5, 3, 2.2, 5.5, 5, 4.2], True);
+      end;
+    'editpoints':
+      begin   { a bent outline through four points, squares at them }
+        P.Poly([2.5, 13, 4, 4, 11, 2.5, 13.5, 11, 2.5, 13]);
+        P.Box(1, 11.5, 4, 14.5, True);
+        P.Box(2.5, 2.5, 5.5, 5.5, True);
+        P.Box(9.5, 1, 12.5, 4, True);
+        P.Box(12, 9.5, 15, 12.5, True);
+      end;
+    'shapetheme':
+      begin   { four swatches }
+        P.Colour($00C47244); P.Box(1.5, 1.5, 7.5, 7.5, True);
+        P.Colour($00317DED); P.Box(8.5, 1.5, 14.5, 7.5, True);
+        P.Colour($0047AD70); P.Box(1.5, 8.5, 7.5, 14.5, True);
+        P.Colour($00A03070); P.Box(8.5, 8.5, 14.5, 14.5, True);
+        P.Colour(AColour);
+      end;
     'group':
       begin   { two shapes in a dashed-cornered frame }
         P.Box(4, 4, 8, 8);
