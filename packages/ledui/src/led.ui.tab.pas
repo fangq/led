@@ -35,6 +35,7 @@ type
     FShowMiniMap: Boolean;
     FVisual: TLedVisualPane;
     FVisualMode: Boolean;
+    FOnVisualStatus: TNotifyEvent;
     procedure ShowViews(AShow: Boolean);
     procedure VisualChanged(Sender: TObject);
     procedure VisualFlush(Sender: TObject);
@@ -128,6 +129,8 @@ type
     function SaveVisualAs(const AFileName: string; out AWhy: string): Boolean;
     property VisualMode: Boolean read FVisualMode;
     property Visual: TLedVisualPane read FVisual;
+    { the page's caret or selection moved (the page's own status, for the status bar) }
+    property OnVisualStatus: TNotifyEvent read FOnVisualStatus write FOnVisualStatus;
   end;
 
 implementation
@@ -387,6 +390,7 @@ begin
     FVisual.Parent := Self;
     FVisual.Align := alClient;
     FVisual.OnChange := @VisualChanged;
+    FVisual.OnStatus := FOnVisualStatus;
   end;
   FVisualMode := True;
   if not ReloadVisual(AWhy) then
