@@ -1703,6 +1703,32 @@ begin
         P.Poly([5, 12.5, 5, 7, 8, 10, 11, 7, 11, 12.5]);
       end;
     { the Insert tab }
+    'insertshape':
+      begin   { a square with a circle over its corner }
+        P.Box(1.5, 1.5, 9.5, 9.5);
+        P.Ellipse(6.5, 6.5, 14.5, 14.5);
+      end;
+    'insertcanvas':
+      begin   { a frame with two shapes and an arrow between them }
+        P.Box(1.5, 2.5, 14.5, 13.5);
+        P.Box(3.5, 5, 6.5, 8);
+        P.Ellipse(9.5, 8, 12.5, 11);
+        P.Line(6.5, 6.5, 10, 9);
+      end;
+    'arrange':
+      begin   { one box over another }
+        P.Box(1.5, 1.5, 9.5, 9.5);
+        P.Box(6.5, 6.5, 14.5, 14.5, True);
+      end;
+    'group':
+      begin   { two shapes in a dashed-cornered frame }
+        P.Box(4, 4, 8, 8);
+        P.Ellipse(8.5, 8.5, 12, 12);
+        P.Line(1.5, 1.5, 4, 1.5); P.Line(1.5, 1.5, 1.5, 4);
+        P.Line(14.5, 14.5, 12, 14.5); P.Line(14.5, 14.5, 14.5, 12);
+        P.Line(14.5, 1.5, 12, 1.5); P.Line(14.5, 1.5, 14.5, 4);
+        P.Line(1.5, 14.5, 4, 14.5); P.Line(1.5, 14.5, 1.5, 12);
+      end;
     'insertpicture':
       begin
         P.Box(1.5, 2.5, 14.5, 13.5);

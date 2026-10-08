@@ -139,6 +139,9 @@ type
     procedure ParaBoxChanged(Sender: TObject);
     procedure BuildTable;
     procedure BuildShape;
+    function ShapeMenu: TPopupMenu;
+    procedure ShapeKindClicked(Sender: TObject);
+    procedure CanvasClicked(Sender: TObject);
     procedure ShapeFillItemClicked(Sender: TObject);
     procedure ShapeLineItemClicked(Sender: TObject);
     procedure ShapeOrderItemClicked(Sender: TObject);
@@ -1615,6 +1618,48 @@ begin
 end;
 
 { the Insert tab: objects at the caret }
+const
+  ShapeKinds: array[0..15] of string = ('rect', 'roundRect', 'ellipse', 'triangle', 'rtTriangle', 'diamond',
+    'parallelogram', 'pentagon', 'hexagon', 'star5', 'rightArrow', 'leftArrow', 'upArrow', 'downArrow', 'line',
+    'arrow');
+  ShapeNames: array[0..15] of string = ('Rectangle', 'Rounded rectangle', 'Oval', 'Triangle', 'Right triangle',
+    'Diamond', 'Parallelogram', 'Pentagon', 'Hexagon', 'Star', 'Arrow right', 'Arrow left', 'Arrow up', 'Arrow down',
+    'Line', 'Line with arrow');
+
+{ the shapes there are to put in or draw, and a text box }
+function TLedVisualPane.ShapeMenu: TPopupMenu;
+var
+  i: Integer;
+begin
+  Result := TPopupMenu.Create(Self);
+  for i := 0 to High(ShapeKinds) do
+  begin
+    MenuItem(Result, ShapeNames[i], i, @ShapeKindClicked);
+    if i in [2, 9, 13] then
+      MenuItem(Result, '-', 0, nil);
+  end;
+  MenuItem(Result, '-', 0, nil);
+  MenuItem(Result, 'Text box', Length(ShapeKinds), @ShapeKindClicked);
+end;
+
+procedure TLedVisualPane.ShapeKindClicked(Sender: TObject);
+var
+  T: Integer;
+begin
+  T := TMenuItem(Sender).Tag;
+  if T >= Length(ShapeKinds) then
+    FEdit.InsertShape('textbox')
+  else
+    FEdit.InsertShape(ShapeKinds[T]);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.CanvasClicked(Sender: TObject);
+begin
+  FEdit.InsertCanvas;
+  BackToPage;
+end;
+
 procedure TLedVisualPane.BuildInsert;
 const
   TableSizes: array[0..5] of string = ('2 x 2', '2 x 3', '3 x 3', '3 x 4', '4 x 4', '5 x 5');
@@ -1662,6 +1707,10 @@ begin
   Item(M, 'Other size...', -1, @TableItemClicked);
   Big('inserttable', 'Table', 'Insert a table at the caret', nil, M);
   Big('insertpicture', 'Picture', 'Insert a picture from a file (PNG, JPEG, GIF)', @PictureClicked);
+  Big('insertshape', 'Shapes', 'A shape: in a new canvas, or drawn with the mouse in the canvas selected', nil,
+    ShapeMenu);
+  Big('insertcanvas', 'Canvas', 'A drawing canvas: shapes, lines, arrows and text boxes drawn in it make a diagram',
+    @CanvasClicked);
   M := TPopupMenu.Create(Self);
   Item(M, 'In the line...', 0, @EquationItemClicked);
   Item(M, 'On a line of its own...', 1, @EquationItemClicked);
@@ -2213,7 +2262,7 @@ begin
   Result := (FShapeTab >= 0) and FTabBtns[FShapeTab].Visible and FBars[FShapeTab].Visible;
 end;
 
-{ the Shape tab: a shape's fill and outline, its place in the order, groups -- what Word's Shape Format has first }
+{ the Shape tab: what is drawn in a canvas, and a shape's fill and outline, its place in the order, groups -- what Word's Shape Format has first }
 procedure TLedVisualPane.BuildShape;
 const
   Colours: array[0..9] of Integer = ($FFFFFF, $000000, $4472C4, $ED7D31, $A5A5A5, $FFC000, $5B9BD5, $70AD47,
@@ -2224,6 +2273,8 @@ var
   M: TPopupMenu;
   i: Integer;
 begin
+  MenuButton('insertshape', 'Draw', 'A shape drawn in the canvas: choose one, then drag where it goes', ShapeMenu);
+  AddSeparator;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do
     Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeFillItemClicked), FromRGB(Colours[i]), False);
@@ -2248,9 +2299,9 @@ begin
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Send backward', 1, @ShapeOrderItemClicked);
   MenuItem(M, 'Send to back', 3, @ShapeOrderItemClicked);
-  MenuButton('', 'Arrange', 'Which shapes the selected one is drawn over', M, False);
+  MenuButton('arrange', 'Arrange', 'Which shapes the selected one is drawn over', M, False);
   NextRow;
-  AddButton('Group', 'The selected shapes (Shift+click for more) made one', [], @GroupClicked);
+  SetSmallIcon(AddButton('Group', 'The selected shapes (Shift+click for more) made one', [], @GroupClicked), 'group');
   AddButton('Ungroup', 'The group the selected shape is in taken apart', [], @UngroupClicked);
   EndRows;
 end;
