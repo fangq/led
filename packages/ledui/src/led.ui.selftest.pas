@@ -16106,7 +16106,7 @@ begin
   if (Tab = nil) or not Tab.VisualMode then Exit;
   E := Tab.Visual.Editor as TParadeEdit;
   Sp := E.CurrentSectionProps;
-  Check('landscape', Sp.page_width > Sp.page_height);
+  Check('landscape, the page a canvas', (Sp.page_width > Sp.page_height) and (Sp.margin_left = 0) and E.CanvasPage);
   Check('a canvas selected, the shapes at hand', E.SelectedShape(At, Sid) and (Sid = -1) and E.CanvasSelected and
     Tab.Visual.ShapeTabShown);
   Check('a shape drawn in it', E.AddShape('ellipse', 50 * PD_SP_PER_PT, 50 * PD_SP_PER_PT, 150 * PD_SP_PER_PT,
@@ -16129,8 +16129,8 @@ begin
   if (Tab <> nil) and Tab.VisualMode then
   begin
     E := Tab.Visual.Editor as TParadeEdit;
-    At := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, pd_doc_root(E.Doc), 0), 0), 0);
-    Check('it reopens with its canvas and shape', Length(E.DrawingShapes(At)) = 1);
+    Check('it reopens as a canvas page, with its shape', E.CanvasPage and E.CanvasPagePos(At) and
+      (Length(E.DrawingShapes(At)) = 1));
   end
   else
     Check('it reopens as a page', False);
