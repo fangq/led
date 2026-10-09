@@ -16139,6 +16139,39 @@ begin
   DeleteFile(Path);
 end;
 
+{ A PowerPoint file opened: an untitled Parade document named as the deck, its slides canvas pages; saving it never
+  writes the .pptx }
+procedure TestOpenPptx(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  Src, Copy_, Before: string;
+  E: TParadeEdit;
+begin
+  Say('open pptx');
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/slides.pptx');
+  if not LedVisualAvailable or not FileExists(Src) then Exit;
+  Copy_ := TempName('deck.pptx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Before := LedReadRawFile(Copy_);
+  Check('a .pptx is read as pages', LedVisualKindOf(Copy_) = lvkPptx);
+  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Pump;
+  Check('it opens as its slides', (Tab <> nil) and Tab.VisualMode);
+  Check('an untitled Parade document named as the deck', (Tab <> nil) and Tab.Document.IsUntitled and
+    (Tab.Document.DisplayName = ChangeFileExt(ExtractFileName(Copy_), '')) and
+    (LedVisualKindOf(Tab.Document.KindName) = lvkPdoc));
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  E := Tab.Visual.Editor as TParadeEdit;
+  Check('each slide a canvas page', E.CanvasPage and (E.PageCount = 2));
+  E.AddShape('ellipse', 50 * PD_SP_PER_PT, 250 * PD_SP_PER_PT, 120 * PD_SP_PER_PT, 300 * PD_SP_PER_PT);
+  Pump;
+  Check('edited: modified, the .pptx as it was', Tab.Document.Modified and (LedReadRawFile(Copy_) = Before));
+  F.CloseActiveTab(False);
+  Pump;
+  Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);
+  DeleteFile(Copy_);
+end;
+
 procedure TestStatusCounts(F: TLedMainForm);
 var
   W, C: Integer;
@@ -17149,6 +17182,7 @@ begin
   TestStatusCounts(F);
   TestNewPdoc(F);
   TestNewCanvas(F);
+  TestOpenPptx(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
