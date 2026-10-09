@@ -54,6 +54,7 @@ type
     ActionList1: TActionList;
     actNew: TAction;
     actNewPdoc: TAction;
+    actNewCanvas: TAction;
     actJoinShared: TAction;
     actShareDoc: TAction;
     actLeaveDoc: TAction;
@@ -431,6 +432,7 @@ type
     procedure actNewExecute(Sender: TObject);
     procedure actNewNotebookExecute(Sender: TObject);
     procedure actNewPdocExecute(Sender: TObject);
+    procedure actNewCanvasExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
     procedure actShareDocExecute(Sender: TObject);
     procedure actLeaveDocExecute(Sender: TObject);
@@ -1108,6 +1110,7 @@ begin
   { File > Join Shared Document is there when this LED can share }
   actJoinShared.Visible := LedVisualCanShare;
   actNewPdoc.Visible := LedVisualAvailable;
+  actNewCanvas.Visible := LedVisualAvailable;
   actShareDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
   miSepShare.Visible := LedVisualCanShare;
@@ -6853,6 +6856,20 @@ begin
   Doc := FDocs.NewDocument;
   Doc.StartWord(LedVisualEmpty(lvkPdoc), '.pdoc');
   AddTab(Doc);    { says why, if this LED has no visual editor }
+end;
+
+{ A new Parade document that is a page to draw on: landscape, one canvas as big as the page's text, selected, the
+  shapes at hand -- its corner dragged for more room or less }
+procedure TLedMainForm.actNewCanvasExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
+  Tab: TLedTab;
+begin
+  Doc := FDocs.NewDocument;
+  Doc.StartWord(LedVisualEmpty(lvkPdoc), '.pdoc');
+  Tab := AddTab(Doc);
+  if (Tab <> nil) and Tab.VisualMode then
+    Tab.Visual.StartCanvas;
 end;
 
 procedure TLedMainForm.actJoinSharedExecute(Sender: TObject);

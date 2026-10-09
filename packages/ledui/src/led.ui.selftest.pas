@@ -16086,6 +16086,59 @@ begin
   DeleteFile(Path);
 end;
 
+{ File > New Portable Canvas: an untitled Parade document, a landscape page holding a canvas, selected, to draw in }
+procedure TestNewCanvas(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At: pd_pos;
+  Sid: Integer;
+  Sp: pd_section_props;
+  Path: string;
+begin
+  Say('new portable canvas');
+  Check('New Portable Canvas is offered when the pages are built in', F.actNewCanvas.Visible = LedVisualAvailable);
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  Check('it opens as an untitled page', (Tab <> nil) and Tab.Document.IsUntitled and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  E := Tab.Visual.Editor as TParadeEdit;
+  Sp := E.CurrentSectionProps;
+  Check('landscape', Sp.page_width > Sp.page_height);
+  Check('a canvas selected, the shapes at hand', E.SelectedShape(At, Sid) and (Sid = -1) and E.CanvasSelected and
+    Tab.Visual.ShapeTabShown);
+  Check('a shape drawn in it', E.AddShape('ellipse', 50 * PD_SP_PER_PT, 50 * PD_SP_PER_PT, 150 * PD_SP_PER_PT,
+    120 * PD_SP_PER_PT) and (Length(E.DrawingShapes(At)) = 1));
+  Pump;
+  Check('which modifies it', Tab.Document.Modified);
+  if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+  begin   { the canvas page, for a look }
+    F.Repaint;
+    Pump;
+    ExecuteProcess('/usr/bin/import', ['-window', 'root',
+      IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'canvas_page.png']);
+  end;
+  Path := TempName('canvas.pdoc');
+  Tab.Document.SaveToFile(Path);
+  F.CloseActiveTab(False);
+  Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Path));
+  Pump;
+  if (Tab <> nil) and Tab.VisualMode then
+  begin
+    E := Tab.Visual.Editor as TParadeEdit;
+    At := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, pd_doc_root(E.Doc), 0), 0), 0);
+    Check('it reopens with its canvas and shape', Length(E.DrawingShapes(At)) = 1);
+  end
+  else
+    Check('it reopens as a page', False);
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestStatusCounts(F: TLedMainForm);
 var
   W, C: Integer;
@@ -17095,6 +17148,7 @@ begin
   TestVisualShapeTab(F);
   TestStatusCounts(F);
   TestNewPdoc(F);
+  TestNewCanvas(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
