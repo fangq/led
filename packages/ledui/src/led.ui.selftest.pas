@@ -16146,6 +16146,7 @@ var
   Tab: TLedTab;
   Src, Copy_, Before: string;
   E: TParadeEdit;
+  TW: Integer;
 begin
   Say('open pptx');
   Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/slides.pptx');
@@ -16163,6 +16164,23 @@ begin
   if (Tab = nil) or not Tab.VisualMode then Exit;
   E := Tab.Visual.Editor as TParadeEdit;
   Check('each slide a canvas page', E.CanvasPage and (E.PageCount = 2));
+  Check('the slides beside the page', (Tab.Visual.SlideView <> nil) and Tab.Visual.SlideView.Parent.Parent.Visible);
+  if Tab.Visual.SlideView <> nil then
+  begin   { the second one clicked: the slide edited }
+    TW := Tab.Visual.SlideView.Parent.ClientWidth - 36;
+    Sleep(400);
+    Pump;
+    Tab.Visual.SlideView.OnMouseDown(Tab.Visual.SlideView, mbLeft, [], 40, 8 + (TW * 405 div 720 + 14) + 10);
+    Pump;
+    Check('a slide clicked: the one edited', E.CurrentSlide = 1);
+    if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+    begin
+      F.Repaint;
+      Pump;
+      ExecuteProcess('/usr/bin/import', ['-window', 'root',
+        IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'slides_pane.png']);
+    end;
+  end;
   E.AddShape('ellipse', 50 * PD_SP_PER_PT, 250 * PD_SP_PER_PT, 120 * PD_SP_PER_PT, 300 * PD_SP_PER_PT);
   Pump;
   Check('edited: modified, the .pptx as it was', Tab.Document.Modified and (LedReadRawFile(Copy_) = Before));
