@@ -1740,6 +1740,15 @@ begin
         P.Line(5, 5.5, 11, 5.5);
         P.Line(8, 5.5, 8, 11);
       end;
+    'wraptext':
+      begin   { a picture with lines of text beside and under it }
+        P.Box(1.5, 2, 7.5, 8, True);
+        P.Line(9.5, 2.5, 14.5, 2.5);
+        P.Line(9.5, 5, 14.5, 5);
+        P.Line(9.5, 7.5, 14.5, 7.5);
+        P.Line(1.5, 10.5, 14.5, 10.5);
+        P.Line(1.5, 13, 14.5, 13);
+      end;
     'alignshapes':
       begin   { two bars lined up on the left }
         P.Line(2, 1, 2, 15);

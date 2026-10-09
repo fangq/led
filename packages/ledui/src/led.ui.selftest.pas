@@ -16021,8 +16021,9 @@ begin
     Check('Edit Points from the tab', E.EditingPoints);
     E.ProcessKey(VK_ESCAPE, []);
   end;
-  Check('the tab gives a shape text, and lines shapes up', (ButtonByCaption(Tab.Visual, 'Add Text') <> nil) and
-    (ButtonByCaption(Tab.Visual, 'Align ' + #$E2#$96#$BE) <> nil));
+  Check('the tab gives a shape text, lines shapes up, wraps text round them',
+    (ButtonByCaption(Tab.Visual, 'Add Text') <> nil) and (ButtonByCaption(Tab.Visual, 'Align ' + #$E2#$96#$BE) <> nil) and
+    (ButtonByCaption(Tab.Visual, 'Wrap Text ' + #$E2#$96#$BE) <> nil));
   if E.SelectedShape(At, Sid) and (Sid >= 0) and (ButtonByCaption(Tab.Visual, 'Add Text') <> nil) then
   begin
     ButtonByCaption(Tab.Visual, 'Add Text').Click;
