@@ -238,6 +238,9 @@ type
     function PlainText: string;
     { Typed at the caret, over the selection.  For scripting the page. }
     procedure InsertText(const AText: string);
+    { The page made one to draw on: landscape, a canvas as big as its text, selected, the Insert tab's shapes
+      shown.  For File > New Portable Canvas. }
+    procedure StartCanvas;
 
     function CanUndo: Boolean;
     function CanRedo: Boolean;
@@ -3391,6 +3394,17 @@ end;
 procedure TLedVisualPane.InsertText(const AText: string);
 begin
   {$IFDEF LED_PARADE}FEdit.InsertText(AText);{$ENDIF}
+end;
+
+procedure TLedVisualPane.StartCanvas;
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.StartCanvasPage;
+  if FEdit.PageWidthZoom > 0 then
+    FEdit.Zoom := FEdit.PageWidthZoom;    { the whole width of the canvas in view }
+  if FShapeTab >= 0 then
+    ShowTab(FShapeTab);
+  {$ENDIF}
 end;
 
 function TLedVisualPane.GetModified: Boolean;
