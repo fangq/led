@@ -1734,6 +1734,18 @@ begin
         P.Box(9.5, 1, 12.5, 4, True);
         P.Box(12, 9.5, 15, 12.5, True);
       end;
+    'shapetext':
+      begin   { a shape with a T in it }
+        P.Ellipse(1, 2.5, 15, 13.5);
+        P.Line(5, 5.5, 11, 5.5);
+        P.Line(8, 5.5, 8, 11);
+      end;
+    'alignshapes':
+      begin   { two bars lined up on the left }
+        P.Line(2, 1, 2, 15);
+        P.Box(3, 3, 13, 6.5, True);
+        P.Box(3, 9.5, 9, 13, True);
+      end;
     'shapetheme':
       begin   { four swatches }
         P.Colour($00C47244); P.Box(1.5, 1.5, 7.5, 7.5, True);

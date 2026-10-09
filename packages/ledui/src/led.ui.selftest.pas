@@ -16021,6 +16021,18 @@ begin
     Check('Edit Points from the tab', E.EditingPoints);
     E.ProcessKey(VK_ESCAPE, []);
   end;
+  Check('the tab gives a shape text, and lines shapes up', (ButtonByCaption(Tab.Visual, 'Add Text') <> nil) and
+    (ButtonByCaption(Tab.Visual, 'Align ' + #$E2#$96#$BE) <> nil));
+  if E.SelectedShape(At, Sid) and (Sid >= 0) and (ButtonByCaption(Tab.Visual, 'Add Text') <> nil) then
+  begin
+    ButtonByCaption(Tab.Visual, 'Add Text').Click;
+    E.InsertText('Hex');
+    Check('Add Text: typed into the shape', (Pos('Hex', E.ParaText(E.CaretPos.block)) = 1) and
+      not E.SelectedShape(At, Sid));
+    E.Undo;
+    E.Undo;
+    E.Undo;
+  end;
   if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
   begin   { the tab as it shows, for a look }
     F.Repaint;

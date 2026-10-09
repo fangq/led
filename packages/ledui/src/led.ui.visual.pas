@@ -151,6 +151,9 @@ type
     procedure ShapeRotateItemClicked(Sender: TObject);
     procedure ShapeThemeItemClicked(Sender: TObject);
     procedure EditPointsClicked(Sender: TObject);
+    procedure AddTextClicked(Sender: TObject);
+    procedure ShapeAlignItemClicked(Sender: TObject);
+    procedure ShapeLineStyleItemClicked(Sender: TObject);
     function PickColour(var AColour: TColor): Boolean;
     procedure ShapeLineItemClicked(Sender: TObject);
     procedure ShapeOrderItemClicked(Sender: TObject);
@@ -2638,6 +2641,14 @@ const
   Themes: array[0..8, 0..1] of Integer = (($4472C4, $2F528F), ($ED7D31, $AE5A21), ($A5A5A5, $787878),
     ($FFC000, $BC8C00), ($5B9BD5, $41719C), ($70AD47, $507E32), ($C00000, $8C0000), ($7030A0, $4E2270),
     ($FFFFFF, $000000));
+  { the Outline menu's dashes and arrowheads: caption, dash, head, tail ('' as it is) }
+  LineStyles: array[0..12, 0..3] of string = (
+    ('Solid', 'solid', '', ''), ('Dashed', 'dash', '', ''), ('Dotted', 'sysDot', '', ''),
+    ('Dash-dot', 'dashDot', '', ''), ('Long dashes', 'lgDash', '', ''), ('-', '', '', ''),
+    ('No arrowheads', '', 'none', 'none'), ('Arrow at the end', '', 'none', 'triangle'),
+    ('Arrow at the start', '', 'triangle', 'none'), ('Arrows at both ends', '', 'triangle', 'triangle'),
+    ('Open arrow at the end', '', 'none', 'arrow'), ('Dot at the start, arrow at the end', '', 'oval', 'triangle'),
+    ('Diamond at the end', '', 'none', 'diamond'));
   ThemeNames: array[0..8] of string = ('Blue', 'Orange', 'Grey', 'Gold', 'Light blue', 'Green', 'Dark red', 'Purple',
     'White, outlined black');
 
@@ -2674,8 +2685,14 @@ begin
   MenuItem(M, 'Medium (1.5 pt)', -150, @ShapeLineItemClicked);
   MenuItem(M, 'Thick (3 pt)', -300, @ShapeLineItemClicked);
   MenuItem(M, '-', 0, nil);
+  for i := 0 to High(LineStyles) do
+    if LineStyles[i, 0] = '-' then
+      MenuItem(M, '-', 0, nil)
+    else
+      MenuItem(M, LineStyles[i, 0], i, @ShapeLineStyleItemClicked);
+  MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No outline', -1, @ShapeLineItemClicked), clWhite, True);
-  MenuButton('borders', 'Outline', 'The selected shape''s line: its colour and width', M);
+  MenuButton('borders', 'Outline', 'The selected shape''s line: its colour, width, dashes and arrowheads', M);
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Themes) do
     Swatch(MenuItem(M, ThemeNames[i], i, @ShapeThemeItemClicked), FromRGB(Themes[i, 0]), False);
@@ -2693,6 +2710,8 @@ begin
     #$C2#$B0 + ')', M);
   SetIcon(AddButton('Edit Points', 'The selected shape''s outline as points to drag (or double-click the shape)', [],
     @EditPointsClicked), 'editpoints');
+  SetIcon(AddButton('Add Text', 'Text typed in the selected shape (or just start typing with it selected)', [],
+    @AddTextClicked), 'shapetext');
   AddSeparator;
   BeginRows;
   M := TPopupMenu.Create(Self);
@@ -2702,6 +2721,19 @@ begin
   MenuItem(M, 'Send backward', 1, @ShapeOrderItemClicked);
   MenuItem(M, 'Send to back', 3, @ShapeOrderItemClicked);
   MenuButton('arrange', 'Arrange', 'Which shapes the selected one is drawn over', M, False);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Align left', 0, @ShapeAlignItemClicked);
+  MenuItem(M, 'Align centre', 1, @ShapeAlignItemClicked);
+  MenuItem(M, 'Align right', 2, @ShapeAlignItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Align top', 3, @ShapeAlignItemClicked);
+  MenuItem(M, 'Align middle', 4, @ShapeAlignItemClicked);
+  MenuItem(M, 'Align bottom', 5, @ShapeAlignItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Distribute horizontally', 6, @ShapeAlignItemClicked);
+  MenuItem(M, 'Distribute vertically', 7, @ShapeAlignItemClicked);
+  MenuButton('alignshapes', 'Align', 'The selected shapes lined up or spread out evenly (one shape: along its ' +
+    'canvas; a rubber band or Shift+click selects more)', M, False);
   NextRow;
   SetSmallIcon(AddButton('Group', 'The selected shapes (Shift+click for more) made one', [], @GroupClicked), 'group');
   AddButton('Ungroup', 'The group the selected shape is in taken apart', [], @UngroupClicked);
@@ -2775,6 +2807,32 @@ begin
   LedPrefs.SetInt(LedPrefShapeTheme, T);
   if FEdit.SelectedShape(At, Sid) then
     FEdit.SetShapeStyle(FEdit.ShapeFillColor, FEdit.ShapeLineColor);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.AddTextClicked(Sender: TObject);
+begin
+  FEdit.AddShapeText;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShapeAlignItemClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    6: FEdit.DistributeShapes(True);
+    7: FEdit.DistributeShapes(False);
+  else
+    FEdit.AlignShapes(TMenuItem(Sender).Tag);
+  end;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ShapeLineStyleItemClicked(Sender: TObject);
+var
+  i: Integer;
+begin
+  i := TMenuItem(Sender).Tag;
+  FEdit.SetShapeLineStyle(LineStyles[i, 1], LineStyles[i, 2], LineStyles[i, 3]);
   BackToPage;
 end;
 
