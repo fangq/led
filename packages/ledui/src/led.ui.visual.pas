@@ -152,6 +152,7 @@ type
     procedure ShapeThemeItemClicked(Sender: TObject);
     procedure EditPointsClicked(Sender: TObject);
     procedure AddTextClicked(Sender: TObject);
+    procedure WrapItemClicked(Sender: TObject);
     procedure ShapeAlignItemClicked(Sender: TObject);
     procedure ShapeLineStyleItemClicked(Sender: TObject);
     function PickColour(var AColour: TColor): Boolean;
@@ -2712,6 +2713,17 @@ begin
     @EditPointsClicked), 'editpoints');
   SetIcon(AddButton('Add Text', 'Text typed in the selected shape (or just start typing with it selected)', [],
     @AddTextClicked), 'shapetext');
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'In line with text', -1, @WrapItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Square, on the left', PD_WRAP_LEFT, @WrapItemClicked);
+  MenuItem(M, 'Square, on the right', PD_WRAP_RIGHT, @WrapItemClicked);
+  MenuItem(M, 'Top and bottom', PD_WRAP_NONE, @WrapItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Behind text', PD_WRAP_BEHIND, @WrapItemClicked);
+  MenuItem(M, 'In front of text', PD_WRAP_FRONT, @WrapItemClicked);
+  MenuButton('wraptext', 'Wrap Text', 'How the text goes round the selected picture or drawing; floating, it ' +
+    'can be dragged anywhere on the page', M);
   AddSeparator;
   BeginRows;
   M := TPopupMenu.Create(Self);
@@ -2807,6 +2819,12 @@ begin
   LedPrefs.SetInt(LedPrefShapeTheme, T);
   if FEdit.SelectedShape(At, Sid) then
     FEdit.SetShapeStyle(FEdit.ShapeFillColor, FEdit.ShapeLineColor);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.WrapItemClicked(Sender: TObject);
+begin
+  FEdit.SetObjectWrap(TMenuItem(Sender).Tag);
   BackToPage;
 end;
 
