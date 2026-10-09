@@ -15928,6 +15928,7 @@ var
   At: pd_pos;
   Sid: Integer;
   Xml: string;
+  Btn: TControl;
 {$ENDIF}
 begin
   Say('the Shape tab');
@@ -15986,6 +15987,29 @@ begin
   Pump;
   Check('with the Shape tab', Tab.Visual.ShapeTabShown);
   Check('another, drawn in it next', E.InsertShape('ellipse') and (E.DrawKind = 'ellipse'));
+  { the gallery: every shape a button with its picture }
+  if ButtonByCaption(Tab.Visual, 'Shapes ' + #$E2#$96#$BE) <> nil then
+    ButtonByCaption(Tab.Visual, 'Shapes ' + #$E2#$96#$BE).Click;
+  Pump;
+  Check('the Shapes button opens the gallery', (Tab.Visual.ShapePalette <> nil) and Tab.Visual.ShapePalette.Visible);
+  if Tab.Visual.ShapePalette <> nil then
+  begin
+    Btn := ControlByHint(Tab.Visual.ShapePalette, 'Smiley face');
+    Check('with Word''s shapes in it, pictured', (Btn is TSpeedButton) and not TSpeedButton(Btn).Glyph.Empty and
+      (ControlByHint(Tab.Visual.ShapePalette, 'Flowchart: decision') <> nil) and
+      (ControlByHint(Tab.Visual.ShapePalette, 'Scribble (drag to draw)') <> nil));
+    if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+    begin
+      F.Repaint;
+      Pump;
+      ExecuteProcess('/usr/bin/import', ['-window', 'root',
+        IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'shape_gallery.png']);
+    end;
+    if Btn is TSpeedButton then
+      TSpeedButton(Btn).Click;
+    Check('a shape from it: drawn next in the canvas', (E.DrawKind = 'smileyFace') and
+      not Tab.Visual.ShapePalette.Visible);
+  end;
   E.ProcessKey(VK_ESCAPE, []);    { not drawn: the hexagon again }
   E.ProcessKey(VK_TAB, []);
   Check('the tab turns, flips and edits points', (ButtonByCaption(Tab.Visual, 'Rotate ' + #$E2#$96#$BE) <> nil) and
