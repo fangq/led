@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  Dialogs, LCLType, Menus, Spin
+  Dialogs, LCLType, LCLIntf, Menus, Spin
   {$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
@@ -188,7 +188,9 @@ type
     FThumbs: array of TBitmap;
     FThumbStale: array of Boolean;
     FSlideMenuAt: Integer;
+    FThumbW: Integer;           { the width the slides' pictures were made at }
     FFitWidth: Boolean;         { the zoom follows the width of the view (Page width), until another is chosen }
+    FFitPage: Boolean;          { ... the whole page instead (Whole page; slides) }
     FFitZoom: Double;           { the zoom it last set: another one found means Ctrl+wheel chose it }
     procedure FitWidth;
     procedure EditResized(Sender: TObject);
@@ -213,6 +215,7 @@ type
     procedure SlidePaintPaint(Sender: TObject);
     procedure SlidePaintMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     procedure SlideMenuClicked(Sender: TObject);
+    procedure SlideBoxResized(Sender: TObject);
     procedure SlideGeometry(out TW, TH, Step: Integer);
     {$ENDIF}
     procedure FitBarHost;
@@ -3240,6 +3243,7 @@ begin
   FSlideBox.HorzScrollBar.Visible := False;
   FSlideBox.VertScrollBar.Tracking := True;
   FSlideBox.Color := clBtnFace;
+  FSlideBox.OnResize := @SlideBoxResized;
   FSlidePaint := TPaintBox.Create(Self);
   FSlidePaint.Parent := FSlideBox;
   FSlidePaint.Left := 0;
@@ -3270,7 +3274,9 @@ procedure TLedVisualPane.SlideGeometry(out TW, TH, Step: Integer);
 var
   Info: pd_page_info;
 begin
-  TW := Max(LedScale96(40), FSlideBox.ClientWidth - LedScale96(36));
+  { the scroll bar's room kept whether it shows or not: a slide drawn for one width and shown in a narrower one
+    would be cut off at its right }
+  TW := Max(LedScale96(40), FSlideBox.Width - GetSystemMetrics(SM_CXVSCROLL) - LedScale96(40));
   TH := TW * 9 div 16;
   if (FEdit.PageCount > 0) and (pd_layout_page_info(FEdit.Layout, 0, Info) = PD_OK) and (Info.width > 0) then
     TH := Round(TW * Info.height / Info.width);
@@ -3310,7 +3316,13 @@ begin
     if AllStale or (i = Cur) then
       FThumbStale[i] := True;
   SlideGeometry(TW, TH, Step);
-  FSlidePaint.Width := FSlideBox.ClientWidth;
+  if TW <> FThumbW then
+  begin   { another width: every picture made again at it }
+    FThumbW := TW;
+    for i := 0 to N - 1 do
+      FThumbStale[i] := True;
+  end;
+  FSlidePaint.Width := TW + LedScale96(32);
   FSlidePaint.Height := N * Step + LedScale96(10);
   FSlideTimer.Enabled := False;
   FSlideTimer.Enabled := True;
@@ -3318,6 +3330,12 @@ begin
 end;
 
 { the stale pictures of the slides made again, at the pane's width }
+procedure TLedVisualPane.SlideBoxResized(Sender: TObject);
+begin
+  if FSlidePanel.Visible then
+    UpdateSlidePane(False);     { (another width: made again at it) }
+end;
+
 procedure TLedVisualPane.SlideTimerFired(Sender: TObject);
 var
   i, TW, TH, Step: Integer;
@@ -3449,10 +3467,15 @@ begin
     FFitWidth := False;
     Exit;
   end;
-  Z := FEdit.PageWidthZoom;
+  if FFitPage then
+    Z := FEdit.WholePageZoom
+  else
+    Z := FEdit.PageWidthZoom;
   if Z <= 0 then Exit;
   FEdit.Zoom := Z;
   FFitZoom := FEdit.Zoom;     { as the editor kept it, within its limits }
+  if FFitPage and FEdit.CanvasPage then
+    FEdit.ShowSlide(Max(0, FEdit.CurrentSlide));    { the slide being edited, whole, after the zoom }
   if FZoomBox <> nil then
     ShowZoom;
 end;
@@ -3477,12 +3500,11 @@ begin
     S := FZoomBox.Items[FZoomBox.ItemIndex]
   else
     S := Trim(FZoomBox.Text);
-  FFitWidth := S = 'Page width';
+  FFitWidth := (S = 'Page width') or (S = 'Whole page');   { either kept as the view is sized }
+  FFitPage := S = 'Whole page';
   FFitZoom := 0;
   if FFitWidth then
     FitWidth
-  else if S = 'Whole page' then
-    FEdit.Zoom := FEdit.WholePageZoom
   else if TryStrToFloat(Trim(StringReplace(S, '%', '', [])), V) and (V >= 10) and (V <= 600) then
     FEdit.Zoom := V / 100;
   FZoomBox.ItemIndex := -1;
@@ -3623,11 +3645,10 @@ begin
     try
       FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
       UpdateSlidePane(True);
-      if FEdit.CanvasPage and (FEdit.WholePageZoom > 0) then
-      begin   { slides, a drawing: a whole page in view, kept so }
-        FFitWidth := False;
-        FEdit.Zoom := FEdit.WholePageZoom;
-      end;
+      FFitPage := FEdit.CanvasPage;     { slides, a drawing: a whole page in view, as the view is sized }
+      FFitWidth := True;
+      FFitZoom := 0;
+      FitWidth;
       {$IFDEF LED_PARADE_SYNC}
       FFileName := AFileName;   { a name to host it under }
       {$ENDIF}
@@ -3686,11 +3707,10 @@ begin
   {$IFDEF LED_PARADE}
   FEdit.StartCanvasPage;
   UpdateSlidePane(True);
-  if FEdit.WholePageZoom > 0 then
-  begin   { the whole page in view: its corner, to size it by }
-    FFitWidth := False;
-    FEdit.Zoom := FEdit.WholePageZoom;
-  end;
+  FFitPage := True;     { the whole page in view, as the view is sized: its corner, to size it by }
+  FFitWidth := True;
+  FFitZoom := 0;
+  FitWidth;
   if FShapeTab >= 0 then
     ShowTab(FShapeTab);
   {$ENDIF}
