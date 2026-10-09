@@ -106,6 +106,7 @@ type
     FFileName: string;
     FInfo: TLedTextInfo;
     FUntitledNo: Integer;
+    FImportedName: string;      // an untitled document made from a file it cannot be saved as ('deck' of deck.pptx)
     FUntitledExt: string;       // what an untitled document is, as a file name would say: '.docx
     FConfig: TLedDocConfig;
     FDiskAge: LongInt;          // mtime as of the last load or save
@@ -285,6 +286,9 @@ type
       .docx would -- for joining a shared document, which is a page before
       it is a file. }
     procedure StartWord(const ABytes: string; const AExt: string = '.docx');
+    { This document, opened from a file the pages read but do not write (a .pptx), made an untitled one of
+      ABytes, an AExt file named as the file it came from: saving it asks where, and never overwrites that file. }
+    procedure Import(const ABytes, AExt, AFrom: string);
     { The name that says what the document is: the file's, or for an
       untitled one its display name with what it was started as ('.docx'). }
     function KindName: string;
@@ -3063,6 +3067,13 @@ begin
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
+procedure TLedDocument.Import(const ABytes, AExt, AFrom: string);
+begin
+  FFileName := '';
+  FImportedName := ChangeFileExt(ExtractFileName(AFrom), '');
+  StartWord(ABytes, AExt);
+end;
+
 function TLedDocument.KindName: string;
 begin
   if IsUntitled then
@@ -3073,7 +3084,9 @@ end;
 
 function TLedDocument.DisplayName: string;
 begin
-  if IsUntitled then
+  if IsUntitled and (FImportedName <> '') then
+    Result := FImportedName
+  else if IsUntitled then
 {$IFDEF MIMA}
     { one word: in MATLAB a file's name is the function or script it holds,
       and "Untitled 1.m" is neither }

@@ -5755,8 +5755,17 @@ end;
 function TLedMainForm.AddTab(ADoc: TLedDocument): TLedTab;
 var
   Sheet: TTabSheet;
-  Why: string;
+  Why, Data: string;
 begin
+  { a PowerPoint file: its slides a Parade document's pages, untitled -- saved as a .pdoc, the .pptx left as it is }
+  if (not ADoc.IsUntitled) and (LedVisualKindOf(ADoc.FileName) = lvkPptx) and LedVisualAvailable then
+  begin
+    Data := LedVisualImport(LedReadRawFile(ADoc.FileName), ADoc.FileName, Why);
+    if Data <> '' then
+      ADoc.Import(Data, '.pdoc', ADoc.FileName)
+    else
+      ReportError('PowerPoint: ' + Why);
+  end;
   Sheet := ActiveBook.AddTabSheet;
   Result := TLedTab.CreateForDocument(Self, ADoc);
   Result.Parent := Sheet;

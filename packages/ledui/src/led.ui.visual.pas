@@ -31,7 +31,8 @@ uses
 
 type
   { lvkPdoc: Parade's own document, BJData (binary); lvkJdoc: the same as JSON text }
-  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc);
+  { lvkPptx: PowerPoint, read only -- its slides become a Parade document's canvas pages (LedVisualImport) }
+  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx);
 
   { The page view, a strip of buttons above it.  One per tab, made when the
     tab is first switched to it. }
@@ -309,6 +310,9 @@ function LedVisualEmpty(AKind: TLedVisualKind): string;
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
 { a file of the kind is bytes (Word, .pdoc), not text }
 function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
+{ A file the pages read but do not write (PowerPoint), as a Parade document (.pdoc bytes): each slide a page that is
+  a canvas.  '' with the reason when it cannot be read. }
+function LedVisualImport(const AData, AFileName: string; out AWhy: string): string;
 
 { The keys the visual editor takes before the window's shortcuts do: Ctrl+B
   is bold in a page and Toggle Bookmark everywhere else, and the window would
@@ -374,12 +378,32 @@ begin
   if E = '.docx' then Exit(lvkDocx);
   if E = '.pdoc' then Exit(lvkPdoc);
   if E = '.jdoc' then Exit(lvkJdoc);
+  if E = '.pptx' then Exit(lvkPptx);
   Result := lvkNone;
 end;
 
 function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
 begin
-  Result := AKind in [lvkDocx, lvkPdoc];
+  Result := AKind in [lvkDocx, lvkPdoc, lvkPptx];
+end;
+
+function LedVisualImport(const AData, AFileName: string; out AWhy: string): string;
+var
+  P: TLedVisualPane;
+begin
+  Result := '';
+  AWhy := '';
+  {$IFDEF LED_PARADE}
+  P := TLedVisualPane.Create(nil);
+  try
+    if P.Load(AData, LedVisualKindOf(AFileName), AFileName, AWhy) then
+      Result := P.Export(lvkPdoc);
+  finally
+    P.Free;
+  end;
+  {$ELSE}
+  AWhy := 'this LED has no visual editor';
+  {$ENDIF}
 end;
 
 {$IFDEF LED_PARADE}
@@ -390,6 +414,7 @@ begin
     lvkHtml: Result := PD_CONV_HTML;
     lvkDocx: Result := PD_CONV_DOCX;
     lvkPdoc, lvkJdoc: Result := PD_CONV_JDATA;
+    lvkPptx: Result := PD_CONV_PPTX;
   else
     Result := -1;
   end;
@@ -3336,13 +3361,15 @@ begin
   {$IFDEF LED_PARADE}
   if AKind = lvkNone then
   begin
-    AWhy := 'the visual editor opens Markdown, HTML, Word (.docx) and Parade (.pdoc, .jdoc) files';
+    AWhy := 'the visual editor opens Markdown, HTML, Word (.docx), PowerPoint (.pptx) and Parade (.pdoc, .jdoc) files';
     Exit;
   end;
   S := TStringStream.Create(AData);
   try
     try
       FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
+      if FEdit.CanvasPage and (FEdit.WholePageZoom > 0) then
+        FEdit.Zoom := FEdit.WholePageZoom;    { slides, a drawing: a whole page in view }
       {$IFDEF LED_PARADE_SYNC}
       FFileName := AFileName;   { a name to host it under }
       {$ENDIF}
