@@ -47,7 +47,10 @@ type
     FGroup: TPanel;             { the two-row group being filled }
     FTabBtns: array of TSpeedButton;
     FTableTab: Integer;         { the Table tab's index, shown only while the caret is in a table (-1: none) }
-    FShapeTab: Integer;         { the Shape tab's, shown only while a shape of a drawing is selected (-1: none) }
+    FShapeTab: Integer;         { the Insert tab's, which has the shapes' section (-1: none) }
+    FShapeFmt: array of TControl;   { that section's controls for a selected shape: enabled while there is one }
+    FShapeSel: Boolean;         { a drawing or a shape of it selected, when the selection last changed }
+    FShapePop: TForm;           { the shapes' palette, made when first opened }
     FStyle: TComboBox;
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
@@ -140,8 +143,9 @@ type
     procedure ParaBoxChanged(Sender: TObject);
     procedure BuildTable;
     procedure BuildShape;
-    function ShapeMenu: TPopupMenu;
-    procedure ShapeKindClicked(Sender: TObject);
+    procedure ShapesDropClicked(Sender: TObject);
+    procedure PaletteItemClicked(Sender: TObject);
+    procedure PaletteDeactivate(Sender: TObject);
     procedure CanvasClicked(Sender: TObject);
     procedure ShapeFillItemClicked(Sender: TObject);
     procedure ShapeRotateItemClicked(Sender: TObject);
@@ -272,6 +276,8 @@ type
     property Page: TParadeEdit read FEdit;
     { the Shape tab, there while a shape is selected; for tests }
     function ShapeTabShown: Boolean;
+    { the gallery of shapes the Insert tab's Shapes button opens (nil until it first is) }
+    property ShapePalette: TForm read FShapePop;
     {$ENDIF}
     { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
       Table (shown in a table); without Parade: 0 Home, 1 Review }
@@ -313,7 +319,8 @@ function LedSelectionCounts(Words, Chars: Integer): string;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.Core.Prefs, Math, StrUtils
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -813,6 +820,7 @@ begin
   FShapeTab := -1;
   {$IFDEF LED_PARADE}
   AddTab('Insert');
+  FShapeTab := High(FBars);
   BuildInsert;
   AddTab('Layout');
   BuildLayout;
@@ -885,11 +893,6 @@ begin
   BuildTable;
   FTableTab := High(FBars);
   FTabBtns[FTableTab].Visible := False;
-  { and one while a shape of a drawing is selected }
-  AddTab('Shape');
-  BuildShape;
-  FShapeTab := High(FBars);
-  FTabBtns[FShapeTab].Visible := False;
   {$ENDIF}
   {$IFDEF LED_PARADE_SYNC}
   { the sharing status after the last tab }
@@ -1371,6 +1374,7 @@ var
   i, L: Integer;
   ShapeAt: pd_pos;
   ShapeSid: Integer;
+  Sel: Boolean;
 begin
   if Assigned(FOnStatus) then
     FOnStatus(Self);
@@ -1434,23 +1438,17 @@ begin
       FTabBtns[FTableTab].Visible := False;
     end;
   end;
-  { the Shape tab: there while a drawing or a shape of it is selected, and opened when one is first selected }
+  { the Insert tab's shapes: its controls for a shape there while one is selected, and the tab opened when one first
+    is }
   if FShapeTab >= 0 then
   begin
-    if FEdit.SelectedShape(ShapeAt, ShapeSid) then
-    begin
-      if not FTabBtns[FShapeTab].Visible then
-      begin
-        FTabBtns[FShapeTab].Visible := True;
-        ShowTab(FShapeTab);
-      end;
-    end
-    else if FTabBtns[FShapeTab].Visible then
-    begin
-      if FBars[FShapeTab].Visible then
-        ShowTab(0);
-      FTabBtns[FShapeTab].Visible := False;
-    end;
+    Sel := FEdit.SelectedShape(ShapeAt, ShapeSid);
+    if Sel <> FShapeSel then
+      for i := 0 to High(FShapeFmt) do
+        FShapeFmt[i].Enabled := Sel;
+    if Sel and not FShapeSel then
+      ShowTab(FShapeTab);
+    FShapeSel := Sel;
   end;
 end;
 
@@ -1644,38 +1642,386 @@ end;
 
 { the Insert tab: objects at the caret }
 const
-  ShapeKinds: array[0..15] of string = ('rect', 'roundRect', 'ellipse', 'triangle', 'rtTriangle', 'diamond',
-    'parallelogram', 'pentagon', 'hexagon', 'star5', 'rightArrow', 'leftArrow', 'upArrow', 'downArrow', 'line',
-    'arrow');
-  ShapeNames: array[0..15] of string = ('Rectangle', 'Rounded rectangle', 'Oval', 'Triangle', 'Right triangle',
-    'Diamond', 'Parallelogram', 'Pentagon', 'Hexagon', 'Star', 'Arrow right', 'Arrow left', 'Arrow up', 'Arrow down',
-    'Line', 'Line with arrow');
+  { Word's shapes, as its gallery has them: a group's name (#), then its shapes -- Office's presets by their names,
+    and the lines and the shapes drawn by hand by this editor's }
+  ShapeGallery: array[0..167] of string = (
+    '#Lines', 'line', 'arrow', 'doubleArrow', 'elbow', 'elbowArrow', 'elbowDoubleArrow', 'curvedConnector',
+    'curvedArrow', 'curvedDoubleArrow', 'curve', 'freeform', 'scribble',
+    '#Rectangles', 'rect', 'roundRect', 'snip1Rect', 'snip2SameRect', 'snip2DiagRect', 'snipRoundRect', 'round1Rect',
+    'round2SameRect', 'round2DiagRect',
+    '#Basic Shapes', 'textbox', 'ellipse', 'triangle', 'rtTriangle', 'parallelogram', 'trapezoid', 'diamond',
+    'pentagon', 'hexagon', 'heptagon', 'octagon', 'decagon', 'dodecagon', 'pie', 'chord', 'teardrop', 'frame',
+    'halfFrame', 'corner', 'diagStripe', 'plus', 'plaque', 'can', 'cube', 'bevel', 'donut', 'noSmoking', 'blockArc',
+    'foldedCorner', 'smileyFace', 'heart', 'lightningBolt', 'sun', 'moon', 'cloud', 'arc', 'bracketPair', 'bracePair',
+    'leftBracket', 'rightBracket', 'leftBrace', 'rightBrace',
+    '#Block Arrows', 'rightArrow', 'leftArrow', 'upArrow', 'downArrow', 'leftRightArrow', 'upDownArrow', 'quadArrow',
+    'leftRightUpArrow', 'bentArrow', 'uturnArrow', 'leftUpArrow', 'bentUpArrow', 'curvedRightArrow',
+    'curvedLeftArrow', 'curvedUpArrow', 'curvedDownArrow', 'stripedRightArrow', 'notchedRightArrow', 'homePlate',
+    'chevron', 'rightArrowCallout', 'downArrowCallout', 'leftArrowCallout', 'upArrowCallout',
+    'leftRightArrowCallout', 'quadArrowCallout', 'circularArrow',
+    '#Equation Shapes', 'mathPlus', 'mathMinus', 'mathMultiply', 'mathDivide', 'mathEqual', 'mathNotEqual',
+    '#Flowchart', 'flowChartProcess', 'flowChartAlternateProcess', 'flowChartDecision', 'flowChartInputOutput',
+    'flowChartPredefinedProcess', 'flowChartInternalStorage', 'flowChartDocument', 'flowChartMultidocument',
+    'flowChartTerminator', 'flowChartPreparation', 'flowChartManualInput', 'flowChartManualOperation',
+    'flowChartConnector', 'flowChartOffpageConnector', 'flowChartPunchedCard', 'flowChartPunchedTape',
+    'flowChartSummingJunction', 'flowChartOr', 'flowChartCollate', 'flowChartSort', 'flowChartExtract',
+    'flowChartMerge', 'flowChartOnlineStorage', 'flowChartDelay', 'flowChartMagneticTape', 'flowChartMagneticDisk',
+    'flowChartMagneticDrum', 'flowChartDisplay',
+    '#Stars and Banners', 'irregularSeal1', 'irregularSeal2', 'star4', 'star5', 'star6', 'star7', 'star8', 'star10',
+    'star12', 'star16', 'star24', 'star32', 'ribbon2', 'ribbon', 'ellipseRibbon2', 'ellipseRibbon', 'verticalScroll',
+    'horizontalScroll', 'wave', 'doubleWave',
+    '#Callouts', 'wedgeRectCallout', 'wedgeRoundRectCallout', 'wedgeEllipseCallout', 'cloudCallout',
+    'borderCallout1', 'borderCallout2', 'borderCallout3', 'accentCallout1', 'accentCallout2', 'accentCallout3',
+    'callout1', 'callout2', 'callout3', 'accentBorderCallout1', 'accentBorderCallout2', 'accentBorderCallout3');
 
-{ the shapes there are to put in or draw, and a text box }
-function TLedVisualPane.ShapeMenu: TPopupMenu;
+{ a shape's name as a reader says it: rightArrow "Right arrow", star5 "Star 5" }
+function ShapeTitle(const Kind: string): string;
 var
   i: Integer;
 begin
-  Result := TPopupMenu.Create(Self);
-  for i := 0 to High(ShapeKinds) do
-  begin
-    MenuItem(Result, ShapeNames[i], i, @ShapeKindClicked);
-    if i in [2, 9, 13] then
-      MenuItem(Result, '-', 0, nil);
+  case Kind of
+    'rect': Exit('Rectangle');
+    'roundRect': Exit('Rounded rectangle');
+    'ellipse': Exit('Oval');
+    'line': Exit('Line');
+    'arrow': Exit('Line arrow');
+    'doubleArrow': Exit('Line arrow: double');
+    'elbow': Exit('Connector: elbow');
+    'elbowArrow': Exit('Connector: elbow arrow');
+    'elbowDoubleArrow': Exit('Connector: elbow double arrow');
+    'curvedConnector': Exit('Connector: curved');
+    'curvedArrow': Exit('Connector: curved arrow');
+    'curvedDoubleArrow': Exit('Connector: curved double arrow');
+    'curve': Exit('Curve (click its points; double-click to end)');
+    'freeform': Exit('Freeform (click its corners; on the first again to close it, or double-click to end)');
+    'scribble': Exit('Scribble (drag to draw)');
+    'textbox': Exit('Text box');
   end;
-  MenuItem(Result, '-', 0, nil);
-  MenuItem(Result, 'Text box', Length(ShapeKinds), @ShapeKindClicked);
+  Result := '';
+  for i := 1 to Length(Kind) do
+    if (i > 1) and ((Kind[i] in ['A'..'Z']) or ((Kind[i] in ['0'..'9']) and not (Kind[i - 1] in ['0'..'9']))) then
+      Result := Result + ' ' + LowerCase(Kind[i])
+    else
+      Result := Result + Kind[i];
+  if Copy(Result, 1, 10) = 'flow chart' then
+    Result := 'Flowchart:' + Copy(Result, 11, MaxInt);
+  Result := UpperCase(Result[1]) + Copy(Result, 2, MaxInt);
 end;
 
-procedure TLedVisualPane.ShapeKindClicked(Sender: TObject);
+{$IFDEF LED_PARADE}
+{ A shape as its gallery button shows it: its outline, drawn four times over and averaged (smooth at any size), in
+  AColour with the rest transparent. Office's presets from their definitions; the lines and the hand-drawn kinds
+  by hand }
+function ShapeIcon(const Kind: string; ASize: Integer; AColour: TColor): TBitmap;
+const
+  K = 4;
 var
-  T: Integer;
+  Big: TBitmap;
+  Img: TLazIntfImage;
+  Src: TLazIntfImage;
+  X, Y, I, J, S, M, Sum: Integer;
+  W, H, BW, BH, OX, OY, Sc: Double;
+  Js: RawByteString;
+  Adj: string;
+  N: csize_t;
+  Data: TJSONData;
+  Paths, Cmds, C: TJSONArray;
+  Pa: TJSONObject;
+  AnyStroke: Boolean;
+  Pts: array of TPoint;
+  NP: Integer;
+  CX, CY, SX, SY: Double;
+  Col: TFPColor;
+
+  function P(U, V: Double): TPoint;     { a point of the box (0..1) }
+  begin
+    Result := Point(Round(M + U * (S - 2 * M)), Round(M + V * (S - 2 * M)));
+  end;
+
+  procedure Head(X0, Y0, X1, Y1: Double);    { an arrowhead at X1, Y1, coming from X0, Y0 }
+  var
+    A, L: Double;
+  begin
+    A := ArcTan2(Y1 - Y0, X1 - X0);
+    L := 0.22;
+    Big.Canvas.Brush.Style := bsSolid;
+    Big.Canvas.Brush.Color := clBlack;
+    Big.Canvas.Polygon([P(X1, Y1), P(X1 - L * Cos(A - 0.45), Y1 - L * Sin(A - 0.45)),
+      P(X1 - L * Cos(A + 0.45), Y1 - L * Sin(A + 0.45))]);
+    Big.Canvas.Brush.Style := bsClear;
+  end;
+
+  procedure Bez(const Q: array of Double);   { a cubic through four points of the box }
+  var
+    T: Integer;
+    U, V: Double;
+    B: array[0..24] of TPoint;
+  begin
+    for T := 0 to 24 do
+    begin
+      U := T / 24;
+      V := 1 - U;
+      B[T] := P(V * V * V * Q[0] + 3 * V * V * U * Q[2] + 3 * V * U * U * Q[4] + U * U * U * Q[6],
+        V * V * V * Q[1] + 3 * V * V * U * Q[3] + 3 * V * U * U * Q[5] + U * U * U * Q[7]);
+    end;
+    Big.Canvas.Polyline(B);
+  end;
+
+  procedure Put(PX, PY: Double);
+  begin
+    if NP > High(Pts) then
+      SetLength(Pts, NP * 2 + 16);
+    Pts[NP] := Point(Round(OX + PX * Sc), Round(OY + PY * Sc));
+    Inc(NP);
+  end;
+
 begin
-  T := TMenuItem(Sender).Tag;
-  if T >= Length(ShapeKinds) then
-    FEdit.InsertShape('textbox')
-  else
-    FEdit.InsertShape(ShapeKinds[T]);
+  S := ASize * K;
+  M := 2 * K;
+  Big := TBitmap.Create;
+  try
+    Big.SetSize(S, S);
+    Big.Canvas.Brush.Color := clWhite;
+    Big.Canvas.FillRect(0, 0, S, S);
+    Big.Canvas.Pen.Color := clBlack;
+    Big.Canvas.Pen.Width := Round(K * 1.1);
+    Big.Canvas.Brush.Style := bsClear;
+    case Kind of
+      'line', 'arrow', 'doubleArrow':
+        begin
+          Big.Canvas.Line(P(0.08, 0.92), P(0.92, 0.08));
+          if Kind <> 'line' then Head(0.08, 0.92, 0.92, 0.08);
+          if Kind = 'doubleArrow' then Head(0.92, 0.08, 0.08, 0.92);
+        end;
+      'elbow', 'elbowArrow', 'elbowDoubleArrow':
+        begin
+          Big.Canvas.Polyline([P(0.08, 0.2), P(0.5, 0.2), P(0.5, 0.8), P(0.92, 0.8)]);
+          if Kind <> 'elbow' then Head(0.5, 0.8, 0.92, 0.8);
+          if Kind = 'elbowDoubleArrow' then Head(0.5, 0.2, 0.08, 0.2);
+        end;
+      'curvedConnector', 'curvedArrow', 'curvedDoubleArrow':
+        begin
+          Bez([0.08, 0.2, 0.6, 0.2, 0.4, 0.8, 0.92, 0.8]);
+          if Kind <> 'curvedConnector' then Head(0.6, 0.8, 0.92, 0.8);
+          if Kind = 'curvedDoubleArrow' then Head(0.4, 0.2, 0.08, 0.2);
+        end;
+      'curve': Bez([0.08, 0.85, 0.3, -0.25, 0.65, 1.25, 0.92, 0.15]);
+      'freeform': Big.Canvas.Polyline([P(0.1, 0.9), P(0.25, 0.25), P(0.5, 0.6), P(0.75, 0.1), P(0.9, 0.75),
+          P(0.55, 0.92)]);
+      'scribble':
+        begin
+          SetLength(Pts, 40);
+          for I := 0 to 39 do
+            Pts[I] := P(0.08 + 0.84 * I / 39, 0.5 + 0.3 * Sin(I / 39 * 11) * (0.5 + 0.5 * Cos(I / 39 * 3)));
+          Big.Canvas.Polyline(Pts);
+        end;
+      'textbox':
+        begin
+          Big.Canvas.Rectangle(Rect(P(0.08, 0.15).X, P(0.08, 0.15).Y, P(0.92, 0.85).X, P(0.92, 0.85).Y));
+          Big.Canvas.Line(P(0.25, 0.35), P(0.75, 0.35));
+          Big.Canvas.Line(P(0.25, 0.5), P(0.75, 0.5));
+          Big.Canvas.Line(P(0.25, 0.65), P(0.6, 0.65));
+        end;
+    else
+      begin   { an Office preset: its paths as its definition draws them }
+        W := 1000;
+        H := 1000;
+        if (Pos('flowChart', Kind) = 1) or (Pos('Rect', Kind) > 0) or (Kind = 'rect') or (Pos('Ribbon', Kind) > 0) or
+           (Kind = 'ribbon') or (Kind = 'ribbon2') or (Pos('wave', LowerCase(Kind)) > 0) or (Kind = 'horizontalScroll') or
+           (Kind = 'leftRightArrow') or (Kind = 'stripedRightArrow') or (Kind = 'notchedRightArrow') or
+           (Kind = 'homePlate') or (Pos('Callout', Kind) > 0) or (Pos('callout', Kind) = 1) then
+          H := 680
+        else if (Kind = 'verticalScroll') or (Kind = 'upDownArrow') or (Kind = 'can') then
+          W := 680;
+        { the corners of the rectangles' kinds cut or rounded more than they are by default, as Word's gallery
+          shows them: at its size they would all look alike }
+        if Pos('Rect', Kind) > 0 then
+          Adj := 'adj=30000 adj1=30000 adj2=30000'
+        else
+          Adj := '';
+        N := pd_preset_json(PAnsiChar(Kind), W, H, PAnsiChar(Adj), nil, 0);
+        if N > 0 then
+        begin
+          SetLength(Js, N + 1);
+          pd_preset_json(PAnsiChar(Kind), W, H, PAnsiChar(Adj), PAnsiChar(Js), N + 1);
+          SetLength(Js, N);
+          Data := nil;
+          try
+            Data := GetJSON(Js);
+            Paths := TJSONObject(Data).Find('paths') as TJSONArray;
+            BW := S - 2 * M;
+            BH := BW;
+            Sc := Min(BW / W, BH / H) * 0.94;
+            OX := M + (BW - W * Sc) / 2;
+            OY := M + (BH - H * Sc) / 2;
+            AnyStroke := False;
+            for I := 0 to Paths.Count - 1 do
+              AnyStroke := AnyStroke or (TJSONObject(Paths[I]).Get('stroke', 1) = 1);
+            for I := 0 to Paths.Count - 1 do
+            begin
+              Pa := TJSONObject(Paths[I]);
+              if AnyStroke and (Pa.Get('stroke', 1) <> 1) then
+                Continue;
+              Cmds := Pa.Find('cmds') as TJSONArray;
+              NP := 0;
+              CX := 0; CY := 0; SX := 0; SY := 0;
+              for J := 0 to Cmds.Count - 1 do
+              begin
+                C := TJSONArray(Cmds[J]);
+                case C[0].AsString of
+                  'm':
+                    begin
+                      if NP > 1 then Big.Canvas.Polyline(Pts, 0, NP);
+                      NP := 0;
+                      CX := C[1].AsFloat; CY := C[2].AsFloat; SX := CX; SY := CY;
+                      Put(CX, CY);
+                    end;
+                  'l':
+                    begin
+                      CX := C[1].AsFloat; CY := C[2].AsFloat;
+                      Put(CX, CY);
+                    end;
+                  'c':
+                    begin
+                      for X := 1 to 10 do
+                      begin
+                        BW := X / 10;
+                        BH := 1 - BW;
+                        Put(BH * BH * BH * CX + 3 * BH * BH * BW * C[1].AsFloat + 3 * BH * BW * BW * C[3].AsFloat +
+                          BW * BW * BW * C[5].AsFloat, BH * BH * BH * CY + 3 * BH * BH * BW * C[2].AsFloat +
+                          3 * BH * BW * BW * C[4].AsFloat + BW * BW * BW * C[6].AsFloat);
+                      end;
+                      CX := C[5].AsFloat; CY := C[6].AsFloat;
+                    end;
+                  'z':
+                    begin
+                      Put(SX, SY);
+                      CX := SX; CY := SY;
+                    end;
+                end;
+              end;
+              if NP > 1 then Big.Canvas.Polyline(Pts, 0, NP);
+            end;
+          except
+          end;
+          Data.Free;
+        end;
+      end;
+    end;
+    { four by four pixels a pixel: how much of it is ink, its alpha }
+    Src := Big.CreateIntfImage;
+    Img := TLazIntfImage.Create(ASize, ASize, [riqfRGB, riqfAlpha]);
+    try
+      Img.CreateData;
+      for Y := 0 to ASize - 1 do
+        for X := 0 to ASize - 1 do
+        begin
+          Sum := 0;
+          for J := 0 to K - 1 do
+            for I := 0 to K - 1 do
+              Inc(Sum, 65535 - Src.Colors[X * K + I, Y * K + J].green);
+          Col := TColorToFPColor(AColour);
+          Col.alpha := Sum div (K * K);
+          Img.Colors[X, Y] := Col;
+        end;
+      Result := TBitmap.Create;
+      Result.LoadFromIntfImage(Img);
+    finally
+      Img.Free;
+      Src.Free;
+    end;
+  finally
+    Big.Free;
+  end;
+end;
+{$ENDIF}
+
+{ the gallery of shapes, under the button that opens it: a click on one puts it in (drawn with the mouse in the
+  canvas selected) }
+procedure TLedVisualPane.ShapesDropClicked(Sender: TObject);
+var
+  Box: TScrollBox;
+  Flow: TFlowPanel;
+  L: TLabel;
+  B: TSpeedButton;
+  i, Sz: Integer;
+  P: TPoint;
+begin
+  if FShapePop = nil then
+  begin
+    FShapePop := TForm.CreateNew(Self);
+    FShapePop.BorderStyle := bsNone;
+    FShapePop.FormStyle := fsStayOnTop;
+    FShapePop.ShowInTaskBar := stNever;
+    FShapePop.OnDeactivate := @PaletteDeactivate;
+    FShapePop.Width := LedScale96(12 * 30 + 28);
+    FShapePop.Height := LedScale96(460);
+    Box := TScrollBox.Create(FShapePop);
+    Box.Parent := FShapePop;
+    Box.Align := alClient;
+    Box.HorzScrollBar.Visible := False;
+    Box.VertScrollBar.Increment := LedScale96(30);
+    Box.Color := clWindow;
+    Flow := nil;
+    Sz := LedScale96(22);
+    { the groups: a heading, then its shapes in rows }
+    Box.DisableAutoSizing;
+    try
+      for i := 0 to High(ShapeGallery) do
+        if ShapeGallery[i][1] = '#' then
+        begin
+          L := TLabel.Create(FShapePop);
+          L.Caption := Copy(ShapeGallery[i], 2, MaxInt);
+          L.Font.Style := [fsBold];
+          L.BorderSpacing.Left := LedScale96(6);
+          L.BorderSpacing.Top := LedScale96(4);
+          L.Top := 100000 + i * 10;
+          L.Align := alTop;
+          L.Parent := Box;
+          Flow := TFlowPanel.Create(FShapePop);
+          Flow.BevelOuter := bvNone;
+          Flow.AutoSize := True;
+          Flow.AutoWrap := True;
+          Flow.Top := 100000 + i * 10 + 5;
+          Flow.Align := alTop;
+          Flow.BorderSpacing.Left := LedScale96(4);
+          Flow.Color := clWindow;
+          Flow.Parent := Box;
+        end
+        else if Flow <> nil then
+        begin
+          B := TSpeedButton.Create(FShapePop);
+          B.Flat := True;
+          B.Width := Sz + LedScale96(8);
+          B.Height := Sz + LedScale96(8);
+          B.Hint := ShapeTitle(ShapeGallery[i]);
+          B.ShowHint := True;
+          B.Tag := i;
+          {$IFDEF LED_PARADE}
+          B.Glyph := ShapeIcon(ShapeGallery[i], Sz, clBtnText);
+          {$ENDIF}
+          B.OnClick := @PaletteItemClicked;
+          B.Parent := Flow;
+        end;
+    finally
+      Box.EnableAutoSizing;
+    end;
+  end;
+  P := TControl(Sender).ClientToScreen(Point(0, TControl(Sender).Height));
+  FShapePop.Left := P.X;
+  FShapePop.Top := P.Y;
+  FShapePop.Show;
+end;
+
+procedure TLedVisualPane.PaletteDeactivate(Sender: TObject);
+begin
+  FShapePop.Hide;
+end;
+
+procedure TLedVisualPane.PaletteItemClicked(Sender: TObject);
+begin
+  FShapePop.Hide;
+  FEdit.InsertShape(ShapeGallery[TControl(Sender).Tag]);
   BackToPage;
 end;
 
@@ -1732,10 +2078,10 @@ begin
   Item(M, 'Other size...', -1, @TableItemClicked);
   Big('inserttable', 'Table', 'Insert a table at the caret', nil, M);
   Big('insertpicture', 'Picture', 'Insert a picture from a file (PNG, JPEG, GIF)', @PictureClicked);
-  Big('insertshape', 'Shapes', 'A shape: in a new canvas, or drawn with the mouse in the canvas selected', nil,
-    ShapeMenu);
-  Big('insertcanvas', 'Canvas', 'A drawing canvas: shapes, lines, arrows and text boxes drawn in it make a diagram',
-    @CanvasClicked);
+  { the shapes: what there is to put in, and what a selected one looks like -- Word's Shape Format, here }
+  AddSeparator;
+  BuildShape;
+  AddSeparator;
   M := TPopupMenu.Create(Self);
   Item(M, 'In the line...', 0, @EquationItemClicked);
   Item(M, 'On a line of its own...', 1, @EquationItemClicked);
@@ -2284,7 +2630,7 @@ end;
 
 function TLedVisualPane.ShapeTabShown: Boolean;
 begin
-  Result := (FShapeTab >= 0) and FTabBtns[FShapeTab].Visible and FBars[FShapeTab].Visible;
+  Result := (FShapeTab >= 0) and FBars[FShapeTab].Visible and FShapeSel;
 end;
 
 const
@@ -2295,7 +2641,8 @@ const
   ThemeNames: array[0..8] of string = ('Blue', 'Orange', 'Grey', 'Gold', 'Light blue', 'Green', 'Dark red', 'Purple',
     'White, outlined black');
 
-{ the Shape tab: what is drawn in a canvas, and a shape's fill and outline, its place in the order, groups -- what Word's Shape Format has first }
+{ the Insert tab's shapes: what is drawn in a canvas, and a shape's fill and outline, its turn, its points, its place
+  in the order, groups -- what Word's Shape Format has first }
 procedure TLedVisualPane.BuildShape;
 const
   Colours: array[0..9] of Integer = ($FFFFFF, $000000, $4472C4, $ED7D31, $A5A5A5, $FFC000, $5B9BD5, $70AD47,
@@ -2304,10 +2651,13 @@ const
     'Dark red', 'Purple');
 var
   M: TPopupMenu;
-  i: Integer;
+  i, First: Integer;
 begin
-  MenuButton('insertshape', 'Draw', 'A shape drawn in the canvas: choose one, then drag where it goes', ShapeMenu);
-  AddSeparator;
+  SetIcon(AddButton('Shapes ' + #$E2#$96#$BE, 'A shape: in a new canvas, or drawn with the mouse in the canvas ' +
+    'selected', [], @ShapesDropClicked), 'insertshape');
+  SetIcon(AddButton('Canvas', 'A drawing canvas: shapes, lines, arrows and text boxes drawn in it make a diagram',
+    [], @CanvasClicked), 'insertcanvas');
+  First := FBar.ControlCount;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do
     Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeFillItemClicked), FromRGB(Colours[i]), False);
@@ -2356,6 +2706,14 @@ begin
   SetSmallIcon(AddButton('Group', 'The selected shapes (Shift+click for more) made one', [], @GroupClicked), 'group');
   AddButton('Ungroup', 'The group the selected shape is in taken apart', [], @UngroupClicked);
   EndRows;
+  { what is for a selected shape: off until there is one (Colours is for new shapes too) }
+  for i := First to FBar.ControlCount - 1 do
+    if not ((FBar.Controls[i] is TSpeedButton) and (Pos('Colours', TSpeedButton(FBar.Controls[i]).Caption) = 1)) then
+    begin
+      SetLength(FShapeFmt, Length(FShapeFmt) + 1);
+      FShapeFmt[High(FShapeFmt)] := FBar.Controls[i];
+      FBar.Controls[i].Enabled := False;
+    end;
 end;
 
 { a colour from the system's dialog, starting at AColour; False when it was closed without one }
