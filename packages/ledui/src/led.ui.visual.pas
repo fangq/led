@@ -178,6 +178,16 @@ type
     FNavList: TListBox;
     FNavSplitter: TSplitter;
     FNavTimer: TTimer;
+    { slides (a presentation, every page a canvas): the pages small, beside the one being edited }
+    FSlidePanel: TPanel;
+    FSlideBox: TScrollBox;
+    FSlidePaint: TPaintBox;
+    FSlideSplitter: TSplitter;
+    FSlideTimer: TTimer;
+    FSlideMenu: TPopupMenu;
+    FThumbs: array of TBitmap;
+    FThumbStale: array of Boolean;
+    FSlideMenuAt: Integer;
     FFitWidth: Boolean;         { the zoom follows the width of the view (Page width), until another is chosen }
     FFitZoom: Double;           { the zoom it last set: another one found means Ctrl+wheel chose it }
     procedure FitWidth;
@@ -197,6 +207,13 @@ type
     procedure NavClicked(Sender: TObject);
     procedure NavListClicked(Sender: TObject);
     procedure NavTimerFired(Sender: TObject);
+    procedure BuildSlidePane;
+    procedure UpdateSlidePane(AllStale: Boolean);
+    procedure SlideTimerFired(Sender: TObject);
+    procedure SlidePaintPaint(Sender: TObject);
+    procedure SlidePaintMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+    procedure SlideMenuClicked(Sender: TObject);
+    procedure SlideGeometry(out TW, TH, Step: Integer);
     {$ENDIF}
     procedure FitBarHost;
     procedure BarResized(Sender: TObject);
@@ -228,6 +245,7 @@ type
     function GetEditor: TWinControl;
   public
     constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
 
     { The document in a format, the whole of it.  False with the reason when
       it would not import -- or when LED was built without Parade. }
@@ -242,6 +260,10 @@ type
     { The page made one to draw on: landscape, a canvas as big as its text, selected, the Insert tab's shapes
       shown.  For File > New Portable Canvas. }
     procedure StartCanvas;
+    {$IFDEF LED_PARADE}
+    { the slides beside the page (a presentation's): their pictures, one under another }
+    property SlideView: TPaintBox read FSlidePaint;
+    {$ENDIF}
 
     function CanUndo: Boolean;
     function CanRedo: Boolean;
@@ -330,7 +352,7 @@ function LedSelectionCounts(Words, Chars: Integer): string;
 implementation
 
 uses
-  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
+  Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
   {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
@@ -1408,6 +1430,8 @@ var
   ShapeSid: Integer;
   Sel: Boolean;
 begin
+  if (FSlidePaint <> nil) and FSlidePanel.Visible then
+    FSlidePaint.Invalidate;   { which slide is marked as the one being edited }
   if Assigned(FOnStatus) then
     FOnStatus(Self);
   if FFont = nil then Exit;
@@ -3182,6 +3206,236 @@ begin
   FNavTimer.Enabled := False;
   FNavTimer.Interval := 400;      { the list made again a little after the typing stops }
   FNavTimer.OnTimer := @NavTimerFired;
+  BuildSlidePane;
+end;
+
+{ the slides beside the page: each small and outlined, numbered, the one being edited marked; hidden but for a
+  presentation }
+procedure TLedVisualPane.BuildSlidePane;
+var
+  M: TPopupMenu;
+
+  procedure Item(const ACaption: string; ATag: Integer);
+  var
+    I: TMenuItem;
+  begin
+    I := TMenuItem.Create(M);
+    I.Caption := ACaption;
+    I.Tag := ATag;
+    I.OnClick := @SlideMenuClicked;
+    M.Items.Add(I);
+  end;
+
+begin
+  FSlidePanel := TPanel.Create(Self);
+  FSlidePanel.Parent := Self;
+  FSlidePanel.Align := alLeft;
+  FSlidePanel.Width := LedScale96(190);
+  FSlidePanel.BevelOuter := bvNone;
+  FSlidePanel.Caption := '';
+  FSlidePanel.Visible := False;
+  FSlideBox := TScrollBox.Create(Self);
+  FSlideBox.Parent := FSlidePanel;
+  FSlideBox.Align := alClient;
+  FSlideBox.HorzScrollBar.Visible := False;
+  FSlideBox.VertScrollBar.Tracking := True;
+  FSlideBox.Color := clBtnFace;
+  FSlidePaint := TPaintBox.Create(Self);
+  FSlidePaint.Parent := FSlideBox;
+  FSlidePaint.Left := 0;
+  FSlidePaint.Top := 0;
+  FSlidePaint.OnPaint := @SlidePaintPaint;
+  FSlidePaint.OnMouseDown := @SlidePaintMouseDown;
+  FSlideSplitter := TSplitter.Create(Self);
+  FSlideSplitter.Parent := Self;
+  FSlideSplitter.Align := alLeft;
+  FSlideSplitter.Left := FSlidePanel.Width + 1;
+  FSlideSplitter.Visible := False;
+  FSlideTimer := TTimer.Create(Self);
+  FSlideTimer.Enabled := False;
+  FSlideTimer.Interval := 350;    { the slides drawn again a little after an edit }
+  FSlideTimer.OnTimer := @SlideTimerFired;
+  M := TPopupMenu.Create(Self);
+  Item('New slide', 0);
+  Item('Duplicate slide', 1);
+  Item('Delete slide', 2);
+  Item('-', -1);
+  Item('Move up', 3);
+  Item('Move down', 4);
+  FSlideMenu := M;
+end;
+
+{ a slide's place in the pane: its picture's width and height, and how far one slide is from the next }
+procedure TLedVisualPane.SlideGeometry(out TW, TH, Step: Integer);
+var
+  Info: pd_page_info;
+begin
+  TW := Max(LedScale96(40), FSlideBox.ClientWidth - LedScale96(36));
+  TH := TW * 9 div 16;
+  if (FEdit.PageCount > 0) and (pd_layout_page_info(FEdit.Layout, 0, Info) = PD_OK) and (Info.width > 0) then
+    TH := Round(TW * Info.height / Info.width);
+  Step := TH + LedScale96(14);
+end;
+
+{ the pane shown for a presentation, sized for its slides; which of their pictures are to be made again (AllStale:
+  every one, the slides being others now; else the one being edited) }
+procedure TLedVisualPane.UpdateSlidePane(AllStale: Boolean);
+var
+  N, i, TW, TH, Step, Cur: Integer;
+  Shown: Boolean;
+begin
+  if FSlidePanel = nil then
+    Exit;
+  Shown := FEdit.CanvasPage and (FEdit.SlideCount > 0);
+  if FSlidePanel.Visible <> Shown then
+  begin
+    FSlidePanel.Visible := Shown;
+    FSlideSplitter.Visible := Shown;
+    if Shown then
+      FSlideSplitter.Left := FSlidePanel.Left + FSlidePanel.Width + 1;
+  end;
+  if not Shown then
+    Exit;
+  N := FEdit.SlideCount;
+  if N <> Length(FThumbs) then
+  begin
+    for i := N to High(FThumbs) do
+      FThumbs[i].Free;
+    SetLength(FThumbs, N);
+    SetLength(FThumbStale, N);
+    AllStale := True;
+  end;
+  Cur := FEdit.CurrentSlide;
+  for i := 0 to N - 1 do
+    if AllStale or (i = Cur) then
+      FThumbStale[i] := True;
+  SlideGeometry(TW, TH, Step);
+  FSlidePaint.Width := FSlideBox.ClientWidth;
+  FSlidePaint.Height := N * Step + LedScale96(10);
+  FSlideTimer.Enabled := False;
+  FSlideTimer.Enabled := True;
+  FSlidePaint.Invalidate;
+end;
+
+{ the stale pictures of the slides made again, at the pane's width }
+procedure TLedVisualPane.SlideTimerFired(Sender: TObject);
+var
+  i, TW, TH, Step: Integer;
+  Info: pd_page_info;
+begin
+  FSlideTimer.Enabled := False;
+  if not FSlidePanel.Visible then
+    Exit;
+  SlideGeometry(TW, TH, Step);
+  for i := 0 to Min(High(FThumbs), FEdit.PageCount - 1) do
+    if FThumbStale[i] and (pd_layout_page_info(FEdit.Layout, i, Info) = PD_OK) and (Info.width > 0) then
+    begin
+      if FThumbs[i] = nil then
+        FThumbs[i] := TBitmap.Create;
+      FEdit.RenderPage(i, FThumbs[i], TW / Info.width);
+      FThumbStale[i] := False;
+    end;
+  FSlidePaint.Invalidate;
+end;
+
+procedure TLedVisualPane.SlidePaintPaint(Sender: TObject);
+var
+  C: TCanvas;
+  i, TW, TH, Step, X0, Y0, Cur, B: Integer;
+  R: TRect;
+begin
+  C := FSlidePaint.Canvas;
+  C.Brush.Color := clBtnFace;
+  C.FillRect(0, 0, FSlidePaint.Width, FSlidePaint.Height);
+  SlideGeometry(TW, TH, Step);
+  Cur := FEdit.CurrentSlide;
+  X0 := LedScale96(24);
+  for i := 0 to High(FThumbs) do
+  begin
+    Y0 := LedScale96(8) + i * Step;
+    R := Rect(X0, Y0, X0 + TW, Y0 + TH);
+    C.Font.Color := clBtnText;
+    C.Brush.Style := bsClear;
+    C.TextOut(LedScale96(4), Y0, IntToStr(i + 1));
+    if (FThumbs[i] <> nil) and not FThumbs[i].Empty then
+      C.StretchDraw(R, FThumbs[i])
+    else
+    begin
+      C.Brush.Style := bsSolid;
+      C.Brush.Color := clWhite;
+      C.FillRect(R);
+    end;
+    C.Brush.Style := bsClear;
+    if i = Cur then
+    begin   { the one being edited }
+      C.Pen.Color := $00D77800;
+      B := LedScale96(3);
+      C.Pen.Width := B;
+      C.Rectangle(R.Left - B div 2 - 1, R.Top - B div 2 - 1, R.Right + B div 2 + 1, R.Bottom + B div 2 + 1);
+      C.Pen.Width := 1;
+    end
+    else
+    begin   { each page outlined }
+      C.Pen.Color := clGray;
+      C.Pen.Width := 1;
+      C.Rectangle(R.Left - 1, R.Top - 1, R.Right + 1, R.Bottom + 1);
+    end;
+  end;
+end;
+
+procedure TLedVisualPane.SlidePaintMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+var
+  TW, TH, Step, i: Integer;
+  P: TPoint;
+begin
+  SlideGeometry(TW, TH, Step);
+  i := (Y - LedScale96(8)) div Step;
+  if (i < 0) or (i >= FEdit.SlideCount) or (Y - LedScale96(8) - i * Step > TH) then
+    i := -1;
+  if i >= 0 then
+  begin
+    FEdit.GoToSlide(i);
+    FSlidePaint.Invalidate;
+  end;
+  if Button = mbRight then
+  begin
+    FSlideMenuAt := i;
+    if i < 0 then
+      FSlideMenuAt := FEdit.SlideCount - 1;
+    P := FSlidePaint.ClientToScreen(Point(X, Y));
+    FSlideMenu.PopUp(P.X, P.Y);
+  end
+  else if i >= 0 then
+    LedTryFocus(FEdit);
+end;
+
+procedure TLedVisualPane.SlideMenuClicked(Sender: TObject);
+var
+  i: Integer;
+begin
+  i := FSlideMenuAt;
+  case TMenuItem(Sender).Tag of
+    0: FEdit.NewSlide(i);
+    1: FEdit.NewSlide(i, True);
+    2: FEdit.DeleteSlide(i);
+    3: FEdit.MoveSlide(i, i - 1);
+    4: FEdit.MoveSlide(i, i + 1);
+  end;
+  UpdateSlidePane(True);
+  LedTryFocus(FEdit);
+end;
+
+destructor TLedVisualPane.Destroy;
+var
+  i: Integer;
+begin
+  {$IFDEF LED_PARADE}
+  for i := 0 to High(FThumbs) do
+    FThumbs[i].Free;
+  FThumbs := nil;
+  {$ENDIF}
+  inherited Destroy;
 end;
 
 { the page as wide as the view, while that is the zoom the reader has; a zoom chosen another way ends it }
@@ -3368,8 +3622,12 @@ begin
   try
     try
       FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
+      UpdateSlidePane(True);
       if FEdit.CanvasPage and (FEdit.WholePageZoom > 0) then
-        FEdit.Zoom := FEdit.WholePageZoom;    { slides, a drawing: a whole page in view }
+      begin   { slides, a drawing: a whole page in view, kept so }
+        FFitWidth := False;
+        FEdit.Zoom := FEdit.WholePageZoom;
+      end;
       {$IFDEF LED_PARADE_SYNC}
       FFileName := AFileName;   { a name to host it under }
       {$ENDIF}
@@ -3427,8 +3685,12 @@ procedure TLedVisualPane.StartCanvas;
 begin
   {$IFDEF LED_PARADE}
   FEdit.StartCanvasPage;
+  UpdateSlidePane(True);
   if FEdit.WholePageZoom > 0 then
-    FEdit.Zoom := FEdit.WholePageZoom;    { the whole page in view: its corner, to size it by }
+  begin   { the whole page in view: its corner, to size it by }
+    FFitWidth := False;
+    FEdit.Zoom := FEdit.WholePageZoom;
+  end;
   if FShapeTab >= 0 then
     ShowTab(FShapeTab);
   {$ENDIF}
@@ -3669,6 +3931,7 @@ end;
 procedure TLedVisualPane.EditChanged(Sender: TObject);
 begin
   {$IFDEF LED_PARADE}
+  UpdateSlidePane(False);     { the slide edited drawn again in the pane }
   if (FNavPanel <> nil) and FNavPanel.Visible then
   begin   { the headings list made again once the typing pauses }
     FNavTimer.Enabled := False;
