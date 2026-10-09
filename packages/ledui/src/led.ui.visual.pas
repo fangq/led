@@ -3400,8 +3400,8 @@ procedure TLedVisualPane.StartCanvas;
 begin
   {$IFDEF LED_PARADE}
   FEdit.StartCanvasPage;
-  if FEdit.PageWidthZoom > 0 then
-    FEdit.Zoom := FEdit.PageWidthZoom;    { the whole width of the canvas in view }
+  if FEdit.WholePageZoom > 0 then
+    FEdit.Zoom := FEdit.WholePageZoom;    { the whole page in view: its corner, to size it by }
   if FShapeTab >= 0 then
     ShowTab(FShapeTab);
   {$ENDIF}
