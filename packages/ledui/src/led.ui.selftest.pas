@@ -56,7 +56,7 @@ uses
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
   ctypes, x, xlib,
   {$ENDIF}
-  Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls,
+  Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls, Spin,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
   Led.Term.View, Led.Term.Pty, Led.Term.Screen, Led.Term.Pane,
   Led.Core.Session, Led.UI.Bookmarks, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -16086,6 +16086,123 @@ begin
   DeleteFile(Path);
 end;
 
+{ a Word template: opened as a new, untitled document of what it has (its styles, its theme); the pages' Design tab;
+  File > New from Template offered }
+function SelfTestWriter(user: Pointer; data: Pointer; len: PtrUInt): LongInt; cdecl;
+begin
+  TStream(user).WriteBuffer(data^, len);
+  Result := 0;
+end;
+
+type
+  TDialogFiller = class
+    Form: TForm;
+    procedure Close(Data: PtrInt);
+  end;
+
+procedure TDialogFiller.Close(Data: PtrInt);
+begin
+  Form.ModalResult := mrOK;
+end;
+
+var
+  Filler: TDialogFiller;
+
+{ the Modify style dialog: its size 30pt, OK }
+procedure FillStyleDialog(AForm: TForm);
+var
+  C: TComponent;
+begin
+  C := AForm.FindComponent('StyleSize');
+  if C is TFloatSpinEdit then
+    TFloatSpinEdit(C).Value := 30;
+  Filler.Form := AForm;
+  Application.QueueAsyncCall(@Filler.Close, 0);
+end;
+
+procedure TestTemplates(F: TLedMainForm);
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  D: Ppd_doc;
+  Th: pd_theme;
+  Cp: pd_char_props;
+  Path: string;
+  Ms: TMemoryStream;
+  Btn: TControl;
+begin
+  Say('templates and themes');
+  Check('New from Template is offered when the pages are built in', F.actNewFromTemplate.Visible = LedVisualAvailable);
+  if not LedVisualAvailable then Exit;
+  Check('a .dotx is a Word template', LedVisualKindOf('a.dotx') = lvkDotx);
+  Check('a .potx is read as a presentation', LedVisualKindOf('a.potx') = lvkPptx);
+  D := nil;
+  pd_doc_new(D);
+  pd_theme_preset(4, @Th);
+  pd_doc_set_theme(D, @Th);
+  FillChar(Cp, SizeOf(Cp), 0);
+  Cp.mask := PD_CP_WEIGHT;
+  Cp.weight := 700;
+  pd_doc_style_define(D, 'Memo Head', PD_STYLE_PARAGRAPH, 0, nil, @Cp, nil);
+  Path := TempName('memo.dotx');
+  Ms := TMemoryStream.Create;
+  try
+    pd_doc_export(D, PD_CONV_DOTX, @SelfTestWriter, Ms);
+    Ms.SaveToFile(Path);
+  finally
+    Ms.Free;
+    pd_doc_free(D);
+  end;
+  Tab := F.AddTab(F.Documents.OpenFile(Path));
+  Pump;
+  Check('the template opens as a new document''s pages', (Tab <> nil) and Tab.VisualMode and Tab.Document.IsUntitled);
+  if (Tab <> nil) and Tab.VisualMode then
+  begin
+    E := Tab.Visual.Editor as TParadeEdit;
+    Check('with the template''s styles', pd_doc_style_find(E.Doc, 'Memo Head') <> 0);
+    Check('and its theme', E.CurrentTheme.color[PD_THEME_ACCENT1] = Th.color[PD_THEME_ACCENT1]);
+    Check('the pages have a Design tab', Pos('Design' + LineEnding, Tab.Visual.RibbonTabs) > 0);
+    { Design > Modify style: the caret's style redefined from the dialog }
+    Filler := TDialogFiller.Create;
+    LedVisualDialogHook := @FillStyleDialog;
+    try
+      Btn := ButtonByCaption(Tab.Visual, 'Modify style...');
+      Check('Design has Modify style', Btn is TSpeedButton);
+      if Btn is TSpeedButton then
+      begin
+        TSpeedButton(Btn).Click;
+        Pump;
+        pd_doc_style_resolve(E.Doc, pd_doc_style_find(E.Doc, PAnsiChar(E.CurrentStyleName)), nil, @Cp);
+        Check('the style as the dialog said: 30pt', Cp.size = 30 * PD_SP_PER_PT);
+      end;
+    finally
+      LedVisualDialogHook := nil;
+      FreeAndNil(Filler);
+    end;
+    if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+    begin
+      with TStringList.Create do
+        try
+          Text := Tab.Visual.RibbonTabs;
+          Tab.Visual.ShowTab(IndexOf('Design'));
+        finally
+          Free;
+        end;
+      E.InsertText('A memo');
+      E.InsertTable(4, 3);
+      E.ApplyTableStylePreset(3, 1);
+      F.Repaint;
+      Pump;
+      ExecuteProcess('/usr/bin/import', ['-window', 'root',
+        IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'design_tab.png']);
+    end;
+    F.CloseActiveTab(False);
+    Pump;
+  end;
+  Check('the template itself left as it was', FileExists(Path));
+  DeleteFile(Path);
+end;
+
 { File > New Portable Canvas: an untitled Parade document, a landscape page holding a canvas, selected, to draw in }
 procedure TestNewCanvas(F: TLedMainForm);
 var
@@ -17200,6 +17317,7 @@ begin
   TestStatusCounts(F);
   TestNewPdoc(F);
   TestNewCanvas(F);
+  TestTemplates(F);
   TestOpenPptx(F);
   TestSharedText(F);
   TestShareToolbar(F);

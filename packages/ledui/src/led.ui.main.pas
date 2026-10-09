@@ -55,6 +55,7 @@ type
     actNew: TAction;
     actNewPdoc: TAction;
     actNewCanvas: TAction;
+    actNewFromTemplate: TAction;
     actJoinShared: TAction;
     actShareDoc: TAction;
     actLeaveDoc: TAction;
@@ -433,6 +434,7 @@ type
     procedure actNewNotebookExecute(Sender: TObject);
     procedure actNewPdocExecute(Sender: TObject);
     procedure actNewCanvasExecute(Sender: TObject);
+    procedure actNewFromTemplateExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
     procedure actShareDocExecute(Sender: TObject);
     procedure actLeaveDocExecute(Sender: TObject);
@@ -1111,6 +1113,7 @@ begin
   actJoinShared.Visible := LedVisualCanShare;
   actNewPdoc.Visible := LedVisualAvailable;
   actNewCanvas.Visible := LedVisualAvailable;
+  actNewFromTemplate.Visible := LedVisualAvailable;
   actShareDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
   miSepShare.Visible := LedVisualCanShare;
@@ -5758,11 +5761,14 @@ var
   Why, Data: string;
 begin
   { a PowerPoint file: its slides a Parade document's pages, untitled -- saved as a .pdoc, the .pptx left as it is }
-  if (not ADoc.IsUntitled) and (LedVisualKindOf(ADoc.FileName) = lvkPptx) and LedVisualAvailable then
+  { a template (.dotx) the same way: a new document of what it has, as Word opens one }
+  if (not ADoc.IsUntitled) and (LedVisualKindOf(ADoc.FileName) in [lvkPptx, lvkDotx]) and LedVisualAvailable then
   begin
     Data := LedVisualImport(LedReadRawFile(ADoc.FileName), ADoc.FileName, Why);
     if Data <> '' then
       ADoc.Import(Data, '.pdoc', ADoc.FileName)
+    else if LedVisualKindOf(ADoc.FileName) = lvkDotx then
+      ReportError('Word template: ' + Why)
     else
       ReportError('PowerPoint: ' + Why);
   end;
@@ -6869,6 +6875,43 @@ end;
 
 { A new Parade document that is a page to draw on: landscape, one canvas as big as the page's text, selected, the
   shapes at hand -- its corner dragged for more room or less }
+{ A new Parade document of a template's (or any Word, PowerPoint or Parade document's) content, styles and theme:
+  untitled, the template left as it is }
+procedure TLedMainForm.actNewFromTemplateExecute(Sender: TObject);
+var
+  D: TOpenDialog;
+  Doc: TLedDocument;
+  Data, Why: string;
+begin
+  D := TOpenDialog.Create(nil);
+  try
+    D.Title := 'New from Template';
+    D.Filter := 'Templates|*.dotx;*.dotm;*.potx;*.potm|Documents|*.docx;*.pptx;*.pdoc;*.jdoc|All files|*';
+    if not D.Execute then
+      Exit;
+    Data := LedReadRawFile(D.FileName);
+    if LedVisualKindOf(D.FileName) in [lvkPdoc, lvkJdoc] then
+      Why := ''
+    else
+    begin
+      Data := LedVisualImport(Data, D.FileName, Why);
+      if Data = '' then
+      begin
+        ReportError('Template: ' + Why);
+        Exit;
+      end;
+    end;
+    Doc := FDocs.NewDocument;
+    if LedVisualKindOf(D.FileName) = lvkJdoc then
+      Doc.StartWord(Data, '.jdoc')
+    else
+      Doc.StartWord(Data, '.pdoc');
+    AddTab(Doc);
+  finally
+    D.Free;
+  end;
+end;
+
 procedure TLedMainForm.actNewCanvasExecute(Sender: TObject);
 var
   Doc: TLedDocument;

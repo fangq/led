@@ -32,7 +32,8 @@ uses
 type
   { lvkPdoc: Parade's own document, BJData (binary); lvkJdoc: the same as JSON text }
   { lvkPptx: PowerPoint, read only -- its slides become a Parade document's canvas pages (LedVisualImport) }
-  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx);
+  { lvkDotx: a Word template, read only -- a new document of what it has (LedVisualImport) }
+  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx, lvkDotx);
 
   { The page view, a strip of buttons above it.  One per tab, made when the
     tab is first switched to it. }
@@ -77,6 +78,9 @@ type
     FAlignBtns: array[0..3] of TSpeedButton;
     FColorMenu, FHighlightMenu, FSpacingMenu: TPopupMenu;
     FTextColor, FHighlightColor: Integer;   { $RRGGBB the colour buttons put on; -1: automatic / none }
+    FTextTheme: Integer;                    { or the theme's colour: slot * 10 + its tint or shade; -1: FTextColor }
+    FThemeColorItems: array of TMenuItem;   { the font colour menu's theme colours, drawn as the theme is now }
+    FTableStyleNames: TStringList;          { the document's own table styles, as the menu lists them }
     FStylesShown: Integer;      { the document's style count when the list was last filled }
     FGallery: TCustomControl;   { the style panel: the styles drawn as they look, to click }
     FPainterBtn: TSpeedButton;
@@ -143,6 +147,19 @@ type
     procedure LineNumberItemClicked(Sender: TObject);
     procedure ParaBoxChanged(Sender: TObject);
     procedure BuildTable;
+    procedure BuildDesign;
+    procedure ColorMenuPopup(Sender: TObject);
+    procedure ThemeColorItemClicked(Sender: TObject);
+    procedure ThemePresetClicked(Sender: TObject);
+    procedure ThemeFontsClicked(Sender: TObject);
+    procedure TemplateClicked(Sender: TObject);
+    procedure ModifyStyleClicked(Sender: TObject);
+    procedure NewStyleClicked(Sender: TObject);
+    procedure TableStyleMenuPopup(Sender: TObject);
+    procedure TableStyleItemClicked(Sender: TObject);
+    procedure TableLookMenuPopup(Sender: TObject);
+    procedure TableLookItemClicked(Sender: TObject);
+    procedure StylesChanged;
     procedure BuildShape;
     procedure ShapesDropClicked(Sender: TObject);
     procedure PaletteItemClicked(Sender: TObject);
@@ -258,6 +275,8 @@ type
     function Export(AKind: TLedVisualKind = lvkNone): string;
     { The words on the pages, without their formatting. }
     function PlainText: string;
+    { the ribbon's tabs, their names one a line (for scripts and the self-test) }
+    function RibbonTabs: string;
     { Typed at the caret, over the selection.  For scripting the page. }
     procedure InsertText(const AText: string);
     { The page made one to draw on: landscape, a canvas as big as its text, selected, the Insert tab's shapes
@@ -312,8 +331,8 @@ type
     { the gallery of shapes the Insert tab's Shapes button opens (nil until it first is) }
     property ShapePalette: TForm read FShapePop;
     {$ENDIF}
-    { the tab shown in the toolbar: 0 Home, 1 Insert, 2 Layout, 3 References, 4 Review, 5 View, 6 Share, then
-      Table (shown in a table); without Parade: 0 Home, 1 Review }
+    { the tab shown in the toolbar, by its place in RibbonTabs: Home, Insert, Shape (shown for a shape), Design,
+      Layout, References, Review, View, then Table (shown in a table); without Parade: Home, Review }
     procedure ShowTab(AIndex: Integer);
     { the preferences that reach the page: line breaking as one types (for a
       .pdoc or .jdoc, only what it opens next: it carries its own) }
@@ -330,6 +349,10 @@ function LedVisualCanShare: Boolean;
 function LedVisualEmptyDocx: string;
 { An empty document of a kind the pages are kept as (lvkDocx, lvkPdoc). }
 function LedVisualEmpty(AKind: TLedVisualKind): string;
+
+{ Called with each of the pages' dialogs just before it is shown (the self-test fills them in and closes them). }
+var
+  LedVisualDialogHook: procedure(AForm: TForm) = nil;
 
 { What the visual editor would open this file as, by its name. }
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
@@ -356,7 +379,7 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
-  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes{$ENDIF}
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -403,13 +426,14 @@ begin
   if E = '.docx' then Exit(lvkDocx);
   if E = '.pdoc' then Exit(lvkPdoc);
   if E = '.jdoc' then Exit(lvkJdoc);
-  if E = '.pptx' then Exit(lvkPptx);
+  if (E = '.pptx') or (E = '.pptm') or (E = '.potx') or (E = '.potm') or (E = '.ppsx') then Exit(lvkPptx);
+  if (E = '.dotx') or (E = '.dotm') then Exit(lvkDotx);
   Result := lvkNone;
 end;
 
 function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
 begin
-  Result := AKind in [lvkDocx, lvkPdoc, lvkPptx];
+  Result := AKind in [lvkDocx, lvkPdoc, lvkPptx, lvkDotx];
 end;
 
 function LedVisualImport(const AData, AFileName: string; out AWhy: string): string;
@@ -440,6 +464,7 @@ begin
     lvkDocx: Result := PD_CONV_DOCX;
     lvkPdoc, lvkJdoc: Result := PD_CONV_JDATA;
     lvkPptx: Result := PD_CONV_PPTX;
+    lvkDotx: Result := PD_CONV_DOTX;
   else
     Result := -1;
   end;
@@ -879,6 +904,8 @@ begin
   AddTab('Insert');
   FShapeTab := High(FBars);
   BuildInsert;
+  AddTab('Design');
+  BuildDesign;
   AddTab('Layout');
   BuildLayout;
   AddTab('References');
@@ -1224,6 +1251,17 @@ begin
   end;
 end;
 
+const
+  { the theme's colours as Word lists them (PD_THEME_* slots), and each one's tints and shades (lumMod, lumOff) }
+  ThemeSlotOrder: array[0..9] of Integer = (PD_THEME_LT1, PD_THEME_DK1, PD_THEME_LT2, PD_THEME_DK2, PD_THEME_ACCENT1,
+    PD_THEME_ACCENT2, PD_THEME_ACCENT3, PD_THEME_ACCENT4, PD_THEME_ACCENT5, PD_THEME_ACCENT6);
+  ThemeSlotNames: array[0..9] of string = ('Background 1', 'Text 1', 'Background 2', 'Text 2', 'Accent 1', 'Accent 2',
+    'Accent 3', 'Accent 4', 'Accent 5', 'Accent 6');
+  ThemeShades: array[0..5, 0..1] of Integer = ((100000, 0), (20000, 80000), (40000, 60000), (60000, 40000),
+    (75000, 0), (50000, 0));
+  ThemeShadeNames: array[0..5] of string = ('As it is', 'Lighter 80%', 'Lighter 60%', 'Lighter 40%', 'Darker 25%',
+    'Darker 50%');
+
 procedure TLedVisualPane.BuildHome;
 const
   TextColours: array[0..9] of Integer = ($000000, $7F7F7F, $C00000, $FF0000, $FFC000, $FFFF00, $00B050,
@@ -1240,7 +1278,7 @@ const
   Sizes: array[0..15] of string = ('8', '9', '10', '10.5', '11', '12', '14', '16', '18', '20', '24', '28', '36',
     '48', '72', '96');
 var
-  i: Integer;
+  i, k: Integer;
   M: TMenuItem;
   B: TSpeedButton;
 
@@ -1269,6 +1307,7 @@ var
 
 begin
   FTextColor := $C00000;
+  FTextTheme := -1;
   FHighlightColor := $FFFF00;
 
   { the font: its name and size, then how it looks }
@@ -1313,8 +1352,24 @@ begin
   FSupBtn := AddIconToggle('fmtsuper', 'Superscript', @SupClicked);
   { colours: the button puts on the last one chosen, the arrow chooses another }
   FColorMenu := TPopupMenu.Create(Self);
+  FColorMenu.OnPopup := @ColorMenuPopup;
   M := Item(FColorMenu, 'Automatic', -1, @ColorItemClicked);
   Swatch(M, clBlack, False);
+  Line(FColorMenu);
+  { the theme's colours, each as it is and lighter or darker: they change with the theme }
+  for i := 0 to High(ThemeSlotOrder) do
+  begin
+    M := Item(FColorMenu, ThemeSlotNames[i], -3, nil);
+    for k := 0 to High(ThemeShades) do
+    begin
+      SetLength(FThemeColorItems, Length(FThemeColorItems) + 1);
+      FThemeColorItems[High(FThemeColorItems)] := TMenuItem.Create(M);
+      FThemeColorItems[High(FThemeColorItems)].Caption := ThemeShadeNames[k];
+      FThemeColorItems[High(FThemeColorItems)].Tag := ThemeSlotOrder[i] * 10 + k;
+      FThemeColorItems[High(FThemeColorItems)].OnClick := @ThemeColorItemClicked;
+      M.Add(FThemeColorItems[High(FThemeColorItems)]);
+    end;
+  end;
   Line(FColorMenu);
   for i := 0 to High(TextColours) do
     Swatch(Item(FColorMenu, TextColourNames[i], TextColours[i], @ColorItemClicked), FromRGB(TextColours[i]), False);
@@ -1608,7 +1663,10 @@ end;
 
 procedure TLedVisualPane.ColorClicked(Sender: TObject);
 begin
-  FEdit.SetTextColor(FTextColor);
+  if FTextTheme >= 0 then
+    FEdit.SetTextThemeColor(FTextTheme div 10, ThemeShades[FTextTheme mod 10, 0], ThemeShades[FTextTheme mod 10, 1])
+  else
+    FEdit.SetTextColor(FTextColor);
   BackToPage;
 end;
 
@@ -1640,6 +1698,7 @@ begin
   end
   else
     FTextColor := TMenuItem(Sender).Tag;
+  FTextTheme := -1;
   ColorClicked(Sender);
 end;
 
@@ -2636,6 +2695,424 @@ end;
 
 { ---- the Table tab: shown while the caret is in a table ---- }
 
+{ the font colour menu's theme colours, as the document's theme has them now }
+procedure TLedVisualPane.ColorMenuPopup(Sender: TObject);
+var
+  Th: pd_theme;
+  i: Integer;
+  C: UInt32;
+begin
+  Th := FEdit.CurrentTheme;
+  for i := 0 to High(FThemeColorItems) do
+  begin
+    C := pd_theme_color_resolve(@Th, pd_theme_color(FThemeColorItems[i].Tag div 10,
+      ThemeShades[FThemeColorItems[i].Tag mod 10, 0], ThemeShades[FThemeColorItems[i].Tag mod 10, 1]), 0);
+    Swatch(FThemeColorItems[i], FromRGB(Integer(C and $FFFFFF)), False);
+  end;
+end;
+
+procedure TLedVisualPane.ThemeColorItemClicked(Sender: TObject);
+begin
+  FTextTheme := TMenuItem(Sender).Tag;
+  ColorClicked(Sender);
+end;
+
+{ the style list and its gallery made again: a style defined or changed, the theme changed }
+procedure TLedVisualPane.StylesChanged;
+begin
+  FStylesShown := -1;
+  RefreshStyles;
+  SelectionChanged(Self);
+end;
+
+{ ---- Design: the document's theme, its styles, a template's ---- }
+
+procedure TLedVisualPane.BuildDesign;
+var
+  M: TPopupMenu;
+  It: TMenuItem;
+  Th: pd_theme;
+  Seen: TStringList;
+  i: Integer;
+begin
+  M := TPopupMenu.Create(Self);
+  for i := 0 to pd_theme_preset_count - 1 do
+    if pd_theme_preset(i, @Th) <> 0 then
+    begin
+      It := MenuItem(M, string(PAnsiChar(@Th.name[0])) + '  (' + string(PAnsiChar(@Th.major[0])) + ' / ' +
+        string(PAnsiChar(@Th.minor[0])) + ')', i, @ThemePresetClicked);
+      Swatch(It, FromRGB(Integer(Th.color[PD_THEME_ACCENT1] and $FFFFFF)), False);
+    end;
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'From a file (.thmx, Word, PowerPoint)...', -1, @ThemePresetClicked);
+  MenuButton('theme', 'Themes', 'The document''s colours and fonts: what the text, shading and table styles linked ' +
+    'to them take', M);
+  M := TPopupMenu.Create(Self);
+  Seen := TStringList.Create;
+  try
+    for i := 0 to pd_theme_preset_count - 1 do
+      if (pd_theme_preset(i, @Th) <> 0) and (Seen.IndexOf(string(PAnsiChar(@Th.major[0])) + '/' +
+        string(PAnsiChar(@Th.minor[0]))) < 0) then
+      begin
+        Seen.Add(string(PAnsiChar(@Th.major[0])) + '/' + string(PAnsiChar(@Th.minor[0])));
+        MenuItem(M, 'Headings ' + string(PAnsiChar(@Th.major[0])) + ', text ' + string(PAnsiChar(@Th.minor[0])), i,
+          @ThemeFontsClicked);
+      end;
+  finally
+    Seen.Free;
+  end;
+  MenuButton('', 'Fonts', 'The theme''s fonts alone: its colours stay', M);
+  AddSeparator;
+  SetIcon(AddButton('Apply template', 'A template''s (or another document''s) styles and theme, over this one''s', [],
+    @TemplateClicked), 'open');
+  AddSeparator;
+  BeginRows;
+  AddButton('Modify style...', 'Change the caret''s paragraph style: every paragraph in it changes', [],
+    @ModifyStyleClicked);
+  NextRow;
+  AddButton('New style...', 'A paragraph style of the caret''s paragraph as it looks, given to it', [],
+    @NewStyleClicked);
+  EndRows;
+end;
+
+procedure TLedVisualPane.ThemePresetClicked(Sender: TObject);
+var
+  Th: pd_theme;
+  D: TOpenDialog;
+  Data: string;
+begin
+  if TMenuItem(Sender).Tag >= 0 then
+  begin
+    if pd_theme_preset(TMenuItem(Sender).Tag, @Th) <> 0 then
+      FEdit.SetTheme(Th);
+  end
+  else
+  begin
+    D := TOpenDialog.Create(nil);
+    try
+      D.Filter := 'Themes and documents|*.thmx;*.docx;*.dotx;*.pptx;*.potx|All files|*';
+      if D.Execute then
+      begin
+        Data := LedReadRawFile(D.FileName);
+        if (Data <> '') and (pd_theme_read(@Data[1], Length(Data), @Th) = PD_OK) then
+          FEdit.SetTheme(Th)
+        else
+          MessageDlg('Themes', D.FileName + ' has no theme in it.', mtWarning, [mbOK], 0);
+      end;
+    finally
+      D.Free;
+    end;
+  end;
+  StylesChanged;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ThemeFontsClicked(Sender: TObject);
+var
+  Th, P: pd_theme;
+begin
+  if pd_theme_preset(TMenuItem(Sender).Tag, @P) <> 0 then
+  begin
+    Th := FEdit.CurrentTheme;
+    Th.major := P.major;
+    Th.minor := P.minor;
+    FEdit.SetTheme(Th);
+  end;
+  StylesChanged;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.TemplateClicked(Sender: TObject);
+var
+  D: TOpenDialog;
+begin
+  D := TOpenDialog.Create(nil);
+  try
+    D.Filter := 'Templates and documents|*.dotx;*.dotm;*.docx;*.pdoc;*.jdoc|All files|*';
+    if D.Execute and not FEdit.ApplyTemplate(D.FileName, PD_ADOPT_STYLES or PD_ADOPT_THEME) then
+      MessageDlg('Apply template', D.FileName + ' could not be read.', mtWarning, [mbOK], 0);
+  finally
+    D.Free;
+  end;
+  StylesChanged;
+  BackToPage;
+end;
+
+{ the caret's paragraph style, its font, colour, alignment and spacing chosen in a dialog: the style redefined }
+procedure TLedVisualPane.ModifyStyleClicked(Sender: TObject);
+const
+  Aligns: array[0..3] of Integer = (PD_ALIGN_LEFT, PD_ALIGN_CENTER, PD_ALIGN_RIGHT, PD_ALIGN_JUSTIFY);
+var
+  F: TForm;
+  Fam, Al: TComboBox;
+  Sz, Before, After: TFloatSpinEdit;
+  Bold, Ital: TCheckBox;
+  Col: TColorButton;
+  SName, ParentName: string;
+  St, Par: pd_style_id;
+  SKind: Int32;
+  Pp, OwnP: pd_para_props;
+  Cp, OwnC: pd_char_props;
+  Y, i: Integer;
+
+  function Lbl(const ACaption: string): Integer;
+  begin
+    with TLabel.Create(F) do
+    begin
+      Parent := F;
+      Caption := ACaption;
+      Left := LedScale96(12);
+      Top := Y + LedScale96(4);
+    end;
+    Result := Y;
+    Inc(Y, LedScale96(32));
+  end;
+
+  function Spin(const ACaption: string; AValue, AMax: Double): TFloatSpinEdit;
+  begin
+    Result := TFloatSpinEdit.Create(F);
+    Result.Parent := F;
+    Result.Left := LedScale96(130);
+    Result.Top := Lbl(ACaption);
+    Result.Width := LedScale96(80);
+    Result.MaxValue := AMax;
+    Result.DecimalPlaces := 1;
+    Result.Value := AValue;
+  end;
+
+begin
+  SName := FEdit.CurrentStyleName;
+  if SName = '' then
+    SName := 'Normal';
+  St := pd_doc_style_find(FEdit.Doc, PAnsiChar(SName));
+  SKind := 0;
+  Par := 0;
+  if (St = 0) or (pd_doc_style_info(FEdit.Doc, St, @SKind, @Par, @OwnP, @OwnC) <> PD_OK) then
+    Exit;
+  ParentName := '';
+  if Par <> 0 then
+    ParentName := pd_doc_style_name(FEdit.Doc, Par);
+  pd_doc_style_resolve(FEdit.Doc, St, @Pp, @Cp);
+  F := TForm.CreateNew(nil);
+  try
+    F.Caption := 'Modify style: ' + SName;
+    F.BorderStyle := bsDialog;
+    F.Position := poOwnerFormCenter;
+    F.Width := LedScale96(340);
+    Y := LedScale96(12);
+    Fam := TComboBox.Create(F);
+    Fam.Parent := F;
+    Fam.Left := LedScale96(130);
+    Fam.Width := LedScale96(190);
+    Fam.Top := Lbl('Font');
+    FEdit.GetFontFamilies(Fam.Items);
+    Fam.Text := string(PAnsiChar(@Cp.family[0]));
+    Sz := Spin('Size (pt)', Cp.size / PD_SP_PER_PT, 400);
+    Bold := TCheckBox.Create(F);
+    Bold.Parent := F;
+    Bold.Caption := 'Bold';
+    Bold.Left := LedScale96(130);
+    Bold.Top := Lbl('');
+    Bold.Checked := Cp.weight >= 600;
+    Ital := TCheckBox.Create(F);
+    Ital.Parent := F;
+    Ital.Caption := 'Italic';
+    Ital.Left := LedScale96(210);
+    Ital.Top := Bold.Top;
+    Ital.Checked := Cp.italic <> 0;
+    Col := TColorButton.Create(F);
+    Col.Parent := F;
+    Col.Left := LedScale96(130);
+    Col.Width := LedScale96(80);
+    Col.Top := Lbl('Colour');
+    Col.ButtonColor := FromRGB(Integer(Cp.color and $FFFFFF));
+    Al := TComboBox.Create(F);
+    Al.Parent := F;
+    Al.Style := csDropDownList;
+    Al.Left := LedScale96(130);
+    Al.Width := LedScale96(120);
+    Al.Top := Lbl('Alignment');
+    Al.Items.CommaText := 'Left,Centre,Right,Justified';
+    Al.ItemIndex := 0;
+    for i := 0 to 3 do
+      if Aligns[i] = Pp.align then
+        Al.ItemIndex := i;
+    Before := Spin('Space before (pt)', Pp.space_before / PD_SP_PER_PT, 400);
+    After := Spin('Space after (pt)', Pp.space_after / PD_SP_PER_PT, 400);
+    with TButton.Create(F) do
+    begin
+      Parent := F;
+      Caption := 'OK';
+      Default := True;
+      ModalResult := mrOK;
+      Left := LedScale96(150);
+      Top := Y + LedScale96(4);
+    end;
+    with TButton.Create(F) do
+    begin
+      Parent := F;
+      Caption := 'Cancel';
+      Cancel := True;
+      ModalResult := mrCancel;
+      Left := LedScale96(240);
+      Top := Y + LedScale96(4);
+    end;
+    F.Height := Y + LedScale96(48);
+    Sz.Name := 'StyleSize';
+    if Assigned(LedVisualDialogHook) then
+      LedVisualDialogHook(F);
+    if F.ShowModal <> mrOK then
+      Exit;
+    { what the dialog says over what the style said itself }
+    if Trim(Fam.Text) <> '' then
+    begin
+      OwnC.mask := OwnC.mask or PD_CP_FAMILY;
+      FillChar(OwnC.family, SizeOf(OwnC.family), 0);
+      StrPLCopy(@OwnC.family[0], Trim(Fam.Text), High(OwnC.family));
+      OwnC.font_theme := OwnC.font_theme and not 3;
+    end;
+    OwnC.mask := OwnC.mask or PD_CP_SIZE or PD_CP_WEIGHT or PD_CP_ITALIC or PD_CP_COLOR;
+    OwnC.size := Round(Sz.Value * PD_SP_PER_PT);
+    OwnC.weight := IfThen(Bold.Checked, 700, 400);
+    OwnC.italic := Ord(Ital.Checked);
+    if (OwnC.color and $FFFFFF) <> UInt32(ToRGB(Col.ButtonColor)) then
+    begin
+      OwnC.color := $FF000000 or UInt32(ToRGB(Col.ButtonColor));
+      OwnC.color_theme := 0;
+    end;
+    OwnP.mask := OwnP.mask or PD_PP_ALIGN or PD_PP_SPACE_BEFORE or PD_PP_SPACE_AFTER;
+    OwnP.align := Aligns[Max(0, Al.ItemIndex)];
+    OwnP.space_before := Round(Before.Value * PD_SP_PER_PT);
+    OwnP.space_after := Round(After.Value * PD_SP_PER_PT);
+    FEdit.DefineParagraphStyle(SName, OwnP, OwnC, ParentName);
+  finally
+    F.Free;
+  end;
+  StylesChanged;
+  BackToPage;
+end;
+
+{ a style of the caret's paragraph as it looks: its font and paragraph, based on Normal, the paragraph given it }
+procedure TLedVisualPane.NewStyleClicked(Sender: TObject);
+var
+  SName: string;
+  Cp: pd_char_props;
+  Pp: pd_para_props;
+begin
+  SName := '';
+  if not InputQuery('New style', 'The new paragraph style''s name:', SName) or (Trim(SName) = '') then
+  begin
+    BackToPage;
+    Exit;
+  end;
+  SName := Trim(SName);
+  if pd_doc_style_find(FEdit.Doc, PAnsiChar(SName)) <> 0 then
+  begin
+    MessageDlg('New style', 'There is a style called ' + SName + ' already: Modify style changes it.', mtWarning,
+      [mbOK], 0);
+    Exit;
+  end;
+  Cp := FEdit.CurrentCharProps;
+  Cp.mask := PD_CP_FAMILY or PD_CP_SIZE or PD_CP_WEIGHT or PD_CP_ITALIC or PD_CP_COLOR;
+  Pp := FEdit.CurrentParaProps;
+  Pp.mask := PD_PP_ALIGN or PD_PP_SPACE_BEFORE or PD_PP_SPACE_AFTER or PD_PP_LINE_SPACING or PD_PP_INDENT_LEFT or
+    PD_PP_INDENT_FIRST;
+  if FEdit.DefineParagraphStyle(SName, Pp, Cp, 'Normal') then
+    FEdit.SetParagraphStyle(SName);
+  StylesChanged;
+  BackToPage;
+end;
+
+{ ---- table styles ---- }
+
+procedure TLedVisualPane.TableStyleMenuPopup(Sender: TObject);
+var
+  M: TPopupMenu;
+  It, Sub: TMenuItem;
+  Nm: array[0..63] of AnsiChar;
+  Ts: Ppd_table_style;
+  i, a: Integer;
+  Cur: string;
+begin
+  M := TPopupMenu(Sender);
+  M.Items.Clear;
+  Cur := FEdit.CurrentTableStyle;
+  New(Ts);
+  try
+    for i := 0 to pd_table_style_preset_count - 1 do
+    begin
+      pd_table_style_preset(i, 0, @Nm[0], SizeOf(Nm), Ts);
+      if i < 3 then
+        MenuItem(M, string(PAnsiChar(@Nm[0])), i * 10, @TableStyleItemClicked).Checked := Cur = string(PAnsiChar(@Nm[0]))
+      else
+      begin
+        It := MenuItem(M, string(PAnsiChar(@Nm[0])), -3, nil);
+        for a := 0 to 6 do
+        begin
+          pd_table_style_preset(i, a, @Nm[0], SizeOf(Nm), Ts);
+          Sub := TMenuItem.Create(It);
+          Sub.Caption := IfThen(a = 0, 'Text', 'Accent ' + IntToStr(a));
+          Sub.Tag := i * 10 + a;
+          Sub.OnClick := @TableStyleItemClicked;
+          Sub.Checked := Cur = string(PAnsiChar(@Nm[0]));
+          It.Add(Sub);
+        end;
+      end;
+    end;
+  finally
+    Dispose(Ts);
+  end;
+  if FTableStyleNames = nil then
+    FTableStyleNames := TStringList.Create;
+  FEdit.GetTableStyles(FTableStyleNames);
+  if FTableStyleNames.Count > 0 then
+  begin
+    MenuItem(M, '-', 0, nil);
+    for i := 0 to FTableStyleNames.Count - 1 do
+      MenuItem(M, FTableStyleNames[i], -100 - i, @TableStyleItemClicked).Checked := Cur = FTableStyleNames[i];
+  end;
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'No style', -2, @TableStyleItemClicked).Checked := Cur = '';
+end;
+
+procedure TLedVisualPane.TableStyleItemClicked(Sender: TObject);
+var
+  T: Integer;
+begin
+  T := TMenuItem(Sender).Tag;
+  if T >= 0 then
+    FEdit.ApplyTableStylePreset(T div 10, T mod 10)
+  else if T = -2 then
+    FEdit.SetTableStyle('')
+  else if (T <= -100) and (FTableStyleNames <> nil) and (-100 - T < FTableStyleNames.Count) then
+    FEdit.SetTableStyle(FTableStyleNames[-100 - T]);
+  BackToPage;
+end;
+
+const
+  LookNames: array[0..5] of string = ('Header row', 'First column', 'Total row', 'Last column', 'Banded rows',
+    'Banded columns');
+  LookBits: array[0..5] of Integer = (PD_TLOOK_FIRST_ROW, PD_TLOOK_FIRST_COL, PD_TLOOK_LAST_ROW, PD_TLOOK_LAST_COL,
+    PD_TLOOK_NO_HBAND, PD_TLOOK_NO_VBAND);
+
+procedure TLedVisualPane.TableLookMenuPopup(Sender: TObject);
+var
+  M: TPopupMenu;
+  Look, i: Integer;
+begin
+  M := TPopupMenu(Sender);
+  M.Items.Clear;
+  Look := FEdit.CurrentTableProps.look;
+  for i := 0 to High(LookNames) do   { the bands are on unless the look says not }
+    MenuItem(M, LookNames[i], i, @TableLookItemClicked).Checked := ((Look and LookBits[i]) <> 0) = (i < 4);
+end;
+
+procedure TLedVisualPane.TableLookItemClicked(Sender: TObject);
+begin
+  FEdit.SetTableLook(FEdit.CurrentTableProps.look xor LookBits[TMenuItem(Sender).Tag]);
+  BackToPage;
+end;
+
 procedure TLedVisualPane.BuildTable;
 const
   Shades: array[0..6] of Integer = ($D9E2F3, $E2EFD9, $FFF2CC, $FBE4D5, $EDEDED, $BDD7EE, $C5E0B3);
@@ -2685,6 +3162,16 @@ begin
   MenuButton('borders', 'Borders', 'The table''s rules', M, False);
   EndRows;
   SetIcon(AddButton('Distribute columns', 'Every column as wide as the others', [], @DistributeClicked), 'distribute');
+  AddSeparator;
+  M := TPopupMenu.Create(Self);
+  M.OnPopup := @TableStyleMenuPopup;
+  MenuItem(M, '-', 0, nil);     { filled as it opens }
+  MenuButton('shading', 'Table styles', 'A look for the whole table: rules, shading, the header''s text, in the ' +
+    'theme''s colours', M);
+  M := TPopupMenu.Create(Self);
+  M.OnPopup := @TableLookMenuPopup;
+  MenuItem(M, '-', 0, nil);
+  MenuButton('', 'Style options', 'Which parts of the table''s style it shows: the header row, banding, ...', M);
 end;
 
 function TLedVisualPane.ShapeTabShown: Boolean;
@@ -3444,6 +3931,15 @@ begin
   LedTryFocus(FEdit);
 end;
 
+function TLedVisualPane.RibbonTabs: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 0 to High(FTabBtns) do
+    Result := Result + FTabBtns[i].Caption + LineEnding;
+end;
+
 destructor TLedVisualPane.Destroy;
 var
   i: Integer;
@@ -3452,6 +3948,7 @@ begin
   for i := 0 to High(FThumbs) do
     FThumbs[i].Free;
   FThumbs := nil;
+  FreeAndNil(FTableStyleNames);
   {$ENDIF}
   inherited Destroy;
 end;

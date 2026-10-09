@@ -387,6 +387,11 @@ object LedMainForm: TLedMainForm
       Hint = 'New Portable Canvas|Create a Parade document (.pdoc) that is a landscape canvas to draw a diagram in'
       OnExecute = actNewCanvasExecute
     end
+    object actNewFromTemplate: TAction
+      Caption = 'New from &Template...'
+      Hint = 'New from Template|A new document of a Word or PowerPoint template''s content, styles and theme'
+      OnExecute = actNewFromTemplateExecute
+    end
     object actJoinShared: TAction
       Caption = '&Join Shared Document...'
       Hint = 'Join|Open a document someone shares with you, from the link they sent'
@@ -648,6 +653,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_NewCanvas: TMenuItem
         Action = actNewCanvas
+      end
+      object mi_NewFromTemplate: TMenuItem
+        Action = actNewFromTemplate
       end
       object mi_NewWindow: TMenuItem
         Action = actNewWindow
