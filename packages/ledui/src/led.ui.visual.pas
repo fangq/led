@@ -1451,8 +1451,8 @@ begin
   FSupBtn.Down := P.shift = PD_SHIFT_SUPER;
   FSubBtn.Down := P.shift = PD_SHIFT_SUB;
   Pp := FEdit.CurrentParaProps;
-  for i := 0 to 3 do
-    if FAlignBtns[i].Tag = Pp.align then
+  for i := 0 to 3 do      { as the paragraph is shown: a right-to-left one's own left is its end }
+    if FAlignBtns[i].Tag = FEdit.CurrentAlignment then
       FAlignBtns[i].Down := True;
   for i := 0 to FSpacingMenu.Items.Count - 1 do
     if FSpacingMenu.Items[i].RadioItem then
