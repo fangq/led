@@ -27,7 +27,7 @@ unit Led.UI.Dpi;
 interface
 
 uses
-  Led.Core.AppFont,
+  Led.Core.AppFont, Led.Core.StartTrace,
   Classes, SysUtils, Controls, Forms, Graphics;
 
 { The PPI forms should be scaled to right now.  The desktop's scaling factor
@@ -565,6 +565,11 @@ procedure LedApplyScaleAll(ATargetPPI: Integer);
 var
   i: Integer;
 begin
+  if LedStartTraceOn then
+    for i := 0 to Screen.CustomFormCount - 1 do
+      LedStartTrace(Format('dpi: screen %d, desktop factor %d, target %d; %s at %d',
+        [Screen.PixelsPerInch, LedDesktopScalingFactor, ATargetPPI,
+         Screen.CustomForms[i].Name, Screen.CustomForms[i].PixelsPerInch]));
   for i := 0 to Screen.CustomFormCount - 1 do
     try
       LedScaleFormTo(Screen.CustomForms[i], ATargetPPI);
