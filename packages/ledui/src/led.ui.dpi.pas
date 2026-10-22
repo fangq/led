@@ -4,9 +4,11 @@
   problem better than a summary can: on gtk2, Application.Scaled caps at the
   Xft DPI and will not honour the desktop's integer window-scaling factor --
   it even reverts a manual bump on Show -- so on Linux we leave LCL
-  auto-scaling off and scale the forms ourselves, to
-  Xft.dpi * WindowScalingFactor.  That is what gtk3 applications render at, so
-  LED's geometry and fonts grow together and match everything else on screen.
+  auto-scaling off and scale the forms ourselves, to what gtk3 applications
+  render at: the unscaled DPI times WindowScalingFactor.  Most settings
+  daemons publish that product as Xft.dpi already, and then it is used as it
+  is (see ReadXSettings).  LED's geometry and fonts grow together and match
+  everything else on screen.
 
   Windows and macOS report a true per-monitor DPI and LCL's own scaling is
   correct there, so this is a no-op: the target equals the form's current PPI
@@ -205,7 +207,7 @@ implementation
   Led.Core.FileIO. }
 {$IFDEF LINUX}
 uses
-  Process{$IFDEF LED_GTK2_CHROME}, Glib2, Gtk2, Pango{$ENDIF};
+  Process{$IFDEF LED_GTK2_CHROME}, Glib2, Gtk2, Pango, ctypes, x, xlib{$ENDIF};
 {$ENDIF}
 {$IFDEF WINDOWS}
 uses
@@ -217,8 +219,146 @@ uses
   it, so read it directly and match what other applications do. }
 var
   GScalingFactor: Integer = -1;  { the desktop's factor, once read; -1 before }
+  { True when the DPI gtk2 reports already has the factor in it, so it is not
+    to be multiplied in again. }
+  GDpiHasFactor: Boolean = False;
+
+{$IFDEF LED_GTK2_CHROME}
+{ The settings the desktop's settings daemon publishes on the display, as
+  gtk3 reads them: AFactor is Gdk/WindowScalingFactor (1 when it is not
+  published), and AUnscaled says whether Gdk/UnscaledDPI is there.  False when
+  the display has no settings daemon.
+
+  Read from the display rather than from xfconf, because the display is what
+  every other application on it goes by.  Over ssh, xfconf answers for the
+  machine LED runs on, and the desktop is on another one.
+
+  Gdk/UnscaledDPI is what tells the two daemons apart.  xfsettingsd and
+  gnome's both publish Xft/DPI with the factor already in it -- a desktop at
+  75 dpi scaled by 2 publishes 150 -- and the DPI without it as
+  Gdk/UnscaledDPI, for gtk3 to divide back out.  gtk2 reads Xft/DPI and
+  nothing else, so where Gdk/UnscaledDPI is published, the DPI gtk2 reports
+  is the whole scale already; multiplying the factor in again doubled every
+  window on a scaled xfce desktop. }
+function ReadXSettings(out AFactor: Integer; out AUnscaled: Boolean): Boolean;
+var
+  D: PDisplay;
+  Sel, Prop, ActType: TAtom;
+  Owner: TWindow;
+  ActFormat: cint;
+  NItems, After: culong;
+  Data: PByte;
+  P, E: PByte;
+  Msb: Boolean;
+  N, i, NameLen: Integer;
+  Kind: Byte;
+  Name: string;
+
+  function Card16(Q: PByte): Integer;
+  begin
+    if Msb then
+      Result := (Q[0] shl 8) or Q[1]
+    else
+      Result := Q[0] or (Q[1] shl 8);
+  end;
+
+  function Card32(Q: PByte): LongInt;
+  begin
+    if Msb then
+      Result := LongInt((LongWord(Q[0]) shl 24) or (LongWord(Q[1]) shl 16) or
+        (LongWord(Q[2]) shl 8) or Q[3])
+    else
+      Result := LongInt(Q[0] or (LongWord(Q[1]) shl 8) or
+        (LongWord(Q[2]) shl 16) or (LongWord(Q[3]) shl 24));
+  end;
+
+  function Pad4(L: Integer): Integer;
+  begin
+    Result := (L + 3) and not 3;
+  end;
+
+begin
+  Result := False;
+  AFactor := 1;
+  AUnscaled := False;
+  D := XOpenDisplay(nil);
+  if D = nil then Exit;
+  try
+    Sel := XInternAtom(D, PChar('_XSETTINGS_S' + IntToStr(XDefaultScreen(D))), False);
+    Owner := XGetSelectionOwner(D, Sel);
+    if Owner = None then Exit;
+    Prop := XInternAtom(D, '_XSETTINGS_SETTINGS', False);
+    Data := nil;
+    if (XGetWindowProperty(D, Owner, Prop, 0, $10000, False, Prop, @ActType,
+         @ActFormat, @NItems, @After, @Data) <> Success) or (Data = nil) then
+      Exit;
+    try
+      if (ActType <> Prop) or (ActFormat <> 8) or (NItems < 12) then Exit;
+      Result := True;
+      { The layout is the XSETTINGS specification's: a byte order, a serial
+        and a count, then each setting as a type, a name and a value, every
+        part padded to four bytes. }
+      E := Data + NItems;
+      Msb := Data[0] = 1;
+      N := Card32(Data + 8);
+      P := Data + 12;
+      for i := 1 to N do
+      begin
+        if P + 8 > E then Break;
+        Kind := P[0];
+        NameLen := Card16(P + 2);
+        if P + 4 + Pad4(NameLen) + 4 > E then Break;
+        SetString(Name, PChar(P + 4), NameLen);
+        P := P + 4 + Pad4(NameLen) + 4;     { the name, and the last-change serial }
+        case Kind of
+          0: begin                            { an integer }
+               if P + 4 > E then Break;
+               if Name = 'Gdk/WindowScalingFactor' then
+                 AFactor := Card32(P)
+               else if Name = 'Gdk/UnscaledDPI' then
+                 AUnscaled := True;
+               P := P + 4;
+             end;
+          1: begin                            { a string }
+               if P + 4 > E then Break;
+               P := P + 4 + Pad4(Card32(P));
+             end;
+          2: P := P + 8;                      { a colour }
+        else
+          Break;
+        end;
+      end;
+    finally
+      XFree(Data);
+    end;
+  finally
+    XCloseDisplay(D);
+  end;
+  if AFactor < 1 then
+    AFactor := 1;
+end;
+{$ENDIF}
 
 function LedDesktopScalingFactor: Integer;
+{$IFDEF LED_GTK2_CHROME}
+var
+  Unscaled: Boolean;
+begin
+  { Kept: building the main window asks for the PPI several hundred times
+    before the startup sweep fixes it, and every read is a round trip to the
+    display. }
+  if GScalingFactor >= 0 then Exit(GScalingFactor);
+  if not ReadXSettings(Result, Unscaled) then
+  begin
+    { No settings daemon on the display: nothing is scaling any application
+      on it, whatever xfconf says. }
+    Result := 0;
+    Unscaled := False;
+  end;
+  GScalingFactor := Result;
+  GDpiHasFactor := Unscaled;
+end;
+{$ELSE}
 {$IFDEF LINUX}
 var
   Outp: string;
@@ -244,6 +384,7 @@ end;
 begin
   Result := 0;
 end;
+{$ENDIF}
 {$ENDIF}
 
 var
@@ -282,13 +423,14 @@ begin
 
   { Baseline: the DPI the widgetset reports, which on gtk2 is Xft.dpi.  gtk2
     renders fonts at that DPI but lays forms out at 96, so scaling to it alone
-    leaves the geometry lagging the fonts; multiplying by the desktop's
-    integer factor makes both grow together. }
+    leaves the geometry lagging the fonts.  Where the desktop's integer
+    factor is not in that DPI already, multiplying it in makes both grow
+    together. }
   Result := Screen.PixelsPerInch;
   if Result <= 0 then
     Result := 96;
   Wsf := LedDesktopScalingFactor;
-  if Wsf >= 2 then
+  if (Wsf >= 2) and not GDpiHasFactor then
     Result := Result * Wsf;
 end;
 
@@ -567,8 +709,9 @@ var
 begin
   if LedStartTraceOn then
     for i := 0 to Screen.CustomFormCount - 1 do
-      LedStartTrace(Format('dpi: screen %d, desktop factor %d, target %d; %s at %d',
-        [Screen.PixelsPerInch, LedDesktopScalingFactor, ATargetPPI,
+      LedStartTrace(Format('dpi: screen %d, desktop factor %d%s, target %d; %s at %d',
+        [Screen.PixelsPerInch, LedDesktopScalingFactor,
+         BoolToStr(GDpiHasFactor, ' (in the screen''s already)', ''), ATargetPPI,
          Screen.CustomForms[i].Name, Screen.CustomForms[i].PixelsPerInch]));
   for i := 0 to Screen.CustomFormCount - 1 do
     try
