@@ -36,7 +36,7 @@ uses
   Led.Core.NBConvert, Led.Core.NBMagic, Led.Core.Markdown,
   Led.Syn.Factory, Led.Syn.Notebook, Led.Syn.Theme, Led.UI.Icons,
   Led.UI.PageStyle, Led.UI.Pictures,
-  Led.UI.Document, Led.UI.Edit, Led.UI.Dpi
+  Led.UI.Document, Led.UI.Edit, Led.UI.Dpi, Led.Core.Prefs
 {$IFDEF MIMA}
   { A mima figure arrives as a scene -- the whole tree, data included --
     beside the png, and given that this pane can show a real control the
@@ -154,6 +154,11 @@ type
     FCell: Integer;
   public
     constructor Create(AOwner: TComponent); reintroduce;
+    { Sizes the buttons and the bar for the dpi the window is at now.
+      Called as the bar is placed, not only when it is built: a bar made
+      before the window's last scaling pass was scaled by it as well, and
+      came out twice its height on a desktop with a scaling factor. }
+    procedure Layout;
     { Which cell the bar is under: a new cell goes after it, and Delete
       Above takes it out. }
     property Cell: Integer read FCell write FCell;
@@ -366,6 +371,10 @@ type
   TLedNotebookPane = class(TPanel)
   private
     FDoc: TLedDocument;
+    { A wheel turned over a cell, to be acted on once the event that brought
+      it has returned: notches to scroll by, and zoom steps.  See WheelLater. }
+    FWheelNotches, FWheelZoom: Integer;
+    FWheelQueued: Boolean;
     FBoxes: TFPList;           // of TLedNBCellBox: the cells on screen
     FPics: TLedNBPictures;     // the pictures they have already decoded
     FAddBar: TLedNBAddBar;     // the buttons at whichever boundary is near
@@ -382,6 +391,7 @@ type
     { The same icons at the size of a cell's own buttons.  The toolbar's are
       26 pixels, and in an 18-pixel button their feet were cut off. }
     FCellIcons: TImageList;
+    FCellInk: TColor;         // what the drawn ones in it are drawn in
     FOnRunFrom: TLedNBCellEvent;
     FOnRun: TLedNBCellEvent;
     FOnScrolled: TLedNBCellEvent;
@@ -417,6 +427,7 @@ type
     procedure ShadeHovered(const APoint: TPoint);
     procedure PlaceAddBar(ABox: TLedNBCellBox);
     procedure PlaceAddBarTop(AFirstTop: Integer);
+    procedure BuildCellIcons;
     procedure SetImages(AValue: TCustomImageList);
     procedure AddCodeClicked(Sender: TObject);
     procedure AddTextClicked(Sender: TObject);
@@ -472,6 +483,10 @@ type
     procedure RefreshCell(ACell: Integer);
     { Ctrl+wheel: every cell's text ADelta points bigger or smaller }
     procedure ZoomText(ADelta: Integer);
+    { The wheel from inside a cell, applied after the event is over: see
+      the body. }
+    procedure WheelLater(ANotches, AZoom: Integer);
+    procedure ApplyWheel(Data: PtrInt);
 
     { The pictures the cells have already decoded.  Public so that a cell can
       reach it -- the cache belongs to the pane, not to a box, or scrolling
@@ -556,7 +571,35 @@ type
     property OnDeleteCell: TLedNBCellEvent read FOnDelete write FOnDelete;
   end;
 
+{$IFDEF MIMA}
+{ The size a figure is drawn at under its cell, in ARoom pixels of width at
+  most, and the TextScale it is given: see the implementation. }
+procedure NBFitScene(AScene: TMmmSceneView; ARoom: Integer; out AW, AH: Integer);
+{$ENDIF}
+
 implementation
+
+
+type
+  { Font is protected in a TControl; this reaches it }
+  TRendererFontAccess = class(TControl);
+
+{ For LED_DPI_REPORT: a renderer's font and canvas dpis, and the face and
+  size it was given -- what decides how big its text is drawn. }
+function RendererReport(P: TIpHtmlCustomPanel; ASize: Integer;
+  const AFace: string): string;
+var
+  i: Integer;
+begin
+  Result := Format('font ppi %d, size %d, face %s', [P.Font.PixelsPerInch,
+    ASize, AFace]);
+  for i := 0 to P.ControlCount - 1 do
+    if P.Controls[i] is TCustomControl then
+      Result := Result + Format('; %s font ppi %d canvas ppi %d',
+        [P.Controls[i].ClassName,
+         TRendererFontAccess(P.Controls[i]).Font.PixelsPerInch,
+         TCustomControl(P.Controls[i]).Canvas.Font.PixelsPerInch]);
+end;
 
 const
   Pad = 6;
@@ -601,10 +644,17 @@ const
   prose larger.  Derived, it follows the font preference: a reader who makes
   the editor bigger gets a bigger page. }
 function ProseSize(ADoc: TLedDocument): Integer;
+var
+  Face: string;
 begin
-  Result := 10;
-  if (ADoc <> nil) and (ADoc.Master.Font.Size > 0) then
-    Result := ADoc.Master.Font.Size;
+  { The size the reader set for the editor, as Preferences holds it -- not
+    the editor's live font, which on a desktop with a scaling factor has
+    already been scaled for the screen (10 points read back as 20).  The
+    renderer scales its points itself, so taking the live size scaled the
+    prose twice: notebook text two or three times the preview's. }
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), Face, Result);
+  if Result <= 0 then
+    Result := 10;
 {$IFNDEF MIMA}
   Result := Result + 3;
 {$ENDIF}
@@ -774,17 +824,9 @@ end;
 constructor TLedNBAddBar.Create(AOwner: TComponent);
 var
   C: TLedNBColourSet;
-  X: Integer;
-  Ruler: TBitmap;
 
-  { Each button as wide as its own caption.  Measured rather than guessed:
-    the first version gave "Delete Above" eighty pixels, which is what it
-    needs at some font sizes and not at the reader's. }
   function Button(const ACaption, AHint: string): TSpeedButton;
-  var
-    W: Integer;
   begin
-    W := Ruler.Canvas.TextWidth(ACaption) + LedScale96(18);
     Result := TLedNBBarButton.Create(Self);
     Result.Parent := Self;
     Result.Caption := ACaption;
@@ -792,8 +834,6 @@ var
     Result.ShowHint := True;
     Result.Flat := True;
     Result.Cursor := crHandPoint;
-    Result.SetBounds(X, LedScale96(1), W, LedScale96(20));
-    Inc(X, W + LedScale96(4));
   end;
 
 begin
@@ -809,19 +849,44 @@ begin
   Font.Color := C.Text;
   Visible := False;
 
+  FCode := Button('+ Code', 'Add a code cell below this one');
+  FText := Button('+ Text', 'Add a text cell below this one');
+  FDrop := Button('Delete Above', 'Delete the cell above');
+  Layout;
+end;
+
+procedure TLedNBAddBar.Layout;
+var
+  X: Integer;
+  Ruler: TBitmap;
+
+  { Each button as wide as its own caption.  Measured rather than guessed:
+    the first version gave "Delete Above" eighty pixels, which is what it
+    needs at some font sizes and not at the reader's. }
+  procedure Place(AButton: TSpeedButton);
+  var
+    W: Integer;
+  begin
+    if not AButton.Visible then Exit;
+    W := Ruler.Canvas.TextWidth(AButton.Caption) + LedScale96(18);
+    AButton.SetBounds(X, LedScale96(1), W, LedScale96(20));
+    Inc(X, W + LedScale96(4));
+  end;
+
+begin
   Ruler := TBitmap.Create;
   try
-    { A canvas of its own to measure with: the panel has no handle yet, and
-      a font with no canvas cannot say how wide a word is. }
+    { A canvas of its own to measure with: the panel may have no handle
+      yet, and a font with no canvas cannot say how wide a word is. }
     Ruler.Canvas.Font.Assign(Font);
     X := LedScale96(2);
-    FCode := Button('+ Code', 'Add a code cell below this one');
-    FText := Button('+ Text', 'Add a text cell below this one');
-    FDrop := Button('Delete Above', 'Delete the cell above');
+    Place(FCode);
+    Place(FText);
+    Place(FDrop);
   finally
     Ruler.Free;
   end;
-  SetBounds(0, 0, X + LedScale96(2), LedScale96(22));
+  SetBounds(Left, Top, X + LedScale96(2), LedScale96(22));
 end;
 
 { ---- one cell ---- }
@@ -966,15 +1031,15 @@ begin
   { Ctrl+wheel sizes the whole notebook's text, as it sizes the editor's }
   if ssCtrl in AShift then
   begin
-    if AWheelDelta > 0 then Page.ZoomText(1)
-    else if AWheelDelta < 0 then Page.ZoomText(-1);
+    if AWheelDelta > 0 then Page.WheelLater(0, 1)
+    else if AWheelDelta < 0 then Page.WheelLater(0, -1);
     AHandled := True;
     Exit;
   end;
   Notches := AWheelDelta div 120;
   if Notches = 0 then
     if AWheelDelta > 0 then Notches := 1 else Notches := -1;
-  Page.ScrollPos := Page.ScrollPos - Notches * LedScale96(48);
+  Page.WheelLater(Notches, 0);
   AHandled := True;
 end;
 
@@ -1143,6 +1208,12 @@ begin
     else
       Inc(Rows, (Len + Cols - 1) div Cols);
   end;
+  { and the rows the editor wraps into itself, which breaks at a word and
+    so can need more than the characters do: counted by the characters,
+    the last row of a cell of long lines -- a list ending a Markdown cell --
+    fell below the box }
+  if FEdit.ViewLineCount > Rows then
+    Rows := FEdit.ViewLineCount;
   if Rows < 1 then Rows := 1;
   Result := Rows * FEdit.LineHeight + LedScale96(6);
 end;
@@ -1257,6 +1328,14 @@ begin
   FRender := TLedNBProse.Create(Self);
   FRender.Parent := Self;
   FRender.DataProvider := FProvider;
+  { Drawn on the panel's own canvas, the one it lays the page out on, as the
+    Markdown preview is (see TLedPreviewPane): the renderer's buffer is a
+    bitmap whose font takes its points at the toolkit's dpi, while the
+    panel's takes them at the window's -- 150 against 300 on a desktop with
+    a scaling factor -- so every word was given room at one size and drawn
+    at the other: prose at half its size with a word's width of gap after
+    each word. }
+  FRender.UsePaintBuffer := False;
   { A double click opens it; a single one is left alone so that text can
     still be selected and a link followed. }
   FRender.OnEnterEdit := @RenderClicked;
@@ -1573,6 +1652,43 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF MIMA}
+{ A figure's size under its cell: its own, as its window would be, and
+  smaller only to fit the pane -- with its text smaller by as much.  Public
+  for the self-test.  The
+  view had been the pane's width by 0.7 of it, whatever the figure was, and
+  its text at the size a full window draws: in a pane half the figure's
+  width the title and tick labels came out at twice their share of the
+  plot, three times in a narrow one, as a 4K desktop's side pane is. }
+procedure NBFitScene(AScene: TMmmSceneView; ARoom: Integer; out AW, AH: Integer);
+var
+  NW, NH, S: Double;
+begin
+  NW := LedScale96(Round(AScene.FigureWidth));
+  NH := LedScale96(Round(AScene.FigureHeight));
+  if (NW < 1) or (NH < 1) then
+  begin
+    { a scene that does not say its size: as it was }
+    AW := ARoom;
+    AH := Round(ARoom * 0.7);
+    if AH > LedScale96(420) then AH := LedScale96(420);
+    Exit;
+  end;
+  S := 1;
+  if NW > ARoom then S := ARoom / NW;
+  { a tall figure is not let take more than a screenful of the page }
+  if NH * S > LedScale96(600) then S := LedScale96(600) / NH;
+  AW := Max(1, Round(NW * S));
+  AH := Max(1, Round(NH * S));
+  { and at the figure's own proportions, as its picture has them -- the
+    picture a browser shows the same notebook with -- not the half again a
+    figure window adds to sit beside the IDE's text (MmmFigureTextScale).
+    Below about 0.6 lettering can no longer be read: it stops shrinking
+    there, and the plot goes on. }
+  AScene.TextScale := Max(S, 0.6) / MmmFigureTextScale;
+end;
+{$ENDIF}
+
 { The pictures and the text a cell produced, as widgets under it. }
 procedure TLedNBCellBox.BuildOutputs(var AY: Integer; AWidth: Integer);
 var
@@ -1617,11 +1733,10 @@ begin
       TControlEvents(Scene).OnMouseWheel := @ChildWheel;
       Room := AWidth - LedScale96(LabelWidth + Pad * 2);
       if Room < LedScale96(120) then Room := LedScale96(120);
-      H := Round(Room * 0.7);
-      if H > LedScale96(420) then H := LedScale96(420);
-      Scene.SetBounds(LedScale96(LabelWidth + Pad), AY, Room, H);
       if Scene.LoadScene(SceneJson) then
       begin
+        NBFitScene(Scene, Room, W, H);
+        Scene.SetBounds(LedScale96(LabelWidth + Pad), AY, W, H);
         Inc(AY, H + LedScale96(4));
         Continue;
       end;
@@ -1695,8 +1810,14 @@ begin
       Note := TLabel.Create(Self);
       Note.Parent := Self;
       Note.Transparent := True;
+      { The code's own font, in pixels.  Copying its Size scaled the output
+        twice on a desktop with a scaling factor: the editor's font is at
+        the toolkit's dpi, a label made after the window's scaling pass is
+        at the window's, and the same points at the larger dpi stood the
+        output a third or more above the code it came from -- 35 pixels
+        under 27 at 150 dpi scaled by 2.  A height is the same on both. }
       Note.Font.Name := FEdit.Font.Name;
-      Note.Font.Size := FEdit.Font.Size;
+      Note.Font.Height := FEdit.Font.Height;
       Note.Font.Color := LedNBColours.Text;
       { An error keeps its own colour, which every theme has one of and
         which is the one thing in an output worth shouting. }
@@ -1714,7 +1835,7 @@ end;
 
 function TLedNBCellBox.Rebuild(AWidth: Integer): Integer;
 var
-  Y, Count, i, Room: Integer;
+  Y, Count, i, Room, Need: Integer;
   Source, Page: string;
   Prose: Boolean;
   Inner: TSynCustomHighlighter;
@@ -1792,6 +1913,15 @@ begin
     FRender.DefaultTypeFace := LedPreviewFace;
     FRender.DefaultFontSize := ProseSize(FDoc);
     FRender.SetHtmlFromStr(HoverPage(Page));
+    { and as tall as the panel itself lays the page out, when that is more
+      than it was measured at: the two layouts differ by a few pixels at
+      some widths, and a page a row taller than its panel scrolls inside
+      it -- its last line hidden, and the scrollbar coming and going as a
+      hover drew the page again, the cell flickering }
+    Need := FRender.GetContentSize.cy;
+    if (Need > 0) and (Need > FRender.ClientHeight) then
+      FRender.Height := FRender.Height + (Need - FRender.ClientHeight) + ProseSize(FDoc);
+    LedDpiReport('notebook prose', 0, RendererReport(FRender, FRender.DefaultFontSize, FRender.DefaultTypeFace));
     Color := HoverColour;
     { The renderer makes its drawing control when it is given a page, so the
       handlers go on after that as well as at creation. }
@@ -1970,15 +2100,27 @@ begin
     Exit;
   end;
   if FCellIcons = nil then FCellIcons := TImageList.Create(Self);
+  BuildCellIcons;
+end;
+
+{ The cell buttons' icons, in the page's own ink.  Not clBtnText: that is
+  the desktop's, and the page is the editor theme's -- a dark desktop's
+  near-white ink on Solarized Light's cream page, and the eraser and the
+  pencil, which are drawn rather than painted, all but vanished. }
+procedure TLedNotebookPane.BuildCellIcons;
+begin
+  if FCellIcons = nil then Exit;
+  FCellInk := LedNBColours.Text;
   { Two pixels clear of the button's edge on every side, and built from the
     same names so that an index means the same icon in both lists. }
   FCellIcons.Width := LedScale96(ButtonSize - 4);
   FCellIcons.Height := LedScale96(ButtonSize - 4);
-  LedBuildIconList(FCellIcons, LedIconNames, clBtnText);
+  LedBuildIconList(FCellIcons, LedIconNames, FCellInk);
 end;
 
 destructor TLedNotebookPane.Destroy;
 begin
+  Application.RemoveAsyncCalls(Self);
   FBoxes.Free;
   FPics.Free;
   inherited Destroy;
@@ -2422,6 +2564,7 @@ begin
   FAddBar.DeleteAbove.Visible := False;
   FAddBar.AddCode.Hint := 'Add a code cell at the top';
   FAddBar.AddText.Hint := 'Add a text cell at the top';
+  FAddBar.Layout;
   Y := (AFirstTop - FAddBar.Height) div 2;
   if Y < 0 then Y := 0;
   FAddBar.SetBounds(LedScale96(LabelWidth + Pad), Y, FAddBar.Width, FAddBar.Height);
@@ -2437,6 +2580,7 @@ begin
   FAddBar.DeleteAbove.Visible := True;
   FAddBar.AddCode.Hint := 'Add a code cell below this one';
   FAddBar.AddText.Hint := 'Add a text cell below this one';
+  FAddBar.Layout;
   { Just below the boundary rather than across it, and indented to where a
     cell's own text starts so that it lines up with the cells rather than
     with the pane.
@@ -2559,6 +2703,49 @@ begin
   ReportTop;
 end;
 
+{ A wheel turned over a cell scrolls the page -- but not while the event is
+  still being handled.  The page keeps only the cells near the screen (see
+  BuildWindow), so a scroll frees the boxes that leave it, and the control
+  the wheel was turned over is among them: the renderer's panel went on, on
+  its way back out of the event, to scroll itself, and was freed memory by
+  then (an access violation in TIpHtmlInternalPanel.DoMouseWheel, scrolling
+  xmlread's notebook).  So the notches are counted, and the page moves once
+  the event is over, by everything turned in the meantime. }
+procedure TLedNotebookPane.WheelLater(ANotches, AZoom: Integer);
+begin
+  Inc(FWheelNotches, ANotches);
+  Inc(FWheelZoom, AZoom);
+  if FWheelQueued then Exit;
+  FWheelQueued := True;
+  Application.QueueAsyncCall(@ApplyWheel, 0);
+end;
+
+procedure TLedNotebookPane.ApplyWheel(Data: PtrInt);
+var
+  Notches, Zoom: Integer;
+begin
+  FWheelQueued := False;
+  Notches := FWheelNotches;
+  Zoom := FWheelZoom;
+  FWheelNotches := 0;
+  FWheelZoom := 0;
+  while Zoom > 0 do
+  begin
+    ZoomText(1);
+    Dec(Zoom);
+  end;
+  while Zoom < 0 do
+  begin
+    ZoomText(-1);
+    Inc(Zoom);
+  end;
+  if Notches <> 0 then
+  begin
+    ScrollPos := ScrollPos - Notches * LedScale96(48);
+    ReportTop;
+  end;
+end;
+
 function TLedNotebookPane.DoMouseWheel(AShift: TShiftState;
   AWheelDelta: Integer; AMousePos: TPoint): Boolean;
 var
@@ -2637,6 +2824,9 @@ begin
   FNote.Font.Color := LedNBColours.Muted;
 
   ReleaseBoxes;
+  { and the icons with them, once the boxes holding them have gone }
+  if (FCellIcons <> nil) and (FCellInk <> LedNBColours.Text) then
+    BuildCellIcons;
   if FDoc = nil then
   begin
     SetLength(FHeights, 0);

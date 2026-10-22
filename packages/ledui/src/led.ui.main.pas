@@ -36,7 +36,7 @@ uses
   Led.UI.AIPane,
   Led.UI.Find, Led.UI.Prefs, Led.UI.Shortcuts, Led.UI.Output,
   Led.UI.ToolRunner, Led.Core.Tools, Led.UI.Grep, Led.UI.FileBrowser,
-  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Outline, Led.UI.Preview, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
+  Led.Term.View, Led.Term.Pty, Led.Term.Pane, Led.UI.Outline, Led.UI.Preview, Led.UI.PageStyle, Led.UI.Demo, Led.UI.TabMenu, Led.Core.Wiki, Led.UI.Debug, Led.Core.Gdb,
   Led.Core.Project,
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
@@ -297,8 +297,6 @@ type
     miSep21: TMenuItem;
     miTheme: TMenuItem;
     miSep22: TMenuItem;
-    mi_ToggleLeftPane: TMenuItem;
-    mi_ToggleBottomPane: TMenuItem;
     mi_ToggleBrowser: TMenuItem;
     mi_ToggleOutput: TMenuItem;
     mi_ToggleTerminal: TMenuItem;
@@ -406,6 +404,8 @@ type
     procedure actReportBugExecute(Sender: TObject);
     procedure actShowToolbarExecute(Sender: TObject);
     procedure actResetLayoutExecute(Sender: TObject);
+    procedure DemoShowPane(const AName: string);
+    procedure ResetZoom;
     procedure actSplitNotebookExecute(Sender: TObject);
     procedure actFocusOtherNotebookExecute(Sender: TObject);
     procedure actMoveToNotebookExecute(Sender: TObject);
@@ -588,6 +588,8 @@ type
     FAIAttach: TLedAIAttach;
     FBreakPane: TLedBreakPane;
     FThemeMenu: TPopupMenu;
+    FSwitchButton: TToolButton;
+    FSwitchMenu: TPopupMenu;
     { The value editor for structure views, made when one is first wanted and
       then kept: one panel per window, not one per edit. }
     FBJPopup: TLedBJValuePopup;
@@ -632,6 +634,7 @@ type
       control with the same strip and wanted the same button. }
     FTabClose: array[0..1] of TLedTabClose;
     FTabImages: TImageList;
+    FMenuImages: TImageList;
     { Whether the clipboard holds something the Paste actions could use, and
       the tick it was last asked.  See ClipboardHasText. }
     FClipHasText: Boolean;
@@ -696,6 +699,10 @@ type
     procedure BuildDebugToolBar;
     procedure ThemeMenuPopup(Sender: TObject);
     procedure ThemeButtonClick(Sender: TObject);
+    procedure SwitchMenuPopup(Sender: TObject);
+    procedure AttachTabLists(Data: PtrInt);
+    procedure RevealTab(Data: PtrInt);
+    procedure SwitchButtonClick(Sender: TObject);
     procedure ThemeItemClick(Sender: TObject);
     procedure EncodingItemClick(Sender: TObject);
     procedure LineEndItemClick(Sender: TObject);
@@ -835,6 +842,11 @@ type
     property BreakPane: TLedBreakPane read FBreakPane;
     { The toolbar's theme chooser.  Public so a check can drop its menu. }
     property ThemeButton: TToolButton read FThemeButton;
+    { The list of every open file and figure, and dropping it at a screen
+      point: the arrow at the start of a tab strip calls it (Led.UI.TabMenu),
+      the editors' and any other strip of pages a program puts in the window. }
+    property SwitchMenu: TPopupMenu read FSwitchMenu;
+    procedure ShowSwitchMenu(Sender: TObject; const AAt: TPoint);
     { The Window menu's document submenu, so a check can read the caption a
       user sees rather than trust that it was set. }
     property DocListMenu: TMenuItem read miDocList;
@@ -972,6 +984,23 @@ type
 
 var
   LedMainForm: TLedMainForm;
+  { Help > Contents, in a program that has contents to show: True when it
+    showed them.  Unset, or answering False, the menu says what LED is and
+    where its documentation lives. }
+  LedHelpContentsHook: function: Boolean = nil;
+  { Reset Layout puts the text the wheel zoomed back at its set size: the
+    editors, the notebook and the preview here, and whatever panes of its
+    own a program built on LED zooms -- mima's command window. }
+  LedResetZoomHook: procedure = nil;
+  { The switcher's list, past the editors: what else the window holds that a
+    reader moves between -- mima's figures -- added to AItems as items that
+    bring it forward when clicked. }
+  LedSwitchMenuHook: procedure(AItems: TMenuItem) = nil;
+
+{ The window showing ADoc, and its tab there; nil when none does. Exported
+  for a host that brings a document forward without the keyboard going with
+  it, as RevealDocument's does. }
+function LedFindWindowFor(ADoc: TLedDocument; out ATab: TLedTab): TLedMainForm;
 
 implementation
 
@@ -1102,6 +1131,28 @@ begin
   FTabImages.Width := LedScale96(18);
   FTabImages.Height := LedScale96(18);
   LedBuildIconList(FTabImages, LedIconNames, clBtnText);
+
+  { And the menus': a menu row is as tall as its picture, so at the
+    toolbar's size every item with an icon stood half again as tall as one
+    without (57 pixels to 36 at twice the dpi).  Sixteen, the size a menu
+    icon is everywhere, keeps the rows even; the same names in the same
+    order, as for the tabs, so an action's ImageIndex is the same picture. }
+  if FMenuImages = nil then
+    FMenuImages := TImageList.Create(Self);
+  FMenuImages.Width := LedScale96(16);
+  FMenuImages.Height := LedScale96(16);
+  LedBuildIconList(FMenuImages, LedIconNames, clBtnText);
+  MainMenu1.Images := FMenuImages;
+  PopupEditor.Images := FMenuImages;
+  PopupTab.Images := FMenuImages;
+  { Cut, Copy and Paste wear their pictures on the toolbar, where a button
+    is all picture; in the Edit menu, beside their names and shortcuts,
+    three icons of the commonest commands were clutter.  A menu item's own
+    ImageIndex, once it differs from its action's, is no longer the
+    action's to change. }
+  mi_Cut.ImageIndex := -1;
+  mi_Copy.ImageIndex := -1;
+  mi_Paste.ImageIndex := -1;
 end;
 
 procedure TLedMainForm.FormCreate(Sender: TObject);
@@ -1232,6 +1283,7 @@ begin
   ApplyThemeToBrowser;
 
   FBrowser := TLedFileBrowser.Create(Self);
+  FBrowser.Name := 'FileBrowser';
   FBrowser.OnOpenFile := @BrowserOpenFile;
 
   FDock.AddPane(ledLeft, 'files', 'Files', FBrowser, 'browser');
@@ -1375,6 +1427,8 @@ begin
     is discarded rather than fought with, leaving the defaults. }
   FDock.LoadLayout(LedConfigFile('layout.xml'));
   LedStartTrace('FormCreate: layout loaded');
+  LedDpiReport('after the layout', PixelsPerInch, Format('toolbar buttons %dx%d, icons %d',
+    [ToolBar1.ButtonWidth, ToolBar1.ButtonHeight, ImageList1.Width]));
 
   { ...and then put the window on the screen it was started from.
 
@@ -1411,6 +1465,8 @@ begin
     run-time answer and this is where it is asked. }
   actAbout.Caption := '&About ' + LedAppName;
 
+  LedDpiReport('built', PixelsPerInch, Format('toolbar buttons %dx%d, icons %d',
+    [ToolBar1.ButtonWidth, ToolBar1.ButtonHeight, ImageList1.Width]));
   LedStyleToolBar(ToolBar1);
   { The debugger's buttons on the toolbar are the IDE's: LED keeps its
     debugger on the Debug menu and its panes, as upstream does. }
@@ -1443,6 +1499,30 @@ begin
   LedApplyDarkTitleBar(Self, LedPrefs.GetBool(LedPrefDarkTitlebar, False));
   LedIconSourcesRelease;    { decoded for the lists and buttons above }
   LedStartTrace('FormCreate ends');
+
+  { LED_DEMO: a scripted look at the window, for the first one only }
+  if LedWindows.Count = 1 then
+    LedDemoStart(Self, MainMenu1, ActionList1, @DemoShowPane);
+end;
+
+procedure TLedMainForm.DemoShowPane(const AName: string);
+var
+  Side: string;
+  C, W: Integer;
+begin
+  { "@edge:left,400" sets an edge's depth, as a splitter drag does }
+  if Copy(AName, 1, 6) = '@edge:' then
+  begin
+    C := Pos(',', AName);
+    Side := LowerCase(Copy(AName, 7, C - 7));
+    W := StrToIntDef(Copy(AName, C + 1, MaxInt), 0);
+    if Side = 'left' then FDock.EdgeSize[ledLeft] := W
+    else if Side = 'right' then FDock.EdgeSize[ledRight] := W
+    else if Side = 'bottom' then FDock.EdgeSize[ledBottom] := W
+    else if Side = 'top' then FDock.EdgeSize[ledTop] := W;
+    Exit;
+  end;
+  FDock.ShowPane(AName);
 end;
 
 procedure TLedMainForm.PopulateAllMenus;
@@ -3888,6 +3968,26 @@ end;
   Built in code rather than designed into the .lfm for the ordinary reason:
   it is eight buttons whose actions already exist, and the .lfm is the file
   a rebase fights over. }
+
+{ Just past the rightmost control already on ABar.
+
+  A toolbar orders its controls by Left, so a control added at run time
+  goes at the end only if its Left is beyond every other. ABar.Width is
+  not that: the controls from the form file are placed at Lefts scaled for
+  the screen's DPI, while the bar's width at that moment is whatever the
+  window happens to be -- and on a HiDPI screen, or a window first shown
+  narrow, the debug bar landed before Find and Replace, which then stood
+  last. }
+function LedToolBarEnd(ABar: TToolBar): Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to ABar.ControlCount - 1 do
+    Result := Max(Result, ABar.Controls[I].Left + ABar.Controls[I].Width);
+  Inc(Result);
+end;
+
 procedure TLedMainForm.BuildDebugToolBar;
 var
   { Two running totals, and neither can be read off the bar as it is built.
@@ -3960,7 +4060,7 @@ begin
     nested bar is exactly as tall as the row it sits in and its buttons have
     the same room as their neighbours. }
   FDebugBar.AutoSize := False;
-  FDebugBar.Left := ToolBar1.Width;
+  FDebugBar.Left := LedToolBarEnd(ToolBar1);
   FDebugBar.Images := ImageList1;
   FDebugBar.ButtonWidth := ToolBar1.ButtonWidth;
   FDebugBar.ButtonHeight := ToolBar1.ButtonHeight;
@@ -3987,25 +4087,64 @@ begin
   { No divider after the last group: the theme button that follows brings
     its own separator, and the two side by side read as a doubled rule. }
 
-  FDebugBar.Width := Wide + SepW;
+  { no room for a divider of its own at the end: the theme button's
+    divider comes next, and the two had stood side by side as one gap
+    twice as wide as any other between the groups.  But the bar's Indent,
+    which it lays its buttons out from: a bar one pixel short of them
+    wraps its last button onto a row nobody sees. }
+  FDebugBar.Width := Wide + FDebugBar.Indent;
 end;
 
 procedure TLedMainForm.BuildThemeButton;
 var
   Sep: TToolButton;
 begin
+  { The switcher first: every open file, and every figure, one click away.
+    The tabs show a few at a time and the figures are in a pane of their
+    own; this lists them all in one place, the current one ticked. }
+  FSwitchMenu := TPopupMenu.Create(Self);
+  FSwitchMenu.Images := FMenuImages;
+  FSwitchMenu.OnPopup := @SwitchMenuPopup;
+  { The list drops from a small arrow at the start of each tab strip (see
+    AttachTabLists); the toolbar has a button for it only where the toolkit
+    has no place in a strip for one. }
+  {$IF not (DEFINED(LINUX) and DEFINED(LCLGtk2))}
+  Sep := TToolButton.Create(Self);
+  Sep.Left := LedToolBarEnd(ToolBar1);
+  Sep.Parent := ToolBar1;
+  Sep.Style := tbsDivider;
+  Sep.Width := LedScale96(9);
+  FSwitchButton := TToolButton.Create(Self);
+  FSwitchButton.Name := 'tbSwitch';
+  FSwitchButton.Left := LedToolBarEnd(ToolBar1);
+  FSwitchButton.Parent := ToolBar1;
+  FSwitchButton.Style := tbsButton;
+  FSwitchButton.ImageIndex := LedIconIndex('files');
+  FSwitchButton.Hint := 'Switch to an open file or figure';
+  FSwitchButton.ShowHint := True;
+  FSwitchButton.DropdownMenu := FSwitchMenu;
+  FSwitchButton.OnClick := @SwitchButtonClick;
+  {$ENDIF}
+  Application.QueueAsyncCall(@AttachTabLists, 0);
+
   FThemeMenu := TPopupMenu.Create(Self);
   FThemeMenu.OnPopup := @ThemeMenuPopup;
 
   Sep := TToolButton.Create(Self);
+  Sep.Left := LedToolBarEnd(ToolBar1);  { past the last control, so it lands at the end }
   Sep.Parent := ToolBar1;
-  Sep.Style := tbsSeparator;
-  Sep.Left := ToolBar1.Width;          { past the last button, so it lands at the end }
+  { a divider the width the debug bar's are, so the gap before the theme
+    button is the gap between any two groups }
+  Sep.Style := tbsDivider;
+  Sep.Width := LedScale96(9);
 
   FThemeButton := TToolButton.Create(Self);
+  FThemeButton.Left := LedToolBarEnd(ToolBar1);
   FThemeButton.Parent := ToolBar1;
-  FThemeButton.Left := ToolBar1.Width;
-  FThemeButton.Style := tbsDropDown;
+  { a plain button, the width of the rest: a drop-down one is wider by its
+    arrow, and the picture stood off by itself past its divider.  Its face
+    opens the menu (ThemeButtonClick), which is all the arrow did. }
+  FThemeButton.Style := tbsButton;
   FThemeButton.ImageIndex := LedIconIndex('theme');
   FThemeButton.Hint := 'Colour theme';
   FThemeButton.ShowHint := True;
@@ -4035,6 +4174,66 @@ begin
     Item.OnClick := @ThemeItemClick;
     FThemeMenu.Items.Add(Item);
   end;
+end;
+
+{ The list, dropped from where a strip's arrow says }
+procedure TLedMainForm.ShowSwitchMenu(Sender: TObject; const AAt: TPoint);
+begin
+  FSwitchMenu.PopUp(AAt.X, AAt.Y);
+end;
+
+{ The arrow at the start of the editors' strips, once the window is up and
+  their handles are made as part of it. }
+procedure TLedMainForm.AttachTabLists(Data: PtrInt);
+begin
+  LedAddTabListButton(FBook, @ShowSwitchMenu);
+  if FBook2 <> nil then
+    LedAddTabListButton(FBook2, @ShowSwitchMenu);
+end;
+
+procedure TLedMainForm.SwitchButtonClick(Sender: TObject);
+var
+  P: TPoint;
+begin
+  P := ToolBar1.ClientToScreen(Point(FSwitchButton.Left,
+    FSwitchButton.Top + FSwitchButton.Height));
+  FSwitchMenu.PopUp(P.X, P.Y);
+end;
+
+{ The open files, as Window > Documents lists them and with its handler,
+  then what the program adds (LedSwitchMenuHook): mima's figures. }
+procedure TLedMainForm.SwitchMenuPopup(Sender: TObject);
+var
+  i: Integer;
+  Item: TMenuItem;
+  Tab: TLedTab;
+  Tabs: TFPList;
+begin
+  FSwitchMenu.Items.Clear;
+  Item := TMenuItem.Create(FSwitchMenu);
+  Item.Caption := 'Files';
+  Item.Enabled := False;
+  FSwitchMenu.Items.Add(Item);
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+    begin
+      Tab := TLedTab(Tabs[i]);
+      if Tab = nil then Continue;
+      Item := TMenuItem.Create(FSwitchMenu);
+      Item.Caption := Tab.Document.DisplayName;
+      if Tab.Document.Modified then Item.Caption := Item.Caption + ' *';
+      Item.Tag := i;
+      Item.Checked := Tab = ActiveTab;
+      Item.OnClick := @DocItemClick;
+      FSwitchMenu.Items.Add(Item);
+    end;
+  finally
+    Tabs.Free;
+  end;
+  if Assigned(LedSwitchMenuHook) then
+    LedSwitchMenuHook(FSwitchMenu.Items);
 end;
 
 procedure TLedMainForm.ThemeButtonClick(Sender: TObject);
@@ -4907,6 +5106,9 @@ begin
     FBook2.OnMouseUp := @BookTabMouseUp;
     FBook2.Images := FTabImages;
     FBook2.PopupMenu := PopupTab;
+    { its own list arrow, and the first strip's again: re-parented into the
+      split, it may have been given a new widget }
+    Application.QueueAsyncCall(@AttachTabLists, 0);
 
     { Divide the space evenly.  TPairSplitter leaves the divider wherever its
       default falls, which is not the middle -- the same thing that made a
@@ -5154,13 +5356,34 @@ end;
   Everything else goes through OpenFiles, the same path the Open dialog and
   the command line use, so a dropped file gets the encoding try-list, the
   prompt on a failed decode and the recent-files entry rather than a second,
-  thinner way in. }
+  thinner way in.  Dropped on the editors it is opened there, as its bytes
+  (ARaw), as a file dragged from the browser onto them is: a .mat or a
+  picture dropped on an editor is asked to be read as text.  Anywhere else
+  -- the workspace, the command window -- the host acts on it as a double
+  click would, and a data file is loaded. }
 procedure TLedMainForm.FormDropFiles(Sender: TObject;
   const FileNames: array of string);
 var
   i: Integer;
   Files: TStringList;
   Dir: string;
+
+  function OnEditors: Boolean;
+  var
+    C: TWinControl;
+    P: TPoint;
+  begin
+    Result := False;
+    if (FBook = nil) or (Sender <> Self) then
+      Exit;
+    { the area the tab groups share, which is there with no tab open too }
+    C := FBook.Parent;
+    if (C = nil) or not C.IsVisible then
+      Exit;
+    P := C.ScreenToClient(Mouse.CursorPos);
+    Result := PtInRect(C.ClientRect, P);
+  end;
+
 begin
   Files := TStringList.Create;
   try
@@ -5177,7 +5400,7 @@ begin
     end;
 
     if Files.Count > 0 then
-      OpenFiles(Files);
+      OpenFiles(Files, OnEditors);
 
     if Dir <> '' then
     begin
@@ -5232,6 +5455,16 @@ end;
 procedure TLedMainForm.BookResize(Sender: TObject);
 begin
   PlaceTabCloseButtons;
+  { the current document's tab in view however narrow the strip became,
+    once gtk has laid it out at its new size }
+  if Sender is TCustomTabControl then
+    Application.QueueAsyncCall(@RevealTab, PtrInt(Sender));
+end;
+
+procedure TLedMainForm.RevealTab(Data: PtrInt);
+begin
+  if (TObject(Data) = FBook) or ((FBook2 <> nil) and (TObject(Data) = FBook2)) then
+    LedRevealCurrentTab(TCustomTabControl(Data));
 end;
 
 procedure TLedMainForm.ApplyTabCloseMode;
@@ -5365,6 +5598,8 @@ end;
 
 procedure TLedMainForm.FormActivate(Sender: TObject);
 begin
+  LedDpiReport('activated', PixelsPerInch, Format('toolbar buttons %dx%d, icons %d',
+    [ToolBar1.ButtonWidth, ToolBar1.ButtonHeight, ImageList1.Width]));
   ApplyMinimumSize;
   ApplyCentreFloor;
   { The editor could not be focused while the window was still being built,
@@ -6584,8 +6819,17 @@ begin
 end;
 
 procedure TLedMainForm.actNewExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
 begin
-  AddTab(FDocs.NewDocument);
+  Doc := FDocs.NewDocument;
+  { An untitled page is most often notes: Markdown, until a name says
+    otherwise -- saving it as main.c re-detects the language from the name,
+    as a modeline or a later Document > Language does too.  And with the
+    shading of a clicked word off, as for any prose. }
+  if LedLanguages.FindById('markdown') <> nil then
+    Doc.SetLanguage('markdown');
+  AddTab(Doc);
 end;
 
 procedure TLedMainForm.actOpenExecute(Sender: TObject);
@@ -7634,7 +7878,33 @@ begin
     + 'layout?', False)
     then Exit;
   FDock.ResetLayout(LedConfigFile('layout.xml'));
+  ResetZoom;
   UpdateStatusBar;
+end;
+
+{ The text Ctrl+wheel made bigger or smaller, back at the size the
+  preferences give it: a layout put back to its first state with every
+  editor still at a zoomed size, or a notebook at twelve points past its
+  own, had not been reset. }
+procedure TLedMainForm.ResetZoom;
+var
+  i: Integer;
+  Tabs: TFPList;
+begin
+  Tabs := TFPList.Create;
+  try
+    CollectTabs(Tabs);
+    for i := 0 to Tabs.Count - 1 do
+      TLedTab(Tabs[i]).Document.ApplyConfigToViews;
+  finally
+    Tabs.Free;
+  end;
+  if LedPageZoomReset then
+  begin
+    if NotebookShowing then FNBPane.Reload;
+    if PreviewShowing then FPreview.Restyle;
+  end;
+  if Assigned(LedResetZoomHook) then LedResetZoomHook();
 end;
 
 procedure TLedMainForm.actShowToolbarExecute(Sender: TObject);
@@ -7689,16 +7959,15 @@ begin
     'Documentation lives in README.md next to the program.');
 end;
 
+{ A new issue on the program's GitHub page, in the browser, with the
+  version and platform already written in.  It had been a message box
+  saying what a report should carry, and nowhere to send it. }
 procedure TLedMainForm.actReportBugExecute(Sender: TObject);
 begin
   if Silent then Exit;
-  ShowMessage(
-    'Please report bugs with:' + LineEnding + LineEnding +
-    '  ' + LedAppName + ' version:  ' + LedAppVersion + LineEnding +
-    '  platform:     ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
-      LineEnding +
-    '  widgetset:    ' + LedWidgetSetName + LineEnding + LineEnding +
-    'and the steps that reproduce it.');
+  if not OpenURL(LedBugReportURL) then
+    ShowMessage('No web browser could be opened.  Bugs are reported at' +
+      LineEnding + LineEnding + LedAppHome + '/issues');
 end;
 
 procedure TLedMainForm.actAboutExecute(Sender: TObject);

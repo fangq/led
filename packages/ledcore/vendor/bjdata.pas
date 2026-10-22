@@ -764,10 +764,27 @@ begin
   raise EBJData.Create(AMsg);
 end;
 
+{ *** led local patch *** compared as a distance, not as APos + ACount: a
+  count read from a damaged file -- or from big-endian UBJSON read as
+  BJData -- can be large enough that the sum wraps past the end of the
+  address space and compares as inside the buffer, which let the walk step
+  to a wild pointer and read it }
 procedure BJNeed(APos, AEnd: PByte; ACount: PtrUInt); inline;
 begin
-  if APos + ACount > AEnd then
+  if (APos > AEnd) or (ACount > PtrUInt(AEnd - APos)) then
     BJWalkError('unexpected end of input');
+end;
+
+{ *** led local patch *** a count of elements times their width, or the
+  product of a dimension vector, that does not fit is a damaged file, not a
+  small number }
+function BJCheckedMul(A, B: Int64): Int64;
+begin
+  if (A < 0) or (B < 0) then
+    BJWalkError('a negative length or count is not allowed');
+  if (A <> 0) and (B > High(Int64) div A) then
+    BJWalkError('a length or count is too large');
+  Result := A * B;
 end;
 
 { read a value of the given fixed marker at APos and advance }
@@ -888,7 +905,7 @@ var
       begin
         v := BJWalkSize(APos, AEnd);
         Push(v);
-        Result := Result * v;
+        Result := BJCheckedMul(Result, v);
       end;
       Exit;
     end;
@@ -907,7 +924,7 @@ var
       begin
         v := BJWalkInt(APos, AEnd, et);
         Push(v);
-        Result := Result * v;
+        Result := BJCheckedMul(Result, v);
       end;
       Exit;
     end;
@@ -922,7 +939,7 @@ var
       end;
       v := BJWalkSize(APos, AEnd);
       Push(v);
-      Result := Result * v;
+      Result := BJCheckedMul(Result, v);
     end;
   end;
 
@@ -1081,7 +1098,7 @@ begin
     BJWalkError('an SoA record needs a count');
   Inc(APos);
   count := BJWalkCount(APos, AEnd, nil, ndim, colmajor);
-  n := count * recsize;
+  n := BJCheckedMul(count, recsize);
   BJNeed(APos, AEnd, n);
   Inc(APos, n);
   { each offset column appends its own table and string buffer }
@@ -1095,13 +1112,21 @@ begin
   end;
 end;
 
-function BJSkipValue(APos, AEnd: PByte): PByte;
+{ *** led local patch *** containers nested past this are a damaged or
+  hostile file: each level is a frame of the walk, and the stack is not
+  unlimited -- the decoder's own limit (BJMaxDepth, below) }
+const
+  BJMaxSkipDepth = 512;
+
+function BJSkipValueAt(APos, AEnd: PByte; ADepth: Integer): PByte;
 var
   m, et: AnsiChar;
   n, i, cnt: Int64;
   ndim: Integer;
   colmajor: Boolean;
 begin
+  if ADepth > BJMaxSkipDepth then
+    BJWalkError('containers are nested too deeply');
   BJNeed(APos, AEnd, 1);
   m := AnsiChar(APos^);
   Inc(APos);
@@ -1149,7 +1174,7 @@ begin
             cnt := BJWalkCount(APos, AEnd, nil, ndim, colmajor);
             if BJIsFixedMarker(et) then
             begin
-              n := cnt * BJMarkerSize(et);
+              n := BJCheckedMul(cnt, BJMarkerSize(et));
               BJNeed(APos, AEnd, n);
               Inc(APos, n);
             end
@@ -1163,7 +1188,7 @@ begin
           Inc(APos);
           cnt := BJWalkCount(APos, AEnd, nil, ndim, colmajor);
           for i := 1 to cnt do
-            APos := BJSkipValue(APos, AEnd);
+            APos := BJSkipValueAt(APos, AEnd, ADepth + 1);
         end
         else
           while True do
@@ -1174,7 +1199,7 @@ begin
               Inc(APos);
               Break;
             end;
-            APos := BJSkipValue(APos, AEnd);
+            APos := BJSkipValueAt(APos, AEnd, ADepth + 1);
           end;
       end;
     bjmObjectStart:
@@ -1214,7 +1239,7 @@ begin
             while (APos < AEnd) and (AnsiChar(APos^) = bjmNoOp) do
               Inc(APos);
             BJWalkKey(APos, AEnd);
-            APos := BJSkipValue(APos, AEnd);
+            APos := BJSkipValueAt(APos, AEnd, ADepth + 1);
           end;
         end
         else
@@ -1232,13 +1257,18 @@ begin
               Continue;
             end;
             BJWalkKey(APos, AEnd);
-            APos := BJSkipValue(APos, AEnd);
+            APos := BJSkipValueAt(APos, AEnd, ADepth + 1);
           end;
       end;
   else
     BJWalkError(Format('unknown type marker "%s" (0x%.2x)', [m, Ord(m)]));
   end;
   Result := APos;
+end;
+
+function BJSkipValue(APos, AEnd: PByte): PByte;
+begin
+  Result := BJSkipValueAt(APos, AEnd, 0);
 end;
 
 {==============================================================================
@@ -2620,6 +2650,9 @@ begin
   begin
     if ADims[i] < 0 then
       raise EBJData.Create('a negative dimension is not allowed');
+    { *** led local patch *** a product that does not fit is damage }
+    if (ADims[i] <> 0) and (Result > High(Int64) div ADims[i]) then
+      raise EBJData.Create('the dimensions are too large');
     Result := Result * ADims[i];
   end;
 end;
@@ -2667,6 +2700,10 @@ type
     procedure FailMarker(const AFmt: string; AMarker: AnsiChar);
     procedure FailUnknown(AMarker: AnsiChar);
     procedure Need(ACount: PtrUInt); inline;
+    { *** led local patch *** a count read from the input, of elements at
+      least AWidth bytes each, that the input left cannot hold is damage }
+    procedure Plausible(ACount: Int64; AWidth: Integer);
+    function Room: PtrUInt;
     procedure Fail(const AMsg: string);
     function AtEOF: Boolean; inline;
     function ReadChar: AnsiChar; inline;
@@ -2742,10 +2779,40 @@ begin
   Fail(Format('unknown type marker "%s" (0x%.2x)', [AMarker, Ord(AMarker)]));
 end;
 
+{ *** led local patch *** as a distance, not as FCur + ACount, which a
+  large count from a damaged file wraps past the end of the address space }
 procedure TBJReader.Need(ACount: PtrUInt);
 begin
-  if FCur + ACount > FEnd then
+  if (FCur > FEnd) or (ACount > PtrUInt(FEnd - FCur)) then
     FailEOF(ACount);
+end;
+
+function TBJReader.Room: PtrUInt;
+begin
+  if FCur >= FEnd then
+    Result := 0
+  else
+    Result := PtrUInt(FEnd - FCur);
+end;
+
+{ *** led local patch *** checked before anything is sized by the count: a
+  count of 2^40 from a damaged header had the decoder ask for terabytes.
+  Elements of no width -- a typed array of nulls or of trues -- take no
+  input, so for them the bound is a generous fixed one }
+const
+  BJMaxZeroWidth = 1 shl 24;
+
+procedure TBJReader.Plausible(ACount: Int64; AWidth: Integer);
+begin
+  if ACount < 0 then
+    Fail('a negative length or count is not allowed');
+  if AWidth <= 0 then
+  begin
+    if (ACount > BJMaxZeroWidth) and (PtrUInt(ACount) > Room) then
+      Fail(Format('a count of %d is more than the input can hold', [ACount]));
+  end
+  else if (ACount > High(Int64) div AWidth) or (PtrUInt(ACount * AWidth) > Room) then
+    FailEOF(PtrUInt(Min(ACount, High(Int64) div AWidth) * AWidth));
 end;
 
 function TBJReader.AtEOF: Boolean;
@@ -2833,8 +2900,7 @@ end;
   count pair and no implicit finalization frame in the caller }
 procedure TBJReader.ReadStrInto(out AText: string; ALength: PtrUInt);
 begin
-  if FCur + ALength > FEnd then
-    FailEOF(ALength);
+  Need(ALength);
   SetLength(AText, ALength);
   if ALength > 0 then
     Move(FCur^, AText[1], ALength);
@@ -3003,8 +3069,7 @@ begin
     ReadStrInto(AText, len);
     Exit;
   end;
-  if FCur + len > FEnd then
-    FailEOF(len);
+  Need(len);
   p := FCur;
   { a weak hash is fine here: every hit is confirmed with a byte comparison,
     so a collision only costs a re-read of the key }
@@ -3056,6 +3121,7 @@ begin
       ReadDimArray(ADims);
       Exit(True);
     end;
+    Plausible(cnt, 1);
     SetLength(ADims, cnt);
     for i := 0 to cnt - 1 do
       ADims[i] := ReadSize;
@@ -3069,6 +3135,7 @@ begin
       Fail(Format('"%s" is not a valid dimension type', [et]));
     Expect(bjmCountMark);
     cnt := ReadSize;
+    Plausible(cnt, BJMarkerSize(et));
     SetLength(ADims, cnt);
     for i := 0 to cnt - 1 do
       ADims[i] := ReadIntValue(et);
@@ -3118,10 +3185,10 @@ var
 begin
   id := ReadSize;
   len := ReadSize;
+  Need(len);
   SetLength(buf, len);
   if len > 0 then
   begin
-    Need(len);
     Move(FCur^, buf[0], len);
     Inc(FCur, len);
   end;
@@ -3222,8 +3289,8 @@ var
 begin
   sz := BJMarkerSize(AMarker);
   n := BJDimProduct(ADims);
+  Plausible(n, sz);
   nbytes := n * sz;
-  Need(nbytes);
   Result := TBJData.NewFast(bjkNDArray, AMarker);
   Result.FDims := Copy(ADims, 0, Length(ADims));
   Result.FColumnMajor := AColumnMajor;
@@ -3291,9 +3358,10 @@ begin
       Exit(ReadNDArray(et, dims, colmajor));
     { lenient: a non-fixed optimized type (allowed by UBJSON, not by BJData) }
     n := BJDimProduct(dims);
+    Plausible(n, BJMarkerSize(et));
     Result := TBJData.NewFast(bjkArray, bjmArrayStart);
     PushPending(Result);
-    Result.Reserve(n);
+    Result.Reserve(Min(n, Max(Int64(Room), 16)));
     for i := 0 to n - 1 do
       Result.AppendChild(ReadScalar(et));
     PopPending;
@@ -3302,9 +3370,10 @@ begin
   begin
     ReadCountSpec(dims, colmajor);
     n := BJDimProduct(dims);
+    Plausible(n, 1);
     Result := TBJData.NewFast(bjkArray, bjmArrayStart);
     PushPending(Result);
-    Result.Reserve(n);
+    Result.Reserve(Min(n, Max(Int64(Room), 16)));
     for i := 0 to n - 1 do
       Result.AppendChild(ReadValue);
     PopPending;
@@ -3363,9 +3432,10 @@ begin
     Expect(bjmCountMark);
     ReadCountSpec(dims, colmajor);
     n := BJDimProduct(dims);
+    Plausible(n, 1);                   // each entry has a key, of a byte at least
     Result := TBJData.NewFast(bjkObject, bjmObjectStart);
     PushPending(Result);
-    Result.Reserve(n);
+    Result.Reserve(Min(n, Max(Int64(Room), 16)));
     for i := 0 to n - 1 do
     begin
       while PeekChar = bjmNoOp do
@@ -3379,9 +3449,10 @@ begin
   end;
   ReadCountSpec(dims, colmajor);
   n := BJDimProduct(dims);
+  Plausible(n, 1);
   Result := TBJData.NewFast(bjkObject, bjmObjectStart);
   PushPending(Result);
-  Result.Reserve(n);
+  Result.Reserve(Min(n, Max(Int64(Room), 16)));
   for i := 0 to n - 1 do
   begin
     while PeekChar = bjmNoOp do
@@ -3420,6 +3491,7 @@ begin
               Result.IsHighPrec := t = bjmHighPrec;
               Expect(bjmCountMark);
               cnt := ReadSize;
+              Plausible(cnt, 1);
               SetLength(Result.Dict, cnt);
               for i := 0 to cnt - 1 do
                 Result.Dict[i] := ReadKey;
@@ -3625,6 +3697,7 @@ begin
     Expect(bjmCountMark);
     ReadCountSpec(dims, colmajor);
     count := BJDimProduct(dims);
+    Plausible(count, 0);
     nf := Length(schema);
 
     SetLength(values, nf);
@@ -4719,6 +4792,11 @@ begin
       BJWalkError('an optimized container needs a count');
     Inc(p);
     ACount := BJWalkCount(p, FEnd, nil, ndim, colmajor);
+    { *** led local patch *** a packed payload must be inside the buffer:
+      Item, DataPtr and DataSize read it by position, so a count from a
+      damaged header would have them read past the end }
+    if BJIsFixedMarker(AElem) then
+      BJNeed(p, FEnd, BJCheckedMul(ACount, BJMarkerSize(AElem)));
   end
   else if AnsiChar(p^) = bjmCountMark then
   begin

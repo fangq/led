@@ -33,7 +33,7 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, StdCtrls, ExtCtrls, LCLIntf,
   LazVersion,
-  Led.Core.Types, Led.UI.Dpi;
+  Led.Core.Types;
 
 type
   { A line a program adds about itself.  Empty, or not set at all, in the
@@ -54,6 +54,15 @@ var
 { Shows it, modal.  AIcons is the window's image list, for the app icon in
   the heading; nil is allowed and leaves the icon out. }
 procedure LedShowAbout(AOwner: TComponent);
+
+{ Where Help > Report a Bug goes: a new issue on the program's own GitHub
+  page, its text begun with the version and platform a report needs. }
+function LedBugReportURL: string;
+
+{ The dialog itself, built and not yet shown; the caller owns it.  Apart
+  from LedShowAbout so that a check can show it, measure it and close it
+  without a modal loop to get out of. }
+function LedMakeAbout(AOwner: TComponent): TForm;
 
 { The text of the dialog, which is the dialog: everything else is a label
   and a button.  Public so that what the program says about itself can be
@@ -77,6 +86,33 @@ procedure TLedAboutLink.Clicked(Sender: TObject);
 begin
   if URL <> '' then
     OpenURL(URL);
+end;
+
+{ AText as a URL query value: every byte that is not plainly safe, as %XX. }
+function UrlEncoded(const AText: string): string;
+const
+  Safe = ['A'..'Z', 'a'..'z', '0'..'9', '-', '_', '.', '~'];
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 1 to Length(AText) do
+    if AText[i] in Safe then
+      Result := Result + AText[i]
+    else
+      Result := Result + '%' + IntToHex(Ord(AText[i]), 2);
+end;
+
+function LedBugReportURL: string;
+var
+  Body: string;
+begin
+  Body := '**What happened, and what you expected instead:**' + #10#10#10 +
+    '**Steps to reproduce:**' + #10 + '1. ' + #10#10 +
+    '**Version:** ' + LedAppName + ' ' + LedAppVersion + #10 +
+    '**Platform:** ' + {$I %FPCTARGETOS%} + '-' + {$I %FPCTARGETCPU%} +
+    ', ' + LedWidgetSetName + #10;
+  Result := LedAppHome + '/issues/new?body=' + UrlEncoded(Body);
 end;
 
 function LedAboutText: string;
@@ -163,7 +199,7 @@ begin
       + laz_version + ', ' + LedWidgetSetName;
 end;
 
-procedure LedShowAbout(AOwner: TComponent);
+function LedMakeAbout(AOwner: TComponent): TForm;
 var
   F: TForm;
   Head, Foot: TPanel;
@@ -173,125 +209,129 @@ var
   Ok: TButton;
   Home: TLedAboutLink;
 begin
+  { In 96-dpi units, as every dialog here is: a form made in code is scaled
+    to the windows' dpi as it is shown, from the dpi it starts at.  Sized in
+    the windows' pixels as well, it was scaled twice -- on a 150-dpi desktop
+    scaled by 2, a box larger than a 4K screen. }
   F := TForm.CreateNew(AOwner);
+  Result := F;
+  F.Caption := 'About ' + LedAppName;
+  F.BorderStyle := bsDialog;
+  F.Position := poOwnerFormCenter;
+  F.ClientWidth := 620;
+  F.ClientHeight := 560;
+
+  Head := TPanel.Create(F);
+  Head.Parent := F;
+  Head.Align := alTop;
+  Head.Height := 132;
+  Head.BevelOuter := bvNone;
+
+  { The program's own icon, whichever way this build got one: the
+    editor reads it from a resource and the fork from a file in the data
+    directory, and by the time any window is up both have put it on the
+    application.  Asking there is the one answer that is right for both
+    and goes on being right for a third. }
+  Pic := TImage.Create(F);
+  Pic.Parent := Head;
+  Pic.SetBounds(16, 16, 72, 72);
+  Pic.Center := True;
+  Pic.Proportional := True;
+  Pic.Stretch := True;
+  if (Application.Icon <> nil) and not Application.Icon.Empty then
+    try
+      Pic.Picture.Assign(Application.Icon);
+    except
+      on E: Exception do ;         { no icon is not a failure }
+    end;
+
+  Title := TLabel.Create(F);
+  Title.Parent := Head;
+  Title.SetBounds(104, 12, 400, 34);
+  Title.Caption := LedAppName;
+  Title.Font.Height := -26;
+  Title.Font.Style := [fsBold];
+  Title.ParentFont := False;
+
+  Subtitle := TLabel.Create(F);
+  Subtitle.Parent := Head;
+  Subtitle.SetBounds(104, 48, 500, 34);
+  Subtitle.AutoSize := False;
+  Subtitle.WordWrap := True;
+  { The tagline is what the program is called; the sentence after it is
+    what it is.  "Mighty Matrix" on its own tells a reader nothing. }
+  Subtitle.Caption := LedAppTagline;
+  if (LedAppAbout <> '') and (LedAppAbout <> LedAppTagline) then
+    Subtitle.Caption := LedAppTagline + ' -- ' + LedAppAbout;
+
+  Version := TLabel.Create(F);
+  Version.Parent := Head;
+  Version.SetBounds(104, 82, 400, 18);
+  Version.Caption := 'Version ' + LedAppVersion;
+  Version.Font.Style := [fsBold];
+  Version.ParentFont := False;
+
+  { Inside the heading rather than under it as another top-aligned
+    band: two controls aligned to the top of the same form are ordered
+    by the LCL, not by the order they were made, and this one came out
+    above the title.  It belongs with the name and the version anyway --
+    it is the fourth line of the same statement. }
+  Detail := TLabel.Create(F);
+  Detail.Parent := Head;
+  Detail.SetBounds(104, 106, 500, 18);
+  Detail.AutoSize := False;
+  Detail.WordWrap := True;
+  Detail.Caption := AboutDetail;
+
+  Foot := TPanel.Create(F);
+  Foot.Parent := F;
+  Foot.Align := alBottom;
+  Foot.Height := 50;
+  Foot.BevelOuter := bvNone;
+
+  Link := TLabel.Create(F);
+  Link.Parent := Foot;
+  Link.SetBounds(16, 16, 380, 18);
+  Link.Caption := LedAppHome;
+  Link.Cursor := crHandPoint;
+  Link.Font.Color := clBlue;
+  Link.Font.Style := [fsUnderline];
+  Link.ParentFont := False;
+  Home := TLedAboutLink.Create(F);
+  Home.URL := LedAppHome;
+  Link.OnClick := @Home.Clicked;
+
+  Ok := TButton.Create(F);
+  Ok.Parent := Foot;
+  Ok.Anchors := [akTop, akRight];
+  { Measured off the panel it is in and after the anchors are set: a
+    button placed from the form's width before either was settled ended
+    up off the end of the dialog. }
+  Ok.SetBounds(Foot.ClientWidth - 104, 10, 88, 30);
+  Ok.Caption := 'OK';
+  Ok.Default := True;
+  Ok.Cancel := True;
+  Ok.ModalResult := mrOK;
+
+  { Last, so that alClient takes what the three above have left. }
+  Info := TMemo.Create(F);
+  Info.Parent := F;
+  Info.Align := alClient;
+  Info.BorderSpacing.Around := 16;
+  Info.ReadOnly := True;
+  Info.WordWrap := True;
+  Info.ScrollBars := ssAutoVertical;
+  Info.Text := LedAboutText;
+  { At the top of it: a memo filled from code is left showing its end. }
+  Info.SelStart := 0;
+end;
+
+procedure LedShowAbout(AOwner: TComponent);
+var
+  F: TForm;
+begin
+  F := LedMakeAbout(AOwner);
   try
-    F.Caption := 'About ' + LedAppName;
-    F.BorderStyle := bsDialog;
-    F.Position := poOwnerFormCenter;
-    F.ClientWidth := LedScale96(620);
-    F.ClientHeight := LedScale96(560);
-
-    Head := TPanel.Create(F);
-    Head.Parent := F;
-    Head.Align := alTop;
-    Head.Height := LedScale96(132);
-    Head.BevelOuter := bvNone;
-
-    { The program's own icon, whichever way this build got one: the
-      editor reads it from a resource and the fork from a file in the data
-      directory, and by the time any window is up both have put it on the
-      application.  Asking there is the one answer that is right for both
-      and goes on being right for a third. }
-    Pic := TImage.Create(F);
-    Pic.Parent := Head;
-    Pic.SetBounds(LedScale96(16), LedScale96(16), LedScale96(72),
-                  LedScale96(72));
-    Pic.Center := True;
-    Pic.Proportional := True;
-    Pic.Stretch := True;
-    if (Application.Icon <> nil) and not Application.Icon.Empty then
-      try
-        Pic.Picture.Assign(Application.Icon);
-      except
-        on E: Exception do ;         { no icon is not a failure }
-      end;
-
-    Title := TLabel.Create(F);
-    Title.Parent := Head;
-    Title.SetBounds(LedScale96(104), LedScale96(12), LedScale96(400),
-                    LedScale96(34));
-    Title.Caption := LedAppName;
-    Title.Font.Height := -LedScale96(26);
-    Title.Font.Style := [fsBold];
-    Title.ParentFont := False;
-
-    Subtitle := TLabel.Create(F);
-    Subtitle.Parent := Head;
-    Subtitle.SetBounds(LedScale96(104), LedScale96(48), LedScale96(500),
-                       LedScale96(34));
-    Subtitle.AutoSize := False;
-    Subtitle.WordWrap := True;
-    { The tagline is what the program is called; the sentence after it is
-      what it is.  "Mighty Matrix" on its own tells a reader nothing. }
-    Subtitle.Caption := LedAppTagline;
-    if (LedAppAbout <> '') and (LedAppAbout <> LedAppTagline) then
-      Subtitle.Caption := LedAppTagline + ' -- ' + LedAppAbout;
-
-    Version := TLabel.Create(F);
-    Version.Parent := Head;
-    Version.SetBounds(LedScale96(104), LedScale96(82), LedScale96(400),
-                      LedScale96(18));
-    Version.Caption := 'Version ' + LedAppVersion;
-    Version.Font.Style := [fsBold];
-    Version.ParentFont := False;
-
-    { Inside the heading rather than under it as another top-aligned
-      band: two controls aligned to the top of the same form are ordered
-      by the LCL, not by the order they were made, and this one came out
-      above the title.  It belongs with the name and the version anyway --
-      it is the fourth line of the same statement. }
-    Detail := TLabel.Create(F);
-    Detail.Parent := Head;
-    Detail.SetBounds(LedScale96(104), LedScale96(106), LedScale96(500),
-                     LedScale96(18));
-    Detail.AutoSize := False;
-    Detail.WordWrap := True;
-    Detail.Caption := AboutDetail;
-
-    Foot := TPanel.Create(F);
-    Foot.Parent := F;
-    Foot.Align := alBottom;
-    Foot.Height := LedScale96(50);
-    Foot.BevelOuter := bvNone;
-
-    Link := TLabel.Create(F);
-    Link.Parent := Foot;
-    Link.SetBounds(LedScale96(16), LedScale96(16), LedScale96(380),
-                   LedScale96(18));
-    Link.Caption := LedAppHome;
-    Link.Cursor := crHandPoint;
-    Link.Font.Color := clBlue;
-    Link.Font.Style := [fsUnderline];
-    Link.ParentFont := False;
-    Home := TLedAboutLink.Create(F);
-    Home.URL := LedAppHome;
-    Link.OnClick := @Home.Clicked;
-
-    Ok := TButton.Create(F);
-    Ok.Parent := Foot;
-    Ok.Anchors := [akTop, akRight];
-    { Measured off the panel it is in and after the anchors are set: a
-      button placed from the form's width before either was settled ended
-      up off the end of the dialog. }
-    Ok.SetBounds(Foot.ClientWidth - LedScale96(104), LedScale96(10),
-                 LedScale96(88), LedScale96(30));
-    Ok.Caption := 'OK';
-    Ok.Default := True;
-    Ok.Cancel := True;
-    Ok.ModalResult := mrOK;
-
-    { Last, so that alClient takes what the three above have left. }
-    Info := TMemo.Create(F);
-    Info.Parent := F;
-    Info.Align := alClient;
-    Info.BorderSpacing.Around := LedScale96(16);
-    Info.ReadOnly := True;
-    Info.WordWrap := True;
-    Info.ScrollBars := ssAutoVertical;
-    Info.Text := LedAboutText;
-    { At the top of it: a memo filled from code is left showing its end. }
-    Info.SelStart := 0;
-
     F.ShowModal;
   finally
     F.Free;

@@ -88,6 +88,9 @@ type
     FToolLoading: Boolean;
     procedure Build;
     procedure FitColumns;
+    procedure RefitShown(Data: PtrInt);
+  private
+    FNeedWidth: Integer;  { what the last FitColumns found the pages need }
     procedure AddRow(ALabel: TLabel; AControl: TControl);
     function PageFor(const ACategory: string): TScrollBox;
 
@@ -115,6 +118,9 @@ type
     procedure DoOK(Sender: TObject);
     procedure DoApply(Sender: TObject);
     procedure DoCancel(Sender: TObject);
+  protected
+    { The columns fitted again once the dialog is on screen: see RefitShown. }
+    procedure DoShow; override;
   public
     { Raised after Apply or OK so the window can re-read anything that
       changed. }
@@ -127,6 +133,15 @@ type
     function LayoutProblems: TStringList;
     { The category list, for the self-test. }
     property CategoryTree: TTreeView read FTree;
+    { What a font row shows, by its key; '' for no such row.  For the
+      self-test. }
+    function FontShown(const AKey: string): string;
+    { How far, at most, a page's controls stand right of where its captions
+      need them -- the 300-pixel floor or the longest caption and its gap,
+      at the dialog's dpi.  0 when the columns fit.  For the self-test. }
+    function ColumnExcess: Integer;
+    { the width the pages need, as the last fit found it; for the self-test }
+    property NeedWidth: Integer read FNeedWidth;
     procedure LoadFromPrefs;
     procedure ApplyToPrefs;
 
@@ -166,7 +181,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..72] of TLedPrefItem = (
+  PrefItems: array[0..74] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -326,6 +341,14 @@ const
     (Category: 'General'; Kind: pkChoice; Key: 'Editor/spell_scope';
      Caption: 'Check'; DefStr: 'auto';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'auto,code,all'),
+    { The Python that runs a notebook's Jupyter kernels: the one with
+      jupyter_client in it.  Blank, it is looked for (LedKernelPython). }
+    (Category: 'General'; Kind: pkHeading; Key: '';
+     Caption: 'Notebooks'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkString; Key: 'Notebook/python';
+     Caption: 'Python for Jupyter kernels (blank: a .venv beside the notebook, $VIRTUAL_ENV, $CONDA_PREFIX, then python3)'; DefStr: '';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'Languages'; Kind: pkCustom; Key: '@languages';
      Caption: ''; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -455,6 +478,7 @@ end;
 
 destructor TLedPrefsDialog.Destroy;
 begin
+  Application.RemoveAsyncCalls(Self);
   FTools.Free;
   FCategories.Free;
   FControls.Free;
@@ -501,18 +525,27 @@ var
   Lbl: TLabel;
   Ctl: TControl;
   Chk: TCheckBox;
+
+  { a length written for 96 dpi, at the dialog's: the captions are measured
+    in the pixels they are drawn in, so everything they are weighed against
+    has to be in those pixels too }
+  function S(A96: Integer): Integer;
+  begin
+    Result := MulDiv(A96, Max(96, PixelsPerInch), 96);
+  end;
+
 begin
   Widest := 0;
   for k := 0 to FCategories.Count - 1 do
   begin
     Page := TWinControl(FCategories.Objects[k]);
-    ColX := 300;
+    ColX := S(300);
     i := 0;
     while i < FRowPairs.Count do
     begin
       Lbl := TLabel(FRowPairs[i]);
       if Lbl.Parent = Page then
-        ColX := Max(ColX, Lbl.Left + CaptionWidth(Lbl, Lbl.Caption) + Gap);
+        ColX := Max(ColX, Lbl.Left + CaptionWidth(Lbl, Lbl.Caption) + S(Gap));
       Inc(i, 2);
     end;
 
@@ -528,9 +561,9 @@ begin
         { a control pinned to the right edge stretches; the rest keep their
           width and push the page wider }
         if akRight in Ctl.Anchors then
-          Right := Max(Right, ColX + 200 + Margin)
+          Right := Max(Right, ColX + S(200) + S(Margin))
         else
-          Right := Max(Right, ColX + Ctl.Width + Margin);
+          Right := Max(Right, ColX + Ctl.Width + S(Margin));
       end;
       Inc(i, 2);
     end;
@@ -541,18 +574,52 @@ begin
       if Chk.Parent <> Page then
         Continue;
       { the box, the space after it, and the words }
-      BoxW := CaptionWidth(Chk, Chk.Caption) + 32;
+      BoxW := CaptionWidth(Chk, Chk.Caption) + S(32);
       Chk.Width := Max(Chk.Width, BoxW);
-      Right := Max(Right, Chk.Left + Chk.Width + Margin);
+      Right := Max(Right, Chk.Left + Chk.Width + S(Margin));
     end;
 
     Widest := Max(Widest, Right);
   end;
 
   { the tree, the widest page and a scroll bar; no wider than the screen }
-  Need := FTree.Width + Widest + 24;
+  Need := FTree.Width + Widest + S(24);
+  FNeedWidth := Need;
   if Need > Width then
-    Width := Min(Need, Screen.Width - 40);
+    Width := Min(Need, Screen.Width - S(40));
+end;
+
+{ Fitted once more when the dialog is on screen, after the scaling it gets
+  as it is shown.  The first fit is done as the dialog is built, at its
+  design dpi, but the captions are measured in the pixels they are really
+  drawn in -- and the scaling pass then multiplied those again: on a desktop
+  laid out at 300 dpi the controls stood two or three times further from
+  their captions than the captions needed.  Queued, so it runs after every
+  pass that showing the dialog sets off. }
+procedure TLedPrefsDialog.DoShow;
+begin
+  inherited DoShow;
+  Application.QueueAsyncCall(@RefitShown, 0);
+end;
+
+procedure TLedPrefsDialog.RefitShown(Data: PtrInt);
+var
+  Floor, Mid: Integer;
+begin
+  { The middle it was shown at, over the main window: a new width from the
+    left edge it already has moved it off centre by half the change. }
+  Mid := Left + Width div 2;
+  FitColumns;
+  { And the width the pages need, smaller as well as larger: the width the
+    first fit asked for was measured in screen pixels and then scaled
+    again, which on a desktop laid out at 300 dpi was nearly the whole
+    screen.  The floor goes no higher than what the pages need, so the
+    dialog can be made as narrow as they allow. }
+  Floor := MulDiv(620, Max(96, PixelsPerInch), 96);
+  Constraints.MinWidth := Min(Floor, FNeedWidth);
+  Width := Min(Max(FNeedWidth, Constraints.MinWidth),
+    Screen.Width - MulDiv(40, Max(96, PixelsPerInch), 96));
+  Left := Max(0, Min(Mid - Width div 2, Screen.Width - Width));
 end;
 
 function TLedPrefsDialog.LayoutProblems: TStringList;
@@ -881,6 +948,46 @@ begin
   end;
 end;
 
+function TLedPrefsDialog.ColumnExcess: Integer;
+var
+  i, k, Need: Integer;
+  Page: TWinControl;
+  Lbl: TLabel;
+begin
+  Result := 0;
+  for k := 0 to FCategories.Count - 1 do
+  begin
+    Page := TWinControl(FCategories.Objects[k]);
+    Need := MulDiv(300, Max(96, PixelsPerInch), 96);
+    i := 0;
+    while i < FRowPairs.Count do
+    begin
+      Lbl := TLabel(FRowPairs[i]);
+      if Lbl.Parent = Page then
+        Need := Max(Need, Lbl.Left + CaptionWidth(Lbl, Lbl.Caption) +
+          MulDiv(16, Max(96, PixelsPerInch), 96));
+      Inc(i, 2);
+    end;
+    i := 0;
+    while i < FRowPairs.Count do
+    begin
+      if TLabel(FRowPairs[i]).Parent = Page then
+        Result := Max(Result, TControl(FRowPairs[i + 1]).Left - Need);
+      Inc(i, 2);
+    end;
+  end;
+end;
+
+function TLedPrefsDialog.FontShown(const AKey: string): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  i := FFontLabels.IndexOf(AKey);
+  if i >= 0 then
+    Result := TLabel(FFontLabels.Objects[i]).Caption;
+end;
+
 procedure TLedPrefsDialog.LoadFromPrefs;
 var
   i, j, FontSize: Integer;
@@ -917,8 +1024,20 @@ begin
             prefs.ini, say -- is exactly the case that must not be echoed
             back unchanged, or the dialog lies about what the editor is
             about to look like. }
-          LedParseFontSpec(LedPrefs.GetStr(Key, Item.DefStr), FontName, FontSize);
-          TLabel(Ctl).Caption := Format('%s %d', [FontName, FontSize]);
+          if Key = LedPrefPreviewFont then
+            { Shown as stored.  The preview's face is handed to fontconfig,
+              which answers "Sans" and "Serif" itself; they are not
+              installed families, so resolving it as the editor's font is
+              resolved swapped "Sans" for the editor's own face -- the
+              dialog said Fira, and OK then saved Fira over "Sans". }
+            TLabel(Ctl).Caption := Trim(LedPrefs.GetStr(Key, Item.DefStr))
+          else
+          begin
+            LedParseFontSpec(LedPrefs.GetStr(Key, Item.DefStr), FontName, FontSize);
+            TLabel(Ctl).Caption := Format('%s %d', [FontName, FontSize]);
+          end;
+          if TLabel(Ctl).Caption = '' then
+            TLabel(Ctl).Caption := Item.DefStr;
         end;
       pkChoice:
         begin

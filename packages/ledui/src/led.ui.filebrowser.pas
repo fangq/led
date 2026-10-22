@@ -21,7 +21,7 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, ComCtrls, Menus,
   Dialogs, Graphics, Forms, ShellCtrls, LazFileUtils, LazUTF8, LCLType, Masks,
-  Led.UI.Icons, Led.Core.Prefs;
+  Led.UI.Icons, Led.Core.Prefs{$IFDEF LCLGTK2}, gtk2, glib2{$ENDIF};
 
 const
   { the paths typed or chosen in the path box, newest first: its list }
@@ -80,6 +80,16 @@ type
     FWatch: TTimer;
     FWatchSig: string;           { what the folders held when last looked at }
     FTree: TShellTreeView;
+    { The columns over the tree: Name, Size, Modified.  A click on one sorts
+      by it, and again the other way.  Size and Modified are drawn on each
+      row by the tree's own custom draw (TreeDrawItem), and are left out
+      when the pane is too narrow to hold them beside a name. }
+    FHeader: THeaderControl;
+    FSortKey: Integer;           { 0 name, 1 size, 2 modified }
+    FSortDesc: Boolean;
+    { A path's size and time, read once: a repaint draws every visible row,
+      and would otherwise ask the disk for each one each time }
+    FMeta: TStringList;
     FIcons: TImageList;
     FFilter: TComboBox;
     FShowHidden: TCheckBox;
@@ -119,6 +129,17 @@ type
     procedure CrumbClick(Sender: TObject);
     procedure TreeExpanded(Sender: TObject; ANode: TTreeNode);
     procedure TreeMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+    procedure HeaderClick(HeaderControl: TCustomHeaderControl; Section: THeaderSection);
+    procedure HeaderResize(Sender: TObject);
+    procedure HeaderSectionMoved(HeaderControl: TCustomHeaderControl; Section: THeaderSection);
+    procedure HeaderSectionTrack(HeaderControl: TCustomHeaderControl; Section: THeaderSection;
+      AWidth: Integer; State: TSectionTrackState);
+    procedure TreeDrawItem(Sender: TCustomTreeView; Node: TTreeNode;
+      State: TCustomDrawState; Stage: TCustomDrawStage;
+      var PaintImages, DefaultDraw: Boolean);
+    function MetaOf(const APath: string; out ASize: Int64; out ATime: TDateTime): Boolean;
+    function ColumnsShown: Boolean;
+    procedure SortAll;
     procedure TreeDrawArrow(Sender: TCustomTreeView; const ARect: TRect;
       ACollapsed: Boolean);
     procedure IconiseNodes;
@@ -194,6 +215,10 @@ type
     procedure SetFilterPresets(const AItems: array of string);
 
     procedure SetRoot(const APath: string);
+    { Sorted by a column, as a click on its header does: 0 name, 1 size,
+      2 modified; descending when ADesc. }
+    procedure SortBy(AKey: Integer; ADesc: Boolean);
+    property Header: THeaderControl read FHeader;
     { Populates on first use.  TShellTreeView will not populate before its
       control is realized, so the owner calls this when the pane is first
       shown rather than at construction. }
@@ -952,9 +977,34 @@ begin
     foreground whenever those colours change -- see ApplyColours. }
   LedBuildIconList(FIcons, TreeIconNames, clBtnText);
 
+  FMeta := TStringList.Create;
+  FMeta.Sorted := True;
+  FMeta.OwnsObjects := True;
+  FHeader := THeaderControl.Create(Self);
+  { below the rows already at the top -- navigation, trail, path -- and
+    straight over the tree: a control aligned to the top goes above those
+    already there unless it says it is further down }
+  FHeader.Top := 30000;
+  FHeader.Parent := Self;
+  FHeader.Align := alTop;
+  with FHeader.Sections.Add do Text := 'Name';
+  with FHeader.Sections.Add do
+  begin
+    Text := 'Size';
+    Alignment := taRightJustify;
+  end;
+  with FHeader.Sections.Add do Text := 'Modified';
+  FHeader.OnSectionClick := @HeaderClick;
+  FHeader.OnResize := @HeaderResize;
+  { a column dragged wider or narrower moves the sizes and times drawn
+    under it: the rows are drawn again as it moves, and when it stops }
+  FHeader.OnSectionTrack := @HeaderSectionTrack;
+  FHeader.OnSectionResize := @HeaderSectionMoved;
+
   FTree := TShellTreeView.Create(Self);
   FTree.Parent := Self;
   FTree.Align := alClient;
+  TLedTreeAccess(FTree).OnAdvancedCustomDrawItem := @TreeDrawItem;
   { Rooted at a real directory before anything else touches it.  With Root
     left empty the LCL populates from GetBasePath, which is '/' on Unix but
     '' on Windows -- and the empty case there enumerates every logical drive
@@ -987,6 +1037,9 @@ begin
   FTree.OnKeyDown := @TreeKeyDown;
   FTree.OnMouseDown := @TreeMouseDown;
   FTree.OnExit := @TreeExit;
+  { its scroll bar coming and going, and its frame known once it is on
+    screen, move the header's right edge }
+  FTree.OnResize := @HeaderResize;
   { LED draws the expander.  The LCL offers a themed box, a plus-minus and an
     outlined triangle, and none of them is the chevron a file tree has used
     since VS Code made it the convention.  OnCustomDrawArrow hands over that
@@ -1059,6 +1112,7 @@ end;
 destructor TLedFileBrowser.Destroy;
 begin
   FHistory.Free;
+  FMeta.Free;
   inherited Destroy;
 end;
 
@@ -1370,9 +1424,46 @@ end;
 
   CaseSensitiveSort is the other half of the same omission: it was stored,
   offered as a property, and never reached the comparison either. }
+{ The size and time of a path, from the cache or the disk; False for one
+  that cannot be read. }
+type
+  TLedFileMeta = class
+    Size: Int64;
+    Time: TDateTime;
+    Ok: Boolean;
+  end;
+
+function TLedFileBrowser.MetaOf(const APath: string; out ASize: Int64;
+  out ATime: TDateTime): Boolean;
+var
+  I: Integer;
+  M: TLedFileMeta;
+  R: TSearchRec;
+begin
+  I := FMeta.IndexOf(APath);
+  if I < 0 then
+  begin
+    M := TLedFileMeta.Create;
+    M.Ok := FindFirst(ExcludeTrailingPathDelimiter(APath), faAnyFile, R) = 0;
+    if M.Ok then
+    begin
+      M.Size := R.Size;
+      M.Time := FileDateToDateTime(R.Time);
+      FindClose(R);
+    end;
+    I := FMeta.AddObject(APath, M);
+  end;
+  M := TLedFileMeta(FMeta.Objects[I]);
+  ASize := M.Size;
+  ATime := M.Time;
+  Result := M.Ok;
+end;
+
 function TLedFileBrowser.CompareNodes(ANode1, ANode2: TTreeNode): Integer;
 var
   Dir1, Dir2: Boolean;
+  S1, S2: Int64;
+  T1, T2: TDateTime;
 begin
   if FSortFoldersFirst then
   begin
@@ -1385,10 +1476,244 @@ begin
     end;
   end;
 
-  if FCaseSensitiveSort then
-    Result := CompareStr(ANode1.Text, ANode2.Text)
+  Result := 0;
+  { by the column clicked: size among files (a folder has none, so folders
+    keep their names' order), time among all; the name breaks a tie }
+  Dir1 := (ANode1 is TShellTreeNode) and TShellTreeNode(ANode1).IsDirectory;
+  Dir2 := (ANode2 is TShellTreeNode) and TShellTreeNode(ANode2).IsDirectory;
+  if (FSortKey = 1) and not Dir1 and not Dir2 then
+  begin
+    MetaOf(FTree.GetPathFromNode(ANode1), S1, T1);
+    MetaOf(FTree.GetPathFromNode(ANode2), S2, T2);
+    if S1 < S2 then Result := -1 else if S1 > S2 then Result := 1;
+  end
+  else if FSortKey = 2 then
+  begin
+    MetaOf(FTree.GetPathFromNode(ANode1), S1, T1);
+    MetaOf(FTree.GetPathFromNode(ANode2), S2, T2);
+    if T1 < T2 then Result := -1 else if T1 > T2 then Result := 1;
+  end;
+  if Result = 0 then
+    if FCaseSensitiveSort then
+      Result := CompareStr(ANode1.Text, ANode2.Text)
+    else
+      Result := CompareText(ANode1.Text, ANode2.Text);
+  if FSortDesc then
+    Result := -Result;
+end;
+
+{ Every folder whose rows have been read, sorted again: after a click on a
+  column, without reading the disk anew.  By the tree's own CustomSort,
+  which marks its first and last rows on screen as moved: a node's sort
+  marks only the rows' places, and the tree went on drawing from the rows
+  that had been first and last, leaving gaps until a click redrew it. }
+procedure TLedFileBrowser.SortAll;
+begin
+  FTree.CustomSort(@CompareNodes);
+  FTree.Invalidate;
+end;
+
+procedure TLedFileBrowser.HeaderSectionTrack(HeaderControl: TCustomHeaderControl;
+  Section: THeaderSection; AWidth: Integer; State: TSectionTrackState);
+begin
+  FTree.Invalidate;
+end;
+
+procedure TLedFileBrowser.HeaderSectionMoved(HeaderControl: TCustomHeaderControl;
+  Section: THeaderSection);
+begin
+  FTree.Invalidate;
+end;
+
+procedure TLedFileBrowser.HeaderClick(HeaderControl: TCustomHeaderControl;
+  Section: THeaderSection);
+begin
+  if Section.Index = FSortKey then
+    SortBy(FSortKey, not FSortDesc)
   else
-    Result := CompareText(ANode1.Text, ANode2.Text);
+    { the newest and the largest first, as a reader asking by them wants }
+    SortBy(Section.Index, Section.Index <> 0);
+end;
+
+procedure TLedFileBrowser.SortBy(AKey: Integer; ADesc: Boolean);
+const
+  Names: array[0..2] of string = ('Name', 'Size', 'Modified');
+var
+  I: Integer;
+begin
+  FSortKey := AKey;
+  FSortDesc := ADesc;
+  for I := 0 to FHeader.Sections.Count - 1 do
+    if I = FSortKey then
+    begin
+      if FSortDesc then
+        FHeader.Sections[I].Text := Names[I] + ' ' + #$E2#$96#$BC
+      else
+        FHeader.Sections[I].Text := Names[I] + ' ' + #$E2#$96#$B2;
+    end
+    else
+      FHeader.Sections[I].Text := Names[I];
+  SortAll;
+end;
+
+{ Size and Modified when a name still has room beside them, Name alone
+  otherwise; their widths in the pane's pixels, the name's the rest. }
+function TLedFileBrowser.ColumnsShown: Boolean;
+begin
+  Result := FHeader.Width >= Scale96ToScreen(320);
+end;
+
+{ The height of a list's column header, as the toolkit draws one in its
+  theme: on gtk2 measured from a tree view of one column (what a TListView
+  is there), which a theme pads as it likes -- text and a fixed margin came
+  out five pixels taller than the workspace's header under one theme and
+  matched it under another.  Elsewhere AFallback, the text and a margin.
+  Measured once. }
+var
+  GListHeaderH: Integer = 0;
+
+function LedListHeaderHeight(AFallback: Integer): Integer;
+{$IFDEF LCLGTK2}
+var
+  Win, View: PGtkWidget;
+  Col: PGtkTreeViewColumn;
+  Req: TGtkRequisition;
+{$ENDIF}
+begin
+  if GListHeaderH > 0 then
+    Exit(GListHeaderH);
+  Result := AFallback;
+{$IFDEF LCLGTK2}
+  Win := gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  View := gtk_tree_view_new;
+  Col := gtk_tree_view_column_new;
+  gtk_tree_view_column_set_title(Col, 'Wg');
+  gtk_tree_view_append_column(PGtkTreeView(View), Col);
+  gtk_tree_view_set_headers_visible(PGtkTreeView(View), True);
+  gtk_container_add(PGtkContainer(Win), View);
+  gtk_widget_ensure_style(View);
+  gtk_widget_ensure_style(Col^.button);
+  Req.width := 0;
+  Req.height := 0;
+  gtk_widget_size_request(Col^.button, @Req);
+  if Req.height > 4 then
+    Result := Req.height;
+  gtk_widget_destroy(Win);
+{$ENDIF}
+  GListHeaderH := Result;
+end;
+
+procedure TLedFileBrowser.HeaderResize(Sender: TObject);
+var
+  SizeW, TimeW, Bar, Edge: Integer;
+begin
+  if FHeader.Sections.Count < 3 then Exit;
+  { as wide as what they hold, in the tree's font: a guess at a width cut
+    the time off at a dpi it had not been made at }
+  if FTree.HandleAllocated then
+  begin
+    SizeW := FTree.Canvas.TextWidth('000.0 MB') + Scale96ToScreen(12);
+    TimeW := FTree.Canvas.TextWidth('0000-00-00 00:00') + Scale96ToScreen(12);
+  end
+  else
+  begin
+    SizeW := Scale96ToScreen(70);
+    TimeW := Scale96ToScreen(130);
+  end;
+  { over the rows alone, as the workspace's list heads its columns: not
+    over the tree's frame, nor its scroll bar }
+  if FTree.HandleAllocated then
+  begin
+    Edge := FTree.ClientOrigin.X - FTree.ControlOrigin.X;
+    Bar := FTree.Width - FTree.ClientWidth - Edge;
+    if (Edge >= 0) and (Bar >= 0) and
+       ((FHeader.BorderSpacing.Left <> Edge) or (FHeader.BorderSpacing.Right <> Bar)) then
+    begin
+      FHeader.BorderSpacing.Left := Edge;
+      FHeader.BorderSpacing.Right := Bar;
+      Exit;                    { resized again, and placed then }
+    end;
+  end;
+  { as tall as a list's column header -- the workspace's, beside it }
+  if FTree.HandleAllocated and
+     (FHeader.Height <> LedListHeaderHeight(FTree.Canvas.TextHeight('Wg') + Scale96ToScreen(10))) then
+    FHeader.Height := LedListHeaderHeight(FTree.Canvas.TextHeight('Wg') + Scale96ToScreen(10));
+  if ColumnsShown then
+  begin
+    FHeader.Sections[1].Width := SizeW;
+    FHeader.Sections[2].Width := TimeW;
+    FHeader.Sections[0].Width := FHeader.Width - SizeW - TimeW;
+  end
+  else
+  begin
+    FHeader.Sections[0].Width := FHeader.Width;
+    FHeader.Sections[1].Width := 0;
+    FHeader.Sections[2].Width := 0;
+  end;
+  FTree.Invalidate;
+end;
+
+function LedSizeText(ABytes: Int64): string;
+begin
+  if ABytes < 1024 then
+    Result := IntToStr(ABytes) + ' B'
+  else if ABytes < 1024 * 1024 then
+    Result := FormatFloat('0.0', ABytes / 1024) + ' KB'
+  else if ABytes < Int64(1024) * 1024 * 1024 then
+    Result := FormatFloat('0.0', ABytes / (1024 * 1024)) + ' MB'
+  else
+    Result := FormatFloat('0.0', ABytes / (1024.0 * 1024 * 1024)) + ' GB';
+end;
+
+{ A row's size and time, in the columns the header names: painted after
+  the tree has drawn the row, over the end of a name long enough to reach
+  them, in the row's own colours. }
+procedure TLedFileBrowser.TreeDrawItem(Sender: TCustomTreeView; Node: TTreeNode;
+  State: TCustomDrawState; Stage: TCustomDrawStage;
+  var PaintImages, DefaultDraw: Boolean);
+var
+  R, C: TRect;
+  SizeL, TimeL, Pad: Integer;
+  Sz: Int64;
+  Tm: TDateTime;
+  Cv: TCanvas;
+  IsDir: Boolean;
+  S: string;
+begin
+  DefaultDraw := True;
+  if (Stage <> cdPostPaint) or (Node = nil) or not ColumnsShown then Exit;
+  if FHeader.Sections.Count < 3 then Exit;
+  R := Node.DisplayRect(False);
+  TimeL := FHeader.Sections[2].Left;
+  SizeL := FHeader.Sections[1].Left;
+  Pad := Scale96ToScreen(4);
+  Cv := Sender.Canvas;
+  { the row's background under the columns, as the tree painted the rest }
+  if Node.Selected then
+  begin
+    Cv.Brush.Color := TLedTreeAccess(Sender).SelectionColor;
+    Cv.Font.Color := TLedTreeAccess(Sender).SelectionFontColor;
+  end
+  else
+  begin
+    Cv.Brush.Color := Sender.Color;
+    Cv.Font.Color := Sender.Font.Color;
+  end;
+  if Cv.Brush.Color = clDefault then Cv.Brush.Color := clWindow;
+  if Cv.Font.Color = clDefault then Cv.Font.Color := clWindowText;
+  C := Rect(SizeL - Pad, R.Top, R.Right, R.Bottom);
+  Cv.Brush.Style := bsSolid;
+  Cv.FillRect(C);
+  Cv.Brush.Style := bsClear;
+  IsDir := (Node is TShellTreeNode) and TShellTreeNode(Node).IsDirectory;
+  if not MetaOf(FTree.GetPathFromNode(Node), Sz, Tm) then Exit;
+  if not IsDir then
+  begin
+    S := LedSizeText(Sz);
+    Cv.TextOut(TimeL - Pad - Cv.TextWidth(S), R.Top + (R.Bottom - R.Top - Cv.TextHeight(S)) div 2, S);
+  end;
+  S := FormatDateTime('yyyy-mm-dd hh:nn', Tm);
+  Cv.TextOut(TimeL + Pad, R.Top + (R.Bottom - R.Top - Cv.TextHeight(S)) div 2, S);
 end;
 
 procedure TLedFileBrowser.SortChildren(ANode: TTreeNode);
@@ -1697,6 +2022,8 @@ var
   I, J: Integer;
   N: TTreeNode;
 begin
+  { sizes and times are read again, with the folders }
+  FMeta.Clear;
   Keep := FRoot;
   Sel := SelectedPath;
   Open := TStringList.Create;

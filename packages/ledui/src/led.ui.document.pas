@@ -220,6 +220,7 @@ type
     procedure NBFlushDirty;
     procedure ReadModelines;
     procedure DetectLanguage;
+    procedure ShadeFor(AView: TLedEdit);
     procedure ApplyLanguage;
     function PreparedText: string;
     { A hex dump, as opposed to the other kind of binary.  The byte-editing
@@ -898,6 +899,7 @@ begin
   for i := 0 to FViews.Count - 1 do
   begin
     TLedEdit(FViews[i]).Highlighter := HL;
+    ShadeFor(TLedEdit(FViews[i]));
     { The guides read the highlighter's fold levels as they paint, so there is
       nothing to tell them; a repaint is enough. }
     TLedEdit(FViews[i]).Invalidate;
@@ -952,6 +954,34 @@ begin
   { A view created after the language was decided -- a split, or a session
     restore -- must pick the highlighter up too. }
   Result.Highlighter := FMaster.Highlighter;
+  ShadeFor(Result);
+end;
+
+{ Whether the word at the caret is shaded where else it appears: in code,
+  where "every other x" is the question a click asks, and in structured
+  data -- JSON, YAML -- where a key is; not in prose, where a click on
+  "the" lit up every one on the page, nor in a notebook, whose cells are
+  mostly prose and whose code cells have their own editors. }
+procedure TLedDocument.ShadeFor(AView: TLedEdit);
+const
+  Prose: array[0..7] of string = ('', 'markdown', 'rst', 't2t', 'mediawiki',
+    'texinfo', 'latex', 'changelog');
+var
+  Lang: string;
+  On_: Boolean;
+  i: Integer;
+begin
+  On_ := not (FIsNotebook or FIsBinary or FIsBJData);
+  if On_ then
+  begin
+    Lang := FConfig.GetStr(LedSetLang);
+    for i := Low(Prose) to High(Prose) do
+      if Lang = Prose[i] then
+        On_ := False;
+  end;
+  AView.ShadeOccurrences := On_;
+  if AView.HighlightWord <> nil then
+    AView.HighlightWord.Enabled := On_;
 end;
 
 procedure TLedDocument.RemoveView(AView: TLedEdit);
@@ -1878,12 +1908,27 @@ end;
 
 procedure TLedDocument.NBRefreshCell(ACell: Integer);
 var
-  Head, i, Cell, Stop: Integer;
+  Head, i, Cell, Stop, Delta, Top: Integer;
   T: PtrInt;
   Outs: TStringList;
   Errors: TLedNBFlags;
   Carets: array of TPoint;
+  Tops: array of Integer;
+  Want: TPoint;
   V: TLedEdit;
+
+  { Where a line of the buffer has gone once the output block, which starts
+    at line Stop (0-based), has grown or shrunk by Delta lines: one above it
+    stays, one below it moves with it, and one inside the old block lands at
+    its start. }
+  function Moved(ALine: Integer): Integer;
+  begin
+    Result := ALine;
+    if ALine > Stop then
+      Result := Max(Stop + 1, ALine + Delta);
+    Result := Max(1, Min(Result, FMaster.Lines.Count));
+  end;
+
 begin
   if not FIsNotebook then Exit;
 
@@ -1906,8 +1951,13 @@ begin
   while (Stop < FMaster.Lines.Count) and (NBTagOf(Stop) = 0) do Inc(Stop);
 
   SetLength(Carets, FViews.Count);
+  SetLength(Tops, FViews.Count);
   for i := 0 to FViews.Count - 1 do
+  begin
     Carets[i] := TLedEdit(FViews[i]).CaretXY;
+    Tops[i] := TLedEdit(FViews[i]).TopLine;
+  end;
+  Delta := -FMaster.Lines.Count;
 
   Outs := TStringList.Create;
   FMaster.BeginUpdate;
@@ -1953,11 +2003,23 @@ begin
     Outs.Free;
   end;
 
+  Inc(Delta, FMaster.Lines.Count);
+
+  { Every view looking where it was, the caret on the line it was on.  Not
+    the caret put back regardless: setting it scrolls the view to it, the
+    caret is usually nowhere near the cell that ran -- it is wherever the
+    reader last clicked in the text, line 1 when they never have -- and the
+    notebook pane follows the view's top line.  So Run on a cell halfway
+    down a notebook took the page to the top. }
   for i := 0 to FViews.Count - 1 do
   begin
     V := TLedEdit(FViews[i]);
-    Carets[i].y := Min(Carets[i].y, FMaster.Lines.Count);
-    V.CaretXY := Carets[i];
+    Want := Point(Carets[i].x, Moved(Carets[i].y));
+    if (V.CaretXY.x <> Want.x) or (V.CaretXY.y <> Want.y) then
+      V.CaretXY := Want;
+    Top := Moved(Tops[i]);
+    if V.TopLine <> Top then
+      V.TopLine := Top;
   end;
 
   if Assigned(FOnCell) then FOnCell(Self, ACell);
@@ -2120,6 +2182,8 @@ begin
     FKernel := TLedKernel.Create;
     FKernel.OnEvent := @NBKernelEvent;
   end;
+  { a .venv beside the notebook is a Python the helper may use }
+  FKernel.WorkDir := ExtractFileDir(FFileName);
   Result := FKernel.Start(Name_, AWhy);
 
 {$IFDEF MIMA}

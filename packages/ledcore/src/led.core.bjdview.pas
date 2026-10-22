@@ -1140,6 +1140,9 @@ begin
         try
           n := AValue.Count;
         except
+          { a read outside the file is no damage to step past: whatever led
+            to it is wrong, and the walk stops there, as a failure }
+          on E: EAccessViolation do begin Fail(E, ADepth); Exit; end;
           on E: Exception do begin Known := False; n := 0; end;
         end;
 

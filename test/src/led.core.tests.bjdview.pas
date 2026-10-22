@@ -55,6 +55,12 @@ type
     procedure ANewlineInAKeyStaysOnOneRow;
     procedure ABackslashIsDoubled;
     procedure ALongStringIsCutBetweenCharacters;
+    procedure ACountPastTheAddressSpaceIsRefused;
+    procedure APackedArrayLongerThanTheFileIsRefused;
+    procedure DimensionsWhoseProductOverflowsAreRefused;
+    procedure BigEndianUBJSONIsRefusedNotFollowed;
+    procedure NestingTooDeepIsRefused;
+    procedure TheDecoderRefusesAHugeCountWithoutAllocatingIt;
   end;
 
 implementation
@@ -612,6 +618,107 @@ begin
       Inc(i, 3);
     end;
   end;
+end;
+
+{ ---- damaged files: refused, never followed --------------------------------
+  A length or a count read from a damaged file -- or from a 2019 iso2mesh
+  .bmsh, big-endian UBJSON read as BJData -- can be anything.  Checked as
+  pos + count > end, a large one wrapped past the end of the address space,
+  compared as inside the file, and the walk stepped to a wild pointer:
+  dropping iso2mesh's sample/box.bmsh on the editor took the IDE down.  Each
+  of these must come back as a failure with a message, not a fault. }
+
+function Bytes(const A: array of Byte): string;
+var
+  i: Integer;
+begin
+  SetLength(Result, Length(A));
+  for i := 0 to High(A) do
+    Result[i + 1] := Chr(A[i]);
+end;
+
+procedure TTestBJDView.ACountPastTheAddressSpaceIsRefused;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  Where: PtrUInt;
+begin
+  { S L <7fffffffffffff00>: a string of nearly 2^63 bytes }
+  AssertFalse('rejected', LedBJTryWalk(Bytes([$53, $4C, $00, $FF, $FF, $FF, $FF, $FF, $FF, $7F,
+    $61, $62]), Rows, Err, Where));
+  AssertTrue('as running past the end: ' + Err, Pos('end of input', Err) > 0);
+  // an object whose first key is as long
+  AssertFalse('a key too', LedBJTryWalk(Bytes([$7B, $4C, $00, $FF, $FF, $FF, $FF, $FF, $FF, $7F,
+    $61, $7D]), Rows, Err, Where));
+end;
+
+procedure TTestBJDView.APackedArrayLongerThanTheFileIsRefused;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  Where: PtrUInt;
+begin
+  { [$D#L <2^60>: doubles enough to wrap a pointer eight times over }
+  AssertFalse('rejected', LedBJTryWalk(Bytes([$5B, $24, $44, $23, $4C,
+    $00, $00, $00, $00, $00, $00, $00, $10, 1, 2, 3, 4, 5, 6, 7, 8]), Rows, Err, Where));
+  AssertTrue('with a reason', Err <> '');
+end;
+
+procedure TTestBJDView.DimensionsWhoseProductOverflowsAreRefused;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  Where: PtrUInt;
+begin
+  { [$U#[$L#U2 <2^40> <2^40>: 2^80 bytes, which wraps an Int64 to 0 }
+  AssertFalse('rejected', LedBJTryWalk(Bytes([$5B, $24, $55, $23, $5B, $24, $4C, $23, $55, $02,
+    $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, 9, 9]),
+    Rows, Err, Where));
+  AssertTrue('as too large: ' + Err, (Pos('too large', Err) > 0) or (Pos('end of input', Err) > 0));
+end;
+
+procedure TTestBJDView.BigEndianUBJSONIsRefusedNotFollowed;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  Where: PtrUInt;
+begin
+  // box.bmsh's MeshVertex3, as iso2mesh wrote it in 2019: an object, key
+  // U<11>MeshVertex3, then [$D#[$I#U2 with its dimensions big-endian --
+  // read little-endian, the first is 514 and the next one is garbage
+  AssertFalse('rejected', LedBJTryWalk('{' + Bytes([$55, 11]) + 'MeshVertex3' +
+    Bytes([$5B, $24, $44, $23, $5B, $24, $49, $23, $55, $02, $02, $02, $00, $03, $3F, $D9, $99]),
+    Rows, Err, Where));
+  AssertTrue('with a reason', Err <> '');
+end;
+
+procedure TTestBJDView.NestingTooDeepIsRefused;
+var
+  Rows: TLedBJRows;
+  Err: string;
+  Where: PtrUInt;
+begin
+  AssertFalse('a hundred thousand brackets', LedBJTryWalk(StringOfChar('[', 100000), Rows, Err, Where));
+end;
+
+procedure TTestBJDView.TheDecoderRefusesAHugeCountWithoutAllocatingIt;
+var
+  Raw: string;
+  D: TBJData;
+  Refused: Boolean;
+begin
+  { [#L <2^40> then one value: the decoder had reserved room for 2^40 of
+    them before reading the first }
+  Raw := Bytes([$5B, $23, $4C, $00, $00, $00, $00, $00, $01, $00, $00, $5A]);
+  Refused := False;
+  try
+    D := TBJData.Parse(Raw[1], Length(Raw));
+    D.Free;
+  except
+    on E: EOutOfMemory do Refused := False;
+    on E: EBJData do Refused := True;
+  end;
+  AssertTrue('refused as damage, not run out of memory on', Refused);
 end;
 
 initialization

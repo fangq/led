@@ -199,6 +199,14 @@ procedure LedParseFontSpec(const ASpec: string; out AName: string;
   old to know the attribute -- this is cosmetic and must never fail loudly. }
 procedure LedApplyDarkTitleBar(AForm: TCustomForm; AEnable: Boolean);
 
+
+{ With LED_DPI_REPORT set, a line on stderr of every number the scaling
+  depends on: the toolkit's dpi, the desktop's factor, the dpi wanted and
+  the one applied, the window's own, and the sizes AWhat names.  For
+  finding out on someone else's machine which of them disagree. }
+procedure LedDpiReport(const AWhere: string; AFormPPI: Integer;
+  const AWhat: string);
+
 implementation
 
 { The whole clause is conditional, not just the unit inside it: on Windows a
@@ -1110,6 +1118,20 @@ begin
     Placed.Right - Placed.Left, Placed.Bottom - Placed.Top);
 end;
 
+procedure LedDpiReport(const AWhere: string; AFormPPI: Integer;
+  const AWhat: string);
+begin
+  if SysUtils.GetEnvironmentVariable('LED_DPI_REPORT') = '' then
+    Exit;
+  WriteLn(StdErr, Format('led dpi [%s] toolkit %d, factor %d, LED_SCALE "%s", ' +
+    'GDK_SCALE "%s", wanted %d, applied %d, window %d; %s',
+    [AWhere, Screen.PixelsPerInch, LedDesktopScalingFactor,
+     SysUtils.GetEnvironmentVariable('LED_SCALE'),
+     SysUtils.GetEnvironmentVariable('GDK_SCALE'),
+     LedDesiredPPI, GAppliedPPI, AFormPPI, AWhat]));
+  Flush(StdErr);
+end;
+
 finalization
   { Screen outlives this unit's data, so the handler has to come off before
     the object it points into goes away. }
@@ -1119,5 +1141,6 @@ finalization
       Screen.RemoveHandlerFormVisibleChanged(@GFormScaler.FormVisibleChanged);
     FreeAndNil(GFormScaler);
   end;
+
 
 end.

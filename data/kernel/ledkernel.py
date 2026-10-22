@@ -170,7 +170,8 @@ def main():
     except Exception as e:                                   # noqa: BLE001
         # The common case, and worth a sentence rather than a traceback: the
         # reader has Python but not the Jupyter client library.
-        fail("jupyter_client is not installed for %s (%s)"
+        fail("jupyter_client is not installed for %s (%s); install it there, "
+             "or choose the Python that has it in Preferences, General, Notebooks"
              % (sys.executable, e))
 
     shim = sudo_shim_dir()

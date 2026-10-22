@@ -1074,12 +1074,6 @@ object LedMainForm: TLedMainForm
       object miSep22: TMenuItem
         Caption = '-'
       end
-      object mi_ToggleLeftPane: TMenuItem
-        Action = actToggleLeftPane
-      end
-      object mi_ToggleBottomPane: TMenuItem
-        Action = actToggleBottomPane
-      end
       object mi_ToggleBrowser: TMenuItem
         Action = actToggleBrowser
       end

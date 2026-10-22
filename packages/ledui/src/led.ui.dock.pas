@@ -2517,6 +2517,9 @@ var
   E: TLedDockEdge;
   Pane: TLedPaneForm;
   Where: string;
+  Kept: TFPList;
+  PPIs: array of Integer;
+  j: Integer;
 begin
   Result := False;
   if not FileExists(AFileName) then Exit;
@@ -2530,7 +2533,37 @@ begin
       if Cfg.GetValue('LedPanes/Layout', 'centre') <> LayoutSignature then
         Exit(False);
       DockMaster.LoadSettingsFromConfig(Cfg);
-      Result := DockMaster.LoadLayoutFromConfig(Cfg, True);
+      { Each form's PPI, kept across the restore.
+
+        AnchorDocking stamps every form it places with Screen.PixelsPerInch,
+        and moves nothing to match: it assumes a form is at the screen's
+        PPI, which ours are not on a desktop with a scaling factor -- 96
+        from the toolkit, 192 laid out.  The form then said 96 while its
+        controls were at 192, and the next scaling pass took it from 96 to
+        192 again: on a 150-dpi desktop scaled by 2, toolbar buttons six
+        times their size around icons three times theirs. }
+      Kept := TFPList.Create;
+      try
+        SetLength(PPIs, Screen.CustomFormCount);
+        for i := 0 to Screen.CustomFormCount - 1 do
+        begin
+          Kept.Add(Screen.CustomForms[i]);
+          PPIs[i] := Screen.CustomForms[i].PixelsPerInch;
+        end;
+        try
+          Result := DockMaster.LoadLayoutFromConfig(Cfg, True);
+        finally
+          { only the forms still there: a restore can free a dock site }
+          for j := 0 to Screen.CustomFormCount - 1 do
+          begin
+            i := Kept.IndexOf(Screen.CustomForms[j]);
+            if i >= 0 then
+              Screen.CustomForms[j].PixelsPerInch := PPIs[i];
+          end;
+        end;
+      finally
+        Kept.Free;
+      end;
       { Read back before the panes are looked at, so a pane that was closed
         when LED last shut still opens where it was then.  An unknown or
         missing name leaves the registered edge standing, which is what a
