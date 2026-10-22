@@ -1427,6 +1427,40 @@ begin
   end;
 end;
 
+{ How many pixels of icon AIndex in AImages are exactly AColour. }
+function ListIconColourCount(AImages: TImageList; AIndex: Integer;
+  AColour: TColor): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y: Integer;
+  C, Want: TFPColor;
+begin
+  Result := 0;
+  if (AImages = nil) or (AIndex < 0) or (AIndex >= AImages.Count) then Exit;
+  Want := TColorToFPColor(ColorToRGB(AColour));
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(AImages.Width, AImages.Height);
+    AImages.GetBitmap(AIndex, Bmp);
+    Img := Bmp.CreateIntfImage;
+    try
+      for y := 0 to Img.Height - 1 do
+        for x := 0 to Img.Width - 1 do
+        begin
+          C := Img.Colors[x, y];
+          if (C.Red = Want.Red) and (C.Green = Want.Green) and
+             (C.Blue = Want.Blue) then Inc(Result);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+
 { How many pixels of AName's icon, as the application builds it, are exactly
   AColour.  Built here rather than read out of ImageList1 so the check is of
   the drawing and not of one particular list. }
@@ -2219,6 +2253,8 @@ var
   R: TRect;
   Before, TbH, W0, H0: Integer;
   X, Y, Lo, Hi, BtnTop, Out_: Integer;
+  Lay: string;
+  Was: Integer;
 begin
   Say('medit trim');
 
@@ -2238,6 +2274,27 @@ begin
   F.Width := W0;
   F.Height := H0;
   Pump; Pump;
+
+  { The window's own idea of its dpi is the one it was scaled to.  Restoring
+    the dock layout used to stamp it with the toolkit's -- 96 on a desktop
+    scaled by 2 -- and the next pass scaled the toolbar a second time.  Run
+    with LED_SCALE=2 for the first two to be the case that matters; the
+    third makes it here, at any scale, by saying the window is at a dpi the
+    toolkit does not report, as one on such a desktop is. }
+  CheckEqInt('the window says the dpi it was scaled to', LedScale96(96),
+    F.PixelsPerInch);
+  Check('and its buttons are the form file''s at that dpi, once',
+    Abs(F.ToolBar1.ButtonWidth - MulDiv(44, F.PixelsPerInch, 96)) <= 1);
+  Lay := GetTempDir + 'led-selftest-layout.xml';
+  F.Dock.SaveLayout(Lay);
+  Was := F.PixelsPerInch;
+  F.PixelsPerInch := Was + 96;
+  F.Dock.LoadLayout(Lay);
+  Pump;
+  CheckEqInt('restoring the dock layout keeps the window''s dpi', Was + 96,
+    F.PixelsPerInch);
+  F.PixelsPerInch := Was;
+  DeleteFile(Lay);
 
   { The close button.  Two tabs, so the strip is certainly showing. }
   while F.TabCount > 1 do F.CloseActiveTab(True);
@@ -3285,7 +3342,7 @@ var
   M: TWinControl;
   Bmp: TBitmap;
   Need: TRect;
-  Line: Integer;
+  Line, Cap: Integer;
 begin
   Say('the reader''s own words are shown, not just kept');
 
@@ -3330,9 +3387,17 @@ begin
         last line the moment the two disagree.  A spare line is what makes
         that impossible, so a spare line is what is asserted. }
       Line := Bmp.Canvas.TextHeight('Mg');
-      Check(Format('there is room for every line of it and one to spare: ' +
-        '%d >= %d + %d', [M.Height, Need.Bottom - Need.Top, Line]),
-        M.Height >= (Need.Bottom - Need.Top) + Line);
+      { Or as tall as the pane allows, past which the box scrolls its own
+        text rather than the pane growing a line at a time (the cap in
+        TLedAIBubble.Relayout): a pane shorter than the question is the
+        ordinary case on a screen with little room at its dpi. }
+      Cap := P.ViewHeight - LedScale96(24);
+      if Cap <= LedScale96(80) then
+        Cap := MaxInt;
+      Check(Format('there is room for every line of it and one to spare, ' +
+        'or the pane''s height: %d >= min(%d + %d, %d)',
+        [M.Height, Need.Bottom - Need.Top, Line, Cap]),
+        M.Height >= Min((Need.Bottom - Need.Top) + Line, Cap));
       Check('and the bubble is taller than the words in it',
         B.Height > M.Height);
     finally
@@ -3477,7 +3542,9 @@ begin
     the working they just asked for still off the screen. }
   P.BeginReply;
   D.Kind := ladText;
-  for Line := 1 to 40 do
+  { Enough to overflow the pane at any scale: forty did on a 1280 by 1024
+    screen at 96 dpi, and not on one with more room for the pane. }
+  for Line := 1 to 200 do
     P.AddDelta(D);
   D.Kind := ladThinking;
   D.Text := 'And a page of working underneath all of that.';
@@ -3489,7 +3556,8 @@ begin
   Pump;
 
   B := P.Turn(P.TurnCount - 1);
-  Check('a turn can be taller than the pane', B.Height > P.ViewHeight);
+  Check(Format('a turn can be taller than the pane (%d against %d)',
+    [B.Height, P.ViewHeight]), B.Height > P.ViewHeight);
   B.ShowThinking(True);
   Pump;
   Check('and its working still opens where it can be read: bottom ' +
@@ -4178,6 +4246,154 @@ begin
     StringReplace(Before, LineEnding, #10, [rfReplaceAll]),
     After);
   DeleteFile(Path);
+end;
+
+{ The Python a notebook's Jupyter kernels are run with, unset: a .venv
+  beside the notebook whose interpreter has jupyter_client, rather than the
+  python3 on the PATH -- which, for a reader whose Jupyter is in a venv, was
+  the wrong one until the preference was found.  The interpreters here are
+  scripts that answer the question the way one with or without the library
+  would. }
+{ The window's small things, as a reviewer at a 4K screen found them: menu
+  rows as tall as their icons, the three commonest commands' icons in the
+  Edit menu, an untitled page shading every "the" clicked, no list of what
+  is open, and a file pane with no columns to sort by. }
+procedure TestWindowDetails(F: TLedMainForm);
+var
+  B: TComponent;
+  M: TPopupMenu;
+  I: Integer;
+  Text, Dir, Was: string;
+  Doc: TLedDocument;
+  L: TStringList;
+  N: TTreeNode;
+begin
+  Say('the window''s details');
+  Check(Format('menus wear menu-size icons, not the toolbar''s (%d, toolbar %d)',
+    [F.MainMenu1.Images.Width, F.ImageList1.Width]),
+    F.MainMenu1.Images.Width = LedScale96(16));
+  Check('and Edit''s Cut, Copy and Paste none',
+    (F.mi_Cut.ImageIndex < 0) and (F.mi_Copy.ImageIndex < 0) and (F.mi_Paste.ImageIndex < 0));
+
+  F.actNew.Execute;
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Check('an untitled page is Markdown: ' + Doc.Config.GetStr(LedSetLang),
+    Doc.Config.GetStr(LedSetLang) = 'markdown');
+  Check('where a clicked word is not shaded everywhere else',
+    not F.ActiveTab.ActiveView.ShadeOccurrences);
+
+  { the list of what is open: dropped from an arrow at the start of each
+    tab strip on gtk2, from a toolbar button elsewhere }
+  B := F.FindComponent('tbSwitch');
+  Check('there is a list of what is open', F.SwitchMenu <> nil);
+  if F.SwitchMenu <> nil then
+  begin
+    M := F.SwitchMenu;
+    if Assigned(M.OnPopup) then M.OnPopup(M);
+    Text := '';
+    for I := 0 to M.Items.Count - 1 do
+      Text := Text + M.Items[I].Caption + '|';
+    Check('listing what is open, the current page ticked: ' + Text,
+      Pos(Doc.DisplayName, Text) > 0);
+  end;
+  F.CloseActiveTab(False);
+  Pump;
+
+  { the file pane's columns: by size, largest first, then by name }
+  Dir := IncludeTrailingPathDelimiter(GetTempDir(False)) + 'ledcols' + IntToStr(GetProcessID);
+  ForceDirectories(Dir);
+  L := TStringList.Create;
+  try
+    L.Text := StringOfChar('x', 100);  L.SaveToFile(Dir + '/a.txt');
+    L.Text := StringOfChar('x', 5000); L.SaveToFile(Dir + '/b.txt');
+    L.Text := StringOfChar('x', 10);   L.SaveToFile(Dir + '/c.txt');
+  finally
+    L.Free;
+  end;
+  Was := F.Browser.Root;
+  F.Browser.SetRoot(Dir);
+  Pump;
+  Check('the file pane has Name, Size and Modified', F.Browser.Header.Sections.Count = 3);
+  F.Browser.SortBy(1, True);
+  N := F.Browser.Tree.Items.GetFirstNode;
+  if N <> nil then N := N.GetFirstChild;
+  Check('sorted by size, the largest first: ' + BoolToStr(N <> nil, N.Text, '-'),
+    (N <> nil) and (N.Text = 'b.txt'));
+  { and drawn as sorted: the tree's last row on screen is the last row,
+    not the one that was last before -- painting from that left gaps }
+  N := F.Browser.Tree.Items.GetFirstNode;
+  while (N <> nil) and (N.GetNextVisible <> nil) do
+    N := N.GetNextVisible;
+  Check('the sorted rows are the ones drawn, to the last: ' + BoolToStr(N <> nil, N.Text, '-'),
+    (N <> nil) and (F.Browser.Tree.BottomItem = N));
+  F.Browser.SortBy(0, False);
+  N := F.Browser.Tree.Items.GetFirstNode;
+  if N <> nil then N := N.GetFirstChild;
+  Check('and by name again: ' + BoolToStr(N <> nil, N.Text, '-'),
+    (N <> nil) and (N.Text = 'a.txt'));
+  if Was <> '' then F.Browser.SetRoot(Was);
+  Pump;
+  DeleteFile(Dir + '/a.txt'); DeleteFile(Dir + '/b.txt'); DeleteFile(Dir + '/c.txt');
+  RemoveDir(Dir);
+end;
+
+procedure TestKernelPythonSearch;
+{$IFDEF UNIX}
+var
+  Dir, Good, Bad, Saved: string;
+
+  function FakePython(const ADir: string; AHas: Boolean): string;
+  var
+    L: TStringList;
+  begin
+    ForceDirectories(ADir + '/.venv/bin');
+    Result := ADir + '/.venv/bin/python';
+    L := TStringList.Create;
+    try
+      L.Add('#!/bin/sh');
+      if AHas then L.Add('exit 0') else L.Add('exit 1');
+      L.SaveToFile(Result);
+    finally
+      L.Free;
+    end;
+    fpChmod(Result, &755);
+  end;
+{$ENDIF}
+begin
+  Say('the Python for Jupyter kernels');
+{$IFDEF UNIX}
+  Dir := GetTempDir(False) + 'ledpysearch' + IntToStr(GetProcessID);
+  Good := FakePython(Dir + '/good', True);
+  Bad := FakePython(Dir + '/bad', False);
+  Saved := LedPrefs.GetStr(LedPrefKernelPython, '');
+  try
+    LedPrefs.Remove(LedPrefKernelPython);
+    CheckEq('unset, a .venv beside the notebook with jupyter_client is used',
+      Good, LedKernelPythonIn(Dir + '/good', '', ''));
+    CheckEq('one without it is passed over for python3',
+      'python3', LedKernelPythonIn(Dir + '/bad', '', ''));
+    CheckEq('the venv the program was started in, $VIRTUAL_ENV, is next',
+      Good, LedKernelPythonIn(Dir + '/bad', Dir + '/good/.venv', ''));
+    CheckEq('and with nothing found it is python3, as before',
+      'python3', LedKernelPythonIn('', '', ''));
+    LedPrefs.SetStr(LedPrefKernelPython, '/opt/my/python');
+    CheckEq('a Python the preference names is used, found or not',
+      '/opt/my/python', LedKernelPythonIn(Dir + '/good', '', ''));
+  finally
+    if Saved = '' then
+      LedPrefs.Remove(LedPrefKernelPython)
+    else
+      LedPrefs.SetStr(LedPrefKernelPython, Saved);
+    DeleteFile(Good);
+    DeleteFile(Bad);
+    RemoveDir(Dir + '/good/.venv/bin'); RemoveDir(Dir + '/good/.venv'); RemoveDir(Dir + '/good');
+    RemoveDir(Dir + '/bad/.venv/bin'); RemoveDir(Dir + '/bad/.venv'); RemoveDir(Dir + '/bad');
+    RemoveDir(Dir);
+  end;
+{$ELSE}
+  Check('(the search is checked on unix)', True);
+{$ENDIF}
 end;
 
 procedure TestLineEndDetection;
@@ -5283,6 +5499,7 @@ end;
 procedure TestPrefsAndShortcuts(F: TLedMainForm);
 var
   Dlg: TLedPrefsDialog;
+  WasPreview: string;
   Problems: TStringList;
   PageNo, Shot0, Dups: Integer;
   Keys: TStringList;
@@ -5295,6 +5512,18 @@ begin
     row round-trips through prefs.ini rather than being quietly dropped. }
   Dlg := TLedPrefsDialog.CreateDialog(F);
   try
+    { The preview's font as stored, "Sans" when nothing is: resolved like
+      the editor's, the alias was shown as the editor's own face, and OK
+      then saved that face over it. }
+    WasPreview := LedPrefs.GetStr(LedPrefPreviewFont, '');
+    LedPrefs.SetStr(LedPrefPreviewFont, '');
+    Dlg.LoadFromPrefs;
+    CheckEq('the preview font shows as Sans when none is set',
+      'Sans', Dlg.FontShown(LedPrefPreviewFont));
+    Dlg.ApplyToPrefs;
+    CheckEq('and saving the dialog keeps it Sans',
+      'Sans', LedPrefs.GetStr(LedPrefPreviewFont, ''));
+    LedPrefs.SetStr(LedPrefPreviewFont, WasPreview);
     Dlg.LoadFromPrefs;
 
     { Every caption fits: none runs into the control beside it, no check
@@ -5308,6 +5537,36 @@ begin
       Problems.Free;
     end;
     Check('the category list selects a whole row', Dlg.CategoryTree.RowSelect);
+
+    { And on screen, after the scaling showing it sets off: the controls
+      start where the captions end, not two or three times further on --
+      the captions were measured in screen pixels before the dialog was
+      scaled, and the pass multiplied them again. }
+    Dlg.Show;
+    for PageNo := 1 to 10 do
+      Pump;
+    { within a few pixels: 3 > the excess }
+    CheckGt('shown, the controls stand where the captions need them, no further',
+      Dlg.ColumnExcess, 3);
+    { and the dialog is as wide as its pages need, not that scaled again:
+      at 300 dpi it opened nearly the width of the screen }
+    Check(Format('shown, the dialog is no wider than its pages need: %d for %d',
+      [Dlg.Width, Dlg.NeedWidth]),
+      Dlg.Width <= Max(Dlg.NeedWidth, Dlg.Constraints.MinWidth) + 2);
+    { and still over the middle of the main window: the refit set the new
+      width from the left edge it was centred with, half the change off.
+
+      Against where the screen allows it to be rather than against the
+      window's middle flatly: a dialog as wide as this one -- and LED's
+      captions are long enough that it can want 1237 pixels of a 1280
+      screen -- is pushed off the right edge and cannot be centred.  What
+      is being checked is that nothing *else* moved it. }
+    PageNo := Max(0, Min(F.Left + F.Width div 2 - Dlg.Width div 2,
+                         Screen.Width - Dlg.Width));
+    Check(Format('shown, the dialog is centred over the window, as far as ' +
+      'the screen allows (%d against %d)', [Dlg.Left, PageNo]),
+      Abs(Dlg.Left - PageNo) <= LedScale96(16));
+    Dlg.Hide;
 
     { MIMA_SELFTEST_DUMP=dir keeps a picture of each page to look at }
     if GetEnvironmentVariable('MIMA_SELFTEST_DUMP') <> '' then
@@ -8196,12 +8455,14 @@ const
 
 procedure TestNotebookPane(F: TLedMainForm);
 var
+  ProseFace: string;
+  ProsePt: Integer;
   Path: string;
   Doc: TLedDocument;
   Tab: TLedTab;
   Pane: TLedNotebookPane;
   B: TLedNBCellBox;
-  i, Bottom, Was, WasImage, Deep, Line: Integer;
+  i, Bottom, Was, WasImage, Deep, Line, H0: Integer;
   Img: TImage;
   V: TLedEdit;
   Host: TForm;
@@ -8440,6 +8701,18 @@ var
         Result := Result + TLabel(ABox.Components[k]).Caption + '|';
   end;
 
+  function OutputLabelIn(ABox: TLedNBCellBox): TLabel;
+  var
+    k: Integer;
+  begin
+    Result := nil;
+    if ABox = nil then Exit;
+    for k := 0 to ABox.ComponentCount - 1 do
+      if (ABox.Components[k] is TLabel) and
+         (Pos('forty-two', TLabel(ABox.Components[k]).Caption) > 0) then
+        Exit(TLabel(ABox.Components[k]));
+  end;
+
   function OutputFontIn(ABox: TLedNBCellBox): string;
   var
     k: Integer;
@@ -8504,6 +8777,23 @@ begin
   CheckEq('a code cell is in the editor''s font', FontWant,
     B.Editor.Font.Name);
   CheckEq('and so is its output', FontWant, OutputFontIn(B));
+  { At the code's size, measured as drawn: the output took the editor's
+    Size, and on a desktop with a scaling factor the label's points are
+    turned into pixels at another dpi than the editor's -- the output came
+    out a third or more taller than the code.  After a rebuild, which is
+    where it went wrong: the box built with the pane was right, the ones
+    made after the window's scaling pass were not. }
+  Pane.RefreshCell(1);
+  Pump;
+  B := CellBox(Pane, 1);
+  Check('the output is still there after a rebuild', OutputLabelIn(B) <> nil);
+  if OutputLabelIn(B) <> nil then
+    { In pixels, not through LedTextHeightOf: a canvas given the font by
+      Assign takes its points and turns them into pixels at its own dpi, so
+      the two measured alike while the label drew 35 pixels to the code's
+      27. }
+    CheckEqInt('and its output is drawn at the code''s size',
+      B.Editor.Font.Height, OutputLabelIn(B).Font.Height);
   if CellBox(Pane, 0) <> nil then
     CheckEq('and a code block in prose', FontWant,
       CellBox(Pane, 0).Rendered.FixedTypeface);
@@ -8871,7 +9161,11 @@ begin
   CheckEqInt('the code in a cell is the editor''s size',
     LedTextHeightOf(Doc.Master.Font),
     LedTextHeightOf(CellBox(Pane, 1).Editor.Font));
-  CheckEqInt('and so is the prose', Doc.Master.Font.Size,
+  { The editor's size as Preferences holds it, which is what the prose is
+    set from: the live font's Size is the screen's, twice that on a desktop
+    scaled by 2, and the renderer scales its points itself. }
+  LedParseFontSpec(LedPrefs.GetStr(LedPrefFont, ''), ProseFace, ProsePt);
+  CheckEqInt('and so is the prose', LedPreviewPointSize(ProsePt) + LedPageZoom,
     CellBox(Pane, 0).Rendered.DefaultFontSize);
 {$ELSE}
   CheckGt('the code in a cell is drawn larger than the editor''s own font',
@@ -9133,12 +9427,22 @@ begin
     Abs(LedColourLuma(CellBox(Pane, 1).Editor.Color) -
         LedColourLuma(Dark.Page)) < 40);
   Check('a dark theme gives a dark page', LedColourLuma(Dark.Page) < 128);
+  { The drawn cell icons -- the eraser, the pencil -- in the page's ink.
+    They had the desktop's, which a dark desktop makes near white: on a
+    light page the eraser all but vanished. }
+  CheckGt('the eraser is drawn in the dark theme''s text colour', 10,
+    ListIconColourCount(Pane.CellIcons, LedIconIndex('clearoutput'), Dark.Text));
 
   LedSetCurrentTheme('solarized-light');
   Pane.Reload;
   Pump;
   Light := LedPageColours;
   Check('a light theme gives a light page', LedColourLuma(Light.Page) > 128);
+  CheckGt('and in the light theme''s once it changes', 10,
+    ListIconColourCount(Pane.CellIcons, LedIconIndex('clearoutput'), Light.Text));
+  Check(Format('which reads against the page (%.1f:1)',
+    [LedContrastRatio(Light.Text, Light.Page)]),
+    LedContrastRatio(Light.Text, Light.Page) > 3);
   CheckEqInt('and the pane followed it', Light.Page, Pane.Color);
   Check('the cells followed too', CellBox(Pane, 0).Color = Light.Page);
   Check('and the code shade is still near the page',
@@ -9303,9 +9607,23 @@ begin
   B := Pane.BoxOf(41);
   Check('the cell under the reader''s is on screen', B <> nil);
   if B = nil then B := CellBox(Pane, 41);
+  { Its foot has to be on the page to be hovered at, and with cell 40 at
+    the top that depends on how tall the pane is: it just was at 96 dpi on
+    a 1280 by 1024 screen, and was not at twice that.  The window grows by
+    what is missing, and goes back afterwards. }
+  H0 := F.Height;
+  if B.Top + B.Height + LedScale96(8) > Pane.ClientHeight then
+  begin
+    F.Height := F.Height + (B.Top + B.Height + LedScale96(8) - Pane.ClientHeight);
+    Pump; Pump;
+    B := Pane.BoxOf(41);
+    if B = nil then B := CellBox(Pane, 41);
+  end;
   Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + B.Height - 2));
   Pane.AddBar.DeleteAbove.Click;
   Pump; Pump;
+  F.Height := H0;
+  Pump;
   Pane.HoverPolling := True;
   CheckEqInt('the cell went', Was, Doc.NBCellCount);
   CheckEqInt('the pane stayed', 40, Pane.TopCell);
@@ -9371,6 +9689,8 @@ end;
 
 procedure TestNotebookPolish(F: TLedMainForm);
 var
+  WasEd: string;
+  WasLive: Integer;
   Catch: TLedNBRunCatcher;
   V: TLedEdit;
   Hdr: Integer;
@@ -9606,6 +9926,23 @@ begin
       PolishFace(B.Rendered, 'TIpHtmlNodeP'));
     CheckEq('while code keeps the editor''s own face', Doc.Master.Font.Name,
       PolishFace(B.Rendered, 'TIpHtmlNodePhrase'));
+    { A face with no size takes the editor's size as Preferences holds it,
+      not the editor's live font: on a desktop with a scaling factor that
+      has been scaled for the screen already, 10 points reading back as 20,
+      and the renderer scales its points itself -- the prose came out at
+      twice the preview's. }
+    WasEd := LedPrefs.GetStr(LedPrefFont, '');
+    WasLive := Doc.Master.Font.Size;
+    LedPrefs.SetStr(LedPrefPreviewFont, 'Sans');
+    LedPrefs.SetStr(LedPrefFont, 'Monospace 10');
+    Doc.Master.Font.Size := 20;
+    Pane.RefreshCell(1);
+    Pump;
+    B := Box(1);
+    CheckEqInt('a face with no size takes the editor''s preferred size, not its live one',
+      10 {$IFNDEF MIMA} + 3 {$ENDIF} + LedPageZoom, B.Rendered.DefaultFontSize);
+    Doc.Master.Font.Size := WasLive;
+    LedPrefs.SetStr(LedPrefFont, WasEd);
     Doc.NBSetCellSource(1, '# Notes');
     LedPrefs.SetStr(LedPrefPreviewFont, WasFace);
     Pane.RefreshCell(1);
@@ -11631,6 +11968,7 @@ procedure TestSpeedButtonHover(F: TLedMainForm);
 var
   N, I: Integer;
   State: string;
+  AboutBox: TForm;
 begin
   Say('hover on the hand-built toolbars');
 
@@ -11702,6 +12040,45 @@ begin
     (Pos('medit', State) > 0) and (Pos('no medit source', State) > 0));
   Check('and it says where the source is',
     Pos(LedAppHome, State) > 0);
+
+  { Report a Bug opens a new issue on the program's page, the version and
+    platform written in.  It had been a message box with nowhere to send. }
+  State := LedBugReportURL;
+  Check('Report a Bug goes to a new issue on the program''s page: ' +
+    Copy(State, 1, 60), Pos(LedAppHome + '/issues/new?body=', State) = 1);
+  Check('with the version already in it',
+    Pos(LedAppVersion, State) > 0);
+  Check('and nothing in it a URL cannot carry',
+    (Pos(' ', State) = 0) and (Pos(#10, State) = 0) and
+    (Pos('&', Copy(State, Length(LedAppHome) + 1, MaxInt)) = 0));
+
+  { And the box is the size it was laid out at, scaled once.  It was sized
+    in the windows' pixels and then scaled again as it was shown: on a
+    150-dpi desktop scaled by 2, larger than a 4K screen. }
+  AboutBox := LedMakeAbout(F);
+  try
+    AboutBox.Show;
+    Pump; Pump;
+    Check(Format('the About box is its own width, scaled once (%d, want %d)',
+      [AboutBox.ClientWidth, LedScale96(620)]),
+      Abs(AboutBox.ClientWidth - LedScale96(620)) <= LedScale96(620) div 10);
+    Check(Format('and fits on the screen (%d by %d in %d by %d)',
+      [AboutBox.Width, AboutBox.Height, Screen.WorkAreaWidth, Screen.WorkAreaHeight]),
+      (AboutBox.Width <= Screen.WorkAreaWidth) and
+      (AboutBox.Height <= Screen.WorkAreaHeight));
+    { Over the middle of the window it belongs to.  It was centred at its
+      size before scaling, then grew from its top-left corner -- right and
+      down of the middle by half of what it grew. }
+    Check(Format('and is centred over its window (%d,%d against %d,%d)',
+      [AboutBox.Left + AboutBox.Width div 2, AboutBox.Top + AboutBox.Height div 2,
+       F.Left + F.Width div 2, F.Top + F.Height div 2]),
+      (Abs(AboutBox.Left + AboutBox.Width div 2 - (F.Left + F.Width div 2)) <= LedScale96(16)) and
+      (Abs(AboutBox.Top + AboutBox.Height div 2 - (F.Top + F.Height div 2)) <= LedScale96(16)));
+    AboutBox.Close;
+    Pump;
+  finally
+    AboutBox.Free;
+  end;
 
   F.Dock.HidePane('files');
   Pump;
@@ -14318,6 +14695,7 @@ var
   L: TStringList;
   Tab: TLedTab;
   V: TLedEdit;
+  Saved: string;
   Ymid, Wide, Past: Integer;
 begin
   Say('row styling');
@@ -14388,6 +14766,23 @@ begin
   Pump;
   CheckEqInt('clicking past the end of a line lands on its end',
     Length(V.Lines[0]) + 1, V.CaretX);
+  { -- the end on screen, on a line a tab widens: a table's row, as a .dat
+    of tab-separated numbers has them, was put back to its character
+    count, short of the end of what it shows }
+  Saved := V.Lines[0];
+  V.Lines[0] := '    19.5'#9'0'#9'0';
+  V.CaretXY := Point(1, 1);
+  Pump;
+  TLedMousePoke.Press(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  TLedMousePoke.Release(V, [],
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight div 2);
+  Pump;
+  CheckEqInt('and on a line of tabs, at the end it shows',
+    V.LogicalToPhysicalPos(Point(Length(V.Lines[0]) + 1, 1)).X, V.CaretX);
+  V.Lines[0] := Saved;
+  V.CaretXY := Point(1, 1);
+  Pump;
   { The same click as a real mouse makes it: a press, a pixel or two of
     movement, a release.  That is a drag as far as SynEdit is concerned, and
     with eoScrollPastEol it reaches out into the space past the line -- where
@@ -15269,7 +15664,13 @@ begin
   Pump;
   Check('the same document as text gets one',
     (Tab.MiniMap <> nil) and Tab.MiniMap.Visible);
-  Check('and its words light up again',
+  { as plain text it is prose, where a clicked word is not shaded; as code
+    its words light up again }
+  Check('plain text, which is prose, shades no clicked word',
+    not TLedMarkupPeek.Live(V.HighlightWord));
+  Tab.Document.SetLanguage('c');
+  Pump;
+  Check('and as code its words light up again',
     TLedMarkupPeek.Live(V.HighlightWord));
   F.SetMiniMaps(False);
   Pump;
@@ -17192,6 +17593,7 @@ begin
   TestNotebookColouring(F);
   TestNotebookRunning(F);
   TestNotebookBounds(F);
+  TestWindowDetails(F);
   TestNotebookPane(F);
   TestNotebookPolish(F);
   TestBJDataGuides(F);
@@ -17199,6 +17601,8 @@ begin
   WriteLn;
 
   TestLineEndDetection;
+  WriteLn;
+  TestKernelPythonSearch;
   WriteLn;
   TestSharedBufferSplitView(F);
   WriteLn;

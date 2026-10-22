@@ -113,6 +113,8 @@ function LedPreviewPointSize(AFallback: Integer): Integer;
   is; LedPageZoomBy keeps it within reason and answers whether it moved. }
 function LedPageZoom: Integer;
 function LedPageZoomBy(ADelta: Integer): Boolean;
+{ Back to no zoom; True when there was some. }
+function LedPageZoomReset: Boolean;
 
 function LedPageHead(const ATitle: string;
   const AColours: TLedPageColours; AMargin: Integer = 0): string;
@@ -512,6 +514,12 @@ begin
   if GPageZoom < -6 then GPageZoom := -6;
   if GPageZoom > 30 then GPageZoom := 30;
   Result := GPageZoom <> Was;
+end;
+
+function LedPageZoomReset: Boolean;
+begin
+  Result := GPageZoom <> 0;
+  GPageZoom := 0;
 end;
 
 function LedPreviewFace: string;

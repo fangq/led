@@ -233,6 +233,28 @@ function LedPreviewHandles(const AFileName, AFirstLine: string): Boolean;
 
 implementation
 
+
+type
+  { Font is protected in a TControl; this reaches it }
+  TRendererFontAccess = class(TControl);
+
+{ For LED_DPI_REPORT: a renderer's font and canvas dpis, and the face and
+  size it was given -- what decides how big its text is drawn. }
+function RendererReport(P: TIpHtmlCustomPanel; ASize: Integer;
+  const AFace: string): string;
+var
+  i: Integer;
+begin
+  Result := Format('font ppi %d, size %d, face %s', [P.Font.PixelsPerInch,
+    ASize, AFace]);
+  for i := 0 to P.ControlCount - 1 do
+    if P.Controls[i] is TCustomControl then
+      Result := Result + Format('; %s font ppi %d canvas ppi %d',
+        [P.Controls[i].ClassName,
+         TRendererFontAccess(P.Controls[i]).Font.PixelsPerInch,
+         TCustomControl(P.Controls[i]).Canvas.Font.PixelsPerInch]);
+end;
+
 var
   { ReportDrawRects wants a method to call back, and a class used only as a
     way through to a protected member must not have fields of its own: the
@@ -987,6 +1009,7 @@ begin
     FHtml.VLinkColor := Colours.Link;
     FHtml.ALinkColor := Colours.Link;
     FHtml.SetHtmlFromStr(Page);
+    LedDpiReport('markdown preview', 0, RendererReport(FHtml, FHtml.DefaultFontSize, FHtml.DefaultTypeFace));
     HookWheel(FHtml);
     { From the page as it was handed over: neither adjustment touches an id,
       but this is the string the control is actually holding. }

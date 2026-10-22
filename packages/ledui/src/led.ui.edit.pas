@@ -1011,8 +1011,12 @@ var
 begin
   if FHexMode then Exit;       { a dump has its own snapping }
   if (CaretY < 1) or (CaretY > Lines.Count) then Exit;
+  { in the line's bytes, as LogicalCaretXY counts: CaretX is the column on
+    screen, which a tab widens, so on a line of tabs a click past its end
+    was put back short of it -- every line of a tab-separated table to the
+    same column, its character count }
   Last := Length(Lines[CaretY - 1]) + 1;
-  if CaretX > Last then CaretX := Last;
+  if LogicalCaretXY.X > Last then LogicalCaretXY := Point(Last, CaretY);
 end;
 
 procedure TLedEdit.ClampSelectionToLineEnd;

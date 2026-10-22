@@ -76,9 +76,18 @@ function LedKernelSpecInstalled(const AName: string): Boolean;
 
 { Where the helper is, and the Python to run it with.  The second is a
   preference because a machine can have several and only one of them has
-  jupyter_client in it. }
+  jupyter_client in it.
+
+  Unset, it is looked for where a reader keeps one: a .venv or venv in the
+  notebook's folder (AWorkDir), then the virtual environment or conda
+  environment the program was started in, each taken only if it has
+  jupyter_client -- else python3 on the PATH, as before.  A reader whose
+  Jupyter lives in a venv had to find this preference first. }
 function LedKernelHelper: string;
-function LedKernelPython: string;
+function LedKernelPython(const AWorkDir: string = ''): string;
+{ The same search, given the environment: what LedKernelPython asks with
+  $VIRTUAL_ENV and $CONDA_PREFIX, and a test with its own. }
+function LedKernelPythonIn(const AWorkDir, AVirtualEnv, ACondaPrefix: string): string;
 
 const
   LedPrefKernelPython = 'Notebook/python';
@@ -94,6 +103,7 @@ type
     FSplit: TLedLineSplitter;  // holds a partial line until its newline
     FNextId: Integer;
     FOnEvent: TLedKernelEventProc;
+    FWorkDir: string;
     procedure Send(const ALine: string);
     procedure Dispatch(const AEvent: TLedKernelEvent);
     procedure SetFailed(const AWhy: string);
@@ -123,6 +133,10 @@ type
     property Language: string read FLanguage;
     property KernelName: string read FKernelName;
     property OnEvent: TLedKernelEventProc read FOnEvent write FOnEvent;
+    { The notebook's folder, set before Start: it is where a virtual
+      environment is looked for, and where Jupyter's own kernel would have
+      started.  See LedKernelPython. }
+    property WorkDir: string read FWorkDir write FWorkDir;
   end;
 
 implementation
@@ -174,10 +188,84 @@ begin
   end;
 end;
 
-function LedKernelPython: string;
+var
+  { the interpreters found to have jupyter_client: asked once each, as the
+    asking imports it, which takes a good part of a second }
+  GJupyterPythons: TStringList = nil;
+
+function PythonHasJupyter(const AExe: string): Boolean;
+var
+  P: TProcess;
 begin
-  Result := LedPrefs.GetStr(LedPrefKernelPython, 'python3');
-  if Trim(Result) = '' then Result := 'python3';
+  if (GJupyterPythons <> nil) and (GJupyterPythons.IndexOf(AExe) >= 0) then
+    Exit(True);
+  Result := False;
+  P := TProcess.Create(nil);
+  try
+    P.Executable := AExe;
+    P.Parameters.Add('-c');
+    P.Parameters.Add('import jupyter_client');
+    P.Options := [poWaitOnExit, poNoConsole];
+    try
+      P.Execute;
+      Result := P.ExitStatus = 0;
+    except
+      Result := False;
+    end;
+  finally
+    P.Free;
+  end;
+  { only a yes is kept: a no may be a library not installed yet }
+  if Result then
+  begin
+    if GJupyterPythons = nil then
+      GJupyterPythons := TStringList.Create;
+    GJupyterPythons.Add(AExe);
+  end;
+end;
+
+{ An environment's interpreter, by the layout its platform gives it. }
+function EnvPython(const AEnv: string; AConda: Boolean): string;
+begin
+  Result := '';
+  if AEnv = '' then Exit;
+{$IFDEF WINDOWS}
+  if AConda then
+    Result := IncludeTrailingPathDelimiter(AEnv) + 'python.exe'
+  else
+    Result := IncludeTrailingPathDelimiter(AEnv) + 'Scripts\python.exe';
+{$ELSE}
+  Result := IncludeTrailingPathDelimiter(AEnv) + 'bin/python';
+{$ENDIF}
+  if not FileExists(Result) then Result := '';
+end;
+
+function LedKernelPython(const AWorkDir: string): string;
+begin
+  Result := LedKernelPythonIn(AWorkDir, GetEnvironmentVariable('VIRTUAL_ENV'),
+    GetEnvironmentVariable('CONDA_PREFIX'));
+end;
+
+function LedKernelPythonIn(const AWorkDir, AVirtualEnv, ACondaPrefix: string): string;
+var
+  Tries: array[0..3] of string;
+  I: Integer;
+begin
+  Result := Trim(LedPrefs.GetStr(LedPrefKernelPython, ''));
+  if Result <> '' then Exit;
+  Tries[0] := '';
+  Tries[1] := '';
+  if AWorkDir <> '' then
+  begin
+    Tries[0] := EnvPython(IncludeTrailingPathDelimiter(AWorkDir) + '.venv', False);
+    Tries[1] := EnvPython(IncludeTrailingPathDelimiter(AWorkDir) + 'venv', False);
+  end;
+  Tries[2] := EnvPython(AVirtualEnv, False);
+  Tries[3] := EnvPython(ACondaPrefix, True);
+  for I := 0 to High(Tries) do
+    if (Tries[I] <> '') and PythonHasJupyter(Tries[I]) then
+      Exit(Tries[I]);
+  Result := 'python3';
 end;
 
 function LedKernelCommand(const AWhat: string): string;
@@ -346,7 +434,7 @@ end;
 
 function TLedKernel.Start(const AKernelName: string; out AWhy: string): Boolean;
 var
-  Helper: string;
+  Helper, Python: string;
 begin
   Result := False;
   AWhy := '';
@@ -363,7 +451,8 @@ begin
 
   FreeAndNil(FProcess);
   FProcess := TProcess.Create(nil);
-  FProcess.Executable := LedKernelPython;
+  Python := LedKernelPython(FWorkDir);
+  FProcess.Executable := Python;
   FProcess.Parameters.Add(Helper);
   FProcess.Parameters.Add(AKernelName);
   { Not poStderrToOutput: the helper's stdout is a protocol, and a warning
@@ -374,7 +463,8 @@ begin
   except
     on E: Exception do
     begin
-      AWhy := Format('%s would not run (%s)', [LedKernelPython, E.Message]);
+      AWhy := Format('%s would not run (%s); the Python to use is set in ' +
+        'Preferences, General, Notebooks', [Python, E.Message]);
       FreeAndNil(FProcess);
       FState := lksFailed;
       FLastError := AWhy;
@@ -513,5 +603,8 @@ begin
     Dispatch(Ev);
   end;
 end;
+
+finalization
+  FreeAndNil(GJupyterPythons);
 
 end.
