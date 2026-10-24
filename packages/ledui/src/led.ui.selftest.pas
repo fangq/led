@@ -16522,6 +16522,11 @@ begin
 end;
 
 procedure TestTemplates(F: TLedMainForm);
+{ Everything below the early Exit is Parade's own API, so it is compiled only
+  where there is a Parade to call: without one the types do not exist and the
+  unit does not build.  The check above the Exit is the one that matters in
+  that build anyway -- that a feature which is not there is not offered. }
+{$IFDEF LED_PARADE}
 var
   Tab: TLedTab;
   E: TParadeEdit;
@@ -16531,10 +16536,12 @@ var
   Path: string;
   Ms: TMemoryStream;
   Btn: TControl;
+{$ENDIF}
 begin
   Say('templates and themes');
   Check('New from Template is offered when the pages are built in', F.actNewFromTemplate.Visible = LedVisualAvailable);
   if not LedVisualAvailable then Exit;
+  {$IFDEF LED_PARADE}
   Check('a .dotx is a Word template', LedVisualKindOf('a.dotx') = lvkDotx);
   Check('a .potx is read as a presentation', LedVisualKindOf('a.potx') = lvkPptx);
   D := nil;
@@ -16602,10 +16609,16 @@ begin
   end;
   Check('the template itself left as it was', FileExists(Path));
   DeleteFile(Path);
+  {$ENDIF}
 end;
 
 { File > New Portable Canvas: an untitled Parade document, a landscape page holding a canvas, selected, to draw in }
 procedure TestNewCanvas(F: TLedMainForm);
+{ Below the early Exit this is Parade's own API, so it is compiled only where
+  there is a Parade to call.  What is left over in a build without one is the
+  check that the feature is not offered, which is the whole of the right
+  behaviour there. }
+{$IFDEF LED_PARADE}
 var
   Tab: TLedTab;
   E: TParadeEdit;
@@ -16613,10 +16626,12 @@ var
   Sid: Integer;
   Sp: pd_section_props;
   Path: string;
+{$ENDIF}
 begin
   Say('new portable canvas');
   Check('New Portable Canvas is offered when the pages are built in', F.actNewCanvas.Visible = LedVisualAvailable);
   if not LedVisualAvailable then Exit;
+  {$IFDEF LED_PARADE}
   F.actNewCanvas.Execute;
   Pump;
   Tab := F.ActiveTab;
@@ -16655,18 +16670,29 @@ begin
   F.CloseActiveTab(False);
   Pump;
   DeleteFile(Path);
+  {$ENDIF}
 end;
 
 { A PowerPoint file opened: an untitled Parade document named as the deck, its slides canvas pages; saving it never
   writes the .pptx }
 procedure TestOpenPptx(F: TLedMainForm);
+{ Parade's API throughout, and nothing to assert without it: a build with no
+  pages in it has no .pptx behaviour to be right or wrong about. }
+{$IFDEF LED_PARADE}
 var
   Tab: TLedTab;
   Src, Copy_, Before: string;
   E: TParadeEdit;
   TW: Integer;
+{$ENDIF}
 begin
   Say('open pptx');
+  {$IFNDEF LED_PARADE}
+  { Said rather than passed over in silence: a heading with nothing under it
+    reads as a test that found nothing to complain about. }
+  Say('  (built without the pages; skipped)');
+  {$ENDIF}
+  {$IFDEF LED_PARADE}
   Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/slides.pptx');
   if not LedVisualAvailable or not FileExists(Src) then Exit;
   Copy_ := TempName('deck.pptx');
@@ -16706,6 +16732,7 @@ begin
   Pump;
   Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);
   DeleteFile(Copy_);
+  {$ENDIF}
 end;
 
 procedure TestStatusCounts(F: TLedMainForm);
