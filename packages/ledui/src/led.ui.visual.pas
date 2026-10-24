@@ -3931,28 +3931,6 @@ begin
   LedTryFocus(FEdit);
 end;
 
-function TLedVisualPane.RibbonTabs: string;
-var
-  i: Integer;
-begin
-  Result := '';
-  for i := 0 to High(FTabBtns) do
-    Result := Result + FTabBtns[i].Caption + LineEnding;
-end;
-
-destructor TLedVisualPane.Destroy;
-var
-  i: Integer;
-begin
-  {$IFDEF LED_PARADE}
-  for i := 0 to High(FThumbs) do
-    FThumbs[i].Free;
-  FThumbs := nil;
-  FreeAndNil(FTableStyleNames);
-  {$ENDIF}
-  inherited Destroy;
-end;
-
 { the page as wide as the view, while that is the zoom the reader has; a zoom chosen another way ends it }
 procedure TLedVisualPane.FitWidth;
 var
@@ -4091,6 +4069,39 @@ begin
 end;
 {$ENDIF}
 
+
+{ These two are below the block above, not in it, because they are declared
+  unconditionally and so have to exist unconditionally.  Built without Parade
+  that block is not compiled at all, and an implementation left inside it is a
+  forward declaration nothing ever solves -- which is where a Parade-less
+  build stopped, on Destroy and on RibbonTabs, with nothing to say that Parade
+  was what it was missing. }
+
+function TLedVisualPane.RibbonTabs: string;
+var
+  i: Integer;
+begin
+  { FTabBtns is built either way: the ribbon is LED's, the editor under it is
+    Parade's. }
+  Result := '';
+  for i := 0 to High(FTabBtns) do
+    Result := Result + FTabBtns[i].Caption + LineEnding;
+end;
+
+destructor TLedVisualPane.Destroy;
+{$IFDEF LED_PARADE}
+var
+  i: Integer;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE}
+  for i := 0 to High(FThumbs) do
+    FThumbs[i].Free;
+  FThumbs := nil;
+  FreeAndNil(FTableStyleNames);
+  {$ENDIF}
+  inherited Destroy;
+end;
 
 function TLedVisualPane.GetEditor: TWinControl;
 begin
