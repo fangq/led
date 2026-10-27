@@ -18,7 +18,7 @@ interface
 
 {$IFDEF LED_PARADE}
 uses
-  SysUtils, paradeedit;
+  Classes, SysUtils, paradeedit;
 
 { Registers the text, code and maths faces this system has with AEdit.
 
@@ -31,11 +31,70 @@ uses
   with every family this machine has. }
 procedure LedParadeAddFonts(AEdit: TParadeEdit;
   AWithSystemFamilies: Boolean = True);
+
+{ The faces to fall back to for a character the text's own font does not
+  have -- a superscript, an arrow, a Chinese character -- as files, in
+  the order to try them.  Parade has a list of families it looks for
+  (TParadeEdit.UseFallbackFonts) but builds its chain once, before a
+  view has registered anything, and only AddSystemFonts makes it look
+  again; a view that does not want that list hands the chain to its
+  document itself.  Empty on a system whose fonts are not where this
+  knows to look. }
+procedure LedParadeFallbackFiles(AList: TStrings);
 {$ENDIF}
 
 implementation
 
 {$IFDEF LED_PARADE}
+
+procedure LedParadeFallbackFiles(AList: TStrings);
+
+  { the first of these that is on this system, under the name Parade's
+    own chain looks for }
+  procedure Face(const AFamily: string; const APaths: array of string);
+  var
+    i: Integer;
+  begin
+    for i := 0 to High(APaths) do
+      if FileExists(APaths[i]) then
+      begin
+        AList.Add(AFamily + '=' + APaths[i]);
+        Exit;
+      end;
+  end;
+
+begin
+  AList.Clear;
+  {$IF DEFINED(WINDOWS) OR DEFINED(DARWIN)}
+  { Nothing named here yet: these two keep their coverage fonts under
+    names of their own, so a view on them registers the whole system
+    list instead and takes Parade's own chain. }
+  {$ELSE}
+  Face('DejaVu Sans',
+    ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+     '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf',
+     '/usr/share/fonts/dejavu/DejaVuSans.ttf']);
+  Face('Noto Sans Symbols2',
+    ['/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf',
+     '/usr/share/fonts/google-noto/NotoSansSymbols2-Regular.ttf']);
+  Face('Noto Sans Symbols',
+    ['/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf',
+     '/usr/share/fonts/google-noto/NotoSansSymbols-Regular.ttf']);
+  Face('Noto Sans CJK SC',
+    ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+     '/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf',
+     '/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc']);
+  Face('WenQuanYi Micro Hei',
+    ['/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+     '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc']);
+  Face('Droid Sans Fallback',
+    ['/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+     '/usr/share/fonts/truetype/droid/DroidSansFallback.ttf']);
+  Face('FreeSerif',
+    ['/usr/share/fonts/truetype/freefont/FreeSerif.ttf',
+     '/usr/share/fonts/gnu-free/FreeSerif.ttf']);
+  {$ENDIF}
+end;
 
 { A serif and a sans for the text, a monospace for code, a math font for
   equations -- wherever this system keeps them.  Parade reads TrueType and
@@ -55,6 +114,7 @@ type
   TFace = record
     Group, Family, Dir, Regular, Bold, Italic, BoldItalic: string;
   end;
+
 const
   Groups: array[0..3] of string = ('serif', 'sans', 'calibri', 'cambria');
 var
@@ -85,6 +145,8 @@ var
 
 var
   Win: string;
+  Covered: Integer;
+  Cover: TStringList;
 begin
   Faces := nil;
   {$IFDEF WINDOWS}
@@ -174,9 +236,25 @@ begin
       AEdit.SetMathFont(Maths[i]);
       Break;
     end;
+  { The faces a character outside the body font falls back to, by the
+    names Parade knows them by, so that a document naming one of them
+    gets it as well.  The fallback chain itself is set from the same
+    files -- see LedParadeFallbackFiles. }
+  Cover := TStringList.Create;
+  try
+    LedParadeFallbackFiles(Cover);
+    for i := 0 to Cover.Count - 1 do
+      AEdit.AddFontFile(Cover.Names[i], Cover.ValueFromIndex[i]);
+    Covered := Cover.Count;
+  finally
+    Cover.Free;
+  end;
+
   { and every other font installed, for the font list: loaded when text
-    first uses one }
-  if AWithSystemFamilies then
+    first uses one.  Also when none of the fallback faces could be found
+    by name -- a platform this does not know its way around is better
+    slow than full of boxes. }
+  if AWithSystemFamilies or (Covered = 0) then
     AEdit.AddSystemFonts;
 end;
 {$ENDIF}

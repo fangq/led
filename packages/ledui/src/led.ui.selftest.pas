@@ -38,7 +38,7 @@ uses
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
   Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit,
-  Led.UI.ParadeView{$ENDIF},
+  Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -12597,6 +12597,7 @@ var
   WasFace: string;
   V: TLedEdit;
   Reach: TLedParadeReach;
+  Fallbacks: TStringList;
 {$ENDIF}
 begin
   Say('the preview on Parade');
@@ -12696,6 +12697,40 @@ begin
     LedPrefs.SetStr(LedPrefPreviewFont, WasFace);
     F.Preview.Restyle;
     Pump;
+  end;
+
+  { Reported: 5 × 10⁻⁵ is not rendered correctly -- the superscripts
+    came out as the empty box a font draws for a character it does not
+    have.
+
+    The body face (Liberation Sans here) has ¹ ² ³ from Latin-1 and
+    none of U+2070 upwards, so the characters have to come from
+    somewhere else.  Parade keeps a chain of faces for exactly this,
+    but builds it the first time it is asked -- before a view has
+    registered any fonts -- and only AddSystemFonts makes it look
+    again; the preview does not register that list, so it hands the
+    chain over itself.  Asked of the layout rather than of the page:
+    every glyph it draws has a number, and the box is number 0. }
+  Fallbacks := TStringList.Create;
+  try
+    LedParadeFallbackFiles(Fallbacks);
+    if (Fallbacks.Count > 0) and (F.Preview.ParadeView <> nil) then
+    begin
+      F.Preview.Update('Absorption was 5 × 10⁻⁵ mm⁻¹, H₂O, 中文 → ∑.',
+        'glyphs', '', True);
+      Pump;
+      F.Preview.RenderNow;
+      Pump;
+      CheckEqInt('a character the body face lacks is not drawn as a box',
+        0, F.Preview.ParadeView.MissingGlyphs);
+      { and back to the document the checks below are about }
+      F.Preview.Update(Tab.Document.Master.Lines.Text, 'parade', '', True);
+      Pump;
+      F.Preview.RenderNow;
+      Pump;
+    end;
+  finally
+    Fallbacks.Free;
   end;
 
   { Reported: the page does not end where the document does -- it is
