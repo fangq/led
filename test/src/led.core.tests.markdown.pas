@@ -44,6 +44,24 @@ type
     procedure FencedCode;
     procedure FencedCodeIsEscaped;
     procedure BlockQuote;
+    procedure AQuoteIsEveryLineOfIt;
+    procedure AQuoteHoldsWhateverADocumentHolds;
+    procedure AnIndentedQuoteMarkerIsCode;
+    procedure ALinkCarriesItsTitle;
+    procedure ADestinationInAngleBracketsMayHoldSpaces;
+    procedure ADestinationWithASpaceInItIsNotALink;
+    procedure AUrlInAngleBracketsIsALink;
+    procedure AnAddressInAngleBracketsIsMailTo;
+    procedure ACodeSpanMayHoldBackticks;
+    procedure TwoSpacesEndTheLine;
+    procedure ABackslashEndsItToo;
+    procedure ALineEndingIsNotABreakInsideCode;
+    procedure AnIndentedBlockIsOneBlock;
+    procedure ALinkCanPointAtADefinition;
+    procedure ADefinitionIsNotShown;
+    procedure ALabelOnItsOwnIsALink;
+    procedure AnImageCanPointAtADefinition;
+    procedure AnUnknownLabelStaysText;
     procedure ThematicBreak;
     procedure Table;
     procedure AnEscapedPipeIsAPipeAndNotASeparator;
@@ -348,7 +366,159 @@ end;
 
 procedure TTestMarkdown.BlockQuote;
 begin
-  AssertHas('quote', Conv('> quoted'), '<blockquote>quoted</blockquote>');
+  { A quote holds blocks, so its text is a paragraph like any other. }
+  AssertHas('quote', Conv('> quoted'), '<blockquote>');
+  AssertHas('its text', Conv('> quoted'), '<p>quoted</p>');
+end;
+
+procedure TTestMarkdown.AQuoteIsEveryLineOfIt;
+var
+  H: string;
+begin
+  { One quote of three lines, not three quotes of one -- and the last line
+    is in it although it carries no marker, which is the same laziness a
+    list item's continuation has. }
+  H := Conv('> one' + LineEnding + '> two' + LineEnding + 'three');
+  AssertCount('one quote', H, '<blockquote>', 1);
+  AssertHas('all of it', H, '<p>one two three</p>');
+end;
+
+procedure TTestMarkdown.AQuoteHoldsWhateverADocumentHolds;
+var
+  H: string;
+begin
+  { The lines are converted the way the document itself is, so a heading or
+    a list inside a quote is a heading or a list.  They used to come out as
+    text with their markers showing. }
+  H := Conv('> # Title' + LineEnding + '> - one' + LineEnding + '> - two');
+  AssertHas('a heading', H, '<h1>Title</h1>');
+  AssertHas('a list', H, '<li>one</li>');
+  AssertCount('inside the one quote', H, '<blockquote>', 1);
+end;
+
+procedure TTestMarkdown.AnIndentedQuoteMarkerIsCode;
+begin
+  { Four spaces in, "> quoted" is a line of code and not a quote.
+
+    It was also an endless loop.  The quote branch took any line whose first
+    character was a >, and the loop that gathers the quote took only lines
+    less than four spaces in -- so this line was claimed by a branch that
+    then consumed nothing, and the converter read it again for ever, growing
+    the output until it ran out of memory.  A branch that can consume
+    nothing is the shape of that bug; this one cannot, because the gatherer
+    takes the line the branch was entered on. }
+  AssertHas('code', Conv('text' + LineEnding + LineEnding + '    > quoted'),
+    '<pre>&gt; quoted</pre>');
+end;
+
+procedure TTestMarkdown.ALinkCarriesItsTitle;
+begin
+  { The title used to go into the href, so every link written with one
+    pointed at a URL with the title inside it. }
+  AssertHas('title and url apart', Conv('[text](/url "what it is")'),
+    '<a href="/url" title="what it is">text</a>');
+end;
+
+procedure TTestMarkdown.ADestinationInAngleBracketsMayHoldSpaces;
+begin
+  AssertHas('the space is sent as %20', Conv('[text](</my path>)'),
+    '<a href="/my%20path">text</a>');
+end;
+
+procedure TTestMarkdown.ADestinationWithASpaceInItIsNotALink;
+begin
+  { Bare, a space ends the destination, and what follows is neither a title
+    nor anything else a link may hold -- so this was never a link. }
+  AssertFalse('not a link', Pos('<a href', Conv('[text](/my uri)')) > 0);
+end;
+
+procedure TTestMarkdown.AUrlInAngleBracketsIsALink;
+begin
+  AssertHas('linked', Conv('see <https://x.example/a?b=1> for more'),
+    '<a href="https://x.example/a?b=1">https://x.example/a?b=1</a>');
+end;
+
+procedure TTestMarkdown.AnAddressInAngleBracketsIsMailTo;
+begin
+  AssertHas('mailto', Conv('<someone@x.example>'),
+    '<a href="mailto:someone@x.example">someone@x.example</a>');
+end;
+
+procedure TTestMarkdown.ACodeSpanMayHoldBackticks;
+begin
+  { A longer run opens it, so the backticks inside are content, and one
+    space at each end is dropped so a span can start with one. }
+  AssertHas('backtick inside', Conv('``a ` b``'), '<code>a ` b</code>');
+  AssertHas('a span of one backtick', Conv('`` ` ``'), '<code>`</code>');
+end;
+
+procedure TTestMarkdown.TwoSpacesEndTheLine;
+begin
+  AssertHas('break', Conv('one  ' + LineEnding + 'two'), 'one<br>two');
+end;
+
+procedure TTestMarkdown.ABackslashEndsItToo;
+begin
+  AssertHas('break', Conv('one\' + LineEnding + 'two'), 'one<br>two');
+  { Only where a line follows it: at the end of a paragraph it is text. }
+  AssertHas('alone it is a backslash', Conv('one\'), '<p>one\</p>');
+end;
+
+procedure TTestMarkdown.ALineEndingIsNotABreakInsideCode;
+begin
+  { The break is carried as the line ending it was and made into a <br> by
+    the inline pass, so that a code span keeps its own. }
+  AssertHas('a space, not a tag', Conv('`one  ' + LineEnding + 'two`'),
+    '<code>one two</code>');
+end;
+
+procedure TTestMarkdown.AnIndentedBlockIsOneBlock;
+var
+  H: string;
+begin
+  { Every line used to be a <pre> of its own, which put each line of a
+    sample in a box. }
+  H := Conv('    first' + LineEnding + '    second');
+  AssertCount('one block', H, '<pre', 1);
+  AssertHas('both lines', H, '<pre>first' + LineEnding + 'second</pre>');
+end;
+
+procedure TTestMarkdown.ALinkCanPointAtADefinition;
+begin
+  AssertHas('resolved',
+    Conv('see [the site][home]' + LineEnding + LineEnding +
+         '[home]: https://x.example "Home"'),
+    '<a href="https://x.example" title="Home">the site</a>');
+end;
+
+procedure TTestMarkdown.ADefinitionIsNotShown;
+var
+  H: string;
+begin
+  { It says where a label points; it is not a line of the document. }
+  H := Conv('[home]: https://x.example' + LineEnding + LineEnding + 'text');
+  AssertFalse('no definition in the output', Pos('[home]:', H) > 0);
+  AssertHas('the text is', H, '<p>text</p>');
+end;
+
+procedure TTestMarkdown.ALabelOnItsOwnIsALink;
+begin
+  AssertHas('shortcut',
+    Conv('go [home]' + LineEnding + LineEnding + '[home]: /start'),
+    '<a href="/start">home</a>');
+end;
+
+procedure TTestMarkdown.AnImageCanPointAtADefinition;
+begin
+  AssertHas('resolved',
+    Conv('![a cat][pic]' + LineEnding + LineEnding + '[pic]: /cat.png'),
+    '<img src="/cat.png" alt="a cat">');
+end;
+
+procedure TTestMarkdown.AnUnknownLabelStaysText;
+begin
+  { Which is what prose full of square brackets depends on. }
+  AssertHas('left alone', Conv('see [note 1] below'), '<p>see [note 1] below</p>');
 end;
 
 procedure TTestMarkdown.ThematicBreak;
