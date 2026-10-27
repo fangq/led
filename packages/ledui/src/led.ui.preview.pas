@@ -77,6 +77,10 @@ type
       caret it moves does not come back as the reader pointing at
       something. }
     FParadeSyncing: Boolean;
+    { When the last live reflow finished and what it cost, for pacing
+      the next one: see PaneResize. }
+    FReflowAt: QWord;
+    FReflowCost: QWord;
     {$ENDIF}
     FEngine: TLedPreviewEngine;
     FBaseFontSize: Integer;      // the renderer's own size, before any zoom
@@ -90,6 +94,12 @@ type
     FHasRendered: Boolean;
     FPendingRender: Boolean;
     FRenderedWidth: Integer;
+    { The code wrapping the page was built for.  A page is built for a
+      width -- LedWrapPreLines breaks code to CodeColumns -- and that is
+      the only part of it that a resize invalidates, so this is what
+      decides whether a settled resize needs the page built again or
+      only laid out again. }
+    FRenderedCols: Integer;
     FRenderedText: string;
     FRenderedTitle: string;
     FRenderedWiki: Boolean;
@@ -458,12 +468,25 @@ end;
 procedure TLedPreviewPane.PaneResize(Sender: TObject);
 begin
   {$IFDEF LED_PARADE}
-  { Parade reflows the page it is holding, and that is 20 ms for a 110 KB
-    document, so a drag can show the text rewrapping as it happens rather
-    than a hidden control and a page at the end. }
+  { Parade reflows the page it is holding, so a drag can show the text
+    rewrapping as it happens rather than a hidden control and a page at
+    the end.  Paced, though: a reflow is tens of milliseconds and a
+    dragged splitter sends resizes faster than that, so reflowing on
+    every one of them puts the pane behind the pointer -- the events
+    queue, the button comes up, and the pane goes on resizing for a
+    second afterwards to wherever the cursor has got to.  So the next
+    reflow waits for twice what the last one cost, which keeps the page
+    live on a document it can afford and still on the reader's hand on
+    one it cannot. }
   if UseParade and (FParade <> nil) and FHasRendered then
   begin
-    FParade.Reflow;
+    if GetTickCount64 - FReflowAt >= 2 * FReflowCost + 30 then
+    begin
+      FReflowAt := GetTickCount64;
+      FParade.Reflow;
+      FReflowCost := GetTickCount64 - FReflowAt;
+      FReflowAt := GetTickCount64;
+    end;
     FResizeTimer.Enabled := False;
     FResizeTimer.Enabled := True;
     Exit;
@@ -483,6 +506,21 @@ begin
     CodeColumns -- so a pane that is no longer that width needs the page
     rebuilt rather than merely shown again.  This is also where a render that
     arrived before the pane had a size gets made good. }
+  {$IFDEF LED_PARADE}
+  { The page itself only depends on the width through the column its
+    code is wrapped to, and Parade lays out what it is holding again in
+    tens of milliseconds.  So a settled resize that did not change that
+    column is a reflow and not a rebuild -- which is the difference
+    between letting go of a splitter and waiting for the page. }
+  if UseParade and (FParade <> nil) and FHasRendered and
+     (not FPendingRender) and (CodeColumns = FRenderedCols) then
+  begin
+    FParade.Reflow;
+    FParade.Visible := True;
+    FRenderedWidth := EngineWidth;
+    Exit;
+  end;
+  {$ENDIF}
   if FPendingRender or (EngineWidth <> FRenderedWidth) then
     Render(nil)
   {$IFDEF LED_PARADE}
@@ -1170,6 +1208,7 @@ begin
   FSyncedLine := 0;
   FLastScroll := FParade.ScrollTop;
   FRenderedWidth := EngineWidth;
+  FRenderedCols := CodeColumns;
   FRenderedText := FPendingText;
   FRenderedTitle := FPendingTitle;
   FRenderedWiki := FIsWiki;
@@ -1308,6 +1347,7 @@ begin
     FLastScroll := FHtml.VScrollPos;
     FSyncedLine := 0;
     FRenderedWidth := FHtml.ClientWidth;
+    FRenderedCols := CodeColumns;
     FRenderedText := FPendingText;
     FRenderedTitle := FPendingTitle;
     FRenderedWiki := FIsWiki;

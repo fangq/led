@@ -12698,6 +12698,17 @@ begin
     Pump;
   end;
 
+  { Reported: the page does not end where the document does -- it is
+    twice as long, with white space after it.
+
+    A Parade page is as tall as it is told to be, and this one is told
+    to be tall so that a document is one page without a seam in it; told
+    to be 20,000 points it is a mile of blank paper under the last line.
+    The height is now the text divided by the pages it needs. }
+  if F.Preview.ParadeView <> nil then
+    Check('the page ends where the document does',
+      F.Preview.ParadeView.PaperUnderText < LedScale96(150));
+
   { Reported: dragging on the page hangs it.
 
     A drag is the reader selecting text, and a click is them pointing at

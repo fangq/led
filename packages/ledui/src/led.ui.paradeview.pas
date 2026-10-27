@@ -19,12 +19,23 @@
   dialect it implements is the one the reader sees either way.  Measured
   the same: 19 ms against 20 for the 110 KB document.
 
-  What is not here yet, and is Parade's side rather than LED's: the paper
-  is white whatever the theme says, because the colour is written into
-  TParadeEdit.PaintPage, and a document longer than one tall page shows
-  the gap between two pages where a web page would show nothing.  Both are
-  a few lines in paradeedit.pas (FPageGap and the two FillRectImg colours)
-  and belong in the Parade tree, not in a copy of it here. }
+  What is not here yet, and is Parade's side rather than LED's:
+
+    - The paper is white whatever the theme says, because the colour is
+      written into TParadeEdit.PaintPage, and the gap and frame between
+      two pages show where a web page would show nothing (FPageGap and
+      the two FillRectImg colours).
+
+    - A press costs what the page holds.  TParadeEdit.MouseDown asks
+      ClickPage whether the point is on a drawing, and DrawingAt walks
+      every drawn item of the page and resolves each one's placement:
+      on this README at a 800 pixel pane one press took 920 ms with the
+      document on one page, 37 ms at 4,000 pt a page and 4 ms at 1,500.
+      That is why the page is cut to an item budget below, which is a
+      workaround and not the fix -- whether a point is on a drawing
+      should not depend on how much text shares the page with it.
+
+  Both belong in the Parade tree, not in a copy of it here. }
 unit Led.UI.ParadeView;
 
 {$mode objfpc}{$H+}
@@ -55,6 +66,7 @@ type
     FAnchors: array of TLedParadeAnchor;
     FWantPt: Double;          { the size the reader asked for }
     FWantFace: string;        { and the face, from Preferences }
+    FLayouts: Integer;        { MEASURE }
     FDownAt: TPoint;          { where the button went down }
     FDownOn: Boolean;         { and whether it is still down }
     FDragged: Boolean;        { it moved far enough to be a drag, not a click }
@@ -90,6 +102,11 @@ type
     { The client y of a place in the document, or MaxInt when the layout
       cannot say where it is. }
     function ClientYOf(const APos: pd_pos): Integer;
+    { Where the text on the last page ends, in points from the top of
+      that page, or 0 when the layout cannot say.  A page as tall as the
+      ceiling is a page with a mile of blank paper under the end of the
+      document, so the page is cut down to this. }
+    function ContentBottom: Double;
     function LineAtY(AY: Integer): Integer;
   protected
     { A click in the page is the reader pointing at a block, and a drag is
@@ -105,6 +122,7 @@ type
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
+    procedure DblClick; override;      { MEASURE }
   public
     constructor Create(AOwner: TComponent); override;
 
@@ -143,6 +161,13 @@ type
     function LastLine: Integer;
     { How many places in the page a source line can be scrolled to. }
     function AnchorCount: Integer;
+    { Blank paper under the end of the document, in pixels.  For a
+      check: a page is as tall as it is told to be, and a page told to
+      be taller than the text is a preview that scrolls on into
+      nothing. }
+    function PaperUnderText: Integer;
+    { MEASURE }
+    function Layouts: Integer;
     { Whether the reader has the button down in the page: nothing that
       moves the view may happen while they do. }
     property Dragging: Boolean read FDownOn;
@@ -169,11 +194,30 @@ const
   { What Parade draws a point as, which is TParadeEdit's own SCREEN_PPI --
     a constant in its implementation, so it is written out again here. }
   ScreenPPI = 96.0;
-  { The tall page the document is laid out on.  A page is measured in
-    pd_sp, a 32-bit count of 1/65536 point, so 32,767 pt is the ceiling
-    and this is comfortably under it: about 1,400 lines of body text, so
-    an ordinary README is one page and shows no seam at all. }
+  { The page the document is first laid out on, before it is cut down to
+    what the content actually used.  A page is measured in pd_sp, a
+    32-bit count of 1/65536 point, so 32,767 pt is the ceiling and this
+    is comfortably under it: about 1,400 lines of body text, so an
+    ordinary README is one page and shows no seam at all. }
   PageTallPt = 20000.0;
+  { How many drawn items a page may hold before it is split into more
+    pages.  Nothing about the layout wants this -- laying out and
+    painting a tall page are both cheap, and the whole point of the page
+    being tall is that a document is one page with no seam in it.  It is
+    what a press costs: TParadeEdit.MouseDown asks ClickPage whether the
+    point is on a drawing, and that walks every item of the page and
+    resolves each one's placement.  Measured on this README at a 800
+    pixel pane, one press: a 20,000 pt page (2 pages, ~30,000 items)
+    takes 920 ms, 4,000 pt 37 ms, 1,500 pt 4 ms.  So the page is cut to
+    about this many items, which keeps a press under about ten
+    milliseconds and still leaves an ordinary page or two rather than
+    forty.
+
+    The real fix is in Parade -- a point is on a drawing or it is not,
+    and answering that should not depend on how much text shares the
+    page -- and when it lands this can go and the page can be as tall as
+    the document. }
+  PageItemBudget = 4000;
   { The gap after a paragraph, in points: a blank line, near enough. }
   PageSpacePt = 6.0;
   { Room between the text and the edge of the page.  Small: the pane is
@@ -423,9 +467,11 @@ end;
 procedure TLedParadeView.LayOutForWidth;
 var
   Room: Integer;
-  WidthPt: Double;
+  WidthPt, Bottom, TallPt, Whole: Double;
+  Items, Pages: Int32;
   Was: Boolean;
 begin
+  TallPt := PageTallPt;
   if Doc = nil then Exit;
   if (FWantPt > 0) and (FBodyPt > 0) then
     Zoom := FWantPt / FBodyPt;
@@ -440,11 +486,47 @@ begin
     HTML reader gave it and clip the text at the right of the pane.  This
     edit is the pane's own and not the reader's, so it is made with the
     lock briefly off and the document is not marked as changed by it. }
+  Inc(FLayouts);
   Was := ReadOnly;
   ReadOnly := False;
   try
     SetMargins(PageMarginPt, PageMarginPt, PageMarginPt, PageMarginPt);
-    SetPageSize(WidthPt, PageTallPt);
+    SetPageSize(WidthPt, TallPt);
+    { Down to what a press can afford, when the page came out dense:
+      see PageItemBudget. }
+    if PageCount > 0 then
+    begin
+      Items := 0;
+      if pd_layout_page_items(Layout, 0, nil, 0, Items) <> PD_OK then
+        Items := 0;
+      if Items > PageItemBudget then
+      begin
+        TallPt := TallPt * PageItemBudget / Items;
+        if TallPt < 400 then TallPt := 400;
+        SetPageSize(WidthPt, TallPt);
+      end;
+    end;
+    { and then down to the text, so the page ends where the document
+      does rather than a mile of blank paper below it.
+
+      Every page of a section is the same height, so the last one cannot
+      simply be cut: instead the height is the text divided by however
+      many pages it needs, which lands the end of the document on the
+      end of the last page.  A line that moves as the pages change can
+      spill over into one more; that is one page of slack and not a
+      mile, and taking the first height back is worse than living with
+      it. }
+    for Pages := 1 to 3 do
+    begin
+      Bottom := ContentBottom;
+      if (PageCount = 0) or (Bottom <= 0) then Break;
+      { the paper left under the text on the last page }
+      if TallPt - (Bottom + PageMarginPt) < 24 then Break;
+      Whole := ((PageCount - 1) * TallPt + Bottom + PageMarginPt) / PageCount;
+      if (Whole < 4 * PageMarginPt) or (Abs(Whole - TallPt) < 1) then Break;
+      TallPt := Whole;
+      SetPageSize(WidthPt, TallPt);
+    end;
   finally
     ReadOnly := Was;
     Modified := False;
@@ -551,6 +633,32 @@ begin
   if Result then LayOutForWidth;
 end;
 
+function TLedParadeView.ContentBottom: Double;
+var
+  Para, Last: pd_block_id;
+  Info: pd_block_info;
+  P: pd_pos;
+  Page: Int32;
+  X, Base, Asc, Desc: pd_sp;
+begin
+  Result := 0;
+  if (Doc = nil) or (Layout = nil) then Exit;
+  { the end of the last paragraph, which is where the document stops }
+  Last := 0;
+  Para := pd_doc_next_paragraph(Doc, 0);
+  while Para <> 0 do
+  begin
+    Last := Para;
+    Para := pd_doc_next_paragraph(Doc, Para);
+  end;
+  if Last = 0 then Exit;
+  if pd_doc_block_info(Doc, Last, Info) <> PD_OK then Exit;
+  P.block := Last;
+  P.offset := Info.text_length;
+  if pd_layout_caret(Layout, P, Page, X, Base, Asc, Desc) <> PD_OK then Exit;
+  Result := (Base + Desc) / PD_SP_PER_PT;
+end;
+
 function TLedParadeView.ClientYOf(const APos: pd_pos): Integer;
 var
   Page: Int32;
@@ -600,15 +708,32 @@ begin
     FDragged := True;
 end;
 
+procedure TLedParadeView.DblClick;
+var
+  T: QWord;
+begin
+  T := GetTickCount64;
+  inherited DblClick;
+  WriteLn('    [DblClick took ', GetTickCount64 - T, ' ms]');
+  Flush(Output);
+end;
+
 procedure TLedParadeView.MouseUp(Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 var
   Clicked: Boolean;
   Line: Integer;
+  SelA, SelB: pd_pos;
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if Button <> mbLeft then Exit;
-  Clicked := FDownOn and not FDragged;
+  { A double click selects the word and a triple one the paragraph, and
+    the second button-up of either arrives here looking exactly like a
+    click.  What the pane does with a reported line is move the text
+    view and take the focus, which is not what somebody selecting a word
+    asked for -- so a gesture that left a selection behind reports
+    nothing. }
+  Clicked := FDownOn and not FDragged and not SelectionRange(SelA, SelB);
   FDownOn := False;
   if not (Clicked and Assigned(FOnClickedLine)) then Exit;
   Line := LineAtCaret;
@@ -661,12 +786,43 @@ begin
   Result := -PageToClient(0, 0, 0).Y;
 end;
 
+function TLedParadeView.PaperUnderText: Integer;
+var
+  Info: pd_page_info;
+  Para, Last: pd_block_id;
+  BI: pd_block_info;
+  P: pd_pos;
+  Foot: Integer;
+begin
+  Result := 0;
+  if (Doc = nil) or (Layout = nil) or (PageCount = 0) then Exit;
+  if pd_layout_page_info(Layout, PageCount - 1, Info) <> PD_OK then Exit;
+  Last := 0;
+  Para := pd_doc_next_paragraph(Doc, 0);
+  while Para <> 0 do
+  begin
+    Last := Para;
+    Para := pd_doc_next_paragraph(Doc, Para);
+  end;
+  if (Last = 0) or (pd_doc_block_info(Doc, Last, BI) <> PD_OK) then Exit;
+  P.block := Last;
+  P.offset := BI.text_length;
+  Foot := PageToClient(PageCount - 1, 0, Info.height / PD_SP_PER_PT).Y;
+  Result := Foot - ClientYOf(P);
+  if Result < 0 then Result := 0;
+end;
+
 function TLedParadeView.LastLine: Integer;
 begin
   if Length(FAnchors) = 0 then
     Result := 0
   else
     Result := FAnchors[High(FAnchors)].Line;
+end;
+
+function TLedParadeView.Layouts: Integer;
+begin
+  Result := FLayouts;
 end;
 
 function TLedParadeView.AnchorCount: Integer;
