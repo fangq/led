@@ -723,6 +723,97 @@ begin
   end;
 end;
 
+{ Punctuation and whitespace, as the flanking rules below count them. }
+function IsMdPunct(C: Char): Boolean;
+begin
+  Result := C in ['!'..'/', ':'..'@', '['..'`', '{'..'~'];
+end;
+
+function IsMdSpace(C: Char): Boolean;
+begin
+  Result := C in [' ', #9, #10, #13];
+end;
+
+{ Whether a run of * or _ can open emphasis, can close it, both or neither.
+
+  Which side a delimiter faces is decided by what stands either side of it,
+  not by how many have been seen -- CommonMark calls a run left-flanking
+  when it is not followed by space and right-flanking when it is not
+  preceded by space, with punctuation on the far side settling the cases
+  where it is both.
+
+  This is what keeps the asterisks in "2 * 3 * 4" as multiplication signs
+  instead of turning the line italic, and it is why _ has a rule of its own:
+  it may not open or close inside a word, so my_var_name is a name and not a
+  name with var in italics.  An asterisk may, because **a**b is deliberate
+  and a_b almost never is. }
+procedure RunFlanks(const S: string; AFrom, ATo: Integer;
+  out ACanOpen, ACanClose: Boolean);
+var
+  Prev, Next: Char;
+  Left, Right: Boolean;
+begin
+  if AFrom > 1 then Prev := S[AFrom - 1] else Prev := ' ';
+  if ATo < Length(S) then Next := S[ATo + 1] else Next := ' ';
+  Left := (not IsMdSpace(Next)) and
+          ((not IsMdPunct(Next)) or IsMdSpace(Prev) or IsMdPunct(Prev));
+  Right := (not IsMdSpace(Prev)) and
+           ((not IsMdPunct(Prev)) or IsMdSpace(Next) or IsMdPunct(Next));
+  if S[AFrom] = '_' then
+  begin
+    ACanOpen := Left and ((not Right) or IsMdPunct(Prev));
+    ACanClose := Right and ((not Left) or IsMdPunct(Next));
+  end
+  else
+  begin
+    ACanOpen := Left;
+    ACanClose := Right;
+  end;
+end;
+
+{ Where the run that closes emphasis opened with ACount of ACh begins, or 0.
+
+  A run of another length is stepped over rather than taken, which is what
+  lets *foo **bar** baz* close on the last asterisk and keep the pair in the
+  middle for the inner pass -- it used to close on the first and leave three
+  italics in a row.  Code spans are stepped over whole: a delimiter inside
+  one is text. }
+function EmphClose(const S: string; AFrom: Integer; ACh: Char;
+  ACount: Integer): Integer;
+var
+  i, k, j: Integer;
+  CanOpen, CanClose: Boolean;
+begin
+  Result := 0;
+  i := AFrom;
+  while i <= Length(S) do
+  begin
+    if (S[i] = '\') and (i < Length(S)) then
+    begin
+      Inc(i, 2);
+      Continue;
+    end;
+    if S[i] = '`' then
+    begin
+      k := 0;
+      while (i + k <= Length(S)) and (S[i + k] = '`') do Inc(k);
+      j := CodeSpanEnd(S, i + k, k);
+      if j > 0 then i := j + k else Inc(i, k);
+      Continue;
+    end;
+    if S[i] = ACh then
+    begin
+      k := 0;
+      while (i + k <= Length(S)) and (S[i + k] = ACh) do Inc(k);
+      RunFlanks(S, i, i + k - 1, CanOpen, CanClose);
+      if (k = ACount) and CanClose then Exit(i);
+      Inc(i, k);
+      Continue;
+    end;
+    Inc(i);
+  end;
+end;
+
 { The label a link to a definition uses, and where the whole of it ends.
   ABar is the ] that closes the link's text and AText what was inside it:
   [text][label] uses the label, [text][] and the bare [label] use the text
@@ -812,6 +903,8 @@ function InlineSpans(const AText: string): string;
 var
   i, n, Close, Bar, Paren, Run, Next: Integer;
   Label_: string;
+  Delim: Char;
+  CanOpen, CanClose: Boolean;
   Title, Href, Shown: string;
   Out_: string;
   Url, Text: string;
@@ -939,26 +1032,34 @@ begin
       end;
     end;
 
-    if (Copy(AText, i, 2) = '**') or (Copy(AText, i, 2) = '__') then
-    begin
-      Close := FindClose(AText, Copy(AText, i, 2), i + 2);
-      if Close > 0 then
-      begin
-        Emit('<b>' + InlineSpans(Copy(AText, i + 2, Close - i - 2)) + '</b>');
-        i := Close + 2;
-        Continue;
-      end;
-    end;
-
+    { Emphasis: one delimiter for <i>, two for <b>, three for both.  The run
+      has to be able to open where it stands and the run that ends it has to
+      be able to close where it stands, or the characters are characters. }
     if (AText[i] = '*') or (AText[i] = '_') then
     begin
-      Close := FindClose(AText, AText[i], i + 1);
-      if Close > i + 1 then
+      Delim := AText[i];
+      Run := 0;
+      while (i + Run <= n) and (AText[i + Run] = Delim) do Inc(Run);
+      RunFlanks(AText, i, i + Run - 1, CanOpen, CanClose);
+      if CanOpen then
       begin
-        Emit('<i>' + InlineSpans(Copy(AText, i + 1, Close - i - 1)) + '</i>');
-        i := Close + 1;
-        Continue;
+        Close := EmphClose(AText, i + Run, Delim, Run);
+        if Close > 0 then
+        begin
+          Text := InlineSpans(Copy(AText, i + Run, Close - i - Run));
+          if Run = 1 then
+            Emit('<i>' + Text + '</i>')
+          else if Run = 2 then
+            Emit('<b>' + Text + '</b>')
+          else
+            Emit('<b><i>' + Text + '</i></b>');
+          i := Close + Run;
+          Continue;
+        end;
       end;
+      Emit(StringOfChar(Delim, Run));
+      Inc(i, Run);
+      Continue;
     end;
 
     { A bare URL is a link.  People write them constantly and expect them to

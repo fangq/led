@@ -21,6 +21,11 @@ type
     procedure Paragraphs;
     procedure Emphasis;
     procedure BoldAndItalicTogether;
+    procedure AnUnderscoreInsideAWordIsNotEmphasis;
+    procedure AnAsteriskWithSpaceEitherSideIsNotEmphasis;
+    procedure EmphasisNestsInsideEmphasis;
+    procedure ThreeDelimitersAreBoth;
+    procedure ADelimiterInsideACodeSpanIsText;
     procedure InlineCodeIsNotMarkup;
     procedure Links;
     procedure Images;
@@ -164,6 +169,49 @@ begin
     Conv('**strong** and *soft*'), '<b>strong</b>');
   AssertHas('and the italic still works',
     Conv('**strong** and *soft*'), '<i>soft</i>');
+end;
+
+{ Whether a run of delimiters opens emphasis, closes it or is simply text
+  is decided by what stands either side of it -- CommonMark's flanking
+  rules.  Without them any asterisk found a partner somewhere later in the
+  paragraph. }
+procedure TTestMarkdown.AnUnderscoreInsideAWordIsNotEmphasis;
+begin
+  { The one that matters in a programmer's editor: my_var_name came out as
+    my<i>var</i>name. }
+  AssertHas('left alone', Conv('call my_var_name and other_thing.'),
+    '<p>call my_var_name and other_thing.</p>');
+  AssertHas('but a word of its own still works', Conv('an _emphasised_ word'),
+    '<i>emphasised</i>');
+end;
+
+procedure TTestMarkdown.AnAsteriskWithSpaceEitherSideIsNotEmphasis;
+begin
+  { Multiplication, and a star used as a footnote mark: a delimiter with
+    space after it opens nothing. }
+  AssertHas('still arithmetic', Conv('the product 2 * 3 * 4 is 24.'),
+    '<p>the product 2 * 3 * 4 is 24.</p>');
+end;
+
+procedure TTestMarkdown.EmphasisNestsInsideEmphasis;
+begin
+  { It closed on the first delimiter it found, which left three italics in
+    a row where there should be one with a bold inside it. }
+  AssertHas('nested', Conv('*foo **bar** baz*'),
+    '<i>foo <b>bar</b> baz</i>');
+end;
+
+procedure TTestMarkdown.ThreeDelimitersAreBoth;
+begin
+  AssertHas('bold and italic', Conv('***both***'), '<b><i>both</i></b>');
+end;
+
+procedure TTestMarkdown.ADelimiterInsideACodeSpanIsText;
+begin
+  { The search for the closing run steps over code spans, so a star in a
+    snippet does not end the emphasis around it. }
+  AssertHas('the span is whole', Conv('*a `b*c` d*'),
+    '<i>a <code>b*c</code> d</i>');
 end;
 
 procedure TTestMarkdown.InlineCodeIsNotMarkup;
