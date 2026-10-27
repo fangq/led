@@ -1188,8 +1188,10 @@ begin
   EnsureParade;
   { The reader's own face and size, the same ones IPro is given in
     ApplyFixedFont. }
+  { Recorded rather than applied: the page they are for is the one about
+    to be handed over below. }
   FParade.SetProseFont(LedPreviewFace,
-    LedPreviewPointSize(FBaseFontSize) + LedPageZoom);
+    LedPreviewPointSize(FBaseFontSize) + LedPageZoom, False);
   FParadeSyncing := True;
   try
     try
