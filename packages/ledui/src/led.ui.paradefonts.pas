@@ -20,9 +20,17 @@ interface
 uses
   SysUtils, paradeedit;
 
-{ Registers the text, code and maths faces this system has with AEdit, and
-  then every other installed family by name, for a font list. }
-procedure LedParadeAddFonts(AEdit: TParadeEdit);
+{ Registers the text, code and maths faces this system has with AEdit.
+
+  AWithSystemFamilies adds every other installed family by name as well,
+  which is what a font list is picked from.  A view with no font list
+  does not want them: Parade resolves a family by walking the faces it
+  has been given, once per run of text, so a few hundred registered
+  families are paid for on every layout.  Measured on a 110 KB document
+  at a 800 pixel pane, one width change: 12 ms with the faces below, 34
+  with every family this machine has. }
+procedure LedParadeAddFonts(AEdit: TParadeEdit;
+  AWithSystemFamilies: Boolean = True);
 {$ENDIF}
 
 implementation
@@ -41,7 +49,8 @@ implementation
   break where Word broke them.  Calibri and Cambria, the Office defaults,
   have twins of their own, Carlito and Caladea, registered under the names
   documents ask for. }
-procedure LedParadeAddFonts(AEdit: TParadeEdit);
+procedure LedParadeAddFonts(AEdit: TParadeEdit;
+  AWithSystemFamilies: Boolean);
 type
   TFace = record
     Group, Family, Dir, Regular, Bold, Italic, BoldItalic: string;
@@ -165,8 +174,10 @@ begin
       AEdit.SetMathFont(Maths[i]);
       Break;
     end;
-  { and every other font installed, for the font list: loaded when text first uses one }
-  AEdit.AddSystemFonts;
+  { and every other font installed, for the font list: loaded when text
+    first uses one }
+  if AWithSystemFamilies then
+    AEdit.AddSystemFonts;
 end;
 {$ENDIF}
 

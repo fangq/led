@@ -8,11 +8,21 @@
   110 KB document is 9.9 seconds.  That is what LedPrefPreviewMaxKB is a
   ceiling on.
 
-  Parade lays the same documents out in 56 ms and 20 ms a reflow, and it
-  is already incremental: one typed character re-breaks one paragraph of
-  2,628.  So this is the same preview with the other engine under it --
-  one page as wide as the pane and as tall as it needs to be, reflowed
-  when the pane changes width, read only.
+  Parade lays the same documents out far faster, and it is already
+  incremental: one typed character re-breaks one paragraph of 2,628.  So
+  this is the same preview with the other engine under it -- a page as
+  wide as the pane and as tall as the text, reflowed when the pane
+  changes width, read only.  What the pane takes, end to end, from the
+  Markdown in the buffer to a page on screen:
+
+      8 KB      8 ms    (IPro 62)
+     18 KB     21 ms
+     37 KB     24 ms    (IPro 213)
+    110 KB     70 ms    (IPro 997, and it raises with the cap lifted)
+      1 MB    728 ms    (IPro: not measured; the cap is 64 KB)
+
+  and a resize, which IPro cannot do at all without building the page
+  again: 12 ms for the README, 27 for the 110 KB document.
 
   It is fed LED's own HTML rather than Parade's Markdown reader, through
   PD_CONV_HTML, so the document is read by Led.Core.Markdown and the
@@ -66,13 +76,19 @@ type
     FAnchors: array of TLedParadeAnchor;
     FWantPt: Double;          { the size the reader asked for }
     FWantFace: string;        { and the face, from Preferences }
-    FLayouts: Integer;        { MEASURE }
     FDownAt: TPoint;          { where the button went down }
     FDownOn: Boolean;         { and whether it is still down }
     FDragged: Boolean;        { it moved far enough to be a drag, not a click }
     FOnClickedLine: TLedParadeLineEvent;
     FBodyPt: Double;          { the size the document's own body came in at }
     FLaidOutFor: Integer;     { the pane width the page was last laid out for }
+    { The page height it settled on last time, as the first guess for
+      the next time.  Starting from the ceiling instead means the one
+      layout that cannot reuse anything is spent on a page height that
+      is about to be thrown away: from the last height, the first
+      layout is already nearly right and the passes after it are the
+      cheap kind. }
+    FTallPt: Double;
     procedure CollectAnchors;
     { A blank line between paragraphs.  The page asks for one in its style
       sheet, which the HTML reader does not read, so the document's own
@@ -107,6 +123,17 @@ type
       ceiling is a page with a mile of blank paper under the end of the
       document, so the page is cut down to this. }
     function ContentBottom: Double;
+    { The page at this size, in one go.  SetMargins and SetPageSize are
+      an edit each, and an edit is a layout: setting the two separately
+      lays the document out twice over, and the first of those is the
+      expensive one because nothing of it can be reused.  Measured on a
+      110 KB document: 53 ms for the margins and 47 for the size, where
+      the passes after them -- same width, a different page height --
+      are 8. }
+    procedure SetPage(AWidthPt, AHeightPt: Double);
+    function PageHeightPt: Double;
+    function TextHeight(out ABottom: Double; out APages: Int32;
+      out AItems: Int32): Double;
     function LineAtY(AY: Integer): Integer;
   protected
     { A click in the page is the reader pointing at a block, and a drag is
@@ -122,7 +149,6 @@ type
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer); override;
-    procedure DblClick; override;      { MEASURE }
   public
     constructor Create(AOwner: TComponent); override;
 
@@ -138,8 +164,13 @@ type
       "Notebook and preview text font").  The size is applied as a zoom,
       because the size the document carries is the HTML's and the
       reader's choice is about all of its text at once; the face is
-      applied to the body style. }
-    procedure SetProseFont(const AFace: string; APoints: Integer);
+      applied to the body style.
+
+      AApply is for the caller that is about to hand over a new page:
+      applying them to the page being replaced is a layout of a document
+      nobody will see. }
+    procedure SetProseFont(const AFace: string; APoints: Integer;
+      AApply: Boolean = True);
 
     { Lays the page out again if the pane is no longer the width it was
       laid out for, and says whether it did. }
@@ -166,8 +197,6 @@ type
       be taller than the text is a preview that scrolls on into
       nothing. }
     function PaperUnderText: Integer;
-    { MEASURE }
-    function Layouts: Integer;
     { Whether the reader has the button down in the page: nothing that
       moves the view may happen while they do. }
     property Dragging: Boolean read FDownOn;
@@ -213,6 +242,9 @@ const
     milliseconds and still leaves an ordinary page or two rather than
     forty.
 
+    With the budget as it stands a press is about 25 ms on that README
+    and a double click 50.
+
     The real fix is in Parade -- a point is on a drawing or it is not,
     and answering that should not depend on how much text shares the
     page -- and when it lands this can go and the page can be as tall as
@@ -220,6 +252,12 @@ const
   PageItemBudget = 4000;
   { The gap after a paragraph, in points: a blank line, near enough. }
   PageSpacePt = 6.0;
+  { Room left on each page when the height is cut to the text: a line,
+    so that a line which moves as the pages change has somewhere to go
+    rather than starting a page of its own. }
+  PageSlackPt = 18.0;
+  { No page shorter than this, whatever the arithmetic says. }
+  PageLeastPt = 400.0;
   { Room between the text and the edge of the page.  Small: the pane is
     narrow and the gap the control leaves around the page is already
     there. }
@@ -323,7 +361,10 @@ begin
   FWantPt := 0;
   FBodyPt := 0;
   FLaidOutFor := -1;
-  LedParadeAddFonts(Self);
+  { Without the system's font list: a preview shows what the document
+    names and has nothing to pick a font with, and the list is paid for
+    on every layout -- see LedParadeAddFonts. }
+  LedParadeAddFonts(Self, False);
 end;
 
 { The size the document's own body text is in, read off the first
@@ -464,14 +505,75 @@ begin
     ScreenPPI / 72.0);
 end;
 
+{ How tall the text is, from the pages it is laid out on: every page but
+  the last one is full, and the last one holds what ContentBottom says.
+  ABottom, APages and AItems come back with what it had to ask for --
+  where the text ends on the last page, how many pages there are, and
+  how many drawn items they hold between them. }
+function TLedParadeView.TextHeight(out ABottom: Double; out APages: Int32;
+  out AItems: Int32): Double;
+var
+  I: Integer;
+  N: Int32;
+begin
+  Result := 0;
+  ABottom := 0;
+  APages := 0;
+  AItems := 0;
+  if (Doc = nil) or (Layout = nil) or (PageCount = 0) then Exit;
+  APages := PageCount;
+  for I := 0 to APages - 1 do
+  begin
+    N := 0;
+    if pd_layout_page_items(Layout, I, nil, 0, N) = PD_OK then
+      Inc(AItems, N);
+  end;
+  ABottom := ContentBottom;
+  if ABottom <= 0 then Exit;
+  Result := (APages - 1) * (PageHeightPt - 2 * PageMarginPt) +
+    (ABottom - PageMarginPt);
+end;
+
+{ The height of a page as the section now has it, in points. }
+function TLedParadeView.PageHeightPt: Double;
+var
+  Info: pd_page_info;
+begin
+  Result := 0;
+  if (Layout = nil) or (PageCount = 0) then Exit;
+  if pd_layout_page_info(Layout, 0, Info) = PD_OK then
+    Result := Info.height / PD_SP_PER_PT;
+end;
+
+procedure TLedParadeView.SetPage(AWidthPt, AHeightPt: Double);
+var
+  P: pd_section_props;
+  M: pd_sp;
+begin
+  P := CurrentSectionProps;
+  M := Round(PageMarginPt * PD_SP_PER_PT);
+  if (P.page_width = Round(AWidthPt * PD_SP_PER_PT)) and
+     (P.page_height = Round(AHeightPt * PD_SP_PER_PT)) and
+     (P.margin_top = M) and (P.margin_left = M) then
+    Exit;     { already so: an edit that changes nothing is still a layout }
+  P.page_width := Round(AWidthPt * PD_SP_PER_PT);
+  P.page_height := Round(AHeightPt * PD_SP_PER_PT);
+  P.margin_top := M;
+  P.margin_bottom := M;
+  P.margin_left := M;
+  P.margin_right := M;
+  ApplySectionProps(P);
+end;
+
 procedure TLedParadeView.LayOutForWidth;
 var
   Room: Integer;
-  WidthPt, Bottom, TallPt, Whole: Double;
+  WidthPt, Bottom, TallPt, Content, Cap, Want, Spare: Double;
   Items, Pages: Int32;
   Was: Boolean;
 begin
-  TallPt := PageTallPt;
+  TallPt := FTallPt;
+  if TallPt <= 0 then TallPt := PageTallPt;
   if Doc = nil then Exit;
   if (FWantPt > 0) and (FBodyPt > 0) then
     Zoom := FWantPt / FBodyPt;
@@ -486,51 +588,62 @@ begin
     HTML reader gave it and clip the text at the right of the pane.  This
     edit is the pane's own and not the reader's, so it is made with the
     lock briefly off and the document is not marked as changed by it. }
-  Inc(FLayouts);
   Was := ReadOnly;
   ReadOnly := False;
   try
-    SetMargins(PageMarginPt, PageMarginPt, PageMarginPt, PageMarginPt);
-    SetPageSize(WidthPt, TallPt);
-    { Down to what a press can afford, when the page came out dense:
-      see PageItemBudget. }
-    if PageCount > 0 then
-    begin
-      Items := 0;
-      if pd_layout_page_items(Layout, 0, nil, 0, Items) <> PD_OK then
-        Items := 0;
-      if Items > PageItemBudget then
-      begin
-        TallPt := TallPt * PageItemBudget / Items;
-        if TallPt < 400 then TallPt := 400;
-        SetPageSize(WidthPt, TallPt);
-      end;
-    end;
-    { and then down to the text, so the page ends where the document
-      does rather than a mile of blank paper below it.
+    SetPage(WidthPt, TallPt);
+    { One measurement, and one page height worked out from it.
 
-      Every page of a section is the same height, so the last one cannot
-      simply be cut: instead the height is the text divided by however
-      many pages it needs, which lands the end of the document on the
-      end of the last page.  A line that moves as the pages change can
-      spill over into one more; that is one page of slack and not a
-      mile, and taking the first height back is worse than living with
-      it. }
-    for Pages := 1 to 3 do
+      Two things decide the height.  A page may not hold so much that a
+      press on it is slow (PageItemBudget), and the text should end near
+      the end of the last page rather than a mile above it.  Both follow
+      from the same two numbers -- how tall the text is and how many
+      items it is drawn with -- so they are measured once, here, rather
+      than approached by laying the document out over and over: the
+      page height that fills exactly is unstable, because shrinking a
+      page moves its last line onto a page of its own, which leaves the
+      last page nearly empty and asks to shrink again.  Measured, that
+      loop walked 1,398 pt down to 1,203 over four passes and was no
+      closer at the end than after the first. }
+    Content := TextHeight(Bottom, Pages, Items);
+    if (Content > 0) and (Items > 0) and (Pages > 0) then
     begin
-      Bottom := ContentBottom;
-      if (PageCount = 0) or (Bottom <= 0) then Break;
-      { the paper left under the text on the last page }
-      if TallPt - (Bottom + PageMarginPt) < 24 then Break;
-      Whole := ((PageCount - 1) * TallPt + Bottom + PageMarginPt) / PageCount;
-      if (Whole < 4 * PageMarginPt) or (Abs(Whole - TallPt) < 1) then Break;
-      TallPt := Whole;
-      SetPageSize(WidthPt, TallPt);
+      { the tallest page that still keeps a press cheap }
+      Cap := Content * PageItemBudget / Items + 2 * PageMarginPt;
+      if Cap > PageTallPt then Cap := PageTallPt;
+      if Cap < PageLeastPt then Cap := PageLeastPt;
+      { the pages the text needs at that height, and the height that
+        shares it out evenly between them, with a line to spare on each
+        so that a line which moves has somewhere to go }
+      Want := Content / Max(1, Ceil(Content / (Cap - 2 * PageMarginPt)));
+      Want := Want + 2 * PageMarginPt;
+      if Content + 2 * PageMarginPt > Want then
+        Want := Want + PageSlackPt;
+      { Worth another layout?  On a resize the page height it settled on
+        last time is usually still about right, and the measurement
+        above says so without laying anything out: a page within its
+        item budget whose last page is nearly full is left alone. }
+      if (Want > 4 * PageMarginPt) and (Abs(Want - TallPt) > 2) and
+         ((Items / Pages > PageItemBudget) or
+          (TallPt - Bottom - PageMarginPt > 4 * PageSlackPt) or
+          (Want > TallPt + 4 * PageSlackPt)) then
+      begin
+        Spare := TallPt - Bottom - PageMarginPt;    { paper under the text now }
+        SetPage(WidthPt, Want);
+        { and the same question of the new height: a height that leaves
+          more blank paper under the document than the one it replaced
+          is not an improvement }
+        if Want - ContentBottom - PageMarginPt > Max(Spare, PageSlackPt) then
+          SetPage(WidthPt, TallPt)
+        else
+          TallPt := Want;
+      end;
     end;
   finally
     ReadOnly := Was;
     Modified := False;
   end;
+  FTallPt := TallPt;
   FLaidOutFor := ClientWidth;
 end;
 
@@ -562,21 +675,23 @@ begin
   FBodyPt := BodyPointSize;
   CollectAnchors;
   FLaidOutFor := -1;
+  { A page of its own: how tall the last document wanted to be says
+    nothing about this one. }
+  FTallPt := 0;
   LayOutForWidth;
 end;
 
-procedure TLedParadeView.SetProseFont(const AFace: string; APoints: Integer);
+procedure TLedParadeView.SetProseFont(const AFace: string; APoints: Integer;
+  AApply: Boolean);
 begin
   if APoints < 4 then APoints := 4;
   if (FWantPt = APoints) and (FWantFace = AFace) then Exit;
-  if FWantFace <> AFace then
-  begin
-    FWantFace := AFace;
-    if Doc <> nil then UseProseFace;
-  end;
+  FWantFace := AFace;
   FWantPt := APoints;
   FLaidOutFor := -1;
-  if Doc <> nil then LayOutForWidth;
+  if not (AApply and (Doc <> nil)) then Exit;
+  UseProseFace;
+  LayOutForWidth;
 end;
 
 function TLedParadeView.FaceNamed(const AWanted: string): string;
@@ -708,16 +823,6 @@ begin
     FDragged := True;
 end;
 
-procedure TLedParadeView.DblClick;
-var
-  T: QWord;
-begin
-  T := GetTickCount64;
-  inherited DblClick;
-  WriteLn('    [DblClick took ', GetTickCount64 - T, ' ms]');
-  Flush(Output);
-end;
-
 procedure TLedParadeView.MouseUp(Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 var
@@ -818,11 +923,6 @@ begin
     Result := 0
   else
     Result := FAnchors[High(FAnchors)].Line;
-end;
-
-function TLedParadeView.Layouts: Integer;
-begin
-  Result := FLayouts;
 end;
 
 function TLedParadeView.AnchorCount: Integer;
