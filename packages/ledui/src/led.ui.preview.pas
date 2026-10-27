@@ -12,6 +12,7 @@
 unit Led.UI.Preview;
 
 {$mode objfpc}{$H+}
+{$I led.parade.inc}
 
 interface
 
@@ -21,12 +22,19 @@ uses
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.Core.NBImage,
   Led.Core.NBFetch, Led.Core.NBConvert, Led.UI.Dpi, Led.UI.PageStyle,
-  Led.UI.Pictures;
+  Led.UI.Pictures
+  {$IFDEF LED_PARADE}, Led.UI.ParadeView, Led.UI.Prefs{$ENDIF};
 
 type
   { Fired when the reader clicks a place in the rendered page, with the source
     line that place came from. }
   TLedPreviewLineEvent = procedure(Sender: TObject; ALine: Integer) of object;
+
+  { Which engine lays the page out.  lpeFromPrefs is what a pane does
+    unless something pins it -- see LedPrefPreviewEngine -- and pinning is
+    for a check, which must not read the reader's preferences, and for
+    anything that wants both engines in one run. }
+  TLedPreviewEngine = (lpeFromPrefs, lpeIPro, lpeParade);
 
   { Reaching two things IPro keeps to itself, both needed for the same
     question: which line of the document is at the top of the page.
@@ -60,6 +68,17 @@ type
   TLedPreviewPane = class(TPanel)
   private
     FHtml: TIpHtmlPanel;
+    {$IFDEF LED_PARADE}
+    { The other engine, made the first time a render asks for it: see
+      LedPrefPreviewEngine.  Nil while the pane is rendering with IPro,
+      which is what it does unless the reader said otherwise. }
+    FParade: TLedParadeView;
+    { Set while this pane is moving the Parade view itself, so that the
+      caret it moves does not come back as the reader pointing at
+      something. }
+    FParadeSyncing: Boolean;
+    {$ENDIF}
+    FEngine: TLedPreviewEngine;
     FBaseFontSize: Integer;      // the renderer's own size, before any zoom
     FProvider: TIpFileDataProvider;
     FNote: TLabel;
@@ -140,6 +159,29 @@ type
       responsive; see FResizeTimer. }
     procedure PaneResize(Sender: TObject);
     procedure ResizeSettled(Sender: TObject);
+    { Which engine is laying the page out.  Asked on every render, so the
+      preference takes at the next refresh rather than at the next
+      start. }
+    function UseParade: Boolean;
+    procedure SetEngine(AValue: TLedPreviewEngine);
+    { The width the page is being laid out for: the engine's own, since
+      only one of the two is on screen. }
+    function EngineWidth: Integer;
+    { Everything both engines are given: the document cut to size if it
+      has to be, converted, its pictures resolved and fitted.  What
+      differs is what each needs done to the page afterwards. }
+    function PageBody(AFitWidth, ACutAt: Integer; out ACut: Boolean): string;
+    {$IFDEF LED_PARADE}
+    { The Parade view, made and on screen.  Before the page is built and
+      not after: the LCL does not align an invisible control, so a pane
+      that has only ever shown the other engine answers with the width
+      the form was designed at -- and a page built for 170 pixels wraps
+      its code at the sixteen-column floor and is laid out at a width it
+      will never be shown at. }
+    procedure EnsureParade;
+    procedure ParadeRender(const APage: string);
+    procedure ParadeCaretMoved(Sender: TObject);
+    {$ENDIF}
   public
     { The face code blocks are set in.  Public so a check can see that it is
       the editor's and not IPro's default. }
@@ -157,6 +199,9 @@ type
     { Which dialect to render.  Set from the file name, so a .wiki and a .md
       in adjacent tabs each render as themselves. }
     property IsWiki: Boolean read FIsWiki write FIsWiki;
+    { Which engine lays the page out, pinned.  Built without Parade,
+      lpeParade still renders with IPro: there is nothing else there. }
+    property Engine: TLedPreviewEngine read FEngine write SetEngine;
     procedure ShowMessage_(const AText: string);
     { Draws the same document again in the colours it is now given.  The
       render path skips a page it has already drawn at the same width, which
@@ -254,6 +299,17 @@ begin
          TRendererFontAccess(P.Controls[i]).Font.PixelsPerInch,
          TCustomControl(P.Controls[i]).Canvas.Font.PixelsPerInch]);
 end;
+
+{$IFDEF LED_PARADE}
+const
+  { The engine is a setting only where there is a second engine to choose,
+    so the row is registered rather than written into the dialog's own
+    table -- which is what LedRegisterPrefItems is for. }
+  ParadePrefRow: array[0..0] of TLedPrefItem = (
+    (Category: 'View'; Kind: pkChoice; Key: LedPrefPreviewEngine;
+     Caption: 'Markdown preview engine'; DefStr: 'ipro';
+     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: 'ipro,parade'));
+{$ENDIF}
 
 var
   { ReportDrawRects wants a method to call back, and a class used only as a
@@ -394,6 +450,18 @@ end;
 
 procedure TLedPreviewPane.PaneResize(Sender: TObject);
 begin
+  {$IFDEF LED_PARADE}
+  { Parade reflows the page it is holding, and that is 20 ms for a 110 KB
+    document, so a drag can show the text rewrapping as it happens rather
+    than a hidden control and a page at the end. }
+  if UseParade and (FParade <> nil) and FHasRendered then
+  begin
+    FParade.Reflow;
+    FResizeTimer.Enabled := False;
+    FResizeTimer.Enabled := True;
+    Exit;
+  end;
+  {$ENDIF}
   if FHasRendered and FHtml.Visible then
     FHtml.Visible := False;
   FResizeTimer.Enabled := False;
@@ -408,8 +476,12 @@ begin
     CodeColumns -- so a pane that is no longer that width needs the page
     rebuilt rather than merely shown again.  This is also where a render that
     arrived before the pane had a size gets made good. }
-  if FPendingRender or (FHtml.ClientWidth <> FRenderedWidth) then
+  if FPendingRender or (EngineWidth <> FRenderedWidth) then
     Render(nil)
+  {$IFDEF LED_PARADE}
+  else if UseParade and (FParade <> nil) then
+    FParade.Visible := True
+  {$ENDIF}
   else
     FHtml.Visible := True;
 end;
@@ -420,6 +492,9 @@ begin
   FNote.Caption := AText;
   FNote.Visible := True;
   FHtml.Visible := False;
+  {$IFDEF LED_PARADE}
+  if FParade <> nil then FParade.Visible := False;
+  {$ENDIF}
   FHasRendered := False;
   FPendingRender := False;
   FRenderedText := '';
@@ -487,7 +562,7 @@ begin
   { Over twenty characters, because a single one rounds badly. }
   CharW := FHtml.Canvas.TextWidth(StringOfChar('0', 20)) div 20;
   if CharW < 1 then Exit;
-  Usable := FHtml.ClientWidth - 2 * FHtml.MarginWidth -
+  Usable := EngineWidth - 2 * FHtml.MarginWidth -
             GetSystemMetrics(SM_CXVSCROLL);
   Result := Usable div CharW;
   { Narrower than this and the wrapping is worse than the overflow it is
@@ -609,6 +684,26 @@ begin
   { Remembered before anything can turn back, so that a re-render knows
     where the reader was even if this particular call does nothing. }
   NoteWhereTheReaderIs(ALine);
+  {$IFDEF LED_PARADE}
+  if UseParade then
+  begin
+    if (FParade = nil) or (not FHasRendered) then Exit;
+    { Moving the view moves its caret, which must not come straight back
+      as the reader having pointed at something. }
+    FParadeSyncing := True;
+    try
+      Result := FParade.ScrollToLine(ALine);
+    finally
+      FParadeSyncing := False;
+    end;
+    if Result then
+    begin
+      FSyncedLine := FParade.LineAtTop;
+      FLastScroll := FParade.ScrollTop;
+    end;
+    Exit;
+  end;
+  {$ENDIF}
   if (not FHasRendered) or (not FHtml.Visible) then Exit;
   N := NearestLineId(ALine);
   if N = 0 then Exit;
@@ -737,8 +832,23 @@ procedure TLedPreviewPane.ScrollTick(Sender: TObject);
 var
   Now_, Line: Integer;
 begin
-  if (not FHasRendered) or (not FHtml.Visible) or (not Showing) then Exit;
+  if (not FHasRendered) or (not Showing) then Exit;
   if not Assigned(FOnScrolled) then Exit;
+  {$IFDEF LED_PARADE}
+  if UseParade then
+  begin
+    if (FParade = nil) or (not FParade.Visible) then Exit;
+    Now_ := FParade.ScrollTop;
+    if Now_ = FLastScroll then Exit;
+    FLastScroll := Now_;
+    Line := FParade.LineAtTop;
+    if (Line <= 0) or (Line = FSyncedLine) then Exit;
+    FSyncedLine := Line;
+    FOnScrolled(Self, Line);
+    Exit;
+  end;
+  {$ENDIF}
+  if not FHtml.Visible then Exit;
   Now_ := FHtml.VScrollPos;
   if Now_ = FLastScroll then Exit;
   FLastScroll := Now_;
@@ -759,6 +869,10 @@ end;
 
 function TLedPreviewPane.ScrollPos: Integer;
 begin
+  {$IFDEF LED_PARADE}
+  if UseParade and (FParade <> nil) then
+    Exit(FParade.ScrollTop);
+  {$ENDIF}
   Result := FHtml.VScrollPos;
 end;
 
@@ -775,6 +889,10 @@ end;
 
 function TLedPreviewPane.LastLineShown: Integer;
 begin
+  {$IFDEF LED_PARADE}
+  if UseParade and (FParade <> nil) then
+    Exit(FParade.LastLine);
+  {$ENDIF}
   if Length(FLineIds) = 0 then
     Result := 0
   else
@@ -785,6 +903,10 @@ function TLedPreviewPane.LineAtTopOfPage: Integer;
 begin
   Result := 0;
   if not FHasRendered then Exit;
+  {$IFDEF LED_PARADE}
+  if UseParade and (FParade <> nil) then
+    Exit(FParade.LineAtTop);
+  {$ENDIF}
   if (FTopsFor < 0) or (FTopsFor <> FHtml.GetContentSize.cy) then BuildTops;
   Result := LineAtTop(FHtml.VScrollPos);
 end;
@@ -882,7 +1004,7 @@ begin
   FPicSrc.BaseDir := FBaseDir;
   { The page's own width, so a picture wider than the pane is scaled once on
     the way in rather than by the renderer on every paint. }
-  FPicSrc.FitWidth := FHtml.ClientWidth - LedScale96(32);
+  FPicSrc.FitWidth := EngineWidth - LedScale96(32);
   Result := FPicSrc;
 end;
 
@@ -931,12 +1053,138 @@ begin
   if FHasRendered and Showing then Render(nil);
 end;
 
+function TLedPreviewPane.UseParade: Boolean;
+begin
+  {$IFDEF LED_PARADE}
+  case FEngine of
+    lpeIPro: Result := False;
+    lpeParade: Result := True;
+  else
+    Result := LowerCase(LedPrefs.GetStr(LedPrefPreviewEngine, 'ipro')) = 'parade';
+  end;
+  {$ELSE}
+  Result := False;
+  {$ENDIF}
+end;
+
+procedure TLedPreviewPane.SetEngine(AValue: TLedPreviewEngine);
+begin
+  if FEngine = AValue then Exit;
+  FEngine := AValue;
+  { The page one engine is holding is not the other's, so the next render
+    is a real one however little has changed. }
+  FPendingRender := True;
+  if FHasRendered and Showing then Render(nil);
+end;
+
+function TLedPreviewPane.EngineWidth: Integer;
+begin
+  {$IFDEF LED_PARADE}
+  if UseParade and (FParade <> nil) then
+    Exit(FParade.ClientWidth);
+  {$ENDIF}
+  Result := FHtml.ClientWidth;
+end;
+
+{ The page both engines are given.  ACutAt is the ceiling on how much of
+  the document is laid out, 0 for all of it; AFitWidth is the width a
+  picture is scaled to fit. }
+function TLedPreviewPane.PageBody(AFitWidth, ACutAt: Integer;
+  out ACut: Boolean): string;
+var
+  Shown: string;
+begin
+  Shown := LedPreviewCut(FPendingText, ACutAt, ACut);
+  if FIsWiki then
+    Result := LedWikiToHTML(Shown, True)
+  else
+    Result := LedMarkdownToHTML(Shown, True);
+  if ACut then
+    Result := Result + TruncationNote(Length(Shown), Length(FPendingText));
+  { A picture on somebody's server cannot be drawn while the page is being
+    laid out -- see Led.Core.NBFetch -- so one that is not in hand yet is
+    replaced by a line saying so, and the page is drawn again when it lands. }
+  Result := LedNBHideRemoteImages(Result, @HaveRemote);
+  { A picture wider than the pane is given a size that fits: neither
+    renderer scrolls a block sideways, so the right-hand side of a wide
+    screenshot was simply not there. }
+  Result := LedNBFitImages(Result, AFitWidth, @ImageSize);
+end;
+
+{$IFDEF LED_PARADE}
+procedure TLedPreviewPane.EnsureParade;
+begin
+  if FParade = nil then
+  begin
+    FParade := TLedParadeView.Create(Self);
+    FParade.Parent := Self;
+    FParade.Align := alClient;
+    { A click in the page moves the caret, and that is the reader
+      pointing at a block; see ParadeCaretMoved. }
+    FParade.OnSelectionChange := @ParadeCaretMoved;
+  end;
+  FHtml.Visible := False;
+  FParade.Visible := True;
+end;
+
+{ The page handed to Parade, which is the page IPro would have been given:
+  the engine is the only thing that differs. }
+procedure TLedPreviewPane.ParadeRender(const APage: string);
+begin
+  EnsureParade;
+  { The reader's own size, the same one IPro is given. }
+  FParade.SetTextSize(LedPreviewPointSize(FBaseFontSize) + LedPageZoom);
+  FParadeSyncing := True;
+  try
+    try
+      FParade.ShowHtml(APage, FBaseDir, Pictures);
+    except
+      on E: Exception do
+      begin
+        ShowMessage_('The preview could not be rendered: ' + E.Message);
+        Exit;
+      end;
+    end;
+  finally
+    FParadeSyncing := False;
+  end;
+  FTopsFor := -1;
+  FSyncedLine := 0;
+  FLastScroll := FParade.ScrollTop;
+  FRenderedWidth := EngineWidth;
+  FRenderedText := FPendingText;
+  FRenderedTitle := FPendingTitle;
+  FRenderedWiki := FIsWiki;
+  FPendingRender := False;
+  FNote.Visible := False;
+  FHasRendered := True;
+  { And back to where the reader was: a page drawn again starts at its
+    top, and the reader who was half way down has not moved. }
+  if FWantedLine > 0 then ScrollToLine(FWantedLine);
+end;
+
+{ The caret moved in the page.  Unless this pane moved it, that was the
+  reader clicking somewhere, which is how the text view follows the
+  preview -- the same thing HtmlClicked does for IPro. }
+procedure TLedPreviewPane.ParadeCaretMoved(Sender: TObject);
+var
+  L: Integer;
+begin
+  if FParadeSyncing or (FParade = nil) then Exit;
+  if not Assigned(FOnJumpToLine) then Exit;
+  L := FParade.LineAtCaret;
+  if L <= 0 then Exit;
+  FOnJumpToLine(Self, L);
+end;
+{$ENDIF}
+
 procedure TLedPreviewPane.Render(Sender: TObject);
 var
   Page: string;
   Colours: TLedPageColours;
-  Body, Shown: string;
+  Body: string;
   Cut: Boolean;
+  CutAt: Integer;
 begin
   FTimer.Enabled := False;
   { Re-read now rather than only at construction, so a font changed in
@@ -963,35 +1211,63 @@ begin
     asks for the preview from more than one direction -- the tab change, the
     command line, the pane appearing -- and each of them is right to ask. }
   if FHasRendered and (not FPendingRender) and
-     (FHtml.ClientWidth = FRenderedWidth) and (FIsWiki = FRenderedWiki) and
+     (EngineWidth = FRenderedWidth) and (FIsWiki = FRenderedWiki) and
      (FPendingTitle = FRenderedTitle) and (FPendingText = FRenderedText) then
   begin
+    {$IFDEF LED_PARADE}
+    if UseParade and (FParade <> nil) then
+    begin
+      FParade.Visible := True;
+      Exit;
+    end;
+    if FParade <> nil then FParade.Visible := False;
+    {$ENDIF}
     FHtml.Visible := True;
     Exit;
   end;
+
+  {$IFDEF LED_PARADE}
+  { The engine's own control first: the page below is built for the width
+    it is about to be laid out at. }
+  if UseParade then EnsureParade;
+  {$ENDIF}
 
   { The body only: the page around it is built in the theme's colours rather
     than in the fixed light-grey wrapper LedMarkdownToPage carries, which was
     written before LED had themes. }
   Colours := LedPageColours;
-  Shown := LedPreviewCut(FPendingText,
-    LedPrefs.GetInt(LedPrefPreviewMaxKB, LedPreviewDefaultKB) * 1024, Cut);
-  if FIsWiki then
-    Body := LedWikiToHTML(Shown, True)
-  else
-    Body := LedMarkdownToHTML(Shown, True);
-  if Cut then Body := Body + TruncationNote(Length(Shown),
-    Length(FPendingText));
-  { A picture on somebody's server cannot be drawn while the page is being
-    laid out -- see Led.Core.NBFetch -- so one that is not in hand yet is
-    replaced by a line saying so, and the page is drawn again when it lands. }
-  Body := LedNBHideRemoteImages(Body, @HaveRemote);
-  { A picture wider than the pane is given a size that fits: this renderer
-    draws one at its natural size and cannot scroll a block sideways, so the
-    right-hand side of a wide screenshot was simply not there. }
-  Body := LedNBFitImages(Body, FHtml.ClientWidth - LedScale96(32),
-    @ImageSize);
+  {$IFDEF LED_PARADE}
+  { Parade's paper is white whatever the theme says, so a dark theme's ink
+    would be light text on a white page.  Until the paper takes a colour
+    (see Led.UI.ParadeView) that engine gets a light page. }
+  if UseParade then
+  begin
+    Colours.Page := clWhite;
+    Colours.Text := TColor($00202020);
+    Colours.Muted := TColor($00707070);
+    Colours.CodeBg := TColor($00F2F2F2);
+    Colours.Border := TColor($00C8C8C8);
+    Colours.Link := TColor($00C05A00);
+  end;
+  {$ENDIF}
+  { The cut is a ceiling on how long IPro may be asked to think, and
+    nothing else needs it: Parade lays a megabyte out in 144 ms, so in
+    that engine the reader gets the whole document. }
+  CutAt := LedPrefs.GetInt(LedPrefPreviewMaxKB, LedPreviewDefaultKB) * 1024;
+  if UseParade then CutAt := 0;
+  Body := PageBody(EngineWidth - LedScale96(32), CutAt, Cut);
   Page := LedPageHead(FPendingTitle, Colours, 12) + Body + LedPageTail;
+  {$IFDEF LED_PARADE}
+  { The other engine takes the page as it stands: the touch-ups below are
+    all for IPro, and two of them -- headings flattened into sized
+    paragraphs, inline runs split up -- would cost Parade the structure it
+    lays out from. }
+  if UseParade then
+  begin
+    ParadeRender(Page);
+    Exit;
+  end;
+  {$ENDIF}
   try
     { Both adjustments are for the renderer rather than for the document:
       see LedWrapPreLines and LedSplitInlineRuns. }
@@ -1024,6 +1300,11 @@ begin
     FRenderedWiki := FIsWiki;
     FPendingRender := False;
     FNote.Visible := False;
+    {$IFDEF LED_PARADE}
+    { and the other engine's control out of the way, for a pane that has
+      rendered with both }
+    if FParade <> nil then FParade.Visible := False;
+    {$ENDIF}
     FHtml.Visible := True;
     FHasRendered := True;
     { And back to where the reader was.  The new page is at its top; the
@@ -1039,7 +1320,16 @@ function TLedPreviewPane.RenderNow: Boolean;
 begin
   FTimer.Enabled := False;
   Render(nil);
+  {$IFDEF LED_PARADE}
+  if UseParade then
+    Exit((FParade <> nil) and FParade.Visible and not FNote.Visible);
+  {$ENDIF}
   Result := FHtml.Visible and not FNote.Visible;
 end;
+
+{$IFDEF LED_PARADE}
+initialization
+  LedRegisterPrefItems(ParadePrefRow);
+{$ENDIF}
 
 end.

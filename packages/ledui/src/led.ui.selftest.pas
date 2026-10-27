@@ -12541,6 +12541,112 @@ begin
   DeleteFile(P);
 end;
 
+{ The preview laid out by Parade instead of IPro.
+
+  The engine is pinned here rather than read out of a preference, because
+  a check must not depend on how this machine's reader has their editor
+  set up.  What it asks for is what the other engine is for: the whole
+  document on one page as wide as the pane, the line mapping still
+  answering in both directions, and a narrower pane rewrapping the text --
+  which IPro cannot do at all, since it will not reflow a page it is
+  already holding.
+
+  Built without Parade there is no other engine, and the pane stays on
+  IPro; the checks below would then be asking IPro about itself, so they
+  are left out rather than passed. }
+procedure TestPreviewOnParade(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  P: string;
+  L: TStringList;
+  i, W0, Short, Tall, Top: Integer;
+{$ENDIF}
+begin
+  Say('the preview on Parade');
+{$IFDEF LED_PARADE}
+  if F.Preview = nil then Exit;
+
+  P := TempName('parade.md');
+  L := TStringList.Create;
+  try
+    L.Add('# Title');                              { line 1 }
+    L.Add('');
+    for i := 1 to 20 do
+    begin
+      L.Add(Format('## Part %d', [i]));
+      L.Add('');
+      L.Add('A paragraph long enough that a narrower pane has to break ' +
+        'it in more places than a wide one does, which is the whole ' +
+        'point of laying it out again rather than drawing it again.');
+      L.Add('');
+    end;
+    L.Add('## Last');                              { line 83 }
+    L.SaveToFile(P);
+  finally
+    L.Free;
+  end;
+
+  Tab := F.AddTab(F.Documents.OpenFile(P));
+  Pump;
+  if Tab = nil then Exit;
+  F.Preview.Engine := lpeParade;
+  F.actTogglePreviewExecute(nil);
+  Pump;
+
+  Check('the preview rendered with the other engine', F.Preview.RenderNow);
+  { The whole document, not the first 64 KB of it: the cap is a ceiling on
+    how long IPro may be asked to think and this engine does not need one. }
+  CheckEqInt('the last block of the document is on the page', 83,
+    F.Preview.LastLineShown);
+
+  F.Preview.ScrollToLine(1);
+  Pump;
+  Top := F.Preview.ScrollPos;
+  { Part 10's heading: the parts start at line 3 and are four lines each. }
+  Check('a line with a block of its own is found',
+    F.Preview.ScrollToLine(39));
+  Pump;
+  Check('and the page went there', F.Preview.ScrollPos > Top);
+  CheckEqInt('which is the block that line is in', 39,
+    F.Preview.LineAtTopOfPage);
+  { The blank line after it carries no block of its own. }
+  Check('a line between blocks maps to the one above it',
+    F.Preview.ScrollToLine(40));
+  Pump;
+  CheckEqInt('the same block', 39, F.Preview.LineAtTopOfPage);
+
+  { How far down the last block is, is how tall the page is: a pane half
+    the width breaks every paragraph in more places, so the same block
+    ends up further down.  Drawing the old layout smaller would leave it
+    where it was. }
+  F.Preview.ScrollToLine(83);
+  Pump;
+  Short := F.Preview.ScrollPos;
+  W0 := F.Width;
+  F.Width := W0 - 300;
+  Pump;
+  F.Preview.RenderNow;
+  F.Preview.ScrollToLine(83);
+  Pump;
+  Tall := F.Preview.ScrollPos;
+  Check('a narrower pane rewraps the text, so the page is taller',
+    Tall > Short);
+  F.Width := W0;
+  Pump;
+
+  { Back to whatever the reader asked for, for the checks that follow. }
+  F.Preview.Engine := lpeFromPrefs;
+  F.Dock.EdgeVisible[ledRight] := False;
+  Pump;
+
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(P);
+{$ENDIF}
+end;
+
 procedure TestPreviewLineMapping(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -17721,6 +17827,7 @@ begin
   TestLongLines(F);
   TestWikiMarkup(F);
   TestPreviewLineMapping(F);
+  TestPreviewOnParade(F);
   TestPreviewClickKeepsPage(F);
   TestAFaultIsWrittenDown(F);
   TestPreviewDoesNotFallOffARule(F);

@@ -155,6 +155,21 @@ const
     nine seconds. }
   LedPreviewDefaultKB     = 64;
 
+  { Which engine lays the preview out: 'ipro' (the default) or 'parade'.
+
+    IPro is the renderer the IDE's own help viewer is built on, and the
+    one this pane was written for.  Parade is the layout engine the visual
+    editor uses, here reading the same HTML LED writes for IPro and
+    showing it as one page the width of the pane -- no pages, reflowed
+    when the pane is resized, read only.
+
+    A preference rather than a replacement because the two do not yet do
+    the same things: Parade is between twenty and fifty times faster, and
+    laying a page out again on a resize costs it twenty milliseconds where
+    IPro wants a second, but its paper is white whatever the theme says
+    and a fenced block is not syntax coloured.  See Led.UI.ParadeView. }
+  LedPrefPreviewEngine    = 'Editor/preview_engine';
+
 implementation
 
 procedure LedClearInheritedPaneLock(APrefs: TLedPrefs);

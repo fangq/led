@@ -306,6 +306,16 @@
         <UnitName Value="Led.UI.Preview"/>
       </Unit>
       <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.paradeview.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.ParadeView"/>
+      </Unit>
+      <Unit>
+        <Filename Value="../packages/ledui/src/led.ui.paradefonts.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Led.UI.ParadeFonts"/>
+      </Unit>
+      <Unit>
         <Filename Value="../packages/ledcore/src/led.core.paths.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="Led.Core.Paths"/>
