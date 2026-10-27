@@ -707,8 +707,12 @@ var
   C: Char;
   i, Count: Integer;
 begin
-  T := StringReplace(Trim(S), ' ', '', [rfReplaceAll]);
   Result := False;
+  { Four spaces in, a row of hyphens is not a rule: it is the text of the
+    paragraph it sits under, or a line of code.  Given the whole line and not
+    the trimmed one for exactly this reason. }
+  if IndentOf(S) >= 4 then Exit;
+  T := StringReplace(Trim(S), ' ', '', [rfReplaceAll]);
   if Length(T) < 3 then Exit;
   C := T[1];
   if not (C in ['-', '*', '_']) then Exit;
@@ -721,21 +725,85 @@ begin
   Result := Count >= 3;
 end;
 
-function BulletAt(const S: string; out AContent: string): Boolean;
+{ The level of the heading a line of = or - underneath a paragraph makes:
+  1 for =, 2 for -, 0 for anything else.
+
+  Markdown's older heading syntax, and still the one people type for a title
+  and its first section, because it reads as a heading in the source.  It
+  takes nothing but the one character, any number of them, with space allowed
+  at either end -- "== ==" is a paragraph.
+
+  Four spaces in is not an underline: that far in, the line is code.  The
+  caller is the other half of the rule, and the harder half: only a line with
+  a paragraph already open can be an underline, which is what keeps a row of
+  hyphens with nothing above it the thematic break it has always been. }
+function SetextLevel(const S: string): Integer;
+var
+  T: string;
+  C: Char;
+  i: Integer;
+begin
+  Result := 0;
+  if IndentOf(S) >= 4 then Exit;
+  T := Trim(S);
+  if T = '' then Exit;
+  C := T[1];
+  if not (C in ['=', '-']) then Exit;
+  for i := 2 to Length(T) do
+    if T[i] <> C then Exit;
+  if C = '=' then Result := 1 else Result := 2;
+end;
+
+function BulletAt(const S: string; out AContent: string;
+  out AMarker: Char): Boolean;
 var
   T: string;
 begin
+  AMarker := '-';
   T := TrimLeft(S);
   Result := (Length(T) > 1) and (T[1] in ['-', '*', '+']) and (T[2] = ' ');
-  if Result then AContent := Copy(T, 3, MaxInt);
+  if Result then
+  begin
+    AContent := Copy(T, 3, MaxInt);
+    AMarker := T[1];
+  end;
 end;
 
-function OrderedAt(const S: string; out AContent: string): Boolean;
+{ The column an item's own text starts in, which is the column the lines
+  that carry it on line up with: the marker's own indent, the marker, and the
+  spaces after it.  The spec counts one to four of those spaces; with five or
+  more the text is indented code inside the item, and the item's content
+  begins one space after the marker instead.
+
+  It is measured per item and not assumed, because "-    foo" starts its text
+  in column five and a line two spaces in is then not part of it at all. }
+function ContentIndent(const S: string): Integer;
+var
+  T: string;
+  k, n: Integer;
+begin
+  T := TrimLeft(S);
+  k := 1;
+  if (Length(T) > 0) and (T[1] in ['0'..'9']) then
+  begin
+    k := 0;
+    while (k < Length(T)) and (T[k + 1] in ['0'..'9']) do Inc(k);
+    Inc(k);                       { the . or ) that closes the marker }
+  end;
+  n := 0;
+  while (k + n < Length(T)) and (T[k + n + 1] = ' ') do Inc(n);
+  if (n < 1) or (n > 4) then n := 1;
+  Result := IndentOf(S) + k + n;
+end;
+
+function OrderedAt(const S: string; out AContent: string;
+  out ADelim: Char): Boolean;
 var
   T: string;
   i: Integer;
 begin
   Result := False;
+  ADelim := '.';
   T := TrimLeft(S);
   i := 1;
   while (i <= Length(T)) and (T[i] in ['0'..'9']) do Inc(i);
@@ -743,6 +811,7 @@ begin
   if not (T[i] in ['.', ')']) then Exit;
   if (i + 1 > Length(T)) or (T[i + 1] <> ' ') then Exit;
   AContent := Copy(T, i + 2, MaxInt);
+  ADelim := T[i];
   Result := True;
 end;
 
@@ -750,9 +819,15 @@ function LedMarkdownToHTML(const AText: string; ALineIds: Boolean): string;
 var
   Lines: TStringList;
   Out_: TStringList;
-  i, Level, Ind: Integer;
+  i, Level: Integer;
   Line, Trimmed, Content, Fence, Lang: string;
   InCode: Boolean;
+  Item, Code: string;
+  Marker: Char;
+  ItemIndent: Integer;         { the text column of the item last emitted }
+  { A blank line was read with a list still open, and -- once the line after
+    it has been seen -- that line stands across the gap from its item. }
+  BlankInList, ItemGap: Boolean;
   Para: string;
   ParaLine: Integer;           { where the paragraph being gathered began }
   ListStack: TStringList;      { open list tags, innermost last }
@@ -776,12 +851,31 @@ var
     end;
   end;
 
+  { Each entry is the tag and then the marker the list was opened with --
+    "ul-", "ol." -- because a list is its own marker: the spec ends one and
+    starts another where the bullet or the delimiter changes, and that has to
+    be noticed now that a blank line between items leaves the list open. }
   procedure CloseLists(ToDepth: Integer);
   begin
     while ListStack.Count > ToDepth do
     begin
-      Out_.Add('</' + ListStack[ListStack.Count - 1] + '>');
+      Out_.Add('</' + Copy(ListStack[ListStack.Count - 1], 1, 2) + '>');
       ListStack.Delete(ListStack.Count - 1);
+    end;
+  end;
+
+  { Opens the list this item belongs in, closing one of another kind that is
+    open at the same depth.  Without this an ordered item went on inside the
+    <ul> above it, as an <li> with no list of its own. }
+  procedure OpenList(ADepth: Integer; const AKind: string);
+  begin
+    while ListStack.Count > ADepth + 1 do CloseLists(ListStack.Count - 1);
+    if (ListStack.Count = ADepth + 1) and (ListStack[ADepth] <> AKind) then
+      CloseLists(ADepth);
+    if ListStack.Count < ADepth + 1 then
+    begin
+      Out_.Add('<' + Copy(AKind, 1, 2) + '>');
+      ListStack.Add(AKind);
     end;
   end;
 
@@ -887,6 +981,9 @@ begin
       StringReplace(AText, #13#10, #10, [rfReplaceAll]), #13, #10, [rfReplaceAll]);
     InCode := False;
     InTable := False;
+    BlankInList := False;
+    ItemGap := False;
+    ItemIndent := 2;
     Para := '';
     ParaLine := 1;
     Fence := '';
@@ -936,7 +1033,15 @@ begin
       if Trimmed = '' then
       begin
         FlushPara;
-        CloseLists(0);
+        { A blank line does not end a list on its own.  An item holds blocks,
+          not a line -- "a sequence of lines Ls constitute a sequence of
+          blocks Bs" -- so a gap inside one is a paragraph break in the item,
+          and only what comes after the gap says whether the list is over.
+          Held here, and answered by the next line that is not blank. }
+        if ListStack.Count > 0 then
+          BlankInList := True
+        else
+          CloseLists(0);
         if InTable then
         begin
           Out_.Add('</table>');
@@ -946,7 +1051,47 @@ begin
         Continue;
       end;
 
-      if IsThematicBreak(Trimmed) then
+      { What follows that gap, now that there is a line to look at.  Another
+        item, or text indented into the item above, and the list carries on;
+        anything else, and it ended at the blank line.  No laziness here: an
+        unindented line after a gap is a new paragraph, because the item's
+        paragraph closed with the blank line and there is nothing left to
+        continue. }
+      ItemGap := False;
+      if BlankInList then
+      begin
+        BlankInList := False;
+        if not (BulletAt(Line, Content, Marker) or
+                OrderedAt(Line, Content, Marker)) then
+        begin
+          { Not a further item, so it is either indented into the item above
+            -- another paragraph of it -- or the list ended at the gap.  The
+            item's own text column decides which, not a fixed depth. }
+          if IndentOf(Line) >= ItemIndent then
+            ItemGap := True
+          else
+            CloseLists(0);
+        end;
+      end;
+
+      { Before the thematic break, which a row of hyphens otherwise is.  With
+        a paragraph open the row is that paragraph's underline and the two
+        together are a heading -- that order is the whole of the rule, and
+        reversing it is what rendered a section title as a paragraph with a
+        line drawn under it. }
+      Level := SetextLevel(Line);
+      if (Level > 0) and (Para <> '') then
+      begin
+        { Anchored to where the text is, not to the underline: a click in the
+          preview should land on the title the reader can see. }
+        Out_.Add(Format('<h%d%s>%s</h%d>',
+          [Level, Anchor(ParaLine), InlineSpans(Para), Level]));
+        Para := '';
+        Inc(i);
+        Continue;
+      end;
+
+      if IsThematicBreak(Line) then
       begin
         FlushPara;
         CloseLists(0);
@@ -1009,32 +1154,73 @@ begin
         InTable := False;
       end;
 
-      if BulletAt(Line, Content) then
+      if BulletAt(Line, Content, Marker) then
       begin
         FlushPara;
-        Ind := IndentOf(Line) div 2;
-        while ListStack.Count > Ind + 1 do CloseLists(ListStack.Count - 1);
-        if ListStack.Count < Ind + 1 then
-        begin
-          Out_.Add('<ul>');
-          ListStack.Add('ul');
-        end;
+        ItemIndent := ContentIndent(Line);
+        OpenList(IndentOf(Line) div 2, 'ul' + Marker);
         Out_.Add('<li' + Anchor(i + 1) + '>' + InlineSpans(Content) + '</li>');
         Inc(i);
         Continue;
       end;
 
-      if OrderedAt(Line, Content) then
+      if OrderedAt(Line, Content, Marker) then
       begin
         FlushPara;
-        Ind := IndentOf(Line) div 2;
-        while ListStack.Count > Ind + 1 do CloseLists(ListStack.Count - 1);
-        if ListStack.Count < Ind + 1 then
-        begin
-          Out_.Add('<ol>');
-          ListStack.Add('ol');
-        end;
+        ItemIndent := ContentIndent(Line);
+        OpenList(IndentOf(Line) div 2, 'ol' + Marker);
         Out_.Add('<li' + Anchor(i + 1) + '>' + InlineSpans(Content) + '</li>');
+        Inc(i);
+        Continue;
+      end;
+
+      { More of the item above.
+
+        CommonMark gives a list item its text two ways.  Under "Basic case"
+        the continuation is indented to where the item's own text starts, and
+        under "Laziness" that indentation may be partly or entirely left off:
+        a plain line of prose under an item is the item's, however far in it
+        begins.  Both arrive here, because every line that starts a block of
+        its own -- a fence, a heading, a quote, a rule, a table, a further
+        item -- has been dealt with above, and what is left is what the spec
+        calls paragraph continuation text.
+
+        Appended to the item rather than written after it: the item was
+        closed when it was emitted, and the text belongs inside it.  Joined
+        with a space, as this renderer joins the lines of a paragraph.
+
+        After a blank line it is a second paragraph of the item instead,
+        which is the one case that is not just more of the same sentence. }
+      if (ListStack.Count > 0) and (Out_.Count > 0) and
+         (RightStr(Out_[Out_.Count - 1], 5) = '</li>') then
+      begin
+        Item := Copy(Out_[Out_.Count - 1], 1,
+                     Length(Out_[Out_.Count - 1]) - 5);
+        { Four spaces past the item's own text is code inside the item, and
+          has to stay code: it is how a command or a snippet is written under
+          the step that runs it.  Carried on by the lines after it at the
+          same depth, blank line or not, so a block of several lines is one
+          <pre> and not one apiece. }
+        if (IndentOf(Line) >= ItemIndent + 4) and
+           (ItemGap or (RightStr(Item, 6) = '</pre>')) then
+        begin
+          Code := LedHtmlEscape(Copy(Line, ItemIndent + 5, MaxInt));
+          if RightStr(Item, 6) = '</pre>' then
+            Item := Copy(Item, 1, Length(Item) - 6) + LineEnding + Code +
+                    '</pre>'
+          else
+            Item := Item + '<pre>' + Code + '</pre>';
+        end
+        else if ItemGap then
+          Item := Item + '<p>' + InlineSpans(Trimmed) + '</p>'
+        { Inside the paragraph the item already ended with, not after it:
+          the second line of a second paragraph is still that paragraph. }
+        else if RightStr(Item, 4) = '</p>' then
+          Item := Copy(Item, 1, Length(Item) - 4) + ' ' +
+                  InlineSpans(Trimmed) + '</p>'
+        else
+          Item := Item + ' ' + InlineSpans(Trimmed);
+        Out_[Out_.Count - 1] := Item + '</li>';
         Inc(i);
         Continue;
       end;

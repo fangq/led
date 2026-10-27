@@ -6,13 +6,15 @@ unit Led.Core.Tests.Markdown;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry, Led.Core.Markdown;
+  Classes, SysUtils, StrUtils, fpcunit, testregistry, Led.Core.Markdown;
 
 type
   TTestMarkdown = class(TTestCase)
   private
     function Conv(const S: string): string;
     procedure AssertHas(const AWhat, AHtml, ANeedle: string);
+    procedure AssertCount(const AWhat, AHtml, ANeedle: string;
+      AExpected: Integer);
   published
     procedure Headings;
     procedure HeadingNeedsASpace;
@@ -25,6 +27,20 @@ type
     procedure BareUrls;
     procedure BulletList;
     procedure OrderedList;
+    procedure AnUnderlineOfEqualsIsAHeading;
+    procedure AnUnderlineOfHyphensIsASecondLevelHeading;
+    procedure TheWholeParagraphGoesUnderTheUnderline;
+    procedure ARuleWithNothingOverItIsStillARule;
+    procedure AnIndentedRuleUnderAParagraphIsNeither;
+    procedure AnIndentedLineCarriesTheItemOn;
+    procedure AnUnindentedLineCarriesItOnToo;
+    procedure AGapBetweenItemsLeavesOneList;
+    procedure AfterAGapIndentedTextIsMoreOfTheItem;
+    procedure AfterAGapUnindentedTextEndsTheList;
+    procedure TextShallowerThanTheItemEndsTheList;
+    procedure CodeIndentedInsideAnItemStaysCode;
+    procedure AChangedMarkerStartsANewList;
+    procedure AnOrderedItemNeverJoinsABulletList;
     procedure FencedCode;
     procedure FencedCodeIsEscaped;
     procedure BlockQuote;
@@ -77,6 +93,23 @@ procedure TTestMarkdown.AssertHas(const AWhat, AHtml, ANeedle: string);
 begin
   AssertTrue(AWhat + ' -- looked for "' + ANeedle + '" in: ' + AHtml,
     Pos(ANeedle, AHtml) > 0);
+end;
+
+{ How many times over, which is what says whether one list was written as one
+  list or as several. }
+procedure TTestMarkdown.AssertCount(const AWhat, AHtml, ANeedle: string;
+  AExpected: Integer);
+var
+  n, At: Integer;
+begin
+  n := 0;
+  At := Pos(ANeedle, AHtml);
+  while At > 0 do
+  begin
+    Inc(n);
+    At := PosEx(ANeedle, AHtml, At + Length(ANeedle));
+  end;
+  AssertEquals(AWhat + ' -- "' + ANeedle + '" in: ' + AHtml, AExpected, n);
 end;
 
 procedure TTestMarkdown.Headings;
@@ -157,6 +190,141 @@ begin
   H := Conv('1. one' + LineEnding + '2. two');
   AssertHas('opens', H, '<ol>');
   AssertHas('item', H, '<li>two</li>');
+end;
+
+{ Markdown's other heading syntax: the title with a row of = or - under it,
+  which is what people type for a document title and its first section, and
+  which LED used to render as a paragraph with a line drawn beneath it. }
+procedure TTestMarkdown.AnUnderlineOfEqualsIsAHeading;
+begin
+  AssertHas('h1', Conv('Document Title' + LineEnding + '=============='),
+    '<h1>Document Title</h1>');
+end;
+
+procedure TTestMarkdown.AnUnderlineOfHyphensIsASecondLevelHeading;
+begin
+  AssertHas('h2', Conv('A Section' + LineEnding + '---------'),
+    '<h2>A Section</h2>');
+end;
+
+procedure TTestMarkdown.TheWholeParagraphGoesUnderTheUnderline;
+begin
+  { Not just the line above it: CommonMark gives the heading everything the
+    paragraph had gathered. }
+  AssertHas('both lines', Conv('Foo' + LineEnding + 'bar' + LineEnding + '---'),
+    '<h2>Foo bar</h2>');
+end;
+
+procedure TTestMarkdown.ARuleWithNothingOverItIsStillARule;
+var
+  H: string;
+begin
+  { The underline only reads as one under a paragraph.  A rule on its own,
+    and a rule after a blank line, are what they always were -- which is the
+    half of this that could have been broken by fixing the other half. }
+  AssertHas('alone', Conv('---'), '<hr>');
+  H := Conv('text' + LineEnding + LineEnding + '---');
+  AssertHas('after a gap', H, '<hr>');
+  AssertHas('and the text is a paragraph', H, '<p>text</p>');
+end;
+
+procedure TTestMarkdown.AnIndentedRuleUnderAParagraphIsNeither;
+begin
+  { Four spaces in it is neither an underline nor a rule, but more of the
+    paragraph's own text. }
+  AssertHas('text', Conv('Foo' + LineEnding + '    ---'), '<p>Foo ---</p>');
+end;
+
+{ An item's text can go on over several lines, and the lines that carry it
+  have to stay in the item.  They used to close the list and open a
+  paragraph, which put half a sentence outside the list and split the items
+  either side of it into two lists. }
+procedure TTestMarkdown.AnIndentedLineCarriesTheItemOn;
+var
+  H: string;
+begin
+  H := Conv('- one' + LineEnding + '  and more of one' + LineEnding + '- two');
+  AssertHas('joined', H, '<li>one and more of one</li>');
+  AssertHas('the next item is still an item', H, '<li>two</li>');
+  AssertCount('one list', H, '<ul>', 1);
+end;
+
+procedure TTestMarkdown.AnUnindentedLineCarriesItOnToo;
+begin
+  { CommonMark's Laziness rule: the indentation of a continuation line may be
+    partly or wholly left off, and the line is still the item's. }
+  AssertHas('joined', Conv('- one' + LineEnding + 'and more of one'),
+    '<li>one and more of one</li>');
+end;
+
+procedure TTestMarkdown.AGapBetweenItemsLeavesOneList;
+begin
+  { A blank line between items is a loose list, not two lists. }
+  AssertCount('one list', Conv('- one' + LineEnding + LineEnding + '- two'),
+    '<ul>', 1);
+end;
+
+procedure TTestMarkdown.AfterAGapIndentedTextIsMoreOfTheItem;
+begin
+  { An item holds blocks, so a gap inside one is a paragraph break in the
+    item rather than the end of the list. }
+  AssertHas('a second paragraph, inside the item',
+    Conv('- one' + LineEnding + LineEnding + '  more of one'),
+    '<li>one<p>more of one</p></li>');
+end;
+
+procedure TTestMarkdown.AfterAGapUnindentedTextEndsTheList;
+var
+  H: string;
+begin
+  { Laziness does not reach across a blank line: the item's paragraph closed
+    with the gap, so there is nothing left for this line to carry on. }
+  H := Conv('- one' + LineEnding + LineEnding + 'a new paragraph');
+  AssertHas('the list ended', H, '</ul>');
+  AssertHas('and this is its own paragraph', H, '<p>a new paragraph</p>');
+end;
+
+procedure TTestMarkdown.TextShallowerThanTheItemEndsTheList;
+var
+  H: string;
+begin
+  { The item's own text column is what a continuation has to reach, not a
+    fixed depth: "-    foo" starts its text in column five, so a line two
+    spaces in is outside it.  CommonMark example 276. }
+  H := Conv('-    foo' + LineEnding + LineEnding + '  bar');
+  AssertHas('outside the item', H, '<p>bar</p>');
+  AssertHas('the list ended', H, '</ul>');
+end;
+
+procedure TTestMarkdown.CodeIndentedInsideAnItemStaysCode;
+var
+  H: string;
+begin
+  { Four spaces past the item's text is a code block in the item, which is
+    how a command is written under the step that runs it.  One <pre> for the
+    block, not one per line. }
+  H := Conv('- run:' + LineEnding + LineEnding + '      make' + LineEnding +
+            '      make install');
+  AssertHas('code, in the item', H,
+    '<li>run:<pre>make' + LineEnding + 'make install</pre></li>');
+end;
+
+procedure TTestMarkdown.AChangedMarkerStartsANewList;
+begin
+  { CommonMark example 301: changing the bullet starts a new list. }
+  AssertCount('two lists',
+    Conv('- foo' + LineEnding + '- bar' + LineEnding + '+ baz'), '<ul>', 2);
+end;
+
+procedure TTestMarkdown.AnOrderedItemNeverJoinsABulletList;
+var
+  H: string;
+begin
+  { It used to, once a blank line stopped closing the list: the item was
+    written into the open <ul> and the <ol> never appeared at all. }
+  H := Conv('- foo' + LineEnding + LineEnding + '1. bar');
+  AssertHas('the bullet list ended', H, '</ul>');
+  AssertHas('and the ordered one opened', H, '<ol>');
 end;
 
 procedure TTestMarkdown.FencedCode;
