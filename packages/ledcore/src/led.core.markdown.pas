@@ -466,6 +466,9 @@ end;
 { --- inline spans ---------------------------------------------------------- }
 
 function InlineSpans(const AText: string): string; forward;
+{ Declared here because the inline pass needs it too: a link definition is
+  one only while it is not four spaces in. }
+function IndentOf(const S: string): Integer; forward;
 
 { Whether AWord is a plausible language name for a fence: letters, digits,
   and the few punctuation marks language names use.  Not a list of the
@@ -567,9 +570,249 @@ begin
   Result := 0;
 end;
 
+{ Where the run of exactly ARun backticks that closes a code span begins, or
+  0 if the span is never closed.
+
+  Exactly ARun: a longer run inside is content, which is how a span that has
+  backticks in it is written -- ``a ` b`` -- and the reason this cannot be
+  the ordinary "find the next delimiter". }
+function CodeSpanEnd(const S: string; AFrom, ARun: Integer): Integer;
+var
+  i, k: Integer;
+begin
+  Result := 0;
+  i := AFrom;
+  while i <= Length(S) do
+  begin
+    if S[i] = '`' then
+    begin
+      k := 0;
+      while (i + k <= Length(S)) and (S[i + k] = '`') do Inc(k);
+      if k = ARun then Exit(i);
+      Inc(i, k);
+    end
+    else
+      Inc(i);
+  end;
+end;
+
+{ The destination and the title out of what stands between a link's
+  parentheses.  False when it is neither, which is what makes
+  "[link](/my uri)" the text it is and not a link to "/my uri".
+
+  The destination may be wrapped in angle brackets, which is how a path with
+  a space in it is written, and the title follows it in quotes or in
+  parentheses.  Without this the whole of it went into the href, so every
+  link written with a title -- [text](/url "what it is") -- pointed at a URL
+  with the title inside it and went nowhere. }
+function SplitTarget(const S: string; out AUrl, ATitle: string): Boolean;
+var
+  T: string;
+  i: Integer;
+  Q: Char;
+begin
+  Result := False;
+  AUrl := '';
+  ATitle := '';
+  T := Trim(S);
+  if (T <> '') and (T[1] = '<') then
+  begin
+    i := Pos('>', T);
+    if i = 0 then Exit;
+    AUrl := Copy(T, 2, i - 2);
+    T := Trim(Copy(T, i + 1, MaxInt));
+  end
+  else
+  begin
+    i := 1;
+    while (i <= Length(T)) and not (T[i] in [' ', #9]) do Inc(i);
+    AUrl := Copy(T, 1, i - 1);
+    T := Trim(Copy(T, i, MaxInt));
+  end;
+  { A space in a destination is written as one and sent as %20, or the
+    attribute ends early in anything strict about its quoting. }
+  AUrl := StringReplace(AUrl, ' ', '%20', [rfReplaceAll]);
+  if T = '' then Exit(True);
+  if Length(T) < 2 then Exit;
+  Q := T[1];
+  if ((Q = '"') and (T[Length(T)] = '"')) or
+     ((Q = '''') and (T[Length(T)] = '''')) or
+     ((Q = '(') and (T[Length(T)] = ')')) then
+  begin
+    ATitle := Copy(T, 2, Length(T) - 2);
+    Result := True;
+  end;
+end;
+
+{ A label holds no bracket of its own unless it is escaped, so "[foo][ref[]"
+  names nothing and is the text it looks like. }
+function LabelIsPlain(const S: string): Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  i := 1;
+  while i <= Length(S) do
+  begin
+    if (S[i] = '\') and (i < Length(S)) then
+      Inc(i, 2)
+    else if S[i] in ['[', ']'] then
+      Exit
+    else
+      Inc(i);
+  end;
+  Result := True;
+end;
+
+{ A line that is a link definition -- [label]: /url "title" -- rather than
+  anything to show.  The destination and title are read the same way a
+  link's own are, so a definition is wrong in the same places a link is and
+  in no others. }
+function DefinitionAt(const S: string;
+  out ALabel, AUrl, ATitle: string): Boolean;
+var
+  T: string;
+  Close: Integer;
+begin
+  Result := False;
+  if IndentOf(S) >= 4 then Exit;
+  T := Trim(S);
+  if (T = '') or (T[1] <> '[') then Exit;
+  Close := FindClose(T, ']', 2);
+  if (Close < 3) or (Close >= Length(T)) or (T[Close + 1] <> ':') then Exit;
+  ALabel := Copy(T, 2, Close - 2);
+  if (Trim(ALabel) = '') or not LabelIsPlain(ALabel) then Exit;
+  Result := SplitTarget(Copy(T, Close + 2, MaxInt), AUrl, ATitle) and
+            (AUrl <> '');
+end;
+
+{ A link written in angle brackets -- <https://example.com>, <me@example.com>
+  -- which is how a URL is put in a document that should show it as it is.
+  AHref comes back with the mailto: an address needs. }
+function AutolinkAt(const S: string; AAt: Integer; out AStop: Integer;
+  out AHref, AText: string): Boolean;
+var
+  i, Colon, At_: Integer;
+  Body: string;
+begin
+  Result := False;
+  i := AAt + 1;
+  while (i <= Length(S)) and not (S[i] in ['>', '<', ' ', #9]) do Inc(i);
+  if (i > Length(S)) or (S[i] <> '>') then Exit;
+  Body := Copy(S, AAt + 1, i - AAt - 1);
+  { No escapes inside one: a backslash means this was never an autolink. }
+  if (Body = '') or (Pos('\', Body) > 0) then Exit;
+  AStop := i;
+  AText := Body;
+  Colon := Pos(':', Body);
+  At_ := Pos('@', Body);
+  { A scheme and something after it, or an address: anything else in angle
+    brackets is left to the raw-tag reader below. }
+  { A scheme is two characters at least -- "<m:abc>" is text, not a link. }
+  if (Colon > 2) and (Colon <= 33) and (Colon < Length(Body)) then
+  begin
+    for i := 1 to Colon - 1 do
+      if not (Body[i] in ['a'..'z', 'A'..'Z', '0'..'9', '+', '-', '.']) then Exit;
+    AHref := Body;
+    Result := True;
+  end
+  else if (At_ > 1) and (At_ < Length(Body)) and (Pos('.', Copy(Body, At_, MaxInt)) > 0) then
+  begin
+    AHref := 'mailto:' + Body;
+    Result := True;
+  end;
+end;
+
+{ The label a link to a definition uses, and where the whole of it ends.
+  ABar is the ] that closes the link's text and AText what was inside it:
+  [text][label] uses the label, [text][] and the bare [label] use the text
+  itself.  False where what follows is an inline link's parenthesis, which
+  belongs to the branch below, or a [ that is never closed. }
+function RefTargetAt(const S: string; ABar: Integer; out AStop: Integer;
+  out ALabel: string; const AText: string): Boolean;
+var
+  Close: Integer;
+begin
+  Result := False;
+  ALabel := AText;
+  AStop := ABar + 1;
+  if ABar < Length(S) then
+  begin
+    if S[ABar + 1] = '(' then Exit;
+    if S[ABar + 1] = '[' then
+    begin
+      Close := FindClose(S, ']', ABar + 2);
+      if Close = 0 then Exit;
+      if Close > ABar + 2 then
+        ALabel := Copy(S, ABar + 2, Close - ABar - 2);
+      AStop := Close + 1;
+    end;
+  end;
+  Result := (Trim(ALabel) <> '') and LabelIsPlain(ALabel);
+end;
+
+{ The link definitions of the document being converted, as label=url, with
+  the title after a #1 where there is one.
+
+  A unit variable because the inline pass is a plain function called from a
+  dozen places and from itself, and threading a table through all of it buys
+  nothing: one document is converted at a time, on the thread that asked for
+  it.  A quote converts its own contents by calling the converter again, and
+  that call shares this table rather than making one -- a definition at the
+  foot of a document is reachable from inside a quote in it. }
+var
+  MdDefs: TStringList = nil;
+
+{ Labels match whatever their spacing and case: "[Foo Bar]" and "[foo  bar]"
+  are the same label. }
+function DefKey(const ALabel: string): string;
+var
+  i: Integer;
+  Last: Char;
+begin
+  Result := '';
+  Last := ' ';
+  for i := 1 to Length(ALabel) do
+    if ALabel[i] in [' ', #9, #10, #13] then
+    begin
+      if Last <> ' ' then Result := Result + ' ';
+      Last := ' ';
+    end
+    else
+    begin
+      Result := Result + UpCase(ALabel[i]);
+      Last := ALabel[i];
+    end;
+  Result := Trim(Result);
+end;
+
+function MdDefLookup(const ALabel: string; out AUrl, ATitle: string): Boolean;
+var
+  V: string;
+  At_: Integer;
+begin
+  Result := False;
+  AUrl := '';
+  ATitle := '';
+  if MdDefs = nil then Exit;
+  if MdDefs.IndexOfName(DefKey(ALabel)) < 0 then Exit;
+  V := MdDefs.Values[DefKey(ALabel)];
+  At_ := Pos(#1, V);
+  if At_ > 0 then
+  begin
+    AUrl := Copy(V, 1, At_ - 1);
+    ATitle := Copy(V, At_ + 1, MaxInt);
+  end
+  else
+    AUrl := V;
+  Result := True;
+end;
+
 function InlineSpans(const AText: string): string;
 var
-  i, n, Close, Bar, Paren: Integer;
+  i, n, Close, Bar, Paren, Run, Next: Integer;
+  Label_: string;
+  Title, Href, Shown: string;
   Out_: string;
   Url, Text: string;
 
@@ -588,37 +831,71 @@ begin
       literal asterisk. }
     if (AText[i] = '\') and (i < n) then
     begin
-      Emit(LedHtmlEscape(AText[i + 1]));
+      { Before the end of a line it is the hard break; before anything else
+        it is the escape that lets a literal asterisk be written. }
+      if AText[i + 1] = #10 then
+        Emit('<br>')
+      else
+        Emit(LedHtmlEscape(AText[i + 1]));
       Inc(i, 2);
       Continue;
     end;
 
-    { Code spans come first: nothing inside them is markup. }
+    { Code spans come first: nothing inside them is markup.
+
+      The opening run can be any number of backticks and is closed by a run
+      of the same length, so a span can hold backticks of its own.  One space
+      at each end is dropped where both are there, which is what lets a span
+      start or end with a backtick: `` ` ``. }
     if AText[i] = '`' then
     begin
-      Close := FindClose(AText, '`', i + 1);
+      Run := 0;
+      while (i + Run <= n) and (AText[i + Run] = '`') do Inc(Run);
+      Close := CodeSpanEnd(AText, i + Run, Run);
       if Close > 0 then
       begin
-        Emit('<code>' + LedHtmlEscape(Copy(AText, i + 1, Close - i - 1)) +
-             '</code>');
-        i := Close + 1;
+        Text := Copy(AText, i + Run, Close - i - Run);
+        Text := StringReplace(Text, #10, ' ', [rfReplaceAll]);
+        if (Length(Text) >= 2) and (Text[1] = ' ') and
+           (Text[Length(Text)] = ' ') and (Trim(Text) <> '') then
+          Text := Copy(Text, 2, Length(Text) - 2);
+        Emit('<code>' + LedHtmlEscape(Text) + '</code>');
+        i := Close + Run;
         Continue;
       end;
+      { Never closed, so they are backticks and nothing more. }
+      Emit(StringOfChar('`', Run));
+      Inc(i, Run);
+      Continue;
     end;
 
     { Images before links, since ![ ] ( ) starts with a bang. }
     if (AText[i] = '!') and (i < n) and (AText[i + 1] = '[') then
     begin
       Bar := FindClose(AText, ']', i + 2);
+      if (Bar > 0) and RefTargetAt(AText, Bar, Next, Label_,
+                                   Copy(AText, i + 2, Bar - i - 2)) and
+         MdDefLookup(Label_, Url, Title) then
+      begin
+        if Title <> '' then
+          Title := ' title="' + LedHtmlEscape(Title) + '"';
+        Emit(Format('<img src="%s" alt="%s"%s>',
+          [LedHtmlEscape(Url),
+           LedHtmlEscape(Copy(AText, i + 2, Bar - i - 2)), Title]));
+        i := Next;
+        Continue;
+      end;
       if (Bar > 0) and (Bar < n) and (AText[Bar + 1] = '(') then
       begin
         Paren := FindClose(AText, ')', Bar + 2);
-        if Paren > 0 then
+        if (Paren > 0) and
+           SplitTarget(Copy(AText, Bar + 2, Paren - Bar - 2), Url, Title) then
         begin
           Text := Copy(AText, i + 2, Bar - i - 2);
-          Url := Copy(AText, Bar + 2, Paren - Bar - 2);
-          Emit(Format('<img src="%s" alt="%s">',
-            [LedHtmlEscape(Url), LedHtmlEscape(Text)]));
+          if Title <> '' then
+            Title := ' title="' + LedHtmlEscape(Title) + '"';
+          Emit(Format('<img src="%s" alt="%s"%s>',
+            [LedHtmlEscape(Url), LedHtmlEscape(Text), Title]));
           i := Paren + 1;
           Continue;
         end;
@@ -628,15 +905,34 @@ begin
     if AText[i] = '[' then
     begin
       Bar := FindClose(AText, ']', i + 1);
+      { A link to a definition further down -- [text][label], [text][] or
+        just [label] -- which is how a document that uses a URL in several
+        places writes it once.  Left as the text it is when no definition
+        answers to the label, which is what "[see note]" in prose relies
+        on. }
+      if (Bar > 0) and RefTargetAt(AText, Bar, Next, Label_,
+                                   Copy(AText, i + 1, Bar - i - 1)) and
+         MdDefLookup(Label_, Url, Title) then
+      begin
+        if Title <> '' then
+          Title := ' title="' + LedHtmlEscape(Title) + '"';
+        Emit(Format('<a href="%s"%s>%s</a>',
+          [LedHtmlEscape(Url), Title,
+           InlineSpans(Copy(AText, i + 1, Bar - i - 1))]));
+        i := Next;
+        Continue;
+      end;
       if (Bar > 0) and (Bar < n) and (AText[Bar + 1] = '(') then
       begin
         Paren := FindClose(AText, ')', Bar + 2);
-        if Paren > 0 then
+        if (Paren > 0) and
+           SplitTarget(Copy(AText, Bar + 2, Paren - Bar - 2), Url, Title) then
         begin
           Text := Copy(AText, i + 1, Bar - i - 1);
-          Url := Copy(AText, Bar + 2, Paren - Bar - 2);
-          Emit(Format('<a href="%s">%s</a>',
-            [LedHtmlEscape(Url), InlineSpans(Text)]));
+          if Title <> '' then
+            Title := ' title="' + LedHtmlEscape(Title) + '"';
+          Emit(Format('<a href="%s"%s>%s</a>',
+            [LedHtmlEscape(Url), Title, InlineSpans(Text)]));
           i := Paren + 1;
           Continue;
         end;
@@ -679,11 +975,29 @@ begin
       Continue;
     end;
 
+    if (AText[i] = '<') and AutolinkAt(AText, i, Close, Href, Shown) then
+    begin
+      Emit(Format('<a href="%s">%s</a>',
+        [LedHtmlEscape(Href), LedHtmlEscape(Shown)]));
+      i := Close + 1;
+      Continue;
+    end;
+
     { Raw HTML, which markdown allows and a notebook cell often carries. }
     if (AText[i] = '<') and RawTagAt(AText, i, Close) then
     begin
       Emit(Copy(AText, i, Close - i + 1));
       i := Close + 1;
+      Continue;
+    end;
+
+    { The line ending a hard break left behind.  Code spans and raw tags are
+      above this and keep theirs, which is why it is carried this far rather
+      than written as a <br> when the lines were joined. }
+    if AText[i] = #10 then
+    begin
+      Emit('<br>');
+      Inc(i);
       Continue;
     end;
 
@@ -815,6 +1129,51 @@ begin
   Result := True;
 end;
 
+{ Whether a line opens a block of its own, which is what laziness turns on:
+  a plain line of prose carries the paragraph above it on, and a heading or a
+  list or a fence does not. }
+function StartsABlock(const S: string): Boolean;
+var
+  T, Dummy: string;
+  C: Char;
+  Level: Integer;
+begin
+  Result := True;
+  T := Trim(S);
+  if T = '' then Exit;
+  if T[1] = '>' then Exit;
+  if IsThematicBreak(S) then Exit;
+  if (Copy(T, 1, 3) = '```') or (Copy(T, 1, 3) = '~~~') then Exit;
+  if BulletAt(S, Dummy, C) or OrderedAt(S, Dummy, C) then Exit;
+  if T[1] = '#' then
+  begin
+    Level := 0;
+    while (Level < Length(T)) and (T[Level + 1] = '#') do Inc(Level);
+    if (Level <= 6) and (Level < Length(T)) and (T[Level + 1] = ' ') then Exit;
+  end;
+  Result := False;
+end;
+
+{ Whether a line ends in a break the author asked for: two spaces, which is
+  how it has always been written, or the backslash CommonMark added because
+  trailing spaces are invisible and editors eat them.
+
+  An even number of backslashes is not one: the last of them is an escaped
+  backslash, and the line ends in a character rather than a request. }
+function EndsHard(const S: string): Boolean;
+var
+  T: string;
+  k: Integer;
+begin
+  Result := False;
+  if Length(S) < 2 then Exit;
+  if (S[Length(S)] = ' ') and (S[Length(S) - 1] = ' ') then Exit(True);
+  T := TrimRight(S);
+  k := 0;
+  while (k < Length(T)) and (T[Length(T) - k] = '\') do Inc(k);
+  Result := Odd(k);
+end;
+
 function LedMarkdownToHTML(const AText: string; ALineIds: Boolean): string;
 var
   Lines: TStringList;
@@ -822,7 +1181,9 @@ var
   i, Level: Integer;
   Line, Trimmed, Content, Fence, Lang: string;
   InCode: Boolean;
-  Item, Code: string;
+  Item, Code, Blanks, Quote: string;
+  CodeLine, QuoteLine: Integer;
+  Hard, ParaHard: Boolean;
   Marker: Char;
   ItemIndent: Integer;         { the text column of the item last emitted }
   { A blank line was read with a list still open, and -- once the line after
@@ -840,6 +1201,73 @@ var
       Result := ' id="L' + IntToStr(ALine) + '"'
     else
       Result := '';
+  end;
+
+  { A fragment that is already HTML, kept as the lines it came in: Out_ is a
+    list of lines and the passes that run over the result -- the <pre>
+    wrapper, the heading flattener -- read it that way. }
+  procedure AddLines(const AHtml: string);
+  var
+    L: TStringList;
+    k: Integer;
+  begin
+    L := TStringList.Create;
+    try
+      L.Text := AHtml;
+      for k := 0 to L.Count - 1 do
+        Out_.Add(L[k]);
+    finally
+      L.Free;
+    end;
+  end;
+
+  { Link definitions, out of the document before it is read as blocks: a line
+    saying where [label] points is not a line to show.  Blanked rather than
+    deleted, so that the line a block reports as its own stays the line it is
+    on in the editor -- the ids are what the preview scrolls by.
+
+    Only where a block could start, because a definition cannot interrupt a
+    paragraph: "[see 1]: that was the plan" under a line of prose is prose. }
+  procedure CollectDefs;
+  var
+    k: Integer;
+    InFence_: Boolean;
+    Fence_, Lab, U, T, Trim_: string;
+    CanStart: Boolean;
+  begin
+    InFence_ := False;
+    Fence_ := '';
+    CanStart := True;
+    for k := 0 to Lines.Count - 1 do
+    begin
+      Trim_ := Trim(Lines[k]);
+      if InFence_ then
+      begin
+        if Copy(Trim_, 1, Length(Fence_)) = Fence_ then InFence_ := False;
+        CanStart := False;
+        Continue;
+      end;
+      if (Copy(Trim_, 1, 3) = '```') or (Copy(Trim_, 1, 3) = '~~~') then
+      begin
+        InFence_ := True;
+        Fence_ := Copy(Trim_, 1, 3);
+        CanStart := False;
+        Continue;
+      end;
+      if CanStart and DefinitionAt(Lines[k], Lab, U, T) then
+      begin
+        if MdDefs.IndexOfName(DefKey(Lab)) < 0 then
+        begin
+          { The first of a repeated label wins, as the spec has it. }
+          if T <> '' then U := U + #1 + T;
+          MdDefs.Add(DefKey(Lab) + '=' + U);
+        end;
+        Lines[k] := '';
+        CanStart := True;
+        Continue;
+      end;
+      CanStart := Trim_ = '';
+    end;
   end;
 
   procedure FlushPara;
@@ -971,7 +1399,12 @@ var
 
 var
   InTable: Boolean;
+  OwnDefs: Boolean;
 begin
+  { The outermost call owns the definitions; a quote converting its own
+    contents shares them. }
+  OwnDefs := MdDefs = nil;
+  if OwnDefs then MdDefs := TStringList.Create;
   Lines := TStringList.Create;
   Out_ := TStringList.Create;
   ListStack := TStringList.Create;
@@ -983,10 +1416,13 @@ begin
     InTable := False;
     BlankInList := False;
     ItemGap := False;
+    ParaHard := False;
     ItemIndent := 2;
     Para := '';
     ParaLine := 1;
     Fence := '';
+
+    CollectDefs;
 
     i := 0;
     while i < Lines.Count do
@@ -1118,13 +1554,48 @@ begin
         end;
       end;
 
-      if Trimmed[1] = '>' then
+      { A quote is every line of it, not one line each.
+
+        "> a" over "> b" was two quotes of one line, and a heading or a list
+        inside a quote was the text of it with the hashes showing.  The lines
+        are gathered, the markers taken off, and the result converted the way
+        the document itself is -- so a quote holds whatever a document holds,
+        for the cost of the call.  Line ids stop at the quote, which carries
+        the one for its first line: the ids are a scroll map, and the map
+        only has to be able to find the block. }
+      { Four spaces in it is code and not a quote -- and the test has to be
+        made here as well as in the loop below, because the loop takes the
+        line this branch was entered on: a branch that consumes nothing
+        leaves the outer loop reading the same line for ever. }
+      if (Trimmed[1] = '>') and (IndentOf(Line) < 4) then
       begin
         FlushPara;
         CloseLists(0);
-        Out_.Add('<blockquote' + Anchor(i + 1) + '>' +
-          InlineSpans(Trim(Copy(Trimmed, 2, MaxInt))) + '</blockquote>');
-        Inc(i);
+        Quote := '';
+        QuoteLine := i + 1;
+        while i < Lines.Count do
+        begin
+          Line := Lines[i];
+          Trimmed := Trim(Line);
+          if (IndentOf(Line) < 4) and (Trimmed <> '') and (Trimmed[1] = '>') then
+          begin
+            { the marker, and the one space that may follow it }
+            Content := Copy(Trimmed, 2, MaxInt);
+            if (Content <> '') and (Content[1] = ' ') then
+              Delete(Content, 1, 1);
+            Quote := Quote + Content + LineEnding;
+          end
+          { Laziness again: a plain line under a quoted paragraph is quoted
+            too, as long as it starts nothing of its own. }
+          else if (Trimmed <> '') and (Quote <> '') and not StartsABlock(Line) then
+            Quote := Quote + Trimmed + LineEnding
+          else
+            Break;
+          Inc(i);
+        end;
+        Out_.Add('<blockquote' + Anchor(QuoteLine) + '>');
+        AddLines(LedMarkdownToHTML(Quote, False));
+        Out_.Add('</blockquote>');
         Continue;
       end;
 
@@ -1225,16 +1696,42 @@ begin
         Continue;
       end;
 
-      { An indented block with no list open is a code block. }
+      { An indented block with no list open is a code block -- all of it, and
+        the blank lines inside it.  A <pre> per line put every line of a
+        sample in a box of its own. }
       if (IndentOf(Line) >= 4) and (ListStack.Count = 0) and (Para = '') then
       begin
-        Out_.Add('<pre' + Anchor(i + 1) + '>' +
-          LedHtmlEscape(Copy(Line, 5, MaxInt)) + '</pre>');
-        Inc(i);
+        Code := '';
+        Blanks := '';
+        CodeLine := i + 1;
+        while i < Lines.Count do
+        begin
+          Line := Lines[i];
+          if Trim(Line) = '' then
+            { Held rather than written: a blank line after the last indented
+              line is the one that ends the block, and is not part of it. }
+            Blanks := Blanks + LineEnding
+          else if IndentOf(Line) >= 4 then
+          begin
+            if Code <> '' then Code := Code + LineEnding;
+            Code := Code + Blanks + LedHtmlEscape(Copy(Line, 5, MaxInt));
+            Blanks := '';
+          end
+          else
+            Break;
+          Inc(i);
+        end;
+        Out_.Add('<pre' + Anchor(CodeLine) + '>' + Code + '</pre>');
         Continue;
       end;
 
       CloseLists(0);
+      { A line ending in two spaces, or in a backslash, is a break the author
+        asked for -- an address, a verse, a line that has to stand alone --
+        and the lines were simply run together.  The marker is read off the
+        line before the trim takes it away, and acted on when the next line
+        is added. }
+      Hard := EndsHard(Line);
       if Para = '' then
       begin
         Para := Trimmed;
@@ -1242,8 +1739,18 @@ begin
           hard-wrapped paragraph is one block and belongs to its first line. }
         ParaLine := i + 1;
       end
+      else if ParaHard then
+      begin
+        { Kept as the line ending it was, for the inline pass to make a <br>
+          of.  Written in here as one it would be a <br> inside a code span
+          and inside the attribute of a tag as well -- and the backslash that
+          asked for it is left in place for the same reason: inside a code
+          span it is a backslash and not a request. }
+        Para := Para + #10 + Trimmed;
+      end
       else
         Para := Para + ' ' + Trimmed;
+      ParaHard := Hard;
       Inc(i);
     end;
 
@@ -1256,6 +1763,7 @@ begin
     ListStack.Free;
     Out_.Free;
     Lines.Free;
+    if OwnDefs then FreeAndNil(MdDefs);
   end;
 end;
 
