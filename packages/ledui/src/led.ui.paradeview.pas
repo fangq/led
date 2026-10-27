@@ -39,6 +39,9 @@ uses
   Led.Core.StrBuf, Led.UI.Pictures, Led.UI.ParadeFonts;
 
 type
+  { A click in the page, with the source line of the block it landed in. }
+  TLedParadeLineEvent = procedure(Sender: TObject; ALine: Integer) of object;
+
   { A place in the page that a source line reaches: the bookmark LED wrote
     into the HTML, as the document now holds it. }
   TLedParadeAnchor = record
@@ -51,6 +54,11 @@ type
     FPics: TLedPictureSource;
     FAnchors: array of TLedParadeAnchor;
     FWantPt: Double;          { the size the reader asked for }
+    FWantFace: string;        { and the face, from Preferences }
+    FDownAt: TPoint;          { where the button went down }
+    FDownOn: Boolean;         { and whether it is still down }
+    FDragged: Boolean;        { it moved far enough to be a drag, not a click }
+    FOnClickedLine: TLedParadeLineEvent;
     FBodyPt: Double;          { the size the document's own body came in at }
     FLaidOutFor: Integer;     { the pane width the page was last laid out for }
     procedure CollectAnchors;
@@ -59,6 +67,17 @@ type
       body style is given the space instead -- without it a preview is a
       wall of text where IPro's is a column of paragraphs. }
     procedure SpaceParagraphs;
+    { The reader's prose face, applied to the document's body style.  The
+      page names no family on purpose -- IPro takes the face from the
+      control rather than from the HTML -- so this is where the setting
+      reaches a Parade page.  A family a page does name, and the
+      monospace of a code span, still win: they are written on the runs
+      and the style is underneath them. }
+    procedure UseProseFace;
+    { The registered family that best answers the name the reader gave,
+      or '' for none: resolution is by name, so Sans has to become a
+      family that is actually there. }
+    function FaceNamed(const AWanted: string): string;
     function BodyPointSize: Double;
     { How wide the page may be drawn, in pixels.  Asked of the control
       rather than worked out, because the room a page gets is the client
@@ -72,6 +91,20 @@ type
       cannot say where it is. }
     function ClientYOf(const APos: pd_pos): Integer;
     function LineAtY(AY: Integer): Integer;
+  protected
+    { A click in the page is the reader pointing at a block, and a drag is
+      the reader selecting text -- which must not be reported, because
+      what the pane does with a reported line is scroll the text view and
+      take the focus, and doing that on every mouse move during a drag is
+      a loop: the scroll comes back as a request to sync the page, which
+      moves the caret, which looks like another click.  That loop is what
+      hung the pane.  So the line is reported from the button coming up,
+      and only where it did not travel. }
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
 
@@ -83,10 +116,12 @@ type
     procedure ShowHtml(const AHtml, ABaseDir: string;
       APictures: TLedPictureSource);
 
-    { The text size the reader chose, in points.  Applied as a zoom,
-      because the size the document carries is the HTML's and the reader's
-      choice is about all of it at once. }
-    procedure SetTextSize(APoints: Integer);
+    { The prose face and size the reader chose in Preferences (View,
+      "Notebook and preview text font").  The size is applied as a zoom,
+      because the size the document carries is the HTML's and the
+      reader's choice is about all of its text at once; the face is
+      applied to the body style. }
+    procedure SetProseFont(const AFace: string; APoints: Integer);
 
     { Lays the page out again if the pane is no longer the width it was
       laid out for, and says whether it did. }
@@ -108,6 +143,12 @@ type
     function LastLine: Integer;
     { How many places in the page a source line can be scrolled to. }
     function AnchorCount: Integer;
+    { Whether the reader has the button down in the page: nothing that
+      moves the view may happen while they do. }
+    property Dragging: Boolean read FDownOn;
+    { A click, with the line of the block it landed in. }
+    property OnClickedLine: TLedParadeLineEvent
+      read FOnClickedLine write FOnClickedLine;
   end;
 
 { LED writes the source line of every block into the page as id="L<n>".
@@ -434,6 +475,7 @@ begin
     picture on the web -- from the pane's source, which has all three }
   if FPics <> nil then
     pd_doc_load_images(Doc, @FetchPicture, Self);
+  UseProseFace;
   SpaceParagraphs;
   FBodyPt := BodyPointSize;
   CollectAnchors;
@@ -441,13 +483,66 @@ begin
   LayOutForWidth;
 end;
 
-procedure TLedParadeView.SetTextSize(APoints: Integer);
+procedure TLedParadeView.SetProseFont(const AFace: string; APoints: Integer);
 begin
   if APoints < 4 then APoints := 4;
-  if FWantPt = APoints then Exit;
+  if (FWantPt = APoints) and (FWantFace = AFace) then Exit;
+  if FWantFace <> AFace then
+  begin
+    FWantFace := AFace;
+    if Doc <> nil then UseProseFace;
+  end;
   FWantPt := APoints;
   FLaidOutFor := -1;
   if Doc <> nil then LayOutForWidth;
+end;
+
+function TLedParadeView.FaceNamed(const AWanted: string): string;
+var
+  List: TStringList;
+  Want: string;
+  i: Integer;
+begin
+  Result := '';
+  Want := LowerCase(Trim(AWanted));
+  if Want = '' then Exit;
+  { The names Preferences offers for "whatever this desktop calls it" are
+    not families any font file carries; LedParadeAddFonts registers the
+    faces it chose under these as well, so they resolve. }
+  if (Want = 'sans') or (Want = 'sans-serif') then Want := 'sans'
+  else if Want = 'serif' then Want := 'serif'
+  else if (Want = 'mono') or (Want = 'fixed') then Want := 'monospace';
+  List := TStringList.Create;
+  try
+    GetFontFamilies(List);
+    for i := 0 to List.Count - 1 do
+      if LowerCase(List[i]) = Want then
+        Exit(List[i]);
+  finally
+    List.Free;
+  end;
+end;
+
+procedure TLedParadeView.UseProseFace;
+var
+  Style: pd_style_id;
+  Pp: pd_para_props;
+  Cp: pd_char_props;
+  Kind: Int32;
+  Based: UInt32;
+  Face: string;
+begin
+  if Doc = nil then Exit;
+  Face := FaceNamed(FWantFace);
+  if Face = '' then Exit;
+  Style := pd_doc_style_find(Doc, 'Normal');
+  if Style = 0 then Exit;
+  FillChar(Pp, SizeOf(Pp), 0);
+  FillChar(Cp, SizeOf(Cp), 0);
+  if pd_doc_style_info(Doc, Style, @Kind, @Based, @Pp, @Cp) <> PD_OK then Exit;
+  Cp.mask := Cp.mask or PD_CP_FAMILY;
+  StrPLCopy(Cp.family, Face, High(Cp.family));
+  pd_doc_style_define(Doc, 'Normal', PD_STYLE_PARAGRAPH, Based, @Pp, @Cp, nil);
 end;
 
 function TLedParadeView.Reflow: Boolean;
@@ -484,6 +579,40 @@ begin
       Break;
   end;
   if (Result = 0) and (Length(FAnchors) > 0) then Result := FAnchors[0].Line;
+end;
+
+procedure TLedParadeView.MouseDown(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  FDownOn := True;
+  FDragged := False;
+  FDownAt := Point(X, Y);
+end;
+
+procedure TLedParadeView.MouseMove(Shift: TShiftState; X, Y: Integer);
+begin
+  inherited MouseMove(Shift, X, Y);
+  { Far enough to be a drag: a click with a shaking hand in it is still a
+    click. }
+  if FDownOn and ((Abs(X - FDownAt.X) > 3) or (Abs(Y - FDownAt.Y) > 3)) then
+    FDragged := True;
+end;
+
+procedure TLedParadeView.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+var
+  Clicked: Boolean;
+  Line: Integer;
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+  if Button <> mbLeft then Exit;
+  Clicked := FDownOn and not FDragged;
+  FDownOn := False;
+  if not (Clicked and Assigned(FOnClickedLine)) then Exit;
+  Line := LineAtCaret;
+  if Line > 0 then FOnClickedLine(Self, Line);
 end;
 
 function TLedParadeView.ScrollToLine(ALine: Integer): Boolean;

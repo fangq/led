@@ -180,7 +180,7 @@ type
       will never be shown at. }
     procedure EnsureParade;
     procedure ParadeRender(const APage: string);
-    procedure ParadeCaretMoved(Sender: TObject);
+    procedure ParadeClicked(Sender: TObject; ALine: Integer);
     {$ENDIF}
   public
     { The face code blocks are set in.  Public so a check can see that it is
@@ -202,6 +202,13 @@ type
     { Which engine lays the page out, pinned.  Built without Parade,
       lpeParade still renders with IPro: there is nothing else there. }
     property Engine: TLedPreviewEngine read FEngine write SetEngine;
+    {$IFDEF LED_PARADE}
+    { The control that engine draws into, nil until it has rendered once.
+      For a check that has to act like a mouse: what a drag does and what
+      a click does are the pane's behaviour, and from outside they look
+      alike. }
+    property ParadeView: TLedParadeView read FParade;
+    {$ENDIF}
     procedure ShowMessage_(const AText: string);
     { Draws the same document again in the colours it is now given.  The
       render path skips a page it has already drawn at the same width, which
@@ -688,6 +695,11 @@ begin
   if UseParade then
   begin
     if (FParade = nil) or (not FHasRendered) then Exit;
+    { Not while the reader has the button down in the page: this moves
+      the page, and moving it under a drag takes the text they are
+      selecting out from under the pointer.  The line is remembered
+      above, so the page catches up when they let go. }
+    if FParade.Dragging then Exit;
     { Moving the view moves its caret, which must not come straight back
       as the reader having pointed at something. }
     FParadeSyncing := True;
@@ -838,6 +850,10 @@ begin
   if UseParade then
   begin
     if (FParade = nil) or (not FParade.Visible) then Exit;
+    { Not while the reader is selecting text: what this reports moves the
+      text view and takes the focus, which is not something to do to
+      somebody in the middle of a drag. }
+    if FParade.Dragging then Exit;
     Now_ := FParade.ScrollTop;
     if Now_ = FLastScroll then Exit;
     FLastScroll := Now_;
@@ -1119,9 +1135,9 @@ begin
     FParade := TLedParadeView.Create(Self);
     FParade.Parent := Self;
     FParade.Align := alClient;
-    { A click in the page moves the caret, and that is the reader
-      pointing at a block; see ParadeCaretMoved. }
-    FParade.OnSelectionChange := @ParadeCaretMoved;
+    { A click in the page is the reader pointing at a block; a drag is
+      them selecting text, and the view tells the two apart. }
+    FParade.OnClickedLine := @ParadeClicked;
   end;
   FHtml.Visible := False;
   FParade.Visible := True;
@@ -1132,8 +1148,10 @@ end;
 procedure TLedPreviewPane.ParadeRender(const APage: string);
 begin
   EnsureParade;
-  { The reader's own size, the same one IPro is given. }
-  FParade.SetTextSize(LedPreviewPointSize(FBaseFontSize) + LedPageZoom);
+  { The reader's own face and size, the same ones IPro is given in
+    ApplyFixedFont. }
+  FParade.SetProseFont(LedPreviewFace,
+    LedPreviewPointSize(FBaseFontSize) + LedPageZoom);
   FParadeSyncing := True;
   try
     try
@@ -1163,18 +1181,13 @@ begin
   if FWantedLine > 0 then ScrollToLine(FWantedLine);
 end;
 
-{ The caret moved in the page.  Unless this pane moved it, that was the
-  reader clicking somewhere, which is how the text view follows the
-  preview -- the same thing HtmlClicked does for IPro. }
-procedure TLedPreviewPane.ParadeCaretMoved(Sender: TObject);
-var
-  L: Integer;
+{ A click in the page, which is how the text view follows the preview --
+  the same thing HtmlClicked does for IPro. }
+procedure TLedPreviewPane.ParadeClicked(Sender: TObject; ALine: Integer);
 begin
-  if FParadeSyncing or (FParade = nil) then Exit;
+  if FParadeSyncing or (ALine <= 0) then Exit;
   if not Assigned(FOnJumpToLine) then Exit;
-  L := FParade.LineAtCaret;
-  if L <= 0 then Exit;
-  FOnJumpToLine(Self, L);
+  FOnJumpToLine(Self, ALine);
 end;
 {$ENDIF}
 

@@ -137,6 +137,22 @@ begin
           Add(Family, Dir + BoldItalic, 700, True);
           Break;
         end;
+  { and the two text groups under the names a reader's preference uses
+    for them -- Sans, Serif -- which are not families any font file
+    carries.  Resolution is by name, so for Sans to mean the sans there
+    has to be a family called that. }
+  for g := Low(Groups) to High(Groups) do
+    if (Groups[g] = 'serif') or (Groups[g] = 'sans') then
+      for i := 0 to High(Faces) do
+        with Faces[i] do
+          if (Group = Groups[g]) and FileExists(Dir + Regular) then
+          begin
+            Add(Groups[g], Dir + Regular, 400, False);
+            Add(Groups[g], Dir + Bold, 700, False);
+            Add(Groups[g], Dir + Italic, 400, True);
+            Add(Groups[g], Dir + BoldItalic, 700, True);
+            Break;
+          end;
   for i := 0 to High(Monos) do
     if FileExists(Monos[i]) then
     begin

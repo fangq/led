@@ -37,7 +37,8 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit{$ENDIF},
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit,
+  Led.UI.ParadeView{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -12541,6 +12542,38 @@ begin
   DeleteFile(P);
 end;
 
+{$IFDEF LED_PARADE}
+{ Mouse handling is protected in a TControl, and what the Parade preview
+  does with a drag and with a click is exactly what wants checking; this
+  reaches it, the way the pane itself reaches IPro's wheel. }
+type
+  TLedParadeReach = class(TLedParadeView)
+  public
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState;
+      X, Y: Integer); override;
+  end;
+
+procedure TLedParadeReach.MouseDown(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+end;
+
+procedure TLedParadeReach.MouseMove(Shift: TShiftState; X, Y: Integer);
+begin
+  inherited MouseMove(Shift, X, Y);
+end;
+
+procedure TLedParadeReach.MouseUp(Button: TMouseButton; Shift: TShiftState;
+  X, Y: Integer);
+begin
+  inherited MouseUp(Button, Shift, X, Y);
+end;
+{$ENDIF}
+
 { The preview laid out by Parade instead of IPro.
 
   The engine is pinned here rather than read out of a preference, because
@@ -12561,6 +12594,9 @@ var
   P: string;
   L: TStringList;
   i, W0, Short, Tall, Top: Integer;
+  WasFace: string;
+  V: TLedEdit;
+  Reach: TLedParadeReach;
 {$ENDIF}
 begin
   Say('the preview on Parade');
@@ -12634,6 +12670,65 @@ begin
     Tall > Short);
   F.Width := W0;
   Pump;
+
+  { The reader's prose face and size reach this engine too.  The page
+    names no family -- IPro takes one from the control rather than from
+    the HTML -- so without this the preview is in whatever the document
+    happens to say, which for an imported page is the importer's
+    default.  Asked as a size the text actually came out at: a bigger
+    face puts the last block further down. }
+  WasFace := LedPrefs.GetStr(LedPrefPreviewFont, '');
+  try
+    LedPrefs.SetStr(LedPrefPreviewFont, 'Sans 9');
+    F.Preview.Restyle;
+    Pump;
+    F.Preview.ScrollToLine(83);
+    Pump;
+    Short := F.Preview.ScrollPos;
+    LedPrefs.SetStr(LedPrefPreviewFont, 'Sans 20');
+    F.Preview.Restyle;
+    Pump;
+    F.Preview.ScrollToLine(83);
+    Pump;
+    Tall := F.Preview.ScrollPos;
+    Check('the preview text size reaches the page', Tall > Short);
+  finally
+    LedPrefs.SetStr(LedPrefPreviewFont, WasFace);
+    F.Preview.Restyle;
+    Pump;
+  end;
+
+  { Reported: dragging on the page hangs it.
+
+    A drag is the reader selecting text, and a click is them pointing at
+    a block -- and the pane used to answer both, on every caret move, by
+    moving the text view and taking the focus.  During a drag that is a
+    loop: the text scrolls, the scroll comes back as a request to sync
+    the page, syncing moves the caret, and a moved caret looks like
+    another click.  So a drag must leave the text where it is. }
+  V := F.ActiveView;
+  if (V <> nil) and (F.Preview.ParadeView <> nil) then
+  begin
+    F.Preview.ScrollToLine(1);
+    Pump;
+    V.CaretXY := Point(1, 1);
+    Pump;
+    Reach := TLedParadeReach(F.Preview.ParadeView);
+    Reach.MouseDown(mbLeft, [], 30, 40);
+    for i := 1 to 5 do
+      Reach.MouseMove([ssLeft], 30 + 20 * i, 40 + 30 * i);
+    Reach.MouseUp(mbLeft, [], 130, 190);
+    Pump;
+    CheckEqInt('a drag in the page leaves the text where it was', 1,
+      V.CaretY);
+
+    { and a click still takes the text to the block that was clicked }
+    Reach.MouseDown(mbLeft, [], 30, 200);
+    Reach.MouseUp(mbLeft, [], 30, 200);
+    Pump;
+    Check('a click in the page takes the text to that block',
+      V.CaretY > 1);
+  end;
 
   { Back to whatever the reader asked for, for the checks that follow. }
   F.Preview.Engine := lpeFromPrefs;
