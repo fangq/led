@@ -89,6 +89,17 @@ type
       layout is already nearly right and the passes after it are the
       cheap kind. }
     FTallPt: Double;
+    { The faces a character the body font does not have falls back to,
+      loaded once and handed to each document this view reads. }
+    FFallback: array of Ppd_font;
+    FFallbackTried: Boolean;
+    { Parade keeps a fallback chain of its own, but builds it the first
+      time it is asked -- which for a view is before it has been given
+      any fonts -- and only AddSystemFonts makes it look again.  This
+      view does without that list (see Create), so it hands the chain
+      to the document itself: without one, every superscript, arrow and
+      Chinese character the body face lacks is a box. }
+    procedure UseFallbackGlyphs;
     procedure CollectAnchors;
     { A blank line between paragraphs.  The page asks for one in its style
       sheet, which the HTML reader does not read, so the document's own
@@ -151,6 +162,7 @@ type
       X, Y: Integer); override;
   public
     constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
 
     { Shows AHtml -- a whole page, as LedPageHead and LedMarkdownToHTML
       write it -- with ABaseDir the folder relative picture names are
@@ -192,6 +204,11 @@ type
     function LastLine: Integer;
     { How many places in the page a source line can be scrolled to. }
     function AnchorCount: Integer;
+    { How many characters on the page are drawn as the empty box a font
+      shows for one it does not have.  For a check: a preview whose
+      fallback faces went missing looks fine to every test that reads
+      the text, and wrong to the reader. }
+    function MissingGlyphs: Integer;
     { Blank paper under the end of the document, in pixels.  For a
       check: a page is as tall as it is told to be, and a page told to
       be taller than the text is a preview that scrolls on into
@@ -365,6 +382,44 @@ begin
     names and has nothing to pick a font with, and the list is paid for
     on every layout -- see LedParadeAddFonts. }
   LedParadeAddFonts(Self, False);
+end;
+
+procedure TLedParadeView.UseFallbackGlyphs;
+var
+  Files: TStringList;
+  I: Integer;
+  F: Ppd_font;
+begin
+  if Doc = nil then Exit;
+  if not FFallbackTried then
+  begin
+    FFallbackTried := True;
+    Files := TStringList.Create;
+    try
+      LedParadeFallbackFiles(Files);
+      for I := 0 to Files.Count - 1 do
+        if pd_font_load_file(PAnsiChar(Files.ValueFromIndex[I]), 0, F) = PD_OK then
+        begin
+          SetLength(FFallback, Length(FFallback) + 1);
+          FFallback[High(FFallback)] := F;
+        end;
+    finally
+      Files.Free;
+    end;
+  end;
+  if Length(FFallback) > 0 then
+    pd_doc_set_fallback_fonts(Doc, @FFallback[0], Length(FFallback));
+end;
+
+destructor TLedParadeView.Destroy;
+var
+  I: Integer;
+begin
+  { after the document that was using them is gone }
+  inherited Destroy;
+  for I := 0 to High(FFallback) do
+    pd_font_free(FFallback[I]);
+  FFallback := nil;
 end;
 
 { The size the document's own body text is in, read off the first
@@ -670,6 +725,7 @@ begin
     picture on the web -- from the pane's source, which has all three }
   if FPics <> nil then
     pd_doc_load_images(Doc, @FetchPicture, Self);
+  UseFallbackGlyphs;
   UseProseFace;
   SpaceParagraphs;
   FBodyPt := BodyPointSize;
@@ -889,6 +945,28 @@ begin
   if (Layout = nil) or (PageCount = 0) then Exit;
   { The top of the first page, which moves up as the view scrolls down. }
   Result := -PageToClient(0, 0, 0).Y;
+end;
+
+function TLedParadeView.MissingGlyphs: Integer;
+var
+  Items: array of pd_draw;
+  P, N: Int32;
+  I: Integer;
+begin
+  Result := 0;
+  if (Doc = nil) or (Layout = nil) then Exit;
+  for P := 0 to PageCount - 1 do
+  begin
+    N := 0;
+    if pd_layout_page_items(Layout, P, nil, 0, N) <> PD_OK then Continue;
+    if N <= 0 then Continue;
+    SetLength(Items, N);
+    if pd_layout_page_items(Layout, P, @Items[0], N, N) <> PD_OK then Continue;
+    for I := 0 to N - 1 do
+      { glyph 0 is .notdef, which is the box }
+      if (Items[I].kind = PD_KIND_GLYPH) and (Items[I].glyph = 0) then
+        Inc(Result);
+  end;
 end;
 
 function TLedParadeView.PaperUnderText: Integer;
