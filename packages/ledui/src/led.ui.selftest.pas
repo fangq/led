@@ -12574,6 +12574,54 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF LED_PARADE}
+{ The mean brightness of what a control painted, 0..255, or -1 when it has
+  no size to paint.  Every seventh pixel each way: what is being asked is
+  whether the page is a white sheet or a dark one, and that does not need
+  every pixel. }
+function PaintedLuma(AControl: TWinControl): Integer;
+var
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  x, y, Total, N: Integer;
+  C: TFPColor;
+begin
+  Result := -1;
+  if (AControl.Width < 20) or (AControl.Height < 20) then Exit;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(AControl.Width, AControl.Height);
+    AControl.PaintTo(Bmp.Canvas, 0, 0);
+    Img := Bmp.CreateIntfImage;
+    try
+      Total := 0;
+      N := 0;
+      y := 0;
+      while y < Img.Height do
+      begin
+        x := 0;
+        while x < Img.Width do
+        begin
+          C := Img.Colors[x, y];
+          Inc(Total, (C.Red div 257) * 299 div 1000 +
+                     (C.Green div 257) * 587 div 1000 +
+                     (C.Blue div 257) * 114 div 1000);
+          Inc(N);
+          Inc(x, 7);
+        end;
+        Inc(y, 7);
+      end;
+      if N > 0 then Result := Total div N;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+end;
+{$ENDIF}
+
 { The preview laid out by Parade instead of IPro.
 
   The engine is pinned here rather than read out of a preference, because
@@ -12593,7 +12641,7 @@ var
   Tab: TLedTab;
   P: string;
   L: TStringList;
-  i, W0, Short, Tall, Top: Integer;
+  i, W0, Short, Tall, Top, Dark, Light: Integer;
   WasFace: string;
   V: TLedEdit;
   Reach: TLedParadeReach;
@@ -12731,6 +12779,40 @@ begin
     end;
   finally
     Fallbacks.Free;
+  end;
+
+  { The page in the theme's colours.  The page carries them in a style
+    sheet, which Parade's HTML reader does not read: the paper is the
+    control's own colour and the ink is put on the document's styles.
+
+    Read off the pixels and off the layout rather than off the two
+    properties that were just set -- a colour written on a style the
+    text does not use, or on paper the engine draws over, reads back
+    perfectly and shows nothing. }
+  if F.Preview.ParadeView <> nil then
+  begin
+    F.Preview.ParadeView.SetThemeColours(TColor($00100C08),
+      TColor($00E0E8F0));
+    Pump;
+    Dark := PaintedLuma(F.Preview.ParadeView);
+    CheckEqInt('a dark theme puts light ink on the page',
+      $00E0E8F0, ColorToRGB(F.Preview.ParadeView.InkOnPage));
+    Check('and the paper under it is dark', (Dark >= 0) and (Dark < 80));
+
+    F.Preview.ParadeView.SetThemeColours(clWhite, clBlack);
+    Pump;
+    Light := PaintedLuma(F.Preview.ParadeView);
+    Check('where a light theme''s page is a white sheet', Light > 180);
+    CheckEqInt('with dark ink on it', 0,
+      ColorToRGB(F.Preview.ParadeView.InkOnPage));
+
+    { and the pane hands the engine the theme's own colours, whichever
+      theme this machine is set to }
+    F.Preview.Restyle;
+    Pump;
+    CheckEqInt('the preview follows the theme',
+      ColorToRGB(LedPageColours.Text),
+      ColorToRGB(F.Preview.ParadeView.InkOnPage));
   end;
 
   { Reported: the page does not end where the document does -- it is

@@ -1291,18 +1291,11 @@ begin
     written before LED had themes. }
   Colours := LedPageColours;
   {$IFDEF LED_PARADE}
-  { Parade's paper is white whatever the theme says, so a dark theme's ink
-    would be light text on a white page.  Until the paper takes a colour
-    (see Led.UI.ParadeView) that engine gets a light page. }
-  if UseParade then
-  begin
-    Colours.Page := clWhite;
-    Colours.Text := TColor($00202020);
-    Colours.Muted := TColor($00707070);
-    Colours.CodeBg := TColor($00F2F2F2);
-    Colours.Border := TColor($00C8C8C8);
-    Colours.Link := TColor($00C05A00);
-  end;
+  { That engine reads no style sheet, so the colours the page carries in
+    one reach it the other way: the paper is the control's, and the ink is
+    put on the document's styles. }
+  if UseParade and (FParade <> nil) then
+    FParade.SetThemeColours(Colours.Page, Colours.Text, False);
   {$ENDIF}
   { The cut is a ceiling on how long IPro may be asked to think, and
     nothing else needs it: Parade lays a megabyte out in 144 ms, so in

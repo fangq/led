@@ -659,7 +659,7 @@ A few preferences worth knowing, set in `prefs.ini` or the Preferences dialog:
 | `Editor/recovery_enabled` | Crash-recovery journalling |
 | `Editor/recovery_interval` | How often it snapshots |
 | `Editor/preview_max_kb` | How much of a long document the preview renders, in KB (64); 0 for all of it |
-| `Editor/preview_engine` | Which engine lays the preview out: `ipro` (the default) or `parade` — faster, reflows on a resize, no theme colours yet |
+| `Editor/preview_engine` | Which engine lays the preview out: `ipro` (the default) or `parade` — faster, reflows on a resize, follows the theme's colours |
 | `Notebook/fetch_images` | Whether a notebook's remote images are fetched |
 | `AI/enabled` | Offer the AI pane at all |
 | `AI/backend` | `ollama` or `claude` |
