@@ -29,12 +29,14 @@
   dialect it implements is the one the reader sees either way.  Measured
   the same: 19 ms against 20 for the 110 KB document.
 
+  The page is drawn in the theme's colours: the paper takes
+  TParadeEdit.PaperColor and the text the theme's ink, so a dark theme
+  gets a dark preview rather than a white sheet in a dark window.
+
   What is not here yet, and is Parade's side rather than LED's:
 
-    - The paper is white whatever the theme says, because the colour is
-      written into TParadeEdit.PaintPage, and the gap and frame between
-      two pages show where a web page would show nothing (FPageGap and
-      the two FillRectImg colours).
+    - The gap and frame between two pages show where a web page would
+      show nothing (FPageGap and the frame's own FillRectImg colour).
 
     - A press costs what the page holds.  TParadeEdit.MouseDown asks
       ClickPage whether the point is on a drawing, and DrawingAt walks
@@ -81,6 +83,8 @@ type
     FDragged: Boolean;        { it moved far enough to be a drag, not a click }
     FOnClickedLine: TLedParadeLineEvent;
     FBodyPt: Double;          { the size the document's own body came in at }
+    FInk: TColor;             { the theme's text colour, clNone for none }
+    FInkWas: UInt32;          { and the one before it, as a style carries it }
     FLaidOutFor: Integer;     { the pane width the page was last laid out for }
     { The page height it settled on last time, as the first guess for
       the next time.  Starting from the ceiling instead means the one
@@ -113,6 +117,13 @@ type
       monospace of a code span, still win: they are written on the runs
       and the style is underneath them. }
     procedure UseProseFace;
+    { The theme's text colour, applied to the document's styles.  The
+      page names its colours in a style sheet, which the HTML reader
+      does not read, so the colour reaches the page the same way the
+      face does.  A style that carries a colour of its own -- and a run
+      that does, such as a <font color> in the Markdown -- keeps it:
+      what is being set here is what the document did not say. }
+    procedure UseThemeInk;
     { The registered family that best answers the name the reader gave,
       or '' for none: resolution is by name, so Sans has to become a
       family that is actually there. }
@@ -184,6 +195,15 @@ type
     procedure SetProseFont(const AFace: string; APoints: Integer;
       AApply: Boolean = True);
 
+    { The theme's paper and ink.  The paper is both the page and the desk
+      around it, so the reader sees one sheet; the ink is applied to the
+      document's styles and so reaches the next page as well as this
+      one.  Either may be clNone, which leaves that one as it is.
+
+      AApply is for the caller that is about to hand over a new page:
+      laying out the page being replaced is work nobody will see. }
+    procedure SetThemeColours(APaper, AInk: TColor; AApply: Boolean = True);
+
     { Lays the page out again if the pane is no longer the width it was
       laid out for, and says whether it did. }
     function Reflow: Boolean;
@@ -209,6 +229,12 @@ type
       fallback faces went missing looks fine to every test that reads
       the text, and wrong to the reader. }
     function MissingGlyphs: Integer;
+    { The colour the page's text is drawn in: the colour most of the
+      glyphs on the page carry, or clNone for a page with no text.  For
+      a check: a view that took the theme's ink and one that ignored it
+      hold the same document and say the same thing about it
+      otherwise. }
+    function InkOnPage: TColor;
     { Blank paper under the end of the document, in pixels.  For a
       check: a page is as tall as it is told to be, and a page told to
       be taller than the text is a preview that scrolls on into
@@ -371,10 +397,13 @@ constructor TLedParadeView.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   ReadOnly := True;
-  { The page is white (PaintPage draws it so), and the control's own
-    background is what shows around it: the same white, so that what the
-    reader sees is one sheet rather than a page on a desk. }
+  { The page and the control's own background are the same colour, so
+    that what the reader sees is one sheet rather than a page on a desk.
+    White until the pane says otherwise (SetThemeColours). }
   Color := clWhite;
+  PaperColor := clWhite;
+  FInk := clNone;
+  FInkWas := 0;
   FWantPt := 0;
   FBodyPt := 0;
   FLaidOutFor := -1;
@@ -727,6 +756,7 @@ begin
     pd_doc_load_images(Doc, @FetchPicture, Self);
   UseFallbackGlyphs;
   UseProseFace;
+  UseThemeInk;
   SpaceParagraphs;
   FBodyPt := BodyPointSize;
   CollectAnchors;
@@ -796,6 +826,73 @@ begin
   Cp.mask := Cp.mask or PD_CP_FAMILY;
   StrPLCopy(Cp.family, Face, High(Cp.family));
   pd_doc_style_define(Doc, 'Normal', PD_STYLE_PARAGRAPH, Based, @Pp, @Cp, nil);
+end;
+
+{ a TColor as a document's colour: 0xFFRRGGBB, where a TColor is 0xBBGGRR }
+function InkOf(AColor: TColor): UInt32;
+var
+  R, G, B: Byte;
+begin
+  RedGreenBlue(ColorToRGB(AColor), R, G, B);
+  Result := $FF000000 or (UInt32(R) shl 16) or (UInt32(G) shl 8) or UInt32(B);
+end;
+
+procedure TLedParadeView.UseThemeInk;
+var
+  I: Integer;
+  Style: pd_style_id;
+  Kind: Int32;
+  Based: UInt32;
+  Pp: pd_para_props;
+  Cp: pd_char_props;
+  Named: PAnsiChar;
+begin
+  if (Doc = nil) or (FInk = clNone) then Exit;
+  for I := 0 to pd_doc_style_count(Doc) - 1 do
+  begin
+    Style := pd_doc_style_at(Doc, I);
+    Named := pd_doc_style_name(Doc, Style);
+    if (Named = nil) or (Named^ = #0) then Continue;
+    FillChar(Pp, SizeOf(Pp), 0);
+    FillChar(Cp, SizeOf(Cp), 0);
+    if pd_doc_style_info(Doc, Style, @Kind, @Based, @Pp, @Cp) <> PD_OK then Continue;
+    { A style that says nothing about colour takes the theme's.  One
+      that does keeps it -- unless what it says is the colour this view
+      put there, which is how a second theme replaces the first rather
+      than being refused by it. }
+    if ((Cp.mask and PD_CP_COLOR) <> 0) and
+       ((FInkWas = 0) or ((Cp.color and $FFFFFF) <> (FInkWas and $FFFFFF))) then
+      Continue;
+    Cp.mask := Cp.mask or PD_CP_COLOR;
+    Cp.color := InkOf(FInk);
+    pd_doc_style_define(Doc, Named, Kind, Based, @Pp, @Cp, nil);
+  end;
+  FInkWas := InkOf(FInk);
+end;
+
+procedure TLedParadeView.SetThemeColours(APaper, AInk: TColor;
+  AApply: Boolean);
+begin
+  if APaper <> clNone then
+  begin
+    { the desk as well as the paper: the gap around the page is not a
+      margin the reader asked for, it is where the page is not }
+    Color := APaper;
+    PaperColor := APaper;
+  end;
+  if (AInk = clNone) or (AInk = FInk) then Exit;
+  FInk := AInk;
+  { A document in hand takes it now; the next one takes it as it is
+    read (ShowHtml).  The styles are edited through the C API, which
+    the control cannot see, so the layout is asked for: the colour a
+    glyph is drawn in is written into the item the layout produced,
+    and until there is a new one the page is the old colour. }
+  if AApply and (Doc <> nil) then
+  begin
+    UseThemeInk;
+    Relayout;
+    Invalidate;
+  end;
 end;
 
 function TLedParadeView.Reflow: Boolean;
@@ -967,6 +1064,57 @@ begin
       if (Items[I].kind = PD_KIND_GLYPH) and (Items[I].glyph = 0) then
         Inc(Result);
   end;
+end;
+
+function TLedParadeView.InkOnPage: TColor;
+var
+  Items: array of pd_draw;
+  P, N: Int32;
+  I, Best, Count: Integer;
+  Seen: array of record Col: UInt32; Num: Integer; end;
+  J: Integer;
+  Found: Boolean;
+begin
+  Result := clNone;
+  if (Doc = nil) or (Layout = nil) then Exit;
+  for P := 0 to PageCount - 1 do
+  begin
+    N := 0;
+    if pd_layout_page_items(Layout, P, nil, 0, N) <> PD_OK then Continue;
+    if N <= 0 then Continue;
+    SetLength(Items, N);
+    if pd_layout_page_items(Layout, P, @Items[0], N, N) <> PD_OK then Continue;
+    for I := 0 to N - 1 do
+      if Items[I].kind = PD_KIND_GLYPH then
+      begin
+        Found := False;
+        for J := 0 to High(Seen) do
+          if Seen[J].Col = (Items[I].color and $FFFFFF) then
+          begin
+            Inc(Seen[J].Num);
+            Found := True;
+            Break;
+          end;
+        if not Found then
+        begin
+          SetLength(Seen, Length(Seen) + 1);
+          Seen[High(Seen)].Col := Items[I].color and $FFFFFF;
+          Seen[High(Seen)].Num := 1;
+        end;
+      end;
+  end;
+  Best := -1;
+  Count := 0;
+  for J := 0 to High(Seen) do
+    if Seen[J].Num > Count then
+    begin
+      Count := Seen[J].Num;
+      Best := J;
+    end;
+  if Best < 0 then Exit;
+  { a document's colour is 0xRRGGBB and a TColor is 0xBBGGRR }
+  Result := TColor(((Seen[Best].Col and $FF) shl 16) or
+    (Seen[Best].Col and $00FF00) or ((Seen[Best].Col shr 16) and $FF));
 end;
 
 function TLedParadeView.PaperUnderText: Integer;
