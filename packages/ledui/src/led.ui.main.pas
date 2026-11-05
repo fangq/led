@@ -641,6 +641,12 @@ type
     FClipAsked: Boolean;
     FClipPolls: Integer;
     FClipAskedAt: QWord;
+    { Where the action update is in an idle pass, for the rails: 0 outside
+      one, 1 inside one with the rails not yet refreshed, 2 once they have
+      been.  See ActionList1Update. }
+    FRailsPass: Integer;
+    procedure RailsIdleBegin(Sender: TObject; var Done: Boolean);
+    procedure RailsIdleEnd(Sender: TObject);
 
     procedure ApplyMinimumSize;
     procedure ApplyCentreFloor;
@@ -1171,6 +1177,8 @@ begin
   { Shared with every other window in this process; see LedDocuments. }
   FDocs := LedDocuments;
   LedWindows.Add(Self);
+  Application.AddOnIdleHandler(@RailsIdleBegin, False);
+  Application.AddOnIdleEndHandler(@RailsIdleEnd, False);
 
   { The journal is created before anything can be edited, but the directory
     itself is only made on the first write, so an installation that never
@@ -1553,6 +1561,8 @@ begin
     documents this window was showing have to be let go of by hand -- but
     only the ones no other window is still showing. }
   LedWindows.Remove(Self);
+  Application.RemoveOnIdleHandler(@RailsIdleBegin);
+  Application.RemoveOnIdleEndHandler(@RailsIdleEnd);
   Tabs := TFPList.Create;
   try
     CollectTabs(Tabs);
@@ -6620,6 +6630,20 @@ begin
   Result := FClipHasText;
 end;
 
+{ The idle pass, as far as the rails care.  TApplication.Idle runs the idle
+  handlers, then the action update, then waits, then the idle-end handlers --
+  so the two bracket exactly one action update.  Done is left alone: this is
+  bookkeeping, not work that wants the loop to come round again. }
+procedure TLedMainForm.RailsIdleBegin(Sender: TObject; var Done: Boolean);
+begin
+  FRailsPass := 1;
+end;
+
+procedure TLedMainForm.RailsIdleEnd(Sender: TObject);
+begin
+  FRailsPass := 0;
+end;
+
 procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
   var Handled: Boolean);
 var
@@ -6797,8 +6821,24 @@ begin
     (LowerCase(Tab.Document.Config.GetStr(LedSetWrapMode)) <> 'none');
   { A pane closed with the header's own close button never comes through
     TogglePane, so the rail is reconciled here rather than trusted to be
-    told. }
-  FDock.RefreshRails;
+    told.
+
+    Once an idle pass, though, not once per action client.  Reconciling
+    reads where every open pane is in screen coordinates, and on gtk2 each
+    of those is two synchronous round trips to the X server -- the origin,
+    and the compositing-manager check the LCL makes on the way.  This
+    handler runs for every visible action client, fourteen of them here, so
+    every pass paid for it fourteen times over: thousands of round trips a
+    second for a pointer moving across the window.  Nothing a pass does
+    can open or close a pane between one client and the next.  Outside an
+    idle pass -- a menu being pulled down, a check calling Update itself --
+    it still runs every time, as it always did. }
+  if FRailsPass <> 2 then
+  begin
+    FDock.RefreshRails;
+    if FRailsPass = 1 then
+      FRailsPass := 2;
+  end;
 
   { medit enables these only when there is more than one tab, because
     splitting a window to move its only document into the empty half is not a
