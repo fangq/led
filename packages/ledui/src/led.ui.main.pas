@@ -1433,7 +1433,10 @@ begin
 
   { Restore where the user last put the panes.  A layout from an older build
     is discarded rather than fought with, leaving the defaults. }
-  FDock.LoadLayout(LedConfigFile('layout.xml'));
+  { The size the layout puts back is in device pixels already, and the
+    startup sweep must not scale it again.  See LedKeepSizeThroughScale. }
+  if FDock.LoadLayout(LedConfigFile('layout.xml')) then
+    LedKeepSizeThroughScale(Self);
   LedStartTrace('FormCreate: layout loaded');
   LedDpiReport('after the layout', PixelsPerInch, Format('toolbar buttons %dx%d, icons %d',
     [ToolBar1.ButtonWidth, ToolBar1.ButtonHeight, ImageList1.Width]));
