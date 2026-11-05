@@ -241,6 +241,8 @@ type
     FHasSelection: Boolean;
     FAttachPinned: Boolean;
     FRelayoutQueued: Boolean;
+    { the widths the last relayout was done at; see Resize }
+    FLaidOutFor, FLaidOutRoll: Integer;
     FOnAsk: TLedAIAskEvent;
     FOnStop: TNotifyEvent;
     FOnNeedContext: TLedAIContextEvent;
@@ -1374,6 +1376,8 @@ begin
     exist yet takes the whole window down with it. }
   FTurns := TList.Create;
   inherited Create(AOwner);
+  FLaidOutFor := -1;
+  FLaidOutRoll := -1;
   BevelOuter := bvNone;
 
   FTop := TPanel.Create(Self);
@@ -1483,7 +1487,21 @@ begin
     throws out of the third or fourth round of that with
     "InvalidatePreferredSize loop detected".  Queued, the measuring happens
     once the layout has settled, which is also when the width it measures
-    against is the width the reader will see. }
+    against is the width the reader will see.
+
+    **And only when a width has changed.**  The LCL calls Resize at the end
+    of every layout pass, not only when the size moved -- its own check for
+    that is inside inherited Resize, which this used to sail past.  The
+    relayout sets the bars' bounds and the scroll range, which is a layout
+    pass on this pane, which called Resize, which queued the relayout again:
+    two hundred times a second, forever, with nothing on screen moving.
+    Each round woke the main loop for another idle pass, and the idle pass
+    is the action update -- so a window with the AI pane open held a core
+    at 75% doing nothing at all.  Widths, because that is all the layout
+    reads: the strips' and the scroll box's, which follow the pane's. }
+  if (ClientWidth = FLaidOutFor) and (FRoll <> nil) and
+     (FRoll.ClientWidth = FLaidOutRoll) then
+    Exit;
   if FRelayoutQueued then Exit;
   FRelayoutQueued := True;
   Application.QueueAsyncCall(@RelayoutSoon, 0);
@@ -1494,6 +1512,12 @@ begin
   FRelayoutQueued := False;
   LayoutBars;
   Restack;
+  { Read after, not before: laying out can bring the scroll bar on or take
+    it off, and the box's width with it, and that settled width is the one
+    a later Resize has to differ from. }
+  FLaidOutFor := ClientWidth;
+  if FRoll <> nil then
+    FLaidOutRoll := FRoll.ClientWidth;
 end;
 
 { The two strips of controls.
