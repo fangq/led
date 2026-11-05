@@ -45,6 +45,12 @@ procedure LedScaleForm(AForm: TCustomForm);
   after the forms are created. }
 procedure LedApplyAdaptiveScale;
 
+{ Says that AForm's own size is already in device pixels -- restored from a
+  saved layout rather than read from its form file -- so the next pass that
+  scales it scales its controls and leaves its width and height alone.  One
+  pass only. }
+procedure LedKeepSizeThroughScale(AForm: TCustomForm);
+
 { Install the resource style that scales everything gtk draws for itself.
   Call once at startup, before the first widget exists: a widget is asked how
   big it wants to be as it is built, and both gtk and the LCL keep the answer,
@@ -676,19 +682,53 @@ begin
       LedKeepDefaultFonts(TWinControl(AControl).Controls[i], ACollect, AList);
 end;
 
+var
+  { the forms LedKeepSizeThroughScale was told about, not yet scaled }
+  GKeepSize: TFPList = nil;
+
+{ The window's size, saved with the layout, came back scaled a second time.
+
+  The layout is written in device pixels: a window maximized on a 2560-pixel
+  monitor at 130 dpi is saved as 2560 wide.  AnchorDocking puts that size
+  back on the main form as it is, and LoadLayout then puts the form's PPI
+  back to 96 on purpose -- its controls are still at the form file's 96 and
+  the startup sweep has to take them to 130.  But AutoAdjustLayout scales a
+  form's own width and height along with its controls, so the sweep took the
+  2560 as 96-dpi pixels too: 3467 by 1887, on a 2560 by 1440 monitor.
+
+  Maximized, nobody saw it.  Unmaximized -- which is the first thing dragging
+  a maximized window does -- it was a window larger than the screen, and
+  dragged onto the other monitor the window manager kept fitting it to the
+  monitor while the LCL kept putting its size back: the window flickered
+  between the two for as long as the drag went on. }
+procedure LedKeepSizeThroughScale(AForm: TCustomForm);
+begin
+  if AForm = nil then Exit;
+  if GKeepSize = nil then
+    GKeepSize := TFPList.Create;
+  if GKeepSize.IndexOf(AForm) < 0 then
+    GKeepSize.Add(AForm);
+end;
+
 { Scale one form between two PPI values, in either direction. }
 procedure LedScaleFormTo(AForm: TCustomForm; ATargetPPI: Integer);
 var
-  Cur: Integer;
+  Cur, W, H: Integer;
   Untouched: TFPList;
+  Keep: Boolean;
 begin
   if (AForm = nil) or (ATargetPPI <= 0) then
     Exit;
+  { Taken off the list whether or not this pass scales anything: it is about
+    the size the form has now, which a later pass did not restore. }
+  Keep := (GKeepSize <> nil) and (GKeepSize.Remove(AForm) >= 0);
   Cur := AForm.PixelsPerInch;
   if Cur <= 0 then
     Cur := 96;
   if ATargetPPI <> Cur then
   begin
+    W := AForm.Width;
+    H := AForm.Height;
     Untouched := TFPList.Create;
     try
       LedKeepDefaultFonts(AForm, True, Untouched);
@@ -698,6 +738,8 @@ begin
     finally
       Untouched.Free;
     end;
+    if Keep then
+      AForm.SetBounds(AForm.Left, AForm.Top, W, H);
   end;
 end;
 
@@ -1141,6 +1183,6 @@ finalization
       Screen.RemoveHandlerFormVisibleChanged(@GFormScaler.FormVisibleChanged);
     FreeAndNil(GFormScaler);
   end;
-
+  FreeAndNil(GKeepSize);
 
 end.
