@@ -23,7 +23,7 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance,
   Led.UI.Main, Led.UI.SelfTest, Led.UI.Bench, Led.UI.Dpi, Led.UI.Icons,
   Led.UI.EditKeys, Led.UI.ErrLog,
-  Led.UI.XError;
+  Led.UI.XError, Led.UI.ClipHandover;
 
 type
   { the first idle after the window is up: the end of the start, for LED_STARTUP_TRACE }
@@ -174,6 +174,8 @@ begin
     if LedStartTraceOn then
       Application.AddOnIdleHandler(@TStartIdle(nil).Idle);
     Application.Run;
+    { What was copied stays pasteable after the window has gone. }
+    LedHandClipboardToManager;
   finally
     Cmd.Free;
   end;
