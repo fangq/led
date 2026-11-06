@@ -190,6 +190,11 @@ type
     { The size the user last dragged each edge to, in device pixels; 0 until
       they have dragged one. }
     FUserSize: array[TLedDockEdge] of Integer;
+    { A layout was restored before the window had its size; see
+      SplittersIdle. }
+    FSplittersPending: Boolean;
+    { Pane name=width,height as layout.xml has them, for SplittersIdle. }
+    FSavedSizes: TStringList;
     function WantedSize(AEdge: TLedDockEdge): Integer;
     function PaneWanted(APane: TLedPaneForm; AEdge: TLedDockEdge): Integer;
     procedure ApplyDockPolicy;
@@ -208,6 +213,7 @@ type
     function PaneById(const AId: string): TLedPaneForm;
     function CentreFloor(AEdge: TLedDockEdge): Integer;
     procedure SettleSizes(Data: PtrInt);
+    procedure SplittersIdle(Sender: TObject; var Done: Boolean);
     function GrowWindowFor(AEdge: TLedDockEdge; AWanted: Integer): Integer;
     procedure SizeEdgePanes(AEdge: TLedDockEdge; AMayGrow: Boolean);
     procedure DockPane(APane: TLedPaneForm);
@@ -922,6 +928,9 @@ end;
 
 destructor TLedDockHost.Destroy;
 begin
+  if FSplittersPending then
+    Application.RemoveOnIdleHandler(@SplittersIdle);
+  FSavedSizes.Free;
   FPanes.Free;
   FAliases.Free;
   inherited Destroy;
@@ -1180,6 +1189,72 @@ begin
   if csDestroying in ComponentState then Exit;
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
     SizeEdgePanes(E, E = TLedDockEdge(Data));
+end;
+
+{ The second half of a layout restored at startup; see LoadLayout.
+
+  By the first idle the window is up and laid out.  The panes are put back
+  at the sizes layout.xml gave them -- the splitters were kept where it put
+  them, so a window that came up a different size than it was saved at has
+  handed the difference to whichever pane is past each splitter, not to the
+  editor -- and only then are the splitters measured and AnchorDocking
+  allowed to scale them with the window.
+
+  A saved size under the floor is not put back.  That is a pane crushed by
+  this bug in an earlier run and written into layout.xml as it was; it gets
+  the size its edge wants instead. }
+procedure TLedDockHost.SplittersIdle(Sender: TObject; var Done: Boolean);
+var
+  i, k, Size: Integer;
+  Form: TCustomForm;
+  Pane: TLedPaneForm;
+  Site: TAnchorDockHostSite;
+  Touched: array[TLedDockEdge] of Boolean;
+  E: TLedDockEdge;
+  Saved: string;
+begin
+  Form := GetParentForm(Self);
+  if (Form = nil) or (not Form.HandleAllocated) or (not Form.Visible) then
+    Exit;
+  Application.RemoveOnIdleHandler(@SplittersIdle);
+  FSplittersPending := False;
+  if csDestroying in ComponentState then Exit;
+
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    Touched[E] := False;
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    Pane := TLedPaneForm(FPanes[i]);
+    if Pane.FEssential then Continue;
+    Site := DockMaster.GetAnchorSite(Pane);
+    if (Site = nil) or (Site.Parent = nil) or (not Site.Visible) then Continue;
+    Size := 0;
+    if FSavedSizes <> nil then
+    begin
+      Saved := FSavedSizes.Values[Pane.Name];
+      k := Pos(',', Saved);
+      if k > 0 then
+        if Pane.FLastEdge in [ledLeft, ledRight] then
+          Size := StrToIntDef(Copy(Saved, 1, k - 1), 0)
+        else
+          Size := StrToIntDef(Copy(Saved, k + 1, MaxInt), 0);
+    end;
+    { the floor NoteUserResize keeps }
+    if Size >= LedScale96(40) then
+      Pane.FUserSize := Size
+    else
+      Pane.FUserSize := 0;
+    Touched[Pane.FLastEdge] := True;
+  end;
+  FreeAndNil(FSavedSizes);
+
+  for E := Low(TLedDockEdge) to High(TLedDockEdge) do
+    if Touched[E] then
+      SizeEdgePanes(E, False);
+
+  DockMaster.ResetSplitters;
+  DockMaster.ScaleOnResize := True;
+  NoteUserResize;
 end;
 
 function TLedDockHost.CentreFloor(AEdge: TLedDockEdge): Integer;
@@ -2520,6 +2595,27 @@ var
   Kept: TFPList;
   PPIs: array of Integer;
   j: Integer;
+
+  { Every control in the saved tree, by name, with the size it was saved at.
+    A node with children is a layout site; the panes are its leaves. }
+  procedure CollectSavedSizes(ACfg: TXMLConfigStorage; const APath: string);
+  var
+    n, c: Integer;
+    Item, NodeName: string;
+  begin
+    n := ACfg.GetValue(APath + 'ChildCount', 0);
+    for c := 1 to n do
+    begin
+      Item := APath + 'Item' + IntToStr(c) + '/';
+      NodeName := ACfg.GetValue(Item + 'Name', '');
+      if NodeName <> '' then
+        FSavedSizes.Values[NodeName] :=
+          IntToStr(ACfg.GetValue(Item + 'Bounds/Width', 0)) + ',' +
+          IntToStr(ACfg.GetValue(Item + 'Bounds/Height', 0));
+      CollectSavedSizes(ACfg, Item);
+    end;
+  end;
+
 begin
   Result := False;
   if not FileExists(AFileName) then Exit;
@@ -2533,6 +2629,34 @@ begin
       if Cfg.GetValue('LedPanes/Layout', 'centre') <> LayoutSignature then
         Exit(False);
       DockMaster.LoadSettingsFromConfig(Cfg);
+      { Not scaled with the window until the window has a size.
+
+        At startup the layout is restored into a dock that has not been laid
+        out yet -- 170x50, the size the LCL gives a control before it has
+        one -- while the splitters go where layout.xml put them, 2438 pixels
+        in.  AnchorDocking records each splitter as a fraction of its
+        parent, and from that one it records 14.3.  When the window then took
+        its real width the splitter was scaled to 14.3 times it: pushed
+        against the far edge, which is what left the AI pane one pixel wide
+        and saved that way, or, when nothing clamped it, to Left=35025 and
+        "Position range overflow" the next time a pane was opened.
+
+        So the restore keeps the positions as written, and SplittersIdle
+        measures the splitters once there is something to measure them
+        against. }
+      if (GetParentForm(Self) <> nil)
+         and not GetParentForm(Self).HandleAllocated then
+      begin
+        DockMaster.ScaleOnResize := False;
+        FreeAndNil(FSavedSizes);
+        FSavedSizes := TStringList.Create;
+        CollectSavedSizes(Cfg, 'MainConfig/Nodes/');
+        if not FSplittersPending then
+        begin
+          FSplittersPending := True;
+          Application.AddOnIdleHandler(@SplittersIdle, False);
+        end;
+      end;
       { Each form's PPI, kept across the restore.
 
         AnchorDocking stamps every form it places with Screen.PixelsPerInch,
