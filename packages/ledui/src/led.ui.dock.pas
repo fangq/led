@@ -1840,7 +1840,7 @@ var
   Rail: TPanel;
   Btn: TSpeedButton;
   Pane: TLedPaneForm;
-  i, N, Size, Pad: Integer;
+  i, N, Icon, Pad, Extent: Integer;
   Horizontal: Boolean;
 begin
   Rail := FRails[AEdge];
@@ -1852,11 +1852,21 @@ begin
     Rail.Controls[0].Free;
 
   { Sized from the image list so the rail follows the display: the icons are
-    built at 16 for a 96-dpi screen and scaled with everything else. }
-  Size := 16;
+    built at the display's scale already, which is also why the number has to
+    be put back into the window's own units before it is assigned.
+
+    The rail is built on both sides of the startup sweep: every pane
+    registers itself while the window is being made, and every pane shown
+    later rebuilds it.  Before the sweep a bound is in the form file's
+    96 dpi and about to be multiplied; after it, it is in device pixels and
+    must not be.  Assigning the icon's own width regardless made the button
+    the icon scaled a second time -- 278 pixels of button around an
+    81-pixel picture on a 300-dpi desktop.  See LedInFormUnits. }
+  Icon := LedScale96(16);
   if (FImages <> nil) and (FImages.Width > 0) then
-    Size := FImages.Width;
-  Pad := 4;
+    Icon := FImages.Width;
+  Pad := LedScale96(4);
+  Extent := LedInFormUnits(Rail, Icon + Pad * 2);
 
   N := 0;
   for i := 0 to FPanes.Count - 1 do
@@ -1876,17 +1886,17 @@ begin
 
     Btn := TLedRailButton.Create(Rail);
     Btn.Parent := Rail;
-    Btn.Width := Size + Pad * 2;
-    Btn.Height := Size + Pad * 2;
+    Btn.Width := Extent;
+    Btn.Height := Extent;
     if Horizontal then
     begin
-      Btn.Left := N * (Size + Pad * 2);
+      Btn.Left := N * Extent;
       Btn.Top := 0;
     end
     else
     begin
       Btn.Left := 0;
-      Btn.Top := N * (Size + Pad * 2);
+      Btn.Top := N * Extent;
     end;
     TLedRailButton(Btn).PaneId := Pane.PaneId;
     Btn.Flat := True;
@@ -1916,9 +1926,9 @@ begin
   end;
 
   if Horizontal then
-    Rail.Height := Size + Pad * 2
+    Rail.Height := Extent
   else
-    Rail.Width := Size + Pad * 2;
+    Rail.Width := Extent;
   Rail.Visible := FShowRails and (N > 0);
 
   RefreshRails;
