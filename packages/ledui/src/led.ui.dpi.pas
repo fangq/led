@@ -90,6 +90,22 @@ function LedRefreshScale: Boolean;
   the control is created after the form was scaled, so they need this. }
 function LedScale96(APixels: Integer): Integer;
 
+{ ADevicePixels in the units AControl's form is measured in at this moment.
+
+  The other direction from LedScale96, and for a different kind of number: a
+  size that is already in device pixels because it was read off something
+  built at the display's scale -- an image list's width, a measured string.
+  Such a number cannot simply be assigned to a control that is built while
+  the window is: the startup sweep is still to come, and it multiplies every
+  bound it finds.  The same assignment after the sweep must not be divided at
+  all.  This answers in whichever of the two the form is in now, so one piece
+  of code can run before the sweep and after it.
+
+  The dock's pane rail is exactly that piece of code: every pane registered
+  while the window is built rebuilds it, and so does every pane shown an hour
+  later. }
+function LedInFormUnits(AControl: TControl; ADevicePixels: Integer): Integer;
+
 { The point size to actually assign to a font so that a preference of
   APoints ends up the size LED's windows are scaled to.  The sibling of
   LedScale96, for point sizes rather than pixel constants.
@@ -463,6 +479,28 @@ function LedScale96(APixels: Integer): Integer;
 begin
   Result := (APixels * ActivePPI) div 96;
   if (APixels > 0) and (Result < 1) then
+    Result := 1;
+end;
+
+function LedInFormUnits(AControl: TControl; ADevicePixels: Integer): Integer;
+var
+  Form: TCustomForm;
+  Cur, Act: Integer;
+begin
+  Result := ADevicePixels;
+  Act := ActivePPI;
+  if (AControl = nil) or (Act <= 0) then Exit;
+  Cur := 0;
+  Form := GetParentForm(AControl);
+  if Form <> nil then
+    Cur := Form.PixelsPerInch;
+  if Cur <= 0 then
+    { Not on a form yet.  The sweep's own state is the next best answer: once
+      it has run, a control being built now is being built at the scale. }
+    if GAppliedPPI > 0 then Cur := GAppliedPPI else Cur := 96;
+  if Cur = Act then Exit;
+  Result := (Int64(ADevicePixels) * Cur) div Act;
+  if (ADevicePixels > 0) and (Result < 1) then
     Result := 1;
 end;
 

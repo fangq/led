@@ -1871,6 +1871,7 @@ var
   First: array[0..2] of Integer;
   Smallest, W0, W1: Integer;
   DragSite: TAnchorDockHostSite;
+  Rail: TSpeedButton;
 
   function SmallestPane: Integer;
   var
@@ -1887,6 +1888,31 @@ var
 
 begin
   Say('pane sizes');
+
+  { The rail buttons first, which are a size of a different kind: the icon in
+    the button plus its padding, in device pixels.
+
+    The rail is built while the window is, which is before the startup sweep,
+    and the icon's own width is already at the display's scale -- so
+    assigning it there had the sweep scale it a second time: 278 pixels of
+    button around an 81-pixel picture on a 300-dpi desktop, which is what
+    "the pane buttons are huge" looked like.  The upper bound catches that.
+    The lower one catches the opposite mistake, of dividing a number that was
+    never multiplied, which would leave the picture bigger than the button
+    holding it. }
+  Rail := F.Dock.RailButton(ledRight, 0);
+  if Rail = nil then
+    Rail := F.Dock.RailButton(ledBottom, 0);
+  if Rail = nil then
+    Check('there is a pane button to measure', False)
+  else
+  begin
+    CheckGt('a pane button is no smaller than the icon it holds',
+      F.ImageList1.Width - 1, Rail.Width);
+    Check('and not that icon scaled a second time',
+      Rail.Width < F.ImageList1.Width * 2);
+    CheckEqInt('and it is square', Rail.Width, Rail.Height);
+  end;
 
   for i := 0 to 2 do
   begin
