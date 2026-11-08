@@ -3934,6 +3934,8 @@ begin
   Item('-', -1);
   Item('Move up', 3);
   Item('Move down', 4);
+  Item('-', -1);
+  Item('Hide slide', 5);
   FSlideMenu := M;
 end;
 
@@ -4083,9 +4085,15 @@ begin
   begin
     Y0 := LedScale96(8) + i * Step;
     R := Rect(X0, Y0, X0 + TW, Y0 + TH);
-    C.Font.Color := clBtnText;
+    C.Font.Color := IfThen(FEdit.SlideHidden(i), clGrayText, clBtnText);
     C.Brush.Style := bsClear;
     C.TextOut(LedScale96(4), Y0, IntToStr(i + 1));
+    if FEdit.SlideHidden(i) then
+    begin   { a hidden slide: its number struck through, as PowerPoint marks it }
+      C.Pen.Color := clGrayText;
+      C.Pen.Width := 1;
+      C.Line(LedScale96(2), Y0 + C.TextHeight('1'), LedScale96(4) + C.TextWidth(IntToStr(i + 1)) + LedScale96(2), Y0);
+    end;
     if (FThumbs[i] <> nil) and not FThumbs[i].Empty then
       C.StretchDraw(R, FThumbs[i])
     else
@@ -4115,7 +4123,7 @@ end;
 procedure TLedVisualPane.SlidePaintMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
   X, Y: Integer);
 var
-  TW, TH, Step, i: Integer;
+  TW, TH, Step, i, k: Integer;
   P: TPoint;
 begin
   SlideGeometry(TW, TH, Step);
@@ -4133,6 +4141,9 @@ begin
     if i < 0 then
       FSlideMenuAt := FEdit.SlideCount - 1;
     P := FSlidePaint.ClientToScreen(Point(X, Y));
+    for k := 0 to FSlideMenu.Items.Count - 1 do
+      if FSlideMenu.Items[k].Tag = 5 then   { ticked when the slide is hidden }
+        FSlideMenu.Items[k].Checked := FEdit.SlideHidden(FSlideMenuAt);
     FSlideMenu.PopUp(P.X, P.Y);
   end
   else if i >= 0 then
@@ -4150,6 +4161,7 @@ begin
     2: FEdit.DeleteSlide(i);
     3: FEdit.MoveSlide(i, i - 1);
     4: FEdit.MoveSlide(i, i + 1);
+    5: FEdit.SetSlideHidden(i, not FEdit.SlideHidden(i));
   end;
   UpdateSlidePane(True);
   LedTryFocus(FEdit);

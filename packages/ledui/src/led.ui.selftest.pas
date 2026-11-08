@@ -17258,6 +17258,14 @@ begin
   Check('the pages exported as PDF: two pages, not the source text', (Copy(LedReadRawFile(Out_), 1, 5) = '%PDF-') and
     (Pos('/Count 2', LedReadRawFile(Out_)) > 0));
   DeleteFile(Out_);
+  { a slide hidden: left out of the PDF; undone, back in it }
+  Check('a slide hidden is so', E.SetSlideHidden(1, True) and E.SlideHidden(1) and not E.SlideHidden(0));
+  Out_ := TempName('hidden.pdf');
+  E.ExportPDF(Out_);
+  Check('and left out of the PDF', Pos('/Count 1 ', LedReadRawFile(Out_)) > 0);
+  DeleteFile(Out_);
+  E.Undo;
+  Check('Ctrl+Z: shown again', not E.SlideHidden(1));
   F.CloseActiveTab(False);
   Pump;
   Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);
