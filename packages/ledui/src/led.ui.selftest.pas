@@ -16670,6 +16670,39 @@ begin
 end;
 
 {$IFDEF LED_PARADE}
+{ the clipboard has an image/png whose pixels are not all transparent }
+function ClipPngInked: Boolean;
+var
+  Ms: TMemoryStream;
+  Png: TPortableNetworkGraphic;
+  Img: TLazIntfImage;
+  I, J: Integer;
+begin
+  Result := False;
+  Ms := TMemoryStream.Create;
+  Png := TPortableNetworkGraphic.Create;
+  try
+    if not Clipboard.GetFormat(RegisterClipboardFormat('image/png'), Ms) or (Ms.Size < 8) then
+      Exit;
+    Ms.Position := 0;
+    Png.LoadFromStream(Ms);
+    Img := Png.CreateIntfImage;
+    try
+      for J := 0 to Img.Height - 1 do
+        for I := 0 to Img.Width - 1 do
+          if Img.Colors[I, J].Alpha > $8000 then
+            Exit(True);
+    finally
+      Img.Free;
+    end;
+  finally
+    Png.Free;
+    Ms.Free;
+  end;
+end;
+{$ENDIF}
+
+{$IFDEF LED_PARADE}
 { the page's display list has a path drawn with a gradient (What 1) or a fill (or a rule) seen through (What 2) }
 function PageHasItem(E: TParadeEdit; Pg: Int32; What: Integer): Boolean;
 var
@@ -16801,6 +16834,8 @@ begin
   Check('the text at the bottom, in two columns, shrunk to fit', E.SetShapeTextOptions('b', -1, 'text', '', 2) and
     E.KeptXml(Xml) and (Pos('anchor="b"', Xml) > 0) and (Pos('numCol="2"', Xml) > 0) and
     (Pos('<a:normAutofit/>', Xml) > 0));
+  { copied: other programs get a picture of it -- a PNG with something drawn in it }
+  Check('a copied shape is a PNG on the clipboard too', E.CopyShapes and ClipPngInked);
   N0 := Length(E.DrawingShapes(At));
   Check('Duplicate from the Arrange menu adds a shape', E.DuplicateShapes and
     (Length(E.DrawingShapes(At)) = N0 + 1));
