@@ -16685,6 +16685,10 @@ var
   Sid: Integer;
   Xml: string;
   Btn: TControl;
+  PX, PY, PW, PH, PR, B0, B1, B2, B3, C0, C1, C2, C3: Double;
+  Pg2: Int32;
+  G: TParadeShapeGeom;
+  N0: Integer;
 {$ENDIF}
 begin
   Say('the Shape tab');
@@ -16730,6 +16734,37 @@ begin
   Check('a fill from it goes into the drawing', E.SetShapeFill($00C47244, False) and E.KeptXml(Xml) and
     (Pos('val="4472C4"', Xml) > 0));
   Check('and makes the file modified', Tab.Document.Modified);
+  { Size and Position: typed in, the shape is that big on the page, turned, and one Ctrl+Z takes it all back }
+  if Tab.Visual.ShapePlacement(PX, PY, PW, PH, PR) then
+  begin
+    E.ShapePageBox(At, Sid, Pg2, B0, B1, B2, B3);
+    Check('Size and Position: a new size and turn take', Tab.Visual.SetShapePlacement(PX + 10, PY, PW * 2, PH, 0) and
+      E.SelectedShape(At, Sid) and (Sid = 0) and E.ShapePageBox(At, Sid, Pg2, C0, C1, C2, C3) and
+      (Abs((C2 - C0) - 2 * (B2 - B0)) < 2 * PD_SP_PER_PT) and
+      (Abs(C0 - (B0 + 10 * PD_SP_PER_PT)) < 2 * PD_SP_PER_PT));     { its left edge where typed }
+    Check('and the turn', Tab.Visual.SetShapePlacement(PX + 10, PY, PW * 2, PH, 30) and
+      E.SelectedShapeGeom(G) and (Abs(G.Rot - 30) < 0.01));
+    E.Undo;
+    E.Undo;
+    Pump;
+    Check('two Ctrl+Z: as it was', E.SelectedShape(At, Sid) and (Sid = 0) and
+      E.ShapePageBox(At, Sid, Pg2, C0, C1, C2, C3) and (Abs(C2 - B2) < PD_SP_PER_PT) and (Abs(C0 - B0) < PD_SP_PER_PT));
+  end
+  else
+    Check('the selected shape has a place to show', False);
+  N0 := Length(E.DrawingShapes(At));
+  Check('Duplicate from the Arrange menu adds a shape', E.DuplicateShapes and
+    (Length(E.DrawingShapes(At)) = N0 + 1));
+  E.Undo;
+  Pump;
+  Tab.Visual.SetShapeSnap(False, 6);
+  Check('snapping set from the Align menu reaches the page', not E.SnapToShapes and (E.SnapGrid = 6) and
+    not LedPrefs.GetBool(LedPrefShapeSnap, True));
+  Tab.Visual.SetShapeSnap(True, 0);
+  E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
+  Pump;
+  E.ClickAt(Pg, X / PD_SP_PER_PT + 20, Base / PD_SP_PER_PT - 144 + 20);
+  Pump;
   E.ProcessKey(VK_ESCAPE, []);
   Pump;
   Check('Escape: back to the drawing, the tab still there', Tab.Visual.ShapeTabShown);

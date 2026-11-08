@@ -105,6 +105,8 @@ const
     the edit hold still) or 'optimal' (each edited paragraph re-broken whole) }
   LedPrefLineBreaking    = 'Visual/line_breaking';
   LedPrefShapeTheme      = 'Visual/shape_theme';
+  LedPrefShapeSnap       = 'Visual/shape_snap';
+  LedPrefShapeGrid       = 'Visual/shape_grid';
 
   { Crash recovery.  New keys rather than medit's auto_save/auto_save_interval,
     which mean something different: those write the user's actual file behind
