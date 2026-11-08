@@ -168,6 +168,7 @@ type
     actPageSetup: TAction;
     actPrintPdf: TAction;
     actExportHtml: TAction;
+    actExportOffice: TAction;
     actDelete: TAction;
     actFindCurrent: TAction;
     actFindCurrentBack: TAction;
@@ -212,6 +213,7 @@ type
     mi_Print: TMenuItem;
     mi_PrintPdf: TMenuItem;
     mi_ExportHtml: TMenuItem;
+    mi_ExportOffice: TMenuItem;
     miSep4: TMenuItem;
     mi_CloseTab: TMenuItem;
     mi_CloseAll: TMenuItem;
@@ -390,6 +392,7 @@ type
     procedure actCloseAllExecute(Sender: TObject);
     procedure actDeleteExecute(Sender: TObject);
     procedure actExportHtmlExecute(Sender: TObject);
+    procedure actExportOfficeExecute(Sender: TObject);
     procedure actFindCurrentBackExecute(Sender: TObject);
     procedure actFindCurrentExecute(Sender: TObject);
     procedure actFocusDocExecute(Sender: TObject);
@@ -7717,6 +7720,52 @@ begin
     except
       on E: Exception do ReportError('Could not write the HTML: ' + E.Message);
     end;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+{ the pages written to a new file as PowerPoint, Word or Parade, by the name chosen; the file shown is left as it
+  is (a deck opened from a .pptx is never written over) }
+procedure TLedMainForm.actExportOfficeExecute(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+  V: TLedVisualPane;
+begin
+  V := CurrentVisual;
+  if Silent or (ActiveTab = nil) then Exit;
+  if V = nil then
+  begin
+    ReportError('Export as PowerPoint, Word or Parade is for the visual editor''s pages (View > Visual Editor).');
+    Exit;
+  end;
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title := 'Export the pages';
+    Dlg.Filter := 'PowerPoint presentation (*.pptx)|*.pptx|Word document (*.docx)|*.docx|' +
+      'Parade document (*.pdoc)|*.pdoc|All files|*';
+    if V.Page.SlideCount > 0 then
+    begin
+      Dlg.FilterIndex := 1;
+      Dlg.DefaultExt := '.pptx';
+    end
+    else
+    begin
+      Dlg.FilterIndex := 2;
+      Dlg.DefaultExt := '.docx';
+    end;
+    Dlg.Options := Dlg.Options + [ofOverwritePrompt];
+    Dlg.FileName := ChangeFileExt(ExtractFileName(ActiveTab.Document.DisplayName), Dlg.DefaultExt);
+    Dlg.InitialDir := DialogStartDir;
+    if not Dlg.Execute then Exit;
+    RememberDialogDir(Dlg.FileName);
+    if (Dlg.FileName = ActiveTab.Document.FileName) and not ActiveTab.Document.IsUntitled then
+    begin
+      ReportError('That is the file shown; export to another name.');
+      Exit;
+    end;
+    if not V.ExportToFile(Dlg.FileName) then
+      ReportError('Could not write ' + Dlg.FileName);
   finally
     Dlg.Free;
   end;

@@ -434,6 +434,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Export as &HTML...'
       OnExecute = actExportHtmlExecute
     end
+    object actExportOffice: TAction
+      Caption = 'Export as Power&Point, Word or Parade...'
+      OnExecute = actExportOfficeExecute
+    end
     object actDelete: TAction
       Caption = '&Delete'
       ShortCut = 46
@@ -706,6 +710,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_ExportHtml: TMenuItem
         Action = actExportHtml
+      end
+      object mi_ExportOffice: TMenuItem
+        Action = actExportOffice
       end
       object mi_PrintPdf: TMenuItem
         Action = actPrintPdf

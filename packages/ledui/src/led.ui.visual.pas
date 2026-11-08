@@ -31,7 +31,8 @@ uses
 
 type
   { lvkPdoc: Parade's own document, BJData (binary); lvkJdoc: the same as JSON text }
-  { lvkPptx: PowerPoint, read only -- its slides become a Parade document's canvas pages (LedVisualImport) }
+  { lvkPptx: PowerPoint, read as a Parade document's canvas pages (LedVisualImport), written only by an export to a
+    new file (ExportToFile): the deck opened is never written over }
   { lvkDotx: a Word template, read only -- a new document of what it has (LedVisualImport) }
   TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx, lvkDotx);
 
@@ -278,6 +279,9 @@ type
       const AFileName: string; out AWhy: string): Boolean;
     { And back out, in the format it came in -- or in another one. }
     function Export(AKind: TLedVisualKind = lvkNone): string;
+    { the pages written to a file as its name says (.pptx, .docx, .pdoc, .jdoc, .md, .html); False when the name is
+      of no such kind or it cannot be written }
+    function ExportToFile(const AFileName: string): Boolean;
     { The words on the pages, without their formatting. }
     function PlainText: string;
     { the ribbon's tabs, their names one a line (for scripts and the self-test) }
@@ -4352,6 +4356,34 @@ begin
     S.Free;
   end;
   {$ENDIF}
+end;
+
+function TLedVisualPane.ExportToFile(const AFileName: string): Boolean;
+var
+  K: TLedVisualKind;
+  Data: string;
+  F: TFileStream;
+begin
+  Result := False;
+  K := LedVisualKindOf(AFileName);
+  if K = lvkDotx then
+    K := lvkDocx;
+  if K = lvkNone then
+    Exit;
+  Data := Export(K);
+  if Data = '' then
+    Exit;
+  try
+    F := TFileStream.Create(AFileName, fmCreate);
+    try
+      F.WriteBuffer(Data[1], Length(Data));
+    finally
+      F.Free;
+    end;
+    Result := True;
+  except
+    Result := False;
+  end;
 end;
 
 function TLedVisualPane.PlainText: string;
