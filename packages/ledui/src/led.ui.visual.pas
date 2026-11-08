@@ -204,6 +204,15 @@ type
     { slides (a presentation, every page a canvas): the pages small, beside the one being edited }
     FSlidePanel: TPanel;
     FSlideBox: TScrollBox;
+    FNotesPanel: TPanel;        { a presentation's speaker notes, under the page: the current slide's }
+    FNotesMemo: TMemo;
+    FNotesSlide: Integer;       { the slide they are of (-1: none) }
+    FNotesDirty, FNotesLoading: Boolean;
+    procedure NotesFollow;
+    procedure CommitNotes;
+    procedure NotesChanged(Sender: TObject);
+    procedure NotesExit(Sender: TObject);
+  private
     FSlidePaint: TPaintBox;
     FSlideSplitter: TSplitter;
     FSlideTimer: TTimer;
@@ -294,6 +303,9 @@ type
     {$IFDEF LED_PARADE}
     { the slides beside the page (a presentation's): their pictures, one under another }
     property SlideView: TPaintBox read FSlidePaint;
+    { the speaker notes box under a presentation's page (shown with the slides); what it says is the current slide's
+      notes, kept when the box is left or another slide is shown }
+    property NotesMemo: TMemo read FNotesMemo;
     {$ENDIF}
 
     function CanUndo: Boolean;
@@ -1383,6 +1395,8 @@ var
 begin
   if (FSlidePaint <> nil) and FSlidePanel.Visible then
     FSlidePaint.Invalidate;   { which slide is marked as the one being edited }
+  if (FNotesPanel <> nil) and FNotesPanel.Visible then
+    NotesFollow;    { the notes of the slide now being edited }
   if Assigned(FOnStatus) then
     FOnStatus(Self);
   if FFont = nil then Exit;
@@ -3889,6 +3903,21 @@ begin
   FSlidePaint.Top := 0;
   FSlidePaint.OnPaint := @SlidePaintPaint;
   FSlidePaint.OnMouseDown := @SlidePaintMouseDown;
+  FNotesPanel := TPanel.Create(Self);
+  FNotesPanel.Parent := Self;
+  FNotesPanel.Align := alBottom;
+  FNotesPanel.Height := LedScale96(84);
+  FNotesPanel.BevelOuter := bvNone;
+  FNotesPanel.Caption := '';
+  FNotesPanel.Visible := False;
+  FNotesMemo := TMemo.Create(Self);
+  FNotesMemo.Parent := FNotesPanel;
+  FNotesMemo.Align := alClient;
+  FNotesMemo.ScrollBars := ssAutoVertical;
+  FNotesMemo.TextHint := 'Click to add speaker notes';
+  FNotesMemo.OnChange := @NotesChanged;
+  FNotesMemo.OnExit := @NotesExit;
+  FNotesSlide := -1;
   FSlideSplitter := TSplitter.Create(Self);
   FSlideSplitter.Parent := Self;
   FSlideSplitter.Align := alLeft;
@@ -3924,6 +3953,45 @@ end;
 
 { the pane shown for a presentation, sized for its slides; which of their pictures are to be made again (AllStale:
   every one, the slides being others now; else the one being edited) }
+{ the notes box showing the current slide's notes: what was typed for the slide before kept first }
+procedure TLedVisualPane.NotesFollow;
+var
+  Cur: Integer;
+begin
+  if (FNotesMemo = nil) or not FNotesPanel.Visible then
+    Exit;
+  Cur := FEdit.CurrentSlide;
+  if Cur = FNotesSlide then
+    Exit;
+  CommitNotes;
+  FNotesSlide := Cur;
+  FNotesLoading := True;
+  try
+    FNotesMemo.Lines.Text := FEdit.SlideNotes(Cur);
+  finally
+    FNotesLoading := False;
+  end;
+  FNotesDirty := False;
+end;
+
+procedure TLedVisualPane.CommitNotes;
+begin
+  if FNotesDirty and (FNotesSlide >= 0) then
+    FEdit.SetSlideNotes(FNotesSlide, TrimRight(FNotesMemo.Lines.Text));
+  FNotesDirty := False;
+end;
+
+procedure TLedVisualPane.NotesChanged(Sender: TObject);
+begin
+  if not FNotesLoading then
+    FNotesDirty := True;
+end;
+
+procedure TLedVisualPane.NotesExit(Sender: TObject);
+begin
+  CommitNotes;
+end;
+
 procedure TLedVisualPane.UpdateSlidePane(AllStale: Boolean);
 var
   N, i, TW, TH, Step, Cur: Integer;
@@ -3932,6 +4000,10 @@ begin
   if FSlidePanel = nil then
     Exit;
   Shown := FEdit.CanvasPage and (FEdit.SlideCount > 0);
+  if FNotesPanel.Visible <> Shown then
+    FNotesPanel.Visible := Shown;
+  if Shown then
+    NotesFollow;
   if FSlidePanel.Visible <> Shown then
   begin
     FSlidePanel.Visible := Shown;
