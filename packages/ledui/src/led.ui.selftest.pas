@@ -17238,9 +17238,16 @@ begin
   E.AddShape('ellipse', 50 * PD_SP_PER_PT, 250 * PD_SP_PER_PT, 120 * PD_SP_PER_PT, 300 * PD_SP_PER_PT);
   Pump;
   Check('edited: modified, the .pptx as it was', Tab.Document.Modified and (LedReadRawFile(Copy_) = Before));
+  { speaker notes: the box under the slides, what is typed there the current slide's when it is left }
+  Check('the notes box is there with the slides', (Tab.Visual.NotesMemo <> nil) and
+    Tab.Visual.NotesMemo.Parent.Visible);
+  Tab.Visual.NotesMemo.Lines.Text := 'Remember the demo';
+  Tab.Visual.NotesMemo.OnExit(Tab.Visual.NotesMemo);
+  Check('notes typed there are the slide''s', E.SlideNotes(E.CurrentSlide) = 'Remember the demo');
   { exported to a new .pptx: a presentation of the slides as edited, read back with the ellipse; the deck as it was }
   Out_ := TempName('exported.pptx');
   Check('Export writes a PowerPoint file', Tab.Visual.ExportToFile(Out_) and (Copy(LedReadRawFile(Out_), 1, 2) = 'PK') and
+    (Pos('ppt/notesSlides/notesSlide', LedReadRawFile(Out_)) > 0) and
     (Pos('ppt/slides/slide2.xml', LedReadRawFile(Out_)) > 0) and (LedReadRawFile(Copy_) = Before));
   Back := LedVisualImport(LedReadRawFile(Out_), Out_, Why);
   Check('which reads back as two slides, the ellipse on the second', (Back <> '') and
