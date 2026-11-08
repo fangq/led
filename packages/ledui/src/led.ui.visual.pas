@@ -178,6 +178,7 @@ type
     procedure ShapeLineItemClicked(Sender: TObject);
     procedure ShapeOrderItemClicked(Sender: TObject);
     procedure ShapeSnapItemClicked(Sender: TObject);
+    procedure ShapeFormatItemClicked(Sender: TObject);
     function ShapeUnitPt(out At: pd_pos; out Sid: Integer): Double;
     procedure ShapeSizeItemClicked(Sender: TObject);
     procedure GroupClicked(Sender: TObject);
@@ -3105,6 +3106,19 @@ begin
     Swatch(MenuItem(M, ColourNames[i], Colours[i], @ShapeFillItemClicked), FromRGB(Colours[i]), False);
   MenuItem(M, 'More colours...', -2, @ShapeFillItemClicked);
   MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Gradient, fading to white', 101, @ShapeFormatItemClicked);
+  MenuItem(M, 'Gradient, to a darker shade', 102, @ShapeFormatItemClicked);
+  MenuItem(M, 'Gradient, out from the middle', 103, @ShapeFormatItemClicked);
+  MenuItem(M, 'Pattern: dots', 111, @ShapeFormatItemClicked);
+  MenuItem(M, 'Pattern: stripes', 112, @ShapeFormatItemClicked);
+  MenuItem(M, 'Pattern: grid', 113, @ShapeFormatItemClicked);
+  MenuItem(M, 'Pattern: checks', 114, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Opaque', 120, @ShapeFormatItemClicked);
+  MenuItem(M, '25% transparent', 125, @ShapeFormatItemClicked);
+  MenuItem(M, '50% transparent', 150, @ShapeFormatItemClicked);
+  MenuItem(M, '75% transparent', 175, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No fill', -1, @ShapeFillItemClicked), clWhite, True);
   MenuButton('shading', 'Fill', 'The colour inside the selected shape', M);
   M := TPopupMenu.Create(Self);
@@ -3122,8 +3136,55 @@ begin
     else
       MenuItem(M, LineStyles[i, 0], i, @ShapeLineStyleItemClicked);
   MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Round ends', 301, @ShapeFormatItemClicked);
+  MenuItem(M, 'Square ends', 302, @ShapeFormatItemClicked);
+  MenuItem(M, 'Flat ends', 303, @ShapeFormatItemClicked);
+  MenuItem(M, 'Round corners', 304, @ShapeFormatItemClicked);
+  MenuItem(M, 'Sharp corners', 305, @ShapeFormatItemClicked);
+  MenuItem(M, 'Bevelled corners', 306, @ShapeFormatItemClicked);
+  MenuItem(M, 'Double line', 307, @ShapeFormatItemClicked);
+  MenuItem(M, 'Thick and thin', 308, @ShapeFormatItemClicked);
+  MenuItem(M, 'Single line', 309, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
   Swatch(MenuItem(M, 'No outline', -1, @ShapeLineItemClicked), clWhite, True);
-  MenuButton('borders', 'Outline', 'The selected shape''s line: its colour, width, dashes and arrowheads', M);
+  MenuButton('borders', 'Outline', 'The selected shape''s line: its colour, width, dashes, arrowheads, ends and ' +
+    'corners', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'No shadow', 200, @ShapeFormatItemClicked);
+  MenuItem(M, 'Shadow, below right', 201, @ShapeFormatItemClicked);
+  MenuItem(M, 'Shadow, soft all round', 202, @ShapeFormatItemClicked);
+  MenuItem(M, 'Shadow inside', 203, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'No glow', 210, @ShapeFormatItemClicked);
+  MenuItem(M, 'Glow, 5 pt', 211, @ShapeFormatItemClicked);
+  MenuItem(M, 'Glow, 10 pt', 212, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'No soft edges', 220, @ShapeFormatItemClicked);
+  MenuItem(M, 'Soft edges, 2.5 pt', 221, @ShapeFormatItemClicked);
+  MenuItem(M, 'Soft edges, 10 pt', 222, @ShapeFormatItemClicked);
+  MenuButton('shapetheme', 'Effects', 'A shadow, a glow or soft edges on the selected shape', M);
+  M := TPopupMenu.Create(Self);
+  MenuItem(M, 'Text at the top', 401, @ShapeFormatItemClicked);
+  MenuItem(M, 'Text in the middle', 402, @ShapeFormatItemClicked);
+  MenuItem(M, 'Text at the bottom', 403, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Do not fit', 404, @ShapeFormatItemClicked);
+  MenuItem(M, 'Grow the shape to the text', 405, @ShapeFormatItemClicked);
+  MenuItem(M, 'Shrink the text to the shape', 406, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Horizontal', 407, @ShapeFormatItemClicked);
+  MenuItem(M, 'Turned 90' + #$C2#$B0, 408, @ShapeFormatItemClicked);
+  MenuItem(M, 'Turned 270' + #$C2#$B0, 409, @ShapeFormatItemClicked);
+  MenuItem(M, 'Stacked (East Asian)', 410, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'One column', 411, @ShapeFormatItemClicked);
+  MenuItem(M, 'Two columns', 412, @ShapeFormatItemClicked);
+  MenuItem(M, 'Three columns', 413, @ShapeFormatItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'No margins', 414, @ShapeFormatItemClicked);
+  MenuItem(M, 'Normal margins', 415, @ShapeFormatItemClicked);
+  MenuButton('shapetext', 'Text', 'Where the selected shape''s text sits, how it fits, which way it runs, its ' +
+    'columns and margins', M);
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Themes) do
     Swatch(MenuItem(M, ThemeNames[i], i, @ShapeThemeItemClicked), FromRGB(Themes[i, 0]), False);
@@ -3325,6 +3386,59 @@ begin
     FEdit.DuplicateShapes
   else
     FEdit.ShapeOrder(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+{ the Fill, Outline, Effects and Text menus' formats, by their tags (the hundreds: which menu part) }
+procedure TLedVisualPane.ShapeFormatItemClicked(Sender: TObject);
+const
+  Patterns: array[1..4] of string = ('pct20', 'ltUpDiag', 'smGrid', 'smCheck');
+var
+  T: Integer;
+  C, Dark: TColor;
+begin
+  T := TMenuItem(Sender).Tag;
+  C := FEdit.ShapeFillColor;
+  Dark := RGBToColor(Red(ColorToRGB(C)) * 3 div 5, Green(ColorToRGB(C)) * 3 div 5, Blue(ColorToRGB(C)) * 3 div 5);
+  case T of
+    101: FEdit.SetShapeGradient(C, clWhite, 90, 0);
+    102: FEdit.SetShapeGradient(C, Dark, 90, 0);
+    103: FEdit.SetShapeGradient(clWhite, C, 0, 1);
+    111..114: FEdit.SetShapePattern(Patterns[T - 110], C, clWhite);
+    120: FEdit.SetShapeTransparency(0);
+    125: FEdit.SetShapeTransparency(25);
+    150: FEdit.SetShapeTransparency(50);
+    175: FEdit.SetShapeTransparency(75);
+    200..203: FEdit.SetShapeShadow(T - 200);
+    210: FEdit.SetShapeGlow(C, 0);
+    211: FEdit.SetShapeGlow(C, 5);
+    212: FEdit.SetShapeGlow(C, 10);
+    220: FEdit.SetShapeSoftEdge(0);
+    221: FEdit.SetShapeSoftEdge(2.5);
+    222: FEdit.SetShapeSoftEdge(10);
+    301: FEdit.SetShapeLineEnds('rnd', '', '');
+    302: FEdit.SetShapeLineEnds('sq', '', '');
+    303: FEdit.SetShapeLineEnds('flat', '', '');
+    304: FEdit.SetShapeLineEnds('', 'round', '');
+    305: FEdit.SetShapeLineEnds('', 'miter', '');
+    306: FEdit.SetShapeLineEnds('', 'bevel', '');
+    307: FEdit.SetShapeLineEnds('', '', 'dbl');
+    308: FEdit.SetShapeLineEnds('', '', 'thickThin');
+    309: FEdit.SetShapeLineEnds('', '', 'sng');
+    401: FEdit.SetShapeTextOptions('t', -1, '', '', 0);
+    402: FEdit.SetShapeTextOptions('ctr', -1, '', '', 0);
+    403: FEdit.SetShapeTextOptions('b', -1, '', '', 0);
+    404: FEdit.SetShapeTextOptions('', -1, 'none', '', 0);
+    405: FEdit.SetShapeTextOptions('', -1, 'shape', '', 0);
+    406: FEdit.SetShapeTextOptions('', -1, 'text', '', 0);
+    407: FEdit.SetShapeTextOptions('', -1, '', 'horz', 0);
+    408: FEdit.SetShapeTextOptions('', -1, '', 'vert', 0);
+    409: FEdit.SetShapeTextOptions('', -1, '', 'vert270', 0);
+    410: FEdit.SetShapeTextOptions('', -1, '', 'eaVert', 0);
+    411..413: FEdit.SetShapeTextOptions('', -1, '', '', T - 410);
+    414: FEdit.SetShapeTextOptions('', 0, '', '', 0);
+    415: FEdit.SetShapeTextOptions('', 7.2, '', '', 0);
+  end;
   BackToPage;
 end;
 
