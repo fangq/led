@@ -16669,6 +16669,36 @@ begin
   Pump;
 end;
 
+{$IFDEF LED_PARADE}
+{ the page's display list has a path drawn with a gradient (What 1) or a fill (or a rule) seen through (What 2) }
+function PageHasItem(E: TParadeEdit; Pg: Int32; What: Integer): Boolean;
+var
+  Items: array of pd_draw;
+  N, I: Int32;
+begin
+  Result := False;
+  pd_layout_update(E.Layout, nil);
+  N := 0;
+  if pd_layout_page_items(E.Layout, Pg, nil, 0, N) <> PD_OK then
+    Exit;
+  SetLength(Items, N + 1);
+  if pd_layout_page_items(E.Layout, Pg, @Items[0], N + 1, N) <> PD_OK then
+    Exit;
+  for I := 0 to N - 1 do
+  begin
+    if (What = 2) and (Items[I].kind = PD_DRAW_RULE) and ((Items[I].color shr 24) < 200) and
+       ((Items[I].color shr 24) > 60) then
+      Exit(True);     { a plain rectangle is drawn as a rule }
+    if Items[I].kind = PD_DRAW_PATH then
+    begin
+      if ((What = 1) and (Items[I].grad <> 0)) or
+         ((What = 2) and (Items[I].fill <> 0) and ((Items[I].fill shr 24) < 200) and ((Items[I].fill shr 24) > 60)) then
+        Exit(True);
+    end;
+  end;
+end;
+{$ENDIF}
+
 { A shape of a drawing selected on a page: the Shape tab comes up with it, and goes when the shape does.
   The drawing is Parade's test file, from beside LED. }
 procedure TestVisualShapeTab(F: TLedMainForm);
@@ -16752,6 +16782,25 @@ begin
   end
   else
     Check('the selected shape has a place to show', False);
+  { the format menus: what they set is drawn (a gradient, a fill seen through) and kept for Word }
+  pd_layout_update(E.Layout, nil);
+  Check('a gradient from the Fill menu is drawn as one', E.SetShapeGradient($00C47244, clWhite, 90, 0) and
+    E.KeptXml(Xml) and (Pos('<a:gradFill', Xml) > 0) and (Pos('<a:lin ang="5400000"', Xml) > 0) and
+    PageHasItem(E, Pg, 1));
+  Check('a pattern', E.SetShapePattern('smGrid', $00C47244, clWhite) and E.KeptXml(Xml) and
+    (Pos('<a:pattFill prst="smGrid">', Xml) > 0) and (Pos('<a:gradFill', Xml) = 0));
+  Check('a fill half seen through is drawn so', E.SetShapeFill($00C47244, False) and
+    E.SetShapeTransparency(50) and E.KeptXml(Xml) and (Pos('<a:alpha val="50000"/>', Xml) > 0) and
+    PageHasItem(E, Pg, 2));
+  Check('a glow and a shadow, in DrawingML''s order', E.SetShapeShadow(1) and E.SetShapeGlow(clRed, 5) and
+    E.KeptXml(Xml) and (Pos('<a:glow rad="63500">', Xml) > 0) and (Pos('<a:outerShdw', Xml) > Pos('<a:glow', Xml)));
+  Check('no shadow takes only the shadow', E.SetShapeShadow(0) and E.KeptXml(Xml) and
+    (Pos('<a:outerShdw', Xml) = 0) and (Pos('<a:glow', Xml) > 0));
+  Check('round ends, bevelled corners, a double line', E.SetShapeLineEnds('rnd', 'bevel', 'dbl') and
+    E.KeptXml(Xml) and (Pos('cap="rnd"', Xml) > 0) and (Pos('cmpd="dbl"', Xml) > 0) and (Pos('<a:bevel/>', Xml) > 0));
+  Check('the text at the bottom, in two columns, shrunk to fit', E.SetShapeTextOptions('b', -1, 'text', '', 2) and
+    E.KeptXml(Xml) and (Pos('anchor="b"', Xml) > 0) and (Pos('numCol="2"', Xml) > 0) and
+    (Pos('<a:normAutofit/>', Xml) > 0));
   N0 := Length(E.DrawingShapes(At));
   Check('Duplicate from the Arrange menu adds a shape', E.DuplicateShapes and
     (Length(E.DrawingShapes(At)) = N0 + 1));
