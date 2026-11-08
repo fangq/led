@@ -17114,13 +17114,49 @@ end;
 
 { A PowerPoint file opened: an untitled Parade document named as the deck, its slides canvas pages; saving it never
   writes the .pptx }
+{$IFDEF LED_PARADE}
+{ a Parade document's bytes (.pdoc) are two slides, one drawing of which holds S Count times (its kept XML, as
+  JSON has it) }
+function LedVisualPdocHas(const Pdoc, S: string; Count: Integer): Boolean;
+var
+  P: TLedVisualPane;
+  E: TParadeEdit;
+  Why, T: string;
+  R: pd_res_id;
+  Mime: PAnsiChar;
+  Data: Pointer;
+  Len: csize_t;
+begin
+  Result := False;
+  P := TLedVisualPane.Create(nil);
+  try
+    if not P.Load(Pdoc, lvkPdoc, 'x.pdoc', Why) then
+      Exit;
+    E := P.Page;
+    if E.SlideCount <> 2 then
+      Exit;
+    R := 1;
+    while pd_doc_resource(E.Doc, R, @Mime, @Data, @Len) = PD_OK do
+    begin
+      SetString(T, PChar(Data), Len);
+      if (StrPas(Mime) = 'application/vnd.parade.drawing+json') and
+         (Length(T) - Length(StringReplace(T, S, '', [rfReplaceAll])) = Count * Length(S)) then
+        Exit(True);
+      Inc(R);
+    end;
+  finally
+    P.Free;
+  end;
+end;
+{$ENDIF}
+
 procedure TestOpenPptx(F: TLedMainForm);
 { Parade's API throughout, and nothing to assert without it: a build with no
   pages in it has no .pptx behaviour to be right or wrong about. }
 {$IFDEF LED_PARADE}
 var
   Tab: TLedTab;
-  Src, Copy_, Before: string;
+  Src, Copy_, Before, Out_, Back, Why: string;
   E: TParadeEdit;
   TW: Integer;
 {$ENDIF}
@@ -17167,6 +17203,14 @@ begin
   E.AddShape('ellipse', 50 * PD_SP_PER_PT, 250 * PD_SP_PER_PT, 120 * PD_SP_PER_PT, 300 * PD_SP_PER_PT);
   Pump;
   Check('edited: modified, the .pptx as it was', Tab.Document.Modified and (LedReadRawFile(Copy_) = Before));
+  { exported to a new .pptx: a presentation of the slides as edited, read back with the ellipse; the deck as it was }
+  Out_ := TempName('exported.pptx');
+  Check('Export writes a PowerPoint file', Tab.Visual.ExportToFile(Out_) and (Copy(LedReadRawFile(Out_), 1, 2) = 'PK') and
+    (Pos('ppt/slides/slide2.xml', LedReadRawFile(Out_)) > 0) and (LedReadRawFile(Copy_) = Before));
+  Back := LedVisualImport(LedReadRawFile(Out_), Out_, Why);
+  Check('which reads back as two slides, the ellipse on the second', (Back <> '') and
+    LedVisualPdocHas(Back, 'prst=\"ellipse\"', 2));   { its own and the one added }
+  DeleteFile(Out_);
   F.CloseActiveTab(False);
   Pump;
   Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);
