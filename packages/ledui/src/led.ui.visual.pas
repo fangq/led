@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  Dialogs, LCLType, LCLIntf, Menus, Spin
+  Dialogs, LCLType, LCLIntf, Menus, Spin, ButtonPanel
   {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
@@ -53,6 +53,7 @@ type
     FShapeFmt: array of TControl;   { that section's controls for a selected shape: enabled while there is one }
     FShapeSel: Boolean;         { a drawing or a shape of it selected, when the selection last changed }
     FShapePop: TForm;           { the shapes' palette, made when first opened }
+    FSnapShapesItem, FSnapGridItem: TMenuItem;  { the Align menu's snapping, ticked as it is }
     FStyle: TComboBox;
     FMarkup: TComboBox;
     FTrack: TSpeedButton;
@@ -176,6 +177,9 @@ type
     function PickColour(var AColour: TColor): Boolean;
     procedure ShapeLineItemClicked(Sender: TObject);
     procedure ShapeOrderItemClicked(Sender: TObject);
+    procedure ShapeSnapItemClicked(Sender: TObject);
+    function ShapeUnitPt(out At: pd_pos; out Sid: Integer): Double;
+    procedure ShapeSizeItemClicked(Sender: TObject);
     procedure GroupClicked(Sender: TObject);
     procedure UngroupClicked(Sender: TObject);
     procedure TableInsertItemClicked(Sender: TObject);
@@ -328,6 +332,13 @@ type
     property Page: TParadeEdit read FEdit;
     { the Shape tab, there while a shape is selected; for tests }
     function ShapeTabShown: Boolean;
+    { the selected shape's place in its canvas (points from the canvas's top left, its box before it is turned),
+      its size (points) and turn (degrees clockwise), as the Size and Position dialog shows them }
+    function ShapePlacement(out XPt, YPt, WPt, HPt, Deg: Double): Boolean;
+    { ... and set, at once: one step of undo }
+    function SetShapePlacement(XPt, YPt, WPt, HPt, Deg: Double): Boolean;
+    { the Shape tab's Align menu: snapping to other shapes, and to a grid (0: none), as remembered }
+    procedure SetShapeSnap(ToShapes: Boolean; GridPt: Double);
     { the gallery of shapes the Insert tab's Shapes button opens (nil until it first is) }
     property ShapePalette: TForm read FShapePop;
     {$ENDIF}
@@ -3126,6 +3137,8 @@ begin
   MenuItem(M, 'Flip vertical', 3, @ShapeRotateItemClicked);
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'No rotation', 4, @ShapeRotateItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Size, position and angle...', 5, @ShapeSizeItemClicked);
   MenuButton('rotate', 'Rotate', 'Turn or flip the selected shape (or drag its round handle; Shift: by 15' +
     #$C2#$B0 + ')', M);
   SetIcon(AddButton('Edit Points', 'The selected shape''s outline as points to drag (or double-click the shape)', [],
@@ -3151,6 +3164,8 @@ begin
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Send backward', 1, @ShapeOrderItemClicked);
   MenuItem(M, 'Send to back', 3, @ShapeOrderItemClicked);
+  MenuItem(M, '-', 0, nil);
+  MenuItem(M, 'Duplicate' + #9 + 'Ctrl+D', 4, @ShapeOrderItemClicked);
   MenuButton('arrange', 'Arrange', 'Which shapes the selected one is drawn over', M, False);
   M := TPopupMenu.Create(Self);
   MenuItem(M, 'Align left', 0, @ShapeAlignItemClicked);
@@ -3163,6 +3178,9 @@ begin
   MenuItem(M, '-', 0, nil);
   MenuItem(M, 'Distribute horizontally', 6, @ShapeAlignItemClicked);
   MenuItem(M, 'Distribute vertically', 7, @ShapeAlignItemClicked);
+  MenuItem(M, '-', 0, nil);
+  FSnapShapesItem := MenuItem(M, 'Snap to other shapes', 0, @ShapeSnapItemClicked);
+  FSnapGridItem := MenuItem(M, 'Snap to a grid (6 pt)', 1, @ShapeSnapItemClicked);
   MenuButton('alignshapes', 'Align', 'The selected shapes lined up or spread out evenly (one shape: along its ' +
     'canvas; a rubber band or Shift+click selects more)', M, False);
   NextRow;
@@ -3303,7 +3321,146 @@ end;
 
 procedure TLedVisualPane.ShapeOrderItemClicked(Sender: TObject);
 begin
-  FEdit.ShapeOrder(TMenuItem(Sender).Tag);
+  if TMenuItem(Sender).Tag = 4 then
+    FEdit.DuplicateShapes
+  else
+    FEdit.ShapeOrder(TMenuItem(Sender).Tag);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.SetShapeSnap(ToShapes: Boolean; GridPt: Double);
+begin
+  FEdit.SnapToShapes := ToShapes;
+  FEdit.SnapGrid := Max(0, GridPt);
+  if FSnapShapesItem <> nil then
+    FSnapShapesItem.Checked := ToShapes;
+  if FSnapGridItem <> nil then
+    FSnapGridItem.Checked := GridPt > 0;
+  LedPrefs.SetBool(LedPrefShapeSnap, ToShapes);
+  LedPrefs.SetInt(LedPrefShapeGrid, Round(Max(0, GridPt)));
+end;
+
+procedure TLedVisualPane.ShapeSnapItemClicked(Sender: TObject);
+begin
+  if TMenuItem(Sender).Tag = 0 then
+    SetShapeSnap(not FEdit.SnapToShapes, FEdit.SnapGrid)
+  else
+    SetShapeSnap(FEdit.SnapToShapes, IfThen(FEdit.SnapGrid > 0, 0, 6));
+  BackToPage;
+end;
+
+{ points a unit of the selected drawing: its shape's box on the page over the same box in the drawing }
+function TLedVisualPane.ShapeUnitPt(out At: pd_pos; out Sid: Integer): Double;
+var
+  Pg: Int32;
+  PX0, PY0, PX1, PY1, X0, Y0, X1, Y1: Double;
+begin
+  Result := 0;
+  if not FEdit.SelectedShape(At, Sid) or (Sid < 0) or not FEdit.ShapeBox(Sid, X0, Y0, X1, Y1) or
+     not FEdit.ShapePageBox(At, Sid, Pg, PX0, PY0, PX1, PY1) then
+    Exit;
+  if X1 - X0 > 0 then
+    Result := (PX1 - PX0) / (X1 - X0) / PD_SP_PER_PT
+  else if Y1 - Y0 > 0 then
+    Result := (PY1 - PY0) / (Y1 - Y0) / PD_SP_PER_PT;
+end;
+
+function TLedVisualPane.ShapePlacement(out XPt, YPt, WPt, HPt, Deg: Double): Boolean;
+var
+  G: TParadeShapeGeom;
+  At: pd_pos;
+  Sid: Integer;
+  K: Double;
+begin
+  XPt := 0; YPt := 0; WPt := 0; HPt := 0; Deg := 0;
+  K := ShapeUnitPt(At, Sid);
+  Result := (K > 0) and FEdit.SelectedShapeGeom(G);
+  if not Result then
+    Exit;
+  XPt := (G.CX - G.W / 2) * K;
+  YPt := (G.CY - G.H / 2) * K;
+  WPt := G.W * K;
+  HPt := G.H * K;
+  Deg := G.Rot;
+end;
+
+function TLedVisualPane.SetShapePlacement(XPt, YPt, WPt, HPt, Deg: Double): Boolean;
+var
+  OX, OY, OW, OH, OD, K: Double;
+  At: pd_pos;
+  Sid: Integer;
+begin
+  K := ShapeUnitPt(At, Sid);
+  Result := (K > 0) and ShapePlacement(OX, OY, OW, OH, OD) and (WPt > 0) and (HPt > 0);
+  if not Result then
+    Exit;
+  { the box's corner moves by what its centre does: the size is kept about the centre }
+  Result := FEdit.SetShapePlacement((XPt + WPt / 2 - (OX + OW / 2)) / K, (YPt + HPt / 2 - (OY + OH / 2)) / K,
+    WPt / K, HPt / K, Deg);
+end;
+
+{ Word's Size and Position: the selected shape's place, size and turn typed in, its proportions kept if asked }
+procedure TLedVisualPane.ShapeSizeItemClicked(Sender: TObject);
+var
+  D: TForm;
+  Eds: array[0..4] of TFloatSpinEdit;
+  Lock: TCheckBox;
+  B: TButtonPanel;
+  X, Y, W, H, R: Double;
+  i: Integer;
+const
+  Caps: array[0..4] of string = ('Left (pt)', 'Top (pt)', 'Width (pt)', 'Height (pt)', 'Rotation (' + #$C2#$B0 + ')');
+begin
+  if not ShapePlacement(X, Y, W, H, R) then
+    Exit;
+  D := TForm.CreateNew(nil);
+  try
+    D.Caption := 'Size and Position';
+    D.Position := poOwnerFormCenter;
+    D.BorderStyle := bsDialog;
+    D.ChildSizing.LeftRightSpacing := LedScale96(12);
+    D.ChildSizing.TopBottomSpacing := LedScale96(12);
+    D.ChildSizing.HorizontalSpacing := LedScale96(8);
+    D.ChildSizing.VerticalSpacing := LedScale96(6);
+    D.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+    D.ChildSizing.ControlsPerLine := 2;
+    D.AutoSize := True;
+    for i := 0 to 4 do
+    begin
+      with TLabel.Create(D) do
+      begin
+        Parent := D;
+        Caption := Caps[i];
+      end;
+      Eds[i] := TFloatSpinEdit.Create(D);
+      Eds[i].Parent := D;
+      Eds[i].DecimalPlaces := 1;
+      Eds[i].MinValue := IfThen(i in [2, 3], 0.1, -10000);
+      Eds[i].MaxValue := IfThen(i = 4, 360, 10000);
+      Eds[i].Width := LedScale96(100);
+    end;
+    Eds[0].Value := X; Eds[1].Value := Y; Eds[2].Value := W; Eds[3].Value := H; Eds[4].Value := R;
+    with TLabel.Create(D) do
+      Parent := D;
+    Lock := TCheckBox.Create(D);
+    Lock.Parent := D;
+    Lock.Caption := 'Keep proportions';
+    B := TButtonPanel.Create(D);
+    B.Parent := D;
+    B.ShowButtons := [pbOK, pbCancel];
+    B.Align := alNone;
+    if D.ShowModal = mrOK then
+    begin
+      if Lock.Checked and (W > 0) and (H > 0) then
+        if Abs(Eds[2].Value - W) >= Abs(Eds[3].Value - H) then
+          Eds[3].Value := Eds[2].Value * H / W
+        else
+          Eds[2].Value := Eds[3].Value * W / H;
+      SetShapePlacement(Eds[0].Value, Eds[1].Value, Eds[2].Value, Eds[3].Value, Eds[4].Value);
+    end;
+  finally
+    D.Free;
+  end;
   BackToPage;
 end;
 
@@ -4005,6 +4162,12 @@ begin
   T := EnsureRange(LedPrefs.GetInt(LedPrefShapeTheme, 0), 0, High(Themes));   { the colours new shapes take }
   FEdit.ShapeFillColor := FromRGB(Themes[T, 0]);
   FEdit.ShapeLineColor := FromRGB(Themes[T, 1]);
+  FEdit.SnapToShapes := LedPrefs.GetBool(LedPrefShapeSnap, True);
+  FEdit.SnapGrid := EnsureRange(LedPrefs.GetInt(LedPrefShapeGrid, 0), 0, 72);
+  if FSnapShapesItem <> nil then
+    FSnapShapesItem.Checked := FEdit.SnapToShapes;
+  if FSnapGridItem <> nil then
+    FSnapGridItem.Checked := FEdit.SnapGrid > 0;
   if not (FKind in [lvkPdoc, lvkJdoc]) then     { a Parade document keeps the one saved with it }
     FEdit.HybridBreaking := FEdit.HybridDefault;
   {$ENDIF}
