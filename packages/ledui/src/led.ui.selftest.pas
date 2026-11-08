@@ -17211,6 +17211,11 @@ begin
   Check('which reads back as two slides, the ellipse on the second', (Back <> '') and
     LedVisualPdocHas(Back, 'prst=\"ellipse\"', 2));   { its own and the one added }
   DeleteFile(Out_);
+  Out_ := TempName('pages.pdf');
+  E.ExportPDF(Out_);
+  Check('the pages exported as PDF: two pages, not the source text', (Copy(LedReadRawFile(Out_), 1, 5) = '%PDF-') and
+    (Pos('/Count 2', LedReadRawFile(Out_)) > 0));
+  DeleteFile(Out_);
   F.CloseActiveTab(False);
   Pump;
   Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);

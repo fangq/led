@@ -7690,7 +7690,10 @@ begin
     if not Dlg.Execute then Exit;
     LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
     try
-      LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
+      if CurrentVisual <> nil then  { the pages as they are laid out (with comment balloons when it has comments) }
+        CurrentVisual.Page.ExportPDF(Dlg.FileName)
+      else
+        LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
     except
       on E: Exception do ReportError('Could not write the PDF: ' + E.Message);
     end;
