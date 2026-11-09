@@ -7,7 +7,8 @@
   Picking one in the list selects its shape on the slide.
 
   The slide's timing is read with paradeanim and set again on every change (TParadeEdit.SetSlideTiming): the slide
-  show plays it at once and the PowerPoint export writes it. It is not a step of Undo.
+  show plays it at once and the PowerPoint export writes it. Each change is a step of Undo ("Animation"); the pane
+  reads the slide again when Undo or Redo changes it.
 
   Every control has a name, so the self-test works it as a writer would. }
 
