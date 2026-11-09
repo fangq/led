@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow,
   Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -17508,6 +17508,114 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF LED_PARADE}
+type
+  { the show window's and the page's key handling, protected: reached as a key press reaches them }
+  TShowKeys = class(TParadeShowForm);
+  TPageKeys = class(TParadeEdit);
+{$ENDIF}
+
+{ View > Slide show on an animated deck (Parade's tests/data/anim.pptx): it opens full screen from the first slide,
+  the keys step through its clicks and slides, Esc ends it on the slide it was on; F5 and Shift+F5 start it }
+procedure TestSlideShowRun(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  Src, Copy_: string;
+  E: TParadeEdit;
+  C: TComponent;
+  Sh: TParadeShowForm;
+  K: Word;
+  I, Lit: Integer;
+  P: PUInt32;
+
+  procedure Press(AKey: Word; AShift: TShiftState = []);
+  begin
+    K := AKey;
+    TShowKeys(Sh).KeyDown(K, AShift);
+    Pump;
+  end;
+{$ENDIF}
+begin
+  Say('slide show');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/anim.pptx');
+  if not LedVisualAvailable or not FileExists(Src) then
+  begin
+    Say('  (no animated deck to show; skipped)');
+    Exit;
+  end;
+  Copy_ := TempName('animated.pptx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Pump;
+  Check('the animated deck opens as its slides', (Tab <> nil) and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  E := Tab.Visual.Editor as TParadeEdit;
+  C := Tab.Visual.FindComponent('SlideShowStartBtn');
+  Check('View has Slide show, on for a presentation', (C is TSpeedButton) and TSpeedButton(C).Enabled);
+  if not (C is TSpeedButton) then Exit;
+  TSpeedButton(C).Click;
+  Pump;
+  Check('it opens the show', Tab.Visual.SlideShowForm is TParadeShowForm);
+  if not (Tab.Visual.SlideShowForm is TParadeShowForm) then Exit;
+  Sh := TParadeShowForm(Tab.Visual.SlideShowForm);
+  Check('full screen, from the first slide of two', (Sh.Engine <> nil) and (Sh.Engine.SlideCount = 2) and
+    (Sh.Engine.CurrentSlide = 0) and (Sh.BorderStyle = bsNone));
+  if Sh.Engine = nil then Exit;
+  Lit := 0;
+  for I := 0 to Sh.Engine.Frame.Height - 1 do
+  begin
+    P := PUInt32(Sh.Engine.Frame.GetDataLineStart(I));
+    if (P[Sh.Engine.Frame.Width div 2] and $FFFFFF) <> 0 then
+      Inc(Lit);
+  end;
+  Check('the slide drawn in it', Lit > 0);
+  Press(VK_RIGHT);
+  Press(VK_SPACE);
+  Press(VK_NEXT);
+  Press(VK_DOWN);
+  Check('four clicks: the fourth step playing, each click the next one''s', (Sh.Engine.CurrentSlide = 0) and
+    (Sh.Engine.StepsDone = Sh.Engine.StepCount - 1) and (Sh.Engine.Phase = spPlay));
+  Sleep(1100);    { its second's turn, the window's timer playing it out }
+  Pump;
+  Pump;
+  Check('then played out: the first slide''s four steps', (Sh.Engine.CurrentSlide = 0) and
+    (Sh.Engine.StepsDone = Sh.Engine.StepCount));
+  Press(VK_RIGHT);
+  Check('the next: the second slide', Sh.Engine.CurrentSlide = 1);
+  Press(VK_ESCAPE);
+  Pump;
+  Check('Esc ends it', Tab.Visual.SlideShowForm = nil);
+  Check('on the slide it was on', E.CurrentSlide = 1);
+  { F5: from the first; Shift+F5 on the page: from the one shown }
+  F.actReload.Execute;
+  Pump;
+  Check('F5 starts it from the first slide', (Tab.Visual.SlideShowForm is TParadeShowForm) and
+    (TParadeShowForm(Tab.Visual.SlideShowForm).Engine.CurrentSlide = 0));
+  if Tab.Visual.SlideShowForm is TParadeShowForm then
+  begin
+    Sh := TParadeShowForm(Tab.Visual.SlideShowForm);
+    Press(VK_ESCAPE);
+    Pump;
+  end;
+  Check('and the deck is not reloaded for it', not Tab.Document.Modified and (E.SlideCount = 2));
+  E.GoToSlide(1);
+  K := VK_F5;
+  TPageKeys(E).KeyDown(K, [ssShift]);
+  Pump;
+  Check('Shift+F5 on the page: from the slide shown', (Tab.Visual.SlideShowForm is TParadeShowForm) and
+    (TParadeShowForm(Tab.Visual.SlideShowForm).Engine.CurrentSlide = 1) and (K = 0));
+  if Tab.Visual.SlideShowForm is TParadeShowForm then
+  begin
+    Sh := TParadeShowForm(Tab.Visual.SlideShowForm);
+    Press(VK_ESCAPE);
+    Pump;
+  end;
+  Check('ended again', Tab.Visual.SlideShowForm = nil);
+  {$ENDIF}
+end;
+
 procedure TestOpenPptx(F: TLedMainForm);
 { Parade's API throughout, and nothing to assert without it: a build with no
   pages in it has no .pptx behaviour to be right or wrong about. }
@@ -18649,6 +18757,7 @@ begin
   TestTemplates(F);
   TestFormatDialogs(F);
   TestOpenPptx(F);
+  TestSlideShowRun(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
