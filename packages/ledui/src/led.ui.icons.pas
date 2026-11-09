@@ -153,6 +153,10 @@ function LedIconBitmap(const AName: string; AColour: TColor;
   painted. }
 function LedIconArtworkBitmap(const AName: string; ASize: Integer): TBitmap;
 
+var
+  { toolbar buttons painted so far: the self-test sees an idle window not drawing its toolbar again and again }
+  LedToolPaints: Int64 = 0;
+
 implementation
 
 uses
@@ -799,6 +803,7 @@ var
   Bg, Wash: TColor;
   X, Y, Mid: Integer;
 begin
+  Inc(LedToolPaints);
   Bar := Sender.Parent as TToolBar;
   C := TLedToolButtonAccess(Sender).Canvas;
   R := Sender.ClientRect;

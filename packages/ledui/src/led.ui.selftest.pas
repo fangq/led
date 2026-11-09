@@ -17764,6 +17764,50 @@ begin
   {$ENDIF}
 end;
 
+{ a document's pages shown and left alone: the idle passes (the actions' update) draw nothing again -- an action
+  set off and then on in a pass repainted its toolbar buttons, whose paint made the next idle pass, for ever }
+procedure TestIdleQuiet(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  Src, Copy_: string;
+  I: Integer;
+  Before: Int64;
+  H: Boolean;
+{$ENDIF}
+begin
+  Say('idle pages quiet');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/smartart.docx');
+  if not LedVisualAvailable or not FileExists(Src) then
+  begin
+    Say('  (no document to show; skipped)');
+    Exit;
+  end;
+  Copy_ := TempName('idle.docx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Pump;
+  Check('the document shows as its pages', (Tab <> nil) and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  for I := 1 to 3 do
+  begin   { settled: whatever the first passes change }
+    H := False;
+    F.ActionList1Update(nil, H);
+    Pump;
+  end;
+  Before := LedToolPaints;
+  for I := 1 to 20 do
+  begin
+    H := False;
+    F.ActionList1Update(nil, H);
+    Pump;
+  end;
+  Check(Format('twenty idle passes repaint no toolbar button (%d painted)', [LedToolPaints - Before]),
+    LedToolPaints - Before < 5);
+  {$ENDIF}
+end;
+
 procedure TestOpenPptx(F: TLedMainForm);
 { Parade's API throughout, and nothing to assert without it: a build with no
   pages in it has no .pptx behaviour to be right or wrong about. }
@@ -18907,6 +18951,7 @@ begin
   TestOpenPptx(F);
   TestSlideShowRun(F);
   TestAnimPaneRun(F);
+  TestIdleQuiet(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;

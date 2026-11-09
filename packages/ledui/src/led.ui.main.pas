@@ -6662,7 +6662,7 @@ procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
   var Handled: Boolean);
 var
   Tab: TLedTab;
-  HasDoc, CanPaste: Boolean;
+  HasDoc, CanPaste, On, UndoOn, RedoOn, CutOn, PasteOn: Boolean;
   Why: string;
   DState: TLedDebugState;
 begin
@@ -6681,22 +6681,27 @@ begin
   actSplitStacked.Enabled := HasDoc and Tab.CanSplit;
   actUnsplit.Enabled := HasDoc and (Tab.ViewCount > 1);
   actCycleViews.Enabled := HasDoc and (Tab.ViewCount > 1);
-  actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
+  { Each action below is set once a pass, to what it ends up as: the pass runs whenever the application goes idle,
+    and an action set one way and then the other repaints the toolbar buttons it drives -- whose paint makes the
+    application idle again. That was a loop drawing the toolbar for ever (a whole CPU, and the icons sent to an X
+    display without end) while a document's pages were shown. }
+  On := HasDoc and (not Tab.Document.IsUntitled);
   {$IFDEF LED_PARADE}
   if HasDoc and (CurrentVisual <> nil) and CurrentVisual.IsPresentation then
-    actReload.Enabled := True;    { F5: the slide show (actReloadExecute) }
+    On := True;    { F5: the slide show (actReloadExecute) }
   {$ENDIF}
+  actReload.Enabled := On;
   { Only offered where there is something to overrule. }
   actOpenAsText.Enabled := HasDoc and Tab.Document.IsBinary;
-  actUndo.Enabled := HasDoc and Tab.ActiveView.CanUndo;
-  actRedo.Enabled := HasDoc and Tab.ActiveView.CanRedo;
+  UndoOn := HasDoc and Tab.ActiveView.CanUndo;
+  RedoOn := HasDoc and Tab.ActiveView.CanRedo;
   { After the two above, not before: a dump's undo is the document's own --
     the buffer is rewritten a row at a time rather than typed into, so
     SynEdit's undo knows nothing about it and CanUndo is always false. }
   if HasDoc and Tab.Document.IsBinary then
   begin
-    actUndo.Enabled := Tab.Document.CanUndoHex or Tab.Document.CanUndoBJEdit;
-    actRedo.Enabled := False;
+    UndoOn := Tab.Document.CanUndoHex or Tab.Document.CanUndoBJEdit;
+    RedoOn := False;
   end;
   { The Run actions, offered only over a notebook, and only where there is
     something to run. }
@@ -6724,9 +6729,8 @@ begin
     not, so this is answered per line rather than per document. }
   actEditValue.Enabled := HasDoc and Tab.Document.IsBJData and
     Tab.Document.BJRowCanEdit(Tab.ActiveView.CaretY - 1, Why);
-  actCut.Enabled := HasDoc and Tab.ActiveView.SelAvail;
-  actCopy.Enabled := actCut.Enabled;
-  actPaste.Enabled := CanPaste;
+  CutOn := HasDoc and Tab.ActiveView.SelAvail;
+  PasteOn := CanPaste;
   actSelectAll.Enabled := HasDoc;
   actPasteColumn.Enabled := CanPaste;
   actClearSelection.Enabled := HasDoc and Tab.ActiveView.SelAvail;
@@ -6735,13 +6739,17 @@ begin
   actVisualEdit.Enabled := HasDoc and (Tab.VisualMode or Tab.CanVisual);
   actVisualEdit.Checked := HasDoc and Tab.VisualMode;
   if HasDoc and Tab.VisualMode then
-  begin
-    actUndo.Enabled := Tab.Visual.CanUndo;
-    actRedo.Enabled := Tab.Visual.CanRedo;
-    actCut.Enabled := Tab.Visual.SelAvail;
-    actCopy.Enabled := actCut.Enabled;
-    actPaste.Enabled := True;
+  begin   { a page in front: its own, not the hidden text's }
+    UndoOn := Tab.Visual.CanUndo;
+    RedoOn := Tab.Visual.CanRedo;
+    CutOn := Tab.Visual.SelAvail;
+    PasteOn := True;
   end;
+  actUndo.Enabled := UndoOn;
+  actRedo.Enabled := RedoOn;
+  actCut.Enabled := CutOn;
+  actCopy.Enabled := CutOn;
+  actPaste.Enabled := PasteOn;
   actIndent.Enabled := HasDoc;
   actUnindent.Enabled := HasDoc;
   actIndentSpace.Enabled := HasDoc;
