@@ -16995,6 +16995,18 @@ begin
   Application.QueueAsyncCall(@Filler.Close, 0);
 end;
 
+{ the Edit comment dialog: new text, OK }
+procedure FillCommentDialog(AForm: TForm);
+var
+  C: TComponent;
+begin
+  C := AForm.FindComponent('CommentText');
+  if C is TMemo then
+    TMemo(C).Text := 'Edited by Bob' + LineEnding + 'on two lines';
+  Filler.Form := AForm;
+  Application.QueueAsyncCall(@Filler.Close, 0);
+end;
+
 procedure TestTemplates(F: TLedMainForm);
 { Everything below the early Exit is Parade's own API, so it is compiled only
   where there is a Parade to call: without one the types do not exist and the
@@ -17638,6 +17650,8 @@ var
   Btn: TControl;
   {$IFDEF LED_PARADE}
   BI: pd_block_info;
+  CmId: pd_comment_id;
+  CmRec: pd_comment;
   {$ENDIF}
 begin
   Say('visual editor');
@@ -17812,6 +17826,40 @@ begin
     else
       Check('a Numbering button', False);
     Check('Review is a tab of its own', ControlByHint(Tab.Visual, 'Record edits as tracked changes') <> nil);
+    { Review > Edit comment: anyone's comment edited, its author kept; a balloon's double click edits it too }
+    Tab.Visual.Page.ProcessKey(VK_HOME, [ssCtrl]);
+    Tab.Visual.Page.ProcessKey(VK_END, [ssShift]);
+    Tab.Visual.Page.Author := 'Ann';
+    CmId := Tab.Visual.Page.AddComment('First thought');
+    Tab.Visual.Page.Author := 'Bob';
+    Check('a comment by Ann to edit', CmId <> 0);
+    Btn := ButtonByCaption(Tab.Visual, 'Edit comment');
+    Check('Review has Edit comment', Btn is TSpeedButton);
+    if (CmId <> 0) and (Btn is TSpeedButton) then
+    begin
+      Filler := TDialogFiller.Create;
+      LedVisualDialogHook := @FillCommentDialog;
+      try
+        Tab.Visual.Page.ProcessKey(VK_LEFT, []);
+        TSpeedButton(Btn).Click;
+        Pump;
+        Check('Edit comment: Bob''s text in Ann''s comment, both lines',
+          (Tab.Visual.Page.CommentText(CmId) = 'Edited by Bob' + #10 + 'on two lines') and
+          (pd_doc_comment_get(Tab.Visual.Page.Doc, CmId, CmRec) = PD_OK) and (PAnsiChar(@CmRec.author[0]) = 'Ann'));
+        Tab.Visual.Page.Undo;
+        Check('and undone', Tab.Visual.Page.CommentText(CmId) = 'First thought');
+        Check('a balloon''s double click goes to the dialog', Assigned(Tab.Visual.Page.OnCommentDblClick));
+        if Assigned(Tab.Visual.Page.OnCommentDblClick) then
+          Tab.Visual.Page.OnCommentDblClick(Tab.Visual.Page, CmId);
+        Pump;
+        Check('and edits that comment', Tab.Visual.Page.CommentText(CmId) = 'Edited by Bob' + #10 + 'on two lines');
+      finally
+        LedVisualDialogHook := nil;
+        FreeAndNil(Filler);
+      end;
+    end;
+    if CmId <> 0 then
+      Tab.Visual.Page.DeleteComment(CmId);
     Btn := ButtonByHintStart(Tab.Visual, 'Format painter');
     if Btn is TSpeedButton then
     begin
