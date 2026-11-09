@@ -26,7 +26,7 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Dialogs, LCLType, LCLIntf, Menus, Spin, ButtonPanel
-  {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts{$ENDIF}
+  {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts, Led.UI.AnimPane{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
 type
@@ -217,6 +217,10 @@ type
   private
     FSlidePaint: TPaintBox;
     FSlideSplitter: TSplitter;
+    FAnimPane: TLedAnimPane;    { a presentation's transitions and animations, beside the slide (Animations tab) }
+    FAnimSplitter: TSplitter;
+    FAnimTab: Integer;
+    FAnimPaneBtn: TSpeedButton;
     FSlideTimer: TTimer;
     FSlideMenu: TPopupMenu;
     FThumbs: array of TBitmap;
@@ -234,6 +238,9 @@ type
     procedure CrossRefClicked(Sender: TObject);
     procedure BookmarkClicked(Sender: TObject);
     procedure BuildView;
+    procedure BuildAnimations;
+    procedure AnimPaneClicked(Sender: TObject);
+    procedure AnimPlay(Sender: TObject);
     procedure ShowZoom;
     procedure ZoomChosen(Sender: TObject);
     procedure ZoomKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -326,6 +333,9 @@ type
     procedure StartSlideShow(FromCurrent: Boolean);
     function IsPresentation: Boolean;
     property SlideShowForm: TForm read FShowForm;
+    { the animation pane (nil before it is made) and whether it is shown }
+    property AnimPane: TLedAnimPane read FAnimPane;
+    procedure ShowAnimPane(AShow: Boolean);
     { the speaker notes box under a presentation's page (shown with the slides); what it says is the current slide's
       notes, kept when the box is left or another slide is shown }
     property NotesMemo: TMemo read FNotesMemo;
@@ -856,6 +866,9 @@ begin
   {$ENDIF}
 
   FTableTab := -1;
+  {$IFDEF LED_PARADE}
+  FAnimTab := -1;
+  {$ENDIF}
   FShapeTab := -1;
   {$IFDEF LED_PARADE}
   AddTab('Insert');
@@ -915,6 +928,11 @@ begin
   {$IFDEF LED_PARADE}
   AddTab('View');
   BuildView;
+  { a presentation's: its tab shown only for one }
+  AddTab('Animations');
+  BuildAnimations;
+  FAnimTab := High(FBars);
+  FTabBtns[FAnimTab].Visible := False;
   {$ENDIF}
 
   {$IFDEF LED_PARADE_SYNC}
@@ -1465,6 +1483,8 @@ begin
     FSlidePaint.Invalidate;   { which slide is marked as the one being edited }
   if (FNotesPanel <> nil) and FNotesPanel.Visible then
     NotesFollow;    { the notes of the slide now being edited }
+  if (FAnimPane <> nil) and FAnimPane.Visible then
+    FAnimPane.Follow;   { the animations of the slide now being edited; Add as the shape selected allows }
   if Assigned(FOnStatus) then
     FOnStatus(Self);
   if FFont = nil then Exit;
@@ -2853,6 +2873,62 @@ begin
   StartSlideShow(False);
 end;
 
+{ the Animations tab: the pane, and the slide played from here }
+procedure TLedVisualPane.BuildAnimations;
+var
+  B: TSpeedButton;
+begin
+  BeginRows;
+  FAnimPaneBtn := AddToggle('Animation pane', 'Beside the slide: its transition and its animations, to add, change, ' +
+    'reorder and time', [], @AnimPaneClicked);
+  FAnimPaneBtn.Name := 'AnimPaneBtn';
+  NextRow;
+  B := AddButton('Preview', 'The slide show from this slide: its transition and animations played', [], @ShowHereClicked);
+  SetSmallIcon(B, 'run');
+  B.Name := 'AnimPreviewBtn';
+  EndRows;
+  FAnimPane := TLedAnimPane.Create(Self, FEdit);
+  FAnimPane.Parent := Self;
+  FAnimPane.Align := alRight;
+  FAnimPane.Visible := False;
+  FAnimPane.OnPlay := @AnimPlay;
+  FAnimSplitter := TSplitter.Create(Self);
+  FAnimSplitter.Parent := Self;
+  FAnimSplitter.Align := alRight;
+  FAnimSplitter.Visible := False;
+end;
+
+procedure TLedVisualPane.ShowAnimPane(AShow: Boolean);
+begin
+  if FAnimPane = nil then
+    Exit;
+  AShow := AShow and IsPresentation;
+  if AShow then
+  begin
+    FAnimPane.Visible := True;
+    FAnimSplitter.Left := FAnimPane.Left - 1;
+    FAnimSplitter.Visible := True;
+    FAnimPane.Follow;
+  end
+  else
+  begin
+    FAnimSplitter.Visible := False;
+    FAnimPane.Visible := False;
+  end;
+  if FAnimPaneBtn <> nil then
+    FAnimPaneBtn.Down := FAnimPane.Visible;
+end;
+
+procedure TLedVisualPane.AnimPaneClicked(Sender: TObject);
+begin
+  ShowAnimPane(not FAnimPane.Visible);
+end;
+
+procedure TLedVisualPane.AnimPlay(Sender: TObject);
+begin
+  StartSlideShow(True);
+end;
+
 procedure TLedVisualPane.ShowHereClicked(Sender: TObject);
 begin
   StartSlideShow(True);
@@ -4032,6 +4108,18 @@ begin
     FShowStartBtn.Enabled := Shown;
     FShowHereBtn.Enabled := Shown;
   end;
+  if (FAnimTab >= 0) and (FAnimTab < Length(FTabBtns)) and (FTabBtns[FAnimTab].Visible <> Shown) then
+  begin
+    if not Shown then
+    begin
+      if FBars[FAnimTab].Visible then
+        ShowTab(0);
+      ShowAnimPane(False);
+    end;
+    FTabBtns[FAnimTab].Visible := Shown;
+  end;
+  if (FAnimPane <> nil) and FAnimPane.Visible then
+    FAnimPane.Follow;
   if FNotesPanel.Visible <> Shown then
     FNotesPanel.Visible := Shown;
   if Shown then

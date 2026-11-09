@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeanim, Led.UI.AnimPane,
   Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -17616,6 +17616,146 @@ begin
   {$ENDIF}
 end;
 
+{ the animation pane on the animated deck: opened from the Animations tab, its list the slide's, each control
+  changing the slide's timing as the show and the export then have it }
+procedure TestAnimPaneRun(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  Src, Copy_: string;
+  E: TParadeEdit;
+  P: TLedAnimPane;
+  A: TParadeAnim;
+  C: TComponent;
+  L: TListBox;
+  I, Fades: Integer;
+
+  function Ctl(const AName: string): TComponent;
+  begin
+    Result := P.FindComponent(AName);
+  end;
+
+  procedure Pick(const AName: string; AIndex: Integer);
+  var
+    Cb: TComboBox;
+  begin
+    Cb := Ctl(AName) as TComboBox;
+    Cb.ItemIndex := AIndex;
+    Cb.OnChange(Cb);
+    Pump;
+  end;
+
+  function Timing(ASlide: Integer): TParadeAnim;
+  begin
+    A.Load(E.SlideTiming(ASlide));
+    Result := A;
+  end;
+{$ENDIF}
+begin
+  Say('animation pane');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/anim.pptx');
+  if not LedVisualAvailable or not FileExists(Src) then
+  begin
+    Say('  (no animated deck; skipped)');
+    Exit;
+  end;
+  Copy_ := TempName('animpane.pptx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Pump;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the animated deck opens as its slides', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  P := Tab.Visual.AnimPane;
+  C := Tab.Visual.FindComponent('AnimPaneBtn');
+  Check('the Animations tab has the pane, hidden at first', (P <> nil) and not P.Visible and (C is TSpeedButton));
+  if (P = nil) or not (C is TSpeedButton) then Exit;
+  A := TParadeAnim.Create;
+  try
+    TSpeedButton(C).Click;
+    Pump;
+    Check('Animation pane shows it, beside the slide', P.Visible and TSpeedButton(C).Down and (P.Slide = 0));
+    L := Ctl('AnimList') as TListBox;
+    Check('the first slide''s five animations listed, by click', (L.Items.Count = 5) and
+      (Copy(L.Items[0], 1, 2) = '1.') and (Copy(L.Items[2], 1, 2) = '3.') and (Pos('with:', L.Items[3]) > 0) and
+      (Pos('Fly In', L.Items[2]) > 0));
+    E.ClearShapeSelection;
+    Pump;
+    Check('Add off with no shape selected', not (Ctl('AnimAdd') as TButton).Enabled);
+    { one picked: its shape selected on the slide; its timing changed }
+    L.ItemIndex := 2;
+    L.OnClick(L);
+    Pump;
+    Check('picking the fly-in selects its box', (E.SelectedAnimShape = 4) and (Ctl('AnimAdd') as TButton).Enabled);
+    (Ctl('AnimEffDur') as TFloatSpinEdit).Value := 1.5;
+    (Ctl('AnimEffDur') as TFloatSpinEdit).OnChange(Ctl('AnimEffDur'));
+    Pump;
+    Check('its duration set: the slide''s timing has it', Timing(0).Effects[2].Dur = 1500);
+    Check('the deck changed', Tab.Document.Modified);
+    Pick('AnimEffStart', 2);
+    Check('started after the one before', (Timing(0).Effects[2].Start = asAfter) and (Pos('after:', L.Items[2]) > 0));
+    Pick('AnimEffDir', 1);
+    Check('flown in from the left', (Timing(0).Effects[2].Subtype = 8) and
+      (Pos('0-#ppt_w/2', E.SlideTiming(0)) > 0));
+    { added to the shape selected, after the one picked; taken away again }
+    Fades := -1;
+    for I := 0 to High(AnimPresets) do
+      if (AnimPresets[I].Cls = 'exit') and (AnimPresets[I].Preset = 10) then
+        Fades := I;
+    E.SelectAnimShape(8);
+    Pump;
+    L.ItemIndex := 4;
+    Check('an exit fade added to the spun shape, at the end: the fourth click (the fly-in now after the second)', P.AddPreset(Fades) and (L.Items.Count = 6) and
+      (Timing(0).Effects[5].Cls = 'exit') and (A.Effects[5].Shape = 8) and (L.ItemIndex = 5) and
+      (Copy(L.Items[5], 1, 2) = '4.'));
+    (Ctl('AnimUp') as TButton).Click;
+    Pump;
+    Check('moved up', (Timing(0).Effects[4].Cls = 'exit') and (L.ItemIndex = 4));
+    (Ctl('AnimRemove') as TButton).Click;
+    Pump;
+    Check('and removed', (Length(Timing(0).Effects) = 5) and (A.Effects[4].Cls = 'emph'));
+    { the transition: set here, then on every slide }
+    Pick('AnimTransKind', 3);
+    Check('a wipe into the first slide', (Timing(0).Trans.Kind = 'wipe') and
+      (Pos('<p:wipe', E.SlideTiming(0)) > 0) and ((Ctl('AnimTransDir') as TComboBox).Items.Count = 4));
+    Pick('AnimTransDir', 3);
+    (Ctl('AnimTransAfter') as TCheckBox).Checked := True;
+    Pump;
+    Check('downward, and on after a time', (Timing(0).Trans.Dir = 'd') and (A.Trans.AdvTime >= 0));
+    (Ctl('AnimTransAll') as TButton).Click;
+    Pump;
+    Check('applied to all: the second slide''s push now the wipe, its animation kept',
+      (Timing(1).Trans.Kind = 'wipe') and (A.Trans.Dir = 'd') and (Length(A.Effects) = 1));
+    { the show plays what was set }
+    (Ctl('AnimPlay') as TButton).Click;
+    Pump;
+    Check('Play: the show from this slide, with the wipe and the fly-in as set',
+      (Tab.Visual.SlideShowForm is TParadeShowForm) and
+      (TParadeShowForm(Tab.Visual.SlideShowForm).Engine.TimingOf(0).Trans.Kind = 'wipe') and
+      (TParadeShowForm(Tab.Visual.SlideShowForm).Engine.TimingOf(0).StepCount = 4));
+    if Tab.Visual.SlideShowForm is TParadeShowForm then
+    begin
+      TParadeShowForm(Tab.Visual.SlideShowForm).Close;
+      Pump;
+    end;
+    { another slide: its own }
+    E.GoToSlide(1);
+    Pump;
+    Check('the second slide''s, when it is edited', (P.Slide = 1) and (L.Items.Count = 1) and
+      (Pos('Wipe', L.Items[0]) > 0));
+    TSpeedButton(C).Click;
+    Pump;
+    Check('and the pane closed again', not P.Visible);
+  finally
+    A.Free;
+  end;
+  {$ENDIF}
+end;
+
 procedure TestOpenPptx(F: TLedMainForm);
 { Parade's API throughout, and nothing to assert without it: a build with no
   pages in it has no .pptx behaviour to be right or wrong about. }
@@ -18758,6 +18898,7 @@ begin
   TestFormatDialogs(F);
   TestOpenPptx(F);
   TestSlideShowRun(F);
+  TestAnimPaneRun(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
