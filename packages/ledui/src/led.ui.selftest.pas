@@ -17718,6 +17718,14 @@ begin
     (Ctl('AnimRemove') as TButton).Click;
     Pump;
     Check('and removed', (Length(Timing(0).Effects) = 5) and (A.Effects[4].Cls = 'emph'));
+    { Edit > Undo and Redo: the removal taken back and made again, the pane following }
+    F.actUndo.Execute;
+    Pump;
+    Check('Undo: the removed one back, in the pane too', (Length(Timing(0).Effects) = 6) and
+      (A.Effects[4].Cls = 'exit') and (L.Items.Count = 6));
+    F.actRedo.Execute;
+    Pump;
+    Check('Redo: removed again', (Length(Timing(0).Effects) = 5) and (L.Items.Count = 5));
     { the transition: set here, then on every slide }
     Pick('AnimTransKind', 3);
     Check('a wipe into the first slide', (Timing(0).Trans.Kind = 'wipe') and
