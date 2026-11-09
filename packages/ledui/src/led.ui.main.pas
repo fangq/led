@@ -7690,9 +7690,11 @@ begin
     if not Dlg.Execute then Exit;
     LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
     try
+      {$IFDEF LED_PARADE}
       if CurrentVisual <> nil then  { the pages as they are laid out (with comment balloons when it has comments) }
         CurrentVisual.Page.ExportPDF(Dlg.FileName)
       else
+      {$ENDIF}
         LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
     except
       on E: Exception do ReportError('Could not write the PDF: ' + E.Message);
@@ -7747,7 +7749,7 @@ begin
     Dlg.Title := 'Export the pages';
     Dlg.Filter := 'PowerPoint presentation (*.pptx)|*.pptx|Word document (*.docx)|*.docx|' +
       'Parade document (*.pdoc)|*.pdoc|All files|*';
-    if V.Page.SlideCount > 0 then
+    if {$IFDEF LED_PARADE}V.Page.SlideCount > 0{$ELSE}False{$ENDIF} then
     begin
       Dlg.FilterIndex := 1;
       Dlg.DefaultExt := '.pptx';
