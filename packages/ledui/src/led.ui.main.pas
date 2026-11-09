@@ -5942,6 +5942,14 @@ var
   Tab: TLedTab;
   Why: string;
 begin
+  {$IFDEF LED_PARADE}
+  if (CurrentVisual <> nil) and CurrentVisual.IsPresentation then
+  begin   { F5 on a presentation's slides is its slide show, as in a presentation program (a deck is not reloaded:
+            it was read into a document of its own) }
+    CurrentVisual.StartSlideShow(False);
+    Exit;
+  end;
+  {$ENDIF}
   Tab := ActiveTab;
   if (Tab = nil) or Tab.Document.IsUntitled then Exit;
   if Tab.Document.Modified then
@@ -6674,6 +6682,10 @@ begin
   actUnsplit.Enabled := HasDoc and (Tab.ViewCount > 1);
   actCycleViews.Enabled := HasDoc and (Tab.ViewCount > 1);
   actReload.Enabled := HasDoc and (not Tab.Document.IsUntitled);
+  {$IFDEF LED_PARADE}
+  if HasDoc and (CurrentVisual <> nil) and CurrentVisual.IsPresentation then
+    actReload.Enabled := True;    { F5: the slide show (actReloadExecute) }
+  {$ENDIF}
   { Only offered where there is something to overrule. }
   actOpenAsText.Enabled := HasDoc and Tab.Document.IsBinary;
   actUndo.Enabled := HasDoc and Tab.ActiveView.CanUndo;

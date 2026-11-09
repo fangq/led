@@ -197,6 +197,8 @@ type
     { the References and View tabs }
     FZoomBox: TComboBox;
     FMarksBtn, FNavBtn: TSpeedButton;
+    FShowStartBtn, FShowHereBtn: TSpeedButton;   { View > Slide show, for a presentation }
+    FShowForm: TForm;                            { the slide show playing, nil none }
     FNavPanel: TPanel;
     FNavList: TListBox;
     FNavSplitter: TSplitter;
@@ -276,6 +278,10 @@ type
     procedure EditCommentClicked(Sender: TObject);
     {$IFDEF LED_PARADE}
     procedure CommentDblClicked(Sender: TObject; Id: pd_comment_id);
+    procedure ShowStartClicked(Sender: TObject);
+    procedure ShowHereClicked(Sender: TObject);
+    procedure ShowEnded(Sender: TObject);
+    procedure PageKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     { the Font, Paragraph, Bullets and numbering and Styles dialogs (Led.UI.FormatDlg) }
     procedure FontDialogClicked(Sender: TObject);
     procedure ParagraphDialogClicked(Sender: TObject);
@@ -315,6 +321,11 @@ type
     {$IFDEF LED_PARADE}
     { the slides beside the page (a presentation's): their pictures, one under another }
     property SlideView: TPaintBox read FSlidePaint;
+    { a presentation's slides played full screen: its transitions and animations (ParadeShow), from the first or
+      from the slide shown; when it ends, the slide it ended on is the one shown }
+    procedure StartSlideShow(FromCurrent: Boolean);
+    function IsPresentation: Boolean;
+    property SlideShowForm: TForm read FShowForm;
     { the speaker notes box under a presentation's page (shown with the slides); what it says is the current slide's
       notes, kept when the box is left or another slide is shown }
     property NotesMemo: TMemo read FNotesMemo;
@@ -419,8 +430,14 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
-  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg{$ENDIF}
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg, paradeshow{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
+
+{$IFDEF LED_PARADE}
+type
+  { the page's key event (protected in the control): reached for Shift+F5 }
+  TLedPageKeys = class(TParadeEdit);
+{$ENDIF}
 
 const
   { The paragraph styles every Parade document is made with, in the order a
@@ -791,6 +808,7 @@ begin
   FEdit.OnChange := @EditChanged;
   FEdit.OnSelectionChange := @SelectionChanged;
   FEdit.OnCommentDblClick := @CommentDblClicked;
+  TLedPageKeys(FEdit).OnKeyDown := @PageKeyDown;     { Shift+F5: a presentation's slide show from here }
   { the right button: the clipboard and the formatting dialogs }
   FPageMenu := TPopupMenu.Create(Self);
   FPageMenu.Name := 'PageMenu';
@@ -2796,6 +2814,59 @@ begin
 end;
 
 { the caret's paragraph style, its font, colour, alignment and spacing chosen in a dialog: the style redefined }
+function TLedVisualPane.IsPresentation: Boolean;
+begin
+  Result := (FEdit <> nil) and FEdit.CanvasPage and (FEdit.SlideCount > 0);
+end;
+
+procedure TLedVisualPane.StartSlideShow(FromCurrent: Boolean);
+var
+  From: Integer;
+begin
+  if not IsPresentation or (FShowForm <> nil) then
+    Exit;
+  From := 0;
+  if FromCurrent then
+    From := Max(0, FEdit.CurrentSlide);
+  FShowForm := ParadeSlideShow(FEdit, From, @ShowEnded);
+end;
+
+{ the show over: the slide it ended on shown here }
+procedure TLedVisualPane.ShowEnded(Sender: TObject);
+var
+  I: Integer;
+begin
+  I := -1;
+  if (Sender is TParadeShowForm) and (TParadeShowForm(Sender).Engine <> nil) then
+    I := TParadeShowForm(Sender).Engine.CurrentSlide;
+  FShowForm := nil;
+  if I >= 0 then
+  begin
+    FEdit.GoToSlide(I);
+    FEdit.ShowSlide(I);
+    UpdateSlidePane(False);
+  end;
+end;
+
+procedure TLedVisualPane.ShowStartClicked(Sender: TObject);
+begin
+  StartSlideShow(False);
+end;
+
+procedure TLedVisualPane.ShowHereClicked(Sender: TObject);
+begin
+  StartSlideShow(True);
+end;
+
+procedure TLedVisualPane.PageKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  if (Key = VK_F5) and IsPresentation and (Shift * [ssCtrl, ssAlt] = []) then
+  begin   { F5 (when it reaches the page): from the first; Shift+F5 from here }
+    StartSlideShow(ssShift in Shift);
+    Key := 0;
+  end;
+end;
+
 { the caret's paragraph style, from its dialog (Led.UI.FormatDlg): every paragraph in it changes }
 procedure TLedVisualPane.ModifyStyleClicked(Sender: TObject);
 var
@@ -3780,6 +3851,18 @@ begin
     @NavClicked);
   SetSmallIcon(FNavBtn, 'navigation');
   EndRows;
+  AddSeparator;
+  BeginRows;
+  FShowStartBtn := AddButton('Slide show', 'The slides full screen, from the first: their transitions and animations ' +
+    'played (F5; a click, Space or the arrows go on, Esc ends it)', [], @ShowStartClicked);
+  SetSmallIcon(FShowStartBtn, 'run');
+  FShowStartBtn.Name := 'SlideShowStartBtn';
+  NextRow;
+  FShowHereBtn := AddButton('From this slide', 'The slide show from the slide shown (Shift+F5)', [], @ShowHereClicked);
+  FShowHereBtn.Name := 'SlideShowHereBtn';
+  EndRows;
+  FShowStartBtn.Enabled := False;
+  FShowHereBtn.Enabled := False;
 
   { the navigation list, hidden until asked for }
   FNavPanel := TPanel.Create(Self);
@@ -3876,6 +3959,8 @@ begin
   Item('Move down', 4);
   Item('-', -1);
   Item('Hide slide', 5);
+  Item('-', -1);
+  Item('Slide show from here', 6);
   FSlideMenu := M;
 end;
 
@@ -3942,6 +4027,11 @@ begin
   if FSlidePanel = nil then
     Exit;
   Shown := FEdit.CanvasPage and (FEdit.SlideCount > 0);
+  if FShowStartBtn <> nil then
+  begin
+    FShowStartBtn.Enabled := Shown;
+    FShowHereBtn.Enabled := Shown;
+  end;
   if FNotesPanel.Visible <> Shown then
     FNotesPanel.Visible := Shown;
   if Shown then
@@ -4102,6 +4192,12 @@ begin
     3: FEdit.MoveSlide(i, i - 1);
     4: FEdit.MoveSlide(i, i + 1);
     5: FEdit.SetSlideHidden(i, not FEdit.SlideHidden(i));
+    6:
+      begin
+        FEdit.GoToSlide(i);
+        StartSlideShow(True);
+        Exit;
+      end;
   end;
   UpdateSlidePane(True);
   LedTryFocus(FEdit);
@@ -4271,6 +4367,12 @@ var
 {$ENDIF}
 begin
   {$IFDEF LED_PARADE}
+  if FShowForm <> nil then
+  begin   { a show of these pages outlives them not }
+    TParadeShowForm(FShowForm).OnEnd := nil;
+    FShowForm.Free;
+    FShowForm := nil;
+  end;
   for i := 0 to High(FThumbs) do
     FThumbs[i].Free;
   FThumbs := nil;
