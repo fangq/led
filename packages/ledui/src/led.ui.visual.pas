@@ -78,7 +78,7 @@ type
     FBoldBtn, FItalicBtn, FUnderBtn, FStrikeBtn, FSupBtn, FSubBtn: TSpeedButton;
     FBulletBtn, FNumberBtn: TSpeedButton;
     FAlignBtns: array[0..3] of TSpeedButton;
-    FColorMenu, FHighlightMenu, FSpacingMenu: TPopupMenu;
+    FColorMenu, FHighlightMenu, FSpacingMenu, FListMenu, FPageMenu: TPopupMenu;
     FTextColor, FHighlightColor: Integer;   { $RRGGBB the colour buttons put on; -1: automatic / none }
     FTextTheme: Integer;                    { or the theme's colour: slot * 10 + its tint or shade; -1: FTextColor }
     FThemeColorItems: array of TMenuItem;   { the font colour menu's theme colours, drawn as the theme is now }
@@ -276,6 +276,13 @@ type
     procedure EditCommentClicked(Sender: TObject);
     {$IFDEF LED_PARADE}
     procedure CommentDblClicked(Sender: TObject; Id: pd_comment_id);
+    { the Font, Paragraph, Bullets and numbering and Styles dialogs (Led.UI.FormatDlg) }
+    procedure FontDialogClicked(Sender: TObject);
+    procedure ParagraphDialogClicked(Sender: TObject);
+    procedure ListDialogClicked(Sender: TObject);
+    procedure RemoveListClicked(Sender: TObject);
+    procedure StylesDialogClicked(Sender: TObject);
+    procedure PageMenuClicked(Sender: TObject);
     procedure EditCommentText(Id: pd_comment_id);
     {$ENDIF}
     procedure MarkupChosen(Sender: TObject);
@@ -412,7 +419,7 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
-  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO{$ENDIF}
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 const
@@ -752,6 +759,7 @@ procedure SetSmallIcon(AButton: TSpeedButton; const AIcon: string); forward;
 constructor TLedVisualPane.Create(AOwner: TComponent);
 var
   i: Integer;
+  M: TMenuItem;
 begin
   inherited Create(AOwner);
   BevelOuter := bvNone;
@@ -783,6 +791,26 @@ begin
   FEdit.OnChange := @EditChanged;
   FEdit.OnSelectionChange := @SelectionChanged;
   FEdit.OnCommentDblClick := @CommentDblClicked;
+  { the right button: the clipboard and the formatting dialogs }
+  FPageMenu := TPopupMenu.Create(Self);
+  FPageMenu.Name := 'PageMenu';
+  with TStringList.Create do
+    try
+      CommaText := '"Cut","Copy","Paste","-","Font...","Paragraph...","Bullets and numbering...","-",' +
+        '"Modify style...","Styles..."';
+      for i := 0 to Count - 1 do
+      begin
+        M := TMenuItem.Create(FPageMenu);
+        M.Caption := Strings[i];
+        M.Tag := i;
+        if Strings[i] <> '-' then
+          M.OnClick := @PageMenuClicked;
+        FPageMenu.Items.Add(M);
+      end;
+    finally
+      Free;
+    end;
+  FEdit.PopupMenu := FPageMenu;
   FEdit.OnResize := @EditResized;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
@@ -1298,6 +1326,9 @@ begin
   Swatch(Item(FHighlightMenu, 'No highlight', -1, @HighlightItemClicked), clWhite, True);
   AddIconButton('highlight', 'Highlight', @HighlightClicked);
   Drop(FHighlightMenu, 'Choose the highlight colour');
+  B := AddButton(#$E2#$80#$A6, 'Font: every setting of the text -- spacing, caps, underlines, scripts', [],
+    @FontDialogClicked);
+  B.Name := 'FontDialogBtn';
   EndRows;
   AddSeparator;
 
@@ -1309,6 +1340,10 @@ begin
   FNumberBtn := AddIconButton('numbering', 'Numbering', @NumberingClicked);
   FNumberBtn.GroupIndex := 61;
   FNumberBtn.AllowAllUp := True;
+  FListMenu := TPopupMenu.Create(Self);
+  Item(FListMenu, 'Bullets and numbering...', 0, @ListDialogClicked);
+  Item(FListMenu, 'Remove the list', 0, @RemoveListClicked);
+  Drop(FListMenu, 'Bullets and numbering: each level''s label, number style, start and indent');
   AddIconButton('unindent', 'Decrease indent (in a list: a level up)', @IndentLessClicked);
   AddIconButton('indent', 'Increase indent (in a list: a level down)', @IndentMoreClicked);
   FSpacingMenu := TPopupMenu.Create(Self);
@@ -1323,6 +1358,8 @@ begin
   Item(FSpacingMenu, 'No space after', 1000, @ParaSpaceItemClicked);
   Item(FSpacingMenu, '6 pt after', 1006, @ParaSpaceItemClicked);
   Item(FSpacingMenu, '12 pt after', 1012, @ParaSpaceItemClicked);
+  Line(FSpacingMenu);
+  Item(FSpacingMenu, 'Paragraph...', 0, @ParagraphDialogClicked);
   B := AddIconButton('linespacing', 'Line and paragraph spacing', @MenuDropClicked);
   B.Tag := PtrInt(FSpacingMenu);
   NextRow;
@@ -1332,6 +1369,8 @@ begin
     FAlignBtns[i].GroupIndex := 62;     { one of the four }
     FAlignBtns[i].Tag := AlignValues[i];
   end;
+  B := AddButton(#$E2#$80#$A6, 'Paragraph: indents, spacing, line and page breaks', [], @ParagraphDialogClicked);
+  B.Name := 'ParaDialogBtn';
   EndRows;
   AddSeparator;
 
@@ -1345,6 +1384,9 @@ begin
     Caption := 'Styles';
     BorderSpacing.Left := LedScale96(4);
   end;
+  B := AddButton(#$E2#$80#$A6, 'Styles: every paragraph style, to apply, change or add to', [],
+    @StylesDialogClicked);
+  B.Name := 'StylesDialogBtn';
   EndRows;
   FGallery := TLedStyleGallery.Create(Self);
   FGallery.Parent := FBar;
@@ -2754,188 +2796,78 @@ begin
 end;
 
 { the caret's paragraph style, its font, colour, alignment and spacing chosen in a dialog: the style redefined }
+{ the caret's paragraph style, from its dialog (Led.UI.FormatDlg): every paragraph in it changes }
 procedure TLedVisualPane.ModifyStyleClicked(Sender: TObject);
-const
-  Aligns: array[0..3] of Integer = (PD_ALIGN_LEFT, PD_ALIGN_CENTER, PD_ALIGN_RIGHT, PD_ALIGN_JUSTIFY);
 var
-  F: TForm;
-  Fam, Al: TComboBox;
-  Sz, Before, After: TFloatSpinEdit;
-  Bold, Ital: TCheckBox;
-  Col: TColorButton;
-  SName, ParentName: string;
-  St, Par: pd_style_id;
-  SKind: Int32;
-  Pp, OwnP: pd_para_props;
-  Cp, OwnC: pd_char_props;
-  Y, i: Integer;
-
-  function Lbl(const ACaption: string): Integer;
-  begin
-    with TLabel.Create(F) do
-    begin
-      Parent := F;
-      Caption := ACaption;
-      Left := LedScale96(12);
-      Top := Y + LedScale96(4);
-    end;
-    Result := Y;
-    Inc(Y, LedScale96(32));
-  end;
-
-  function Spin(const ACaption: string; AValue, AMax: Double): TFloatSpinEdit;
-  begin
-    Result := TFloatSpinEdit.Create(F);
-    Result.Parent := F;
-    Result.Left := LedScale96(130);
-    Result.Top := Lbl(ACaption);
-    Result.Width := LedScale96(80);
-    Result.MaxValue := AMax;
-    Result.DecimalPlaces := 1;
-    Result.Value := AValue;
-  end;
-
+  SName: string;
 begin
   SName := FEdit.CurrentStyleName;
   if SName = '' then
     SName := 'Normal';
-  St := pd_doc_style_find(FEdit.Doc, PAnsiChar(SName));
-  SKind := 0;
-  Par := 0;
-  if (St = 0) or (pd_doc_style_info(FEdit.Doc, St, @SKind, @Par, @OwnP, @OwnC) <> PD_OK) then
-    Exit;
-  ParentName := '';
-  if Par <> 0 then
-    ParentName := pd_doc_style_name(FEdit.Doc, Par);
-  pd_doc_style_resolve(FEdit.Doc, St, @Pp, @Cp);
-  F := TForm.CreateNew(nil);
-  try
-    F.Caption := 'Modify style: ' + SName;
-    F.BorderStyle := bsDialog;
-    F.Position := poOwnerFormCenter;
-    F.Width := LedScale96(340);
-    Y := LedScale96(12);
-    Fam := TComboBox.Create(F);
-    Fam.Parent := F;
-    Fam.Left := LedScale96(130);
-    Fam.Width := LedScale96(190);
-    Fam.Top := Lbl('Font');
-    FEdit.GetFontFamilies(Fam.Items);
-    Fam.Text := string(PAnsiChar(@Cp.family[0]));
-    Sz := Spin('Size (pt)', Cp.size / PD_SP_PER_PT, 400);
-    Bold := TCheckBox.Create(F);
-    Bold.Parent := F;
-    Bold.Caption := 'Bold';
-    Bold.Left := LedScale96(130);
-    Bold.Top := Lbl('');
-    Bold.Checked := Cp.weight >= 600;
-    Ital := TCheckBox.Create(F);
-    Ital.Parent := F;
-    Ital.Caption := 'Italic';
-    Ital.Left := LedScale96(210);
-    Ital.Top := Bold.Top;
-    Ital.Checked := Cp.italic <> 0;
-    Col := TColorButton.Create(F);
-    Col.Parent := F;
-    Col.Left := LedScale96(130);
-    Col.Width := LedScale96(80);
-    Col.Top := Lbl('Colour');
-    Col.ButtonColor := FromRGB(Integer(Cp.color and $FFFFFF));
-    Al := TComboBox.Create(F);
-    Al.Parent := F;
-    Al.Style := csDropDownList;
-    Al.Left := LedScale96(130);
-    Al.Width := LedScale96(120);
-    Al.Top := Lbl('Alignment');
-    Al.Items.CommaText := 'Left,Centre,Right,Justified';
-    Al.ItemIndex := 0;
-    for i := 0 to 3 do
-      if Aligns[i] = Pp.align then
-        Al.ItemIndex := i;
-    Before := Spin('Space before (pt)', Pp.space_before / PD_SP_PER_PT, 400);
-    After := Spin('Space after (pt)', Pp.space_after / PD_SP_PER_PT, 400);
-    with TButton.Create(F) do
-    begin
-      Parent := F;
-      Caption := 'OK';
-      Default := True;
-      ModalResult := mrOK;
-      Left := LedScale96(150);
-      Top := Y + LedScale96(4);
-    end;
-    with TButton.Create(F) do
-    begin
-      Parent := F;
-      Caption := 'Cancel';
-      Cancel := True;
-      ModalResult := mrCancel;
-      Left := LedScale96(240);
-      Top := Y + LedScale96(4);
-    end;
-    F.Height := Y + LedScale96(48);
-    Sz.Name := 'StyleSize';
-    if Assigned(LedVisualDialogHook) then
-      LedVisualDialogHook(F);
-    if F.ShowModal <> mrOK then
-      Exit;
-    { what the dialog says over what the style said itself }
-    if Trim(Fam.Text) <> '' then
-    begin
-      OwnC.mask := OwnC.mask or PD_CP_FAMILY;
-      FillChar(OwnC.family, SizeOf(OwnC.family), 0);
-      StrPLCopy(@OwnC.family[0], Trim(Fam.Text), High(OwnC.family));
-      OwnC.font_theme := OwnC.font_theme and not 3;
-    end;
-    OwnC.mask := OwnC.mask or PD_CP_SIZE or PD_CP_WEIGHT or PD_CP_ITALIC or PD_CP_COLOR;
-    OwnC.size := Round(Sz.Value * PD_SP_PER_PT);
-    OwnC.weight := IfThen(Bold.Checked, 700, 400);
-    OwnC.italic := Ord(Ital.Checked);
-    if (OwnC.color and $FFFFFF) <> UInt32(ToRGB(Col.ButtonColor)) then
-    begin
-      OwnC.color := $FF000000 or UInt32(ToRGB(Col.ButtonColor));
-      OwnC.color_theme := 0;
-    end;
-    OwnP.mask := OwnP.mask or PD_PP_ALIGN or PD_PP_SPACE_BEFORE or PD_PP_SPACE_AFTER;
-    OwnP.align := Aligns[Max(0, Al.ItemIndex)];
-    OwnP.space_before := Round(Before.Value * PD_SP_PER_PT);
-    OwnP.space_after := Round(After.Value * PD_SP_PER_PT);
-    FEdit.DefineParagraphStyle(SName, OwnP, OwnC, ParentName);
-  finally
-    F.Free;
-  end;
-  StylesChanged;
+  if LedStyleDialog(FEdit, SName, False) then
+    StylesChanged;
   BackToPage;
 end;
 
-{ a style of the caret's paragraph as it looks: its font and paragraph, based on Normal, the paragraph given it }
+{ a style of the caret's paragraph as it looks, named and changed in its dialog, then given to it }
 procedure TLedVisualPane.NewStyleClicked(Sender: TObject);
+begin
+  if LedStyleDialog(FEdit, '', True) then
+    StylesChanged;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.FontDialogClicked(Sender: TObject);
 var
-  SName: string;
   Cp: pd_char_props;
+begin
+  Cp := FEdit.CurrentCharProps;
+  if LedFontDialog(FEdit, Cp) then
+    FEdit.ApplyCharProps(Cp);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.ParagraphDialogClicked(Sender: TObject);
+var
   Pp: pd_para_props;
 begin
-  SName := '';
-  if not InputQuery('New style', 'The new paragraph style''s name:', SName) or (Trim(SName) = '') then
-  begin
-    BackToPage;
-    Exit;
-  end;
-  SName := Trim(SName);
-  if pd_doc_style_find(FEdit.Doc, PAnsiChar(SName)) <> 0 then
-  begin
-    MessageDlg('New style', 'There is a style called ' + SName + ' already: Modify style changes it.', mtWarning,
-      [mbOK], 0);
-    Exit;
-  end;
-  Cp := FEdit.CurrentCharProps;
-  Cp.mask := PD_CP_FAMILY or PD_CP_SIZE or PD_CP_WEIGHT or PD_CP_ITALIC or PD_CP_COLOR;
   Pp := FEdit.CurrentParaProps;
-  Pp.mask := PD_PP_ALIGN or PD_PP_SPACE_BEFORE or PD_PP_SPACE_AFTER or PD_PP_LINE_SPACING or PD_PP_INDENT_LEFT or
-    PD_PP_INDENT_FIRST;
-  if FEdit.DefineParagraphStyle(SName, Pp, Cp, 'Normal') then
-    FEdit.SetParagraphStyle(SName);
-  StylesChanged;
+  if LedParagraphDialog(FEdit, Pp) then
+    FEdit.ApplyParaProps(Pp);
   BackToPage;
+end;
+
+procedure TLedVisualPane.ListDialogClicked(Sender: TObject);
+begin
+  LedListDialog(FEdit);
+  BackToPage;
+end;
+
+procedure TLedVisualPane.RemoveListClicked(Sender: TObject);
+begin
+  FEdit.RemoveList;
+  BackToPage;
+end;
+
+procedure TLedVisualPane.StylesDialogClicked(Sender: TObject);
+begin
+  LedStylesDialog(FEdit);
+  StylesChanged;     { one may have been changed or added, applied or not }
+  BackToPage;
+end;
+
+procedure TLedVisualPane.PageMenuClicked(Sender: TObject);
+begin
+  case TMenuItem(Sender).Tag of
+    0: FEdit.CutToClipboard;
+    1: FEdit.CopyToClipboard;
+    2: FEdit.PasteFromClipboard;
+    4: FontDialogClicked(Sender);
+    5: ParagraphDialogClicked(Sender);
+    6: ListDialogClicked(Sender);
+    8: ModifyStyleClicked(Sender);
+    9: StylesDialogClicked(Sender);
+  end;
 end;
 
 { ---- table styles ---- }

@@ -17007,6 +17007,317 @@ begin
   Application.QueueAsyncCall(@Filler.Close, 0);
 end;
 
+{$IFDEF LED_PARADE}
+type
+  { fills the formatting dialogs by their controls' names, in order, then closes each: a button named Click is
+    pressed first (once, in the first form that has it: a dialog it opens is filled the same way) }
+  TFmtFiller = class
+    Sets: TStringList;
+    ClickName: string;
+    ListResult: TModalResult;
+    constructor Create;
+    destructor Destroy; override;
+    procedure Fill(AForm: TForm);
+    procedure Step(Data: PtrInt);
+  end;
+
+var
+  FmtFiller: TFmtFiller;
+
+constructor TFmtFiller.Create;
+begin
+  Sets := TStringList.Create;
+  ListResult := mrOK;
+end;
+
+destructor TFmtFiller.Destroy;
+begin
+  Sets.Free;
+  inherited Destroy;
+end;
+
+procedure TFmtFiller.Fill(AForm: TForm);
+var
+  i: Integer;
+  C: TComponent;
+  V: string;
+begin
+  for i := 0 to Sets.Count - 1 do
+  begin
+    C := AForm.FindComponent(Sets.Names[i]);
+    V := Sets.ValueFromIndex[i];
+    if C is TComboBox then
+    begin
+      if TComboBox(C).Style = csDropDownList then
+        TComboBox(C).ItemIndex := TComboBox(C).Items.IndexOf(V)
+      else
+        TComboBox(C).Text := V;
+      if Assigned(TComboBox(C).OnChange) then
+        TComboBox(C).OnChange(C);
+    end
+    else if C is TFloatSpinEdit then
+    begin
+      TFloatSpinEdit(C).Value := StrToFloat(V);
+      if Assigned(TFloatSpinEdit(C).OnChange) then
+        TFloatSpinEdit(C).OnChange(C);
+    end
+    else if C is TSpinEdit then
+    begin
+      TSpinEdit(C).Value := StrToInt(V);
+      if Assigned(TSpinEdit(C).OnChange) then
+        TSpinEdit(C).OnChange(C);
+    end
+    else if C is TCheckBox then
+      TCheckBox(C).Checked := V = '1'
+    else if C is TListBox then
+    begin
+      TListBox(C).ItemIndex := StrToIntDef(V, TListBox(C).Items.IndexOf(V));
+      if Assigned(TListBox(C).OnClick) then
+        TListBox(C).OnClick(C);
+    end
+    else if C is TEdit then
+      TEdit(C).Text := V;
+  end;
+  Application.QueueAsyncCall(@Step, PtrInt(AForm));
+end;
+
+procedure TFmtFiller.Step(Data: PtrInt);
+var
+  Form: TForm;
+  C: TComponent;
+begin
+  Form := TForm(Data);
+  if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+  begin   { each dialog as it was filled in, for a look at its layout }
+    Form.Repaint;
+    Application.ProcessMessages;
+    ExecuteProcess('/usr/bin/import', ['-window', 'root', IncludeTrailingPathDelimiter(
+      GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'dlg_' + IntToStr(PtrUInt(Form) mod 100000) + '_' +
+      StringReplace(Form.Caption, ' ', '_', [rfReplaceAll]) + '.png']);
+  end;
+  if ClickName <> '' then
+  begin
+    C := Form.FindComponent(ClickName);
+    if C is TButton then
+    begin
+      ClickName := '';
+      TButton(C).Click;
+    end;
+  end;
+  if Form.FindComponent('ListRemove') <> nil then
+    Form.ModalResult := ListResult
+  else
+    Form.ModalResult := mrOK;
+end;
+
+procedure FillFormatDialog(AForm: TForm);
+begin
+  FmtFiller.Fill(AForm);
+end;
+{$ENDIF}
+
+{ Format > Font, Paragraph, Bullets and numbering, and the styles' dialogs: each reached as a writer reaches it,
+  filled in, and what it set found in the document -- and what it was not told to change left alone }
+procedure TestFormatDialogs(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  D: Ppd_doc;
+  Path: string;
+  Ms: TMemoryStream;
+  Cp, Was: pd_char_props;
+  Pp: pd_para_props;
+  B1, B2, B3, B4: pd_block_id;
+  Lbl: array[0..63] of AnsiChar;
+  Info: pd_block_info;
+  C: TComponent;
+
+  procedure Go(N: Integer; K: Integer = -1);
+  var
+    J, Ch: Integer;
+    B: pd_block_id;
+  begin
+    E.ProcessKey(VK_HOME, [ssCtrl]);
+    B := pd_doc_next_paragraph(E.Doc, 0);
+    for J := 1 to N do
+    begin
+      for Ch := 0 to Length(E.ParaText(B)) do
+        E.ProcessKey(VK_RIGHT, []);
+      B := pd_doc_next_paragraph(E.Doc, B);
+    end;
+    if K >= 0 then
+      for J := 0 to K do
+      begin
+        for Ch := 1 to Length(E.ParaText(B)) + Ord(J < K) do
+          E.ProcessKey(VK_RIGHT, [ssShift]);
+        B := pd_doc_next_paragraph(E.Doc, B);
+      end;
+  end;
+
+  procedure Run(const ASets: array of string; const AClick: string = ''; AListResult: TModalResult = mrOK);
+  var
+    J: Integer;
+  begin
+    FmtFiller.Sets.Clear;
+    for J := 0 to High(ASets) do
+      FmtFiller.Sets.Add(ASets[J]);
+    FmtFiller.ClickName := AClick;
+    FmtFiller.ListResult := AListResult;
+  end;
+
+  procedure ClickNamed(const AName: string);
+  begin
+    C := Tab.Visual.FindComponent(AName);
+    Check('the ribbon has ' + AName, C is TSpeedButton);
+    if C is TSpeedButton then
+      TSpeedButton(C).Click;
+    Pump;
+  end;
+
+  procedure MenuItem(const ACaption: string);
+  var
+    J: Integer;
+    M: TPopupMenu;
+  begin
+    M := E.PopupMenu;
+    Check('the page''s right-button menu has ' + ACaption, M <> nil);
+    if M <> nil then
+      for J := 0 to M.Items.Count - 1 do
+        if M.Items[J].Caption = ACaption then
+        begin
+          M.Items[J].Click;
+          Pump;
+          Exit;
+        end;
+    Check('found ' + ACaption, False);
+  end;
+
+  function LabelOf(B: pd_block_id): string;
+  begin
+    Lbl[0] := #0;
+    pd_doc_list_label(E.Doc, B, @Lbl[0], 64);
+    Result := string(Lbl);
+  end;
+{$ENDIF}
+begin
+  Say('formatting dialogs');
+  if not LedVisualAvailable then Exit;
+  {$IFDEF LED_PARADE}
+  D := nil;
+  pd_doc_new(D);
+  Path := TempName('fmtdlg.docx');
+  Ms := TMemoryStream.Create;
+  try
+    pd_doc_export(D, PD_CONV_DOCX, @SelfTestWriter, Ms);
+    Ms.SaveToFile(Path);
+  finally
+    Ms.Free;
+    pd_doc_free(D);
+  end;
+  Tab := F.AddTab(F.Documents.OpenFile(Path));
+  Pump;
+  Check('a Word document opens as pages', (Tab <> nil) and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then
+    Exit;
+  E := Tab.Visual.Editor as TParadeEdit;
+  E.InsertText('One');
+  E.ProcessKey(VK_RETURN, []);
+  E.InsertText('Two words');
+  E.ProcessKey(VK_RETURN, []);
+  E.InsertText('Three');
+  E.ProcessKey(VK_RETURN, []);
+  E.InsertText('Four');
+  B1 := pd_doc_next_paragraph(E.Doc, 0);
+  B2 := pd_doc_next_paragraph(E.Doc, B1);
+  B3 := pd_doc_next_paragraph(E.Doc, B2);
+  B4 := pd_doc_next_paragraph(E.Doc, B3);
+  if (GetEnvironmentVariable('LED_SELFTEST_SHOTS') <> '') and FileExists('/usr/bin/import') then
+  begin
+    F.Repaint;
+    Pump;
+    ExecuteProcess('/usr/bin/import', ['-window', 'root',
+      IncludeTrailingPathDelimiter(GetEnvironmentVariable('LED_SELFTEST_SHOTS')) + 'home_tab.png']);
+  end;
+  FmtFiller := TFmtFiller.Create;
+  LedVisualDialogHook := @FillFormatDialog;
+  try
+    { Home > Font's launcher, on the second paragraph's words }
+    Go(1, 0);
+    Was := E.PropsAt(PdPos(B2, 1));
+    Run(['FontStyle=Bold', 'FontUnderline=Double', 'FontAllCaps=1', 'FontSpacing=2', 'FontScale=150']);
+    ClickNamed('FontDialogBtn');
+    Cp := E.PropsAt(PdPos(B2, 1));
+    Check('Font: bold, a double underline, all caps, 2pt apart and 150% wide',
+      (Cp.weight >= 700) and (Cp.underline = PD_UNDERLINE_DOUBLE) and (Cp.caps = 1) and
+      (Cp.letter_space = 2 * PD_SP_PER_PT) and (Cp.hscale = 1500));
+    Check('its font and size, not touched, as they were',
+      (StrComp(PAnsiChar(@Cp.family[0]), PAnsiChar(@Was.family[0])) = 0) and (Cp.size = Was.size));
+    Cp := E.PropsAt(PdPos(B1, 1));
+    Check('and the paragraph not selected left alone', (Cp.caps = 0) and (Cp.weight < 600));
+    { Home > Paragraph's launcher, at the third }
+    Go(2);
+    Pp := E.CurrentParaProps;
+    Run(['ParaIndentLeft=36', 'ParaSpecial=Hanging', 'ParaSpecialBy=18', 'ParaLineRule=Exactly', 'ParaLineAt=20',
+      'ParaKeepNext=1', 'ParaBreakBefore=1']);
+    ClickNamed('ParaDialogBtn');
+    FillChar(Pp, SizeOf(Pp), 0);
+    pd_doc_para_props(E.Doc, B3, Pp);
+    Check('Paragraph: indented 36pt, hanging 18pt',
+      (Pp.indent_left = 36 * PD_SP_PER_PT) and (Pp.indent_first = -18 * PD_SP_PER_PT));
+    Check('lines exactly 20pt, kept with the next, on a new page',
+      (Pp.line_rule = PD_LINE_EXACT) and (Pp.line_height = 20 * PD_SP_PER_PT) and (Pp.keep_with_next = 1) and
+      (Pp.page_break_before = 1));
+    Check('the space after, not touched, not set', Pp.mask and PD_PP_SPACE_AFTER = 0);
+    E.Undo;
+    FillChar(Pp, SizeOf(Pp), 0);
+    pd_doc_para_props(E.Doc, B3, Pp);
+    Check('one undo takes it back', Pp.keep_with_next = 0);
+    { the right button's Bullets and numbering, on the first two }
+    Go(0, 1);
+    Run(['ListPreset=1) a) i)', 'ListStart=3']);
+    MenuItem('Bullets and numbering...');
+    Check('Bullets and numbering: 1) from 3, then 4)', (LabelOf(B1) = '3)') and (LabelOf(B2) = '4)'));
+    { again from inside the list: the whole list's first level a new format }
+    Go(0);
+    Run(['ListLevel=0', 'ListText=[%1]', 'ListWhole=1']);
+    MenuItem('Bullets and numbering...');
+    Check('the whole list changed from its first item: [3], [4]: ' + LabelOf(B1) + ' ' + LabelOf(B2),
+      (LabelOf(B1) = '[3]') and (LabelOf(B2) = '[4]'));
+    Go(1);
+    Run([], '', mrNo);
+    MenuItem('Bullets and numbering...');
+    Check('Remove the list takes the selected one out',
+      (pd_doc_block_info(E.Doc, B2, Info) = PD_OK) and (Info.list = 0) and (LabelOf(B1) = '[3]'));
+    { Modify style from the right button, its Paragraph dialog opened from it }
+    Go(3);
+    Run(['StyleSize=20', 'ParaBefore=18', 'ParaKeepLines=1'], 'StyleParaBtn');
+    MenuItem('Modify style...');
+    pd_doc_style_resolve(E.Doc, pd_doc_style_find(E.Doc, PAnsiChar(E.CurrentStyleName)), @Pp, @Cp);
+    Check('Modify style: 20pt, from its own dialog', Cp.size = 20 * PD_SP_PER_PT);
+    Check('18pt before and lines kept together, from the Paragraph dialog it opened',
+      (Pp.space_before = 18 * PD_SP_PER_PT) and (Pp.keep_lines = 1));
+    Pp := E.CurrentParaProps;
+    Check('and the paragraph in that style has them', (Pp.space_before = 18 * PD_SP_PER_PT) and (Pp.keep_lines = 1));
+    { Home > Styles: a new style made from there, then applied }
+    Run(['StyleName=Memo Point', 'StyleBold=1', 'StyleItalic=1'], 'StylesNew');
+    ClickNamed('StylesDialogBtn');
+    Check('Styles > New, then Apply: the paragraph is in the new style: ' + E.CurrentStyleName,
+      E.CurrentStyleName = 'Memo Point');
+    pd_doc_style_resolve(E.Doc, pd_doc_style_find(E.Doc, 'Memo Point'), @Pp, @Cp);
+    Check('bold and italic, as its dialog said', (Cp.weight >= 700) and (Cp.italic <> 0));
+    Run(['StylesList=Heading 2']);
+    ClickNamed('StylesDialogBtn');
+    Check('Styles: one picked and applied: ' + E.CurrentStyleName, E.CurrentStyleName = 'Heading 2');
+  finally
+    LedVisualDialogHook := nil;
+    FreeAndNil(FmtFiller);
+  end;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 procedure TestTemplates(F: TLedMainForm);
 { Everything below the early Exit is Parade's own API, so it is compiled only
   where there is a Parade to call: without one the types do not exist and the
@@ -18336,6 +18647,7 @@ begin
   TestNewPdoc(F);
   TestNewCanvas(F);
   TestTemplates(F);
+  TestFormatDialogs(F);
   TestOpenPptx(F);
   TestSharedText(F);
   TestShareToolbar(F);
