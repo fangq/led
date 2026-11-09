@@ -273,6 +273,11 @@ type
     procedure AcceptClicked(Sender: TObject);
     procedure RejectClicked(Sender: TObject);
     procedure CommentClicked(Sender: TObject);
+    procedure EditCommentClicked(Sender: TObject);
+    {$IFDEF LED_PARADE}
+    procedure CommentDblClicked(Sender: TObject; Id: pd_comment_id);
+    procedure EditCommentText(Id: pd_comment_id);
+    {$ENDIF}
     procedure MarkupChosen(Sender: TObject);
     procedure BackToPage;
     procedure EditChanged(Sender: TObject);
@@ -777,6 +782,7 @@ begin
   LedParadeAddFonts(FEdit);
   FEdit.OnChange := @EditChanged;
   FEdit.OnSelectionChange := @SelectionChanged;
+  FEdit.OnCommentDblClick := @CommentDblClicked;
   FEdit.OnResize := @EditResized;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
@@ -834,6 +840,8 @@ begin
   AddSeparator;
   SetIcon(AddButton('Comment', 'Comment on the selection, or reply to the comment at the caret', [], @CommentClicked),
     'addcomment');
+  AddButton('Edit comment', 'Edit the comment at the caret (anyone''s; double-click a balloon for that comment ' +
+    'or reply)', [], @EditCommentClicked);
   AddSeparator;
   BeginRows;
   with TLabel.Create(Self) do
@@ -4665,6 +4673,82 @@ begin
   {$ENDIF}
   BackToPage;
 end;
+
+procedure TLedVisualPane.EditCommentClicked(Sender: TObject);
+{$IFDEF LED_PARADE}
+var
+  Id: pd_comment_id;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE}
+  Id := FEdit.CommentAt(FEdit.CaretPos);
+  if Id = 0 then
+    MessageDlg('Edit comment', 'There is no comment at the caret. Put the caret in commented text, or double-click ' +
+      'a comment''s balloon.', mtInformation, [mbOK], 0)
+  else
+    EditCommentText(Id);
+  {$ENDIF}
+  BackToPage;
+end;
+
+{$IFDEF LED_PARADE}
+procedure TLedVisualPane.CommentDblClicked(Sender: TObject; Id: pd_comment_id);
+begin
+  EditCommentText(Id);
+end;
+
+{ a comment's or a reply's text in a box of several lines, whoever wrote it; its author stays }
+procedure TLedVisualPane.EditCommentText(Id: pd_comment_id);
+var
+  F: TForm;
+  M: TMemo;
+  Cm: pd_comment;
+  Who: string;
+begin
+  if pd_doc_comment_get(FEdit.Doc, Id, Cm) <> PD_OK then
+    Exit;
+  Who := PAnsiChar(@Cm.author[0]);
+  F := TForm.Create(nil);
+  try
+    F.Caption := 'Edit comment';
+    F.Position := poScreenCenter;
+    F.BorderStyle := bsSizeable;
+    F.Width := LedScale96(420);
+    F.Height := LedScale96(240);
+    with TLabel.Create(F) do
+    begin
+      Parent := F;
+      Align := alTop;
+      BorderSpacing.Around := LedScale96(8);
+      if Cm.parent <> 0 then
+        Caption := 'Reply by ' + IfThen(Who = '', 'an unknown author', Who) + ':'
+      else
+        Caption := 'Comment by ' + IfThen(Who = '', 'an unknown author', Who) + ':';
+    end;
+    with TButtonPanel.Create(F) do
+    begin
+      Parent := F;
+      ShowButtons := [pbOK, pbCancel];
+    end;
+    M := TMemo.Create(F);
+    M.Name := 'CommentText';
+    M.Parent := F;
+    M.Align := alClient;
+    M.BorderSpacing.Around := LedScale96(8);
+    M.ScrollBars := ssAutoVertical;
+    M.WordWrap := True;
+    M.Text := StringReplace(FEdit.CommentText(Id), #10, LineEnding, [rfReplaceAll]);
+    F.ActiveControl := M;
+    if Assigned(LedVisualDialogHook) then
+      LedVisualDialogHook(F);
+    if (F.ShowModal = mrOK) and (Trim(M.Text) <> '') then
+      FEdit.EditComment(Id, StringReplace(StringReplace(TrimRight(M.Text), #13#10, #10, [rfReplaceAll]), #13, #10,
+        [rfReplaceAll]));
+  finally
+    F.Free;
+  end;
+end;
+{$ENDIF}
 
 procedure TLedVisualPane.MarkupChosen(Sender: TObject);
 begin
