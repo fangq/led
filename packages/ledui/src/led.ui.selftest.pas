@@ -17523,7 +17523,8 @@ var
   Tab: TLedTab;
   Src, Copy_: string;
   PdfFn, PdfErr, PdfHead: string;
-  PdfOk: Boolean;
+  PdfOk, PdfWasJpeg: Boolean;
+  PdfDlg: TSaveDialog;
   E: TParadeEdit;
   C: TComponent;
   Sh: TParadeShowForm;
@@ -17575,6 +17576,24 @@ begin
   Check('written: a page for each still state, the frames between (' + PdfErr + ')', PdfOk and
     (Copy(PdfHead, 1, 5) = '%PDF-') and (ShowPdfStill = 7) and (ShowPdfPages > ShowPdfStill + 40));
   DeleteFile(PdfFn);
+  { its dialog: the photographs compressed, or every picture exactly as it is; the choice kept }
+  PdfWasJpeg := LedPrefs.GetBool('Editor/pdf_photos_jpeg', True);
+  PdfDlg := TSaveDialog.Create(nil);
+  try
+    LedPrefs.SetBool('Editor/pdf_photos_jpeg', True);
+    PdfPicturesOffer(PdfDlg);
+    Check('the PDF dialog offers the photographs compressed, first, or exactly as they are',
+      (Pos('photographs compressed', PdfDlg.Filter) > 0) and (Pos('exactly as they are', PdfDlg.Filter) > 0) and
+      (PdfDlg.FilterIndex = 1) and (PdfPicturesChosen(PdfDlg) = 85));
+    PdfDlg.FilterIndex := 2;
+    Check('lossless chosen: no JPEG, and the next dialog has it first', (PdfPicturesChosen(PdfDlg) = 0) and
+      not LedPrefs.GetBool('Editor/pdf_photos_jpeg', True));
+    PdfPicturesOffer(PdfDlg);
+    Check('(the next dialog)', PdfDlg.FilterIndex = 2);
+  finally
+    PdfDlg.Free;
+    LedPrefs.SetBool('Editor/pdf_photos_jpeg', PdfWasJpeg);
+  end;
   TSpeedButton(C).Click;
   Pump;
   Check('it opens the show', Tab.Visual.SlideShowForm is TParadeShowForm);
