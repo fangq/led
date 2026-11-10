@@ -87,6 +87,11 @@ object LedMainForm: TLedMainForm
       ShortCut = 8205
       OnExecute = actRunAdvanceExecute
     end
+    object actRunInsert: TAction
+      Caption = 'Run Cell and &Insert Below'
+      ShortCut = 32781
+      OnExecute = actRunInsertExecute
+    end
     object actRunAll: TAction
       Caption = 'Run &All Cells'
       ShortCut = 24589
@@ -918,6 +923,9 @@ object LedMainForm: TLedMainForm
         end
         object mi_RunAdvance: TMenuItem
           Action = actRunAdvance
+        end
+        object mi_RunInsert: TMenuItem
+          Action = actRunInsert
         end
         object mi_RunAll: TMenuItem
           Action = actRunAll

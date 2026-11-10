@@ -11200,6 +11200,96 @@ end;
   The strongest check is the last one: a notebook opened and saved without
   being touched comes back byte for byte.  Everything else could be right
   and that still fail, and if it fails every save is a whole-file diff. }
+{ Jupyter's keys in a cell being typed in (mima-ide ad0a01e).  Shift+Enter
+  ran the cell at the line view's caret, so the lines being typed in a cell
+  of the notebook pane were lost when the pane was built again from the
+  document; and it was not offered at all while the caret was outside a
+  cell.  Text cells only here: a code cell would start a kernel. }
+procedure TestNotebookCellKeys(F: TLedMainForm);
+var
+  Path: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  Pane: TLedNotebookPane;
+  B: TLedNBCellBox;
+  Handled: Boolean;
+  Gap, i: Integer;
+const
+  Fixture =
+    '{"cells": [' +
+    '{"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["x = 1"]},' +
+    '{"cell_type": "markdown", "metadata": {}, "source": ["# Notes"]},' +
+    '{"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["y = 2"]}' +
+    '], "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},' +
+    ' "language_info": {"name": "python"}}, "nbformat": 4, "nbformat_minor": 5}';
+begin
+  Say('notebook cells take Jupyter''s keys');
+  Path := TempName('nbkeys.ipynb');
+  WriteBytes(Path, Fixture);
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Tab := F.ActiveTab;
+  Doc := Tab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Pane := F.NotebookPane;
+  if not F.Dock.PaneVisible('notebook') then
+    F.actToggleNotebookPane.Execute;
+  Pump; Pump;
+  Check('the notebook pane is showing', (Pane <> nil) and F.Dock.PaneVisible('notebook'));
+  if (Pane = nil) or not F.Dock.PaneVisible('notebook') then Exit;
+
+  { the line view's caret in the first cell, the one Shift+Enter used to run }
+  Tab.ActiveView.CaretXY := Point(1, Doc.NBSourceLineOf(0) + 1);
+  Check('a control outside the pane is not a cell',
+    not F.NBCellKeys(True, False, Tab.ActiveView));
+
+  B := Pane.BoxOf(1);
+  Check('the text cell has a box', B <> nil);
+  if B = nil then Exit;
+  B.SetEditing(True);
+  Pump;
+  Check('and an editor while it is typed in', B.Editor <> nil);
+  if B.Editor = nil then Exit;
+  B.Editor.Lines.Text := '# Notes' + LineEnding + 'second' + LineEnding + 'third';
+  B.Editor.Modified := True;
+  B.Editor.CaretXY := Point(3, 2);
+  Check('Shift+Enter is taken for the cell with the keyboard',
+    F.NBCellKeys(True, False, B.Editor));
+  Pump; Pump;
+  Check('and keeps every line typed in it: ' +
+    StringReplace(Doc.Notebook.CellSource(1), LineEnding, '\n', [rfReplaceAll]),
+    (Pos('second', Doc.Notebook.CellSource(1)) > 0) and
+    (Pos('third', Doc.Notebook.CellSource(1)) > 0));
+  CheckEq('the line view''s cell was not touched', 'x = 1', Doc.Notebook.CellSource(0));
+  CheckEqInt('no cell made, the next one being there', 3, Pane.CellCount);
+  B := Pane.BoxOf(1);
+  Check('the text cell is rendered again', (B <> nil) and (B.Rendered <> nil));
+  if (B <> nil) and (B.Rendered <> nil) then
+  begin
+    Check('Alt+Enter is taken for it too', F.NBCellKeys(False, True, B.Rendered));
+    Pump; Pump;
+    CheckEqInt('and opens a cell under it', 4, Pane.CellCount);
+    CheckEq('an empty one', '', Doc.Notebook.CellSource(2));
+    CheckEq('before the cell that was next', 'y = 2', Doc.Notebook.CellSource(3));
+  end;
+
+  { the caret between two cells, in no cell at all }
+  Gap := -1;
+  for i := 0 to Doc.Master.Lines.Count - 1 do
+    if Doc.NBCellOfLine(i) < 0 then begin Gap := i; Break; end;
+  if Gap >= 0 then Tab.ActiveView.CaretXY := Point(1, Gap + 1);
+  Handled := False;
+  F.ActionList1Update(F.actRunAdvance, Handled);
+  Check('Shift+Enter and Alt+Enter are offered whatever the line view''s caret',
+    (Gap >= 0) and F.actRunAdvance.Enabled and F.actRunInsert.Enabled);
+
+  Doc.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestNotebookEditing(F: TLedMainForm);
 var
   Path, Saved, Raw, Was: string;
@@ -12522,6 +12612,26 @@ begin
     Check('reset closes the left pane', not F.Dock.PaneVisible('files'));
   Check('and the right one', not F.Dock.PaneVisible('symbols'));
   Check('and leaves the editor docked', not F.Dock.PaneFloating('editor'));
+
+  { A reset puts back where a closed pane goes, not only the open ones: a
+    pane moved to another edge and closed kept that edge, so it came back
+    there after the reset (mima-ide ad0a01e). }
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  F.Dock.MovePaneTo('output', ledRight);
+  Pump; Pump;
+  F.Dock.HidePane('output');
+  Pump;
+  Check('a pane moved before a reset was on its new edge',
+    F.Dock.PaneEdge('output') = ledRight);
+  F.Dock.ResetLayout;
+  Pump;
+  F.Dock.ShowPane('output');
+  Pump; Pump;
+  Check('a pane closed away from its place opens in it after a reset',
+    F.Dock.PaneEdge('output') = ledBottom);
+  F.Dock.HidePane('output');
+  Pump;
 
   { Locking must stop the drag without stopping anything else -- the two
     places AnchorDocking consults AllowDragging are the header's and the tab's
@@ -19482,6 +19592,7 @@ begin
   TestBJDataFolding(F);
   TestBJDataEditing(F);
   TestNotebookEditing(F);
+  TestNotebookCellKeys(F);
   TestNotebookColouring(F);
   TestNotebookRunning(F);
   TestNotebookBounds(F);

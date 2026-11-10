@@ -67,6 +67,7 @@ type
     actEditValue: TAction;
     actRunCell: TAction;
     actRunAdvance: TAction;
+    actRunInsert: TAction;
     actRunAll: TAction;
     actInterruptKernel: TAction;
     actRestartKernel: TAction;
@@ -459,6 +460,7 @@ type
     procedure actEditValueExecute(Sender: TObject);
     procedure actRunCellExecute(Sender: TObject);
     procedure actRunAdvanceExecute(Sender: TObject);
+    procedure actRunInsertExecute(Sender: TObject);
     procedure actRunAllExecute(Sender: TObject);
     procedure actInterruptKernelExecute(Sender: TObject);
     procedure actRestartKernelExecute(Sender: TObject);
@@ -988,6 +990,14 @@ type
     { See the body: brings the editor area to the front in a window where it
       shares its place with something else. }
     procedure RaiseEditors;
+    { The keys of a cell being typed in, as Jupyter has them: Ctrl+Enter
+      runs it, Shift+Enter runs it and goes on to the next cell (a new one
+      after the last), Alt+Enter runs it and opens a new cell under it.  A
+      text cell is rendered rather than run.  False when no cell of the
+      notebook pane has the keyboard.  AFrom stands for the control with the
+      keyboard, for a check whose window cannot take it. }
+    function NBCellKeys(AAdvance, AInsert: Boolean;
+      AFrom: TWinControl = nil): Boolean;
     property Documents: TLedDocuments read FDocs;
     property Dock: TLedDockHost read FDock;
     { The tab strip's close button, for the self-test: it is placed from
@@ -6007,15 +6017,94 @@ begin
     FLastKernelReport := '';
 end;
 
+function TLedMainForm.NBCellKeys(AAdvance, AInsert: Boolean;
+  AFrom: TWinControl): Boolean;
+var
+  C: TWinControl;
+  Box: TLedNBCellBox;
+  Cell, NextCell: Integer;
+  Doc: TLedDocument;
+begin
+  Result := False;
+  C := AFrom;
+  if C = nil then C := ActiveControl;
+  if (FNBPane = nil) or (ActiveTab = nil) then Exit;
+  { the cell's editor, or the rendered text of a cell picked out }
+  while (C <> nil) and not (C is TLedNBCellBox) do
+    C := C.Parent;
+  if not (C is TLedNBCellBox) or not FNBPane.IsParentOf(C) then Exit;
+  Result := True;
+  Box := TLedNBCellBox(C);
+  Doc := ActiveTab.Document;
+  Cell := Box.Cell;
+
+  { The cell as it is on screen: what was typed goes in first.  The run
+    itself through the cell's own button, which does that.  Running from the
+    caret of the text view instead ran whatever cell *that* was in, and the
+    pane, rebuilt from the document, lost the lines being typed. }
+  if Box.EditButton = nil then
+  begin
+    if Box.RunButton <> nil then Box.RunButton.Click;
+  end
+  else
+    Box.SetEditing(False);
+  if not (AAdvance or AInsert) then Exit;
+
+  { the box may be gone by now: the run rebuilt what it had to }
+  NextCell := Cell + 1;
+  if AInsert or (NextCell >= FNBPane.CellCount) then
+  begin
+    NBPaneInsert(Self, Cell, nbkCode);
+    if not Doc.IsNotebook then Exit;
+  end;
+  if NextCell >= FNBPane.CellCount then Exit;
+  FNBPane.ScrollToCell(NextCell);
+  Box := FNBPane.BoxOf(NextCell);
+  if Box = nil then Exit;
+  { Into a code cell's text, ready to type, as Jupyter's edit mode goes on;
+    a text cell is left rendered with the keyboard on it, Enter opening it. }
+  if (Box.EditButton = nil) and (Box.Editor <> nil) then
+  begin
+    LedTryFocus(Box.Editor);
+    Box.Editor.CaretXY := Point(1, 1);
+  end
+  else if Box.Rendered <> nil then
+    LedTryFocus(Box.Rendered);
+end;
+
 procedure TLedMainForm.actRunCellExecute(Sender: TObject);
 var
   Tab: TLedTab;
   Why: string;
 begin
+  if NBCellKeys(False, False) then Exit;
   Tab := ActiveTab;
-  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) or (CellAtCaret < 0) then
+    Exit;
   if not Tab.Document.NBRunCell(CellAtCaret, Why) then
     ReportError(Why);
+  UpdateStatusBar;
+end;
+
+{ Alt+Enter: run, and a new code cell under this one.  In the text view,
+  the cell the caret is in. }
+procedure TLedMainForm.actRunInsertExecute(Sender: TObject);
+var
+  Tab: TLedTab;
+  Cell: Integer;
+  Why: string;
+begin
+  if NBCellKeys(False, True) then Exit;
+  Tab := ActiveTab;
+  if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
+  Cell := CellAtCaret;
+  if Cell < 0 then Exit;
+  if not Tab.Document.NBRunCell(Cell, Why) then
+  begin
+    ReportError(Why);
+    Exit;
+  end;
+  NBPaneInsert(Self, Cell, nbkCode);
   UpdateStatusBar;
 end;
 
@@ -6028,9 +6117,11 @@ var
   Cell, Line, i: Integer;
   Why: string;
 begin
+  if NBCellKeys(True, False) then Exit;
   Tab := ActiveTab;
   if (Tab = nil) or (not Tab.Document.IsNotebook) then Exit;
   Cell := CellAtCaret;
+  if Cell < 0 then Exit;
   if not Tab.Document.NBRunCell(Cell, Why) then
   begin
     ReportError(Why);
@@ -6888,9 +6979,13 @@ begin
     items that could never do anything is worse than no items. }
   miNotebook.Visible := HasDoc and Tab.Document.IsNotebook;
   miSepNB.Visible := miNotebook.Visible;
-  actRunCell.Enabled := HasDoc and Tab.Document.IsNotebook and
-    (CellAtCaret >= 0);
+  { On a notebook whether or not the text view's caret is in a cell: the
+    keys are as much the notebook pane's, whose cells the caret knows
+    nothing about.  Disabled there, Shift+Enter went to the cell's editor
+    as a line break instead. }
+  actRunCell.Enabled := HasDoc and Tab.Document.IsNotebook;
   actRunAdvance.Enabled := actRunCell.Enabled;
+  actRunInsert.Enabled := actRunCell.Enabled;
   actRunAll.Enabled := HasDoc and Tab.Document.IsNotebook;
   actInterruptKernel.Enabled := HasDoc and Tab.Document.IsNotebook and
     (Tab.Document.NBKernelState = lksBusy);
