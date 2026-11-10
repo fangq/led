@@ -42,6 +42,7 @@ uses
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
   Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, LCLProc, LazFileUtils
+  {$IFDEF LED_PARADE}, Led.UI.ResPane{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, Led.UI.Collab{$ENDIF};
 
 { Every open window, in creation order.  Needed so that opening a file which
@@ -616,6 +617,9 @@ type
     { The notebook pane: the same file as the line view, shown as cells with
       the prose rendered and the pictures drawn. }
     FNBPane: TLedNotebookPane;
+    {$IFDEF LED_PARADE}
+    FResPane: TLedResourcePane;   { the preview pane's view of a document shown as pages: what it carries }
+    {$ENDIF}
     { One pane on the right for both: the preview of a Markdown or wiki file
       and the cells of a notebook.  Which of the two is showing follows the
       document in front -- see ChooseView. }
@@ -1349,6 +1353,12 @@ begin
   FNBPane.OnDeleteCell := @NBPaneDelete;
   FNBPane.OnCellPicked := @NBCellPicked;
   FNBPane.Images := ImageList1;
+  {$IFDEF LED_PARADE}
+  FResPane := TLedResourcePane.Create(Self);
+  FResPane.Parent := FViewPane;
+  FResPane.Align := alClient;
+  FResPane.Visible := False;
+  {$ENDIF}
   { A preview pane and a notebook pane side by side were two panes for one
     question -- what the document looks like -- of which only one ever had
     anything to say.  So one pane, 'preview', and the notebook's old id kept
@@ -1707,6 +1717,14 @@ begin
   { The preview pane, not the edge it shares with the symbol tree. }
   if FPreview = nil then Exit;
   ChooseView;
+  {$IFDEF LED_PARADE}
+  if (FResPane <> nil) and FResPane.Visible then
+  begin   { a document shown as pages: what it carries }
+    if FDock.PaneVisible('preview') and (CurrentVisual <> nil) then
+      FResPane.ShowPage(CurrentVisual.Page);
+    Exit;
+  end;
+  {$ENDIF}
   if not PreviewShowing then Exit;
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
@@ -1732,20 +1750,28 @@ end;
   file, or a line saying there is nothing to show.  Its header says which. }
 procedure TLedMainForm.ChooseView;
 var
-  WantNB: Boolean;
+  WantNB, WantRes: Boolean;
   Pane: TLedPaneForm;
 begin
   if (FPreview = nil) or (FNBPane = nil) then Exit;
   WantNB := (ActiveTab <> nil) and ActiveTab.Document.IsNotebook;
+  { a document shown as pages (Word, PowerPoint, a .pdoc): its embedded pictures, metafiles and drawings, which a
+    Markdown preview has nothing to say about }
+  WantRes := {$IFDEF LED_PARADE}(FResPane <> nil) and not WantNB and (CurrentVisual <> nil){$ELSE}False{$ENDIF};
   if FNBPane.Visible <> WantNB then
-  begin
     FNBPane.Visible := WantNB;
-    FPreview.Visible := not WantNB;
-  end;
+  {$IFDEF LED_PARADE}
+  if (FResPane <> nil) and (FResPane.Visible <> WantRes) then
+    FResPane.Visible := WantRes;
+  {$ENDIF}
+  if FPreview.Visible <> (not WantNB and not WantRes) then
+    FPreview.Visible := not WantNB and not WantRes;
   Pane := FDock.FindPane('preview');
   if Pane <> nil then
     if WantNB then
       Pane.Caption := 'Notebook'
+    else if WantRes then
+      Pane.Caption := 'Resources'
     else
       Pane.Caption := 'Preview';
 end;
@@ -1790,6 +1816,7 @@ begin
   end;
   RefreshTabCaption(Tab);
   UpdateStatusBar;
+  RefreshPreview(True);   { pages now, or text: the pane's view follows }
 end;
 
 procedure TLedMainForm.SetMiniMaps(AOn: Boolean);

@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeanim, Led.UI.AnimPane,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
   Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -17766,6 +17766,112 @@ end;
 
 { a document's pages shown and left alone: the idle passes (the actions' update) draw nothing again -- an action
   set off and then on in a pass repainted its toolbar buttons, whose paint made the next idle pass, for ever }
+procedure TestResPane(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  Src, Copy_: string;
+  RP: TLedResourcePane;
+  N, I, X, Y: Integer;
+  M: PAnsiChar;
+  D: Pointer;
+  L: csize_t;
+  R: pd_res_id;
+  Sorted, PicOK, DrawOK, Shown: Boolean;
+  It: TLedResItem;
+  Pane: TLedPaneForm;
+
+  function Inked(B: TBitmap): Boolean;
+  var
+    Px, Py: Integer;
+  begin
+    Result := False;
+    if B = nil then
+      Exit;
+    for Py := 0 to B.Height - 1 do
+      for Px := 0 to B.Width - 1 do
+        if ColorToRGB(B.Canvas.Pixels[Px, Py]) and $FFFFFF <> $FFFFFF then
+          Exit(True);
+  end;
+{$ENDIF}
+begin
+  Say('resources in the preview pane');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/smartart.docx');
+  if not LedVisualAvailable or not FileExists(Src) then
+  begin
+    Say('  (no document to show; skipped)');
+    Exit;
+  end;
+  Copy_ := TempName('res.docx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Pump;
+  Check('the document shows as its pages', (Tab <> nil) and Tab.VisualMode);
+  if (Tab = nil) or not Tab.VisualMode then Exit;
+  Shown := F.Dock.PaneVisible('preview');
+  if not Shown then
+    F.actTogglePreview.Execute;
+  Pump;
+  RP := TLedResourcePane(F.FindComponent('ResPane'));
+  Pane := F.Dock.FindPane('preview');
+  Check('the preview pane shows the page''s resources', (RP <> nil) and RP.Visible and (Pane <> nil) and
+    (Pane.Caption = 'Resources'));
+  if RP = nil then Exit;
+
+  N := 0;
+  while pd_doc_resource(Tab.Visual.Page.Doc, N + 1, @M, @D, @L) = PD_OK do
+    Inc(N);
+  Check(Format('a row for each of its %d resources (%d)', [N, RP.RowCount_]), (N > 0) and (RP.RowCount_ = N));
+  Check('the count and the bytes said above them: ' + RP.Summary.Caption,
+    Pos(IntToStr(N) + ' resources', RP.Summary.Caption) = 1);
+
+  RP.Grid.Repaint;
+  Pump;
+  PicOK := False;
+  DrawOK := False;
+  for I := 0 to RP.RowCount_ - 1 do
+  begin
+    It := RP.ItemAt(I);
+    if (It.Kind = 'picture') and It.ThumbTried then PicOK := Inked(It.Thumb);
+    if (It.Kind = 'drawing') and It.ThumbTried then DrawOK := DrawOK or Inked(It.Thumb);
+  end;
+  Check(Format('the picture shown small, as it looks (%d made)', [RP.ThumbsMade]), PicOK);
+  Check('and the SmartArt''s drawing, drawn by Parade', DrawOK);
+
+  { a click on the Size heading: the largest first; again: the smallest first }
+  RP.Grid.OnHeaderClick(RP.Grid, True, 1);
+  Sorted := (RP.Sort = lrsSize) and RP.Descending;
+  for I := 0 to RP.RowCount_ - 2 do
+    Sorted := Sorted and (RP.ItemAt(I).Size >= RP.ItemAt(I + 1).Size);
+  Check('Size clicked: the largest first', Sorted);
+  RP.Grid.OnHeaderClick(RP.Grid, True, 1);
+  Sorted := (RP.Sort = lrsSize) and not RP.Descending;
+  for I := 0 to RP.RowCount_ - 2 do
+    Sorted := Sorted and (RP.ItemAt(I).Size <= RP.ItemAt(I + 1).Size);
+  Check('and again: the smallest first', Sorted);
+
+  { a resource added while the pane shows: listed within the second }
+  pd_doc_add_resource(Tab.Visual.Page.Doc, 'text/plain', PAnsiChar('added'), 5, R);
+  for I := 1 to 30 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ = N + 1 then Break;
+  end;
+  Check(Format('one added: listed (%d rows)', [RP.RowCount_]), RP.RowCount_ = N + 1);
+
+  { the text behind the pages: the preview again }
+  F.actVisualEdit.Execute;
+  Pump;
+  Check('as text: the preview, not the resources', not Tab.VisualMode and not RP.Visible and (Pane.Caption = 'Preview'));
+  if not Shown then
+    F.Dock.HidePane('preview');
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 procedure TestIdleQuiet(F: TLedMainForm);
 {$IFDEF LED_PARADE}
 var
@@ -18952,6 +19058,7 @@ begin
   TestSlideShowRun(F);
   TestAnimPaneRun(F);
   TestIdleQuiet(F);
+  TestResPane(F);
   TestSharedText(F);
   TestShareToolbar(F);
   WriteLn;
