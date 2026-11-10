@@ -104,6 +104,9 @@ type
       the width of the window above the editors to hold it. }
     FSelfOpening: Boolean;
   public
+    { Asked by the dock site as it closes, whoever closed it; see
+      TLedDockHost.OnPaneClosedByUser for telling the reader's close apart. }
+    function CloseQuery: Boolean; override;
     constructor CreatePane(AOwner: TComponent; const AId, ACaption: string;
       AEdge: TLedDockEdge; AControl: TControl; const ASuffix: string = '');
     property PaneId: string read FPaneId;
@@ -185,6 +188,10 @@ type
     FDraggingWanted: Boolean;
     FHeaderStyleWanted: THeaderStyleName;
     FOnPaneShown: TLedPaneNotify;
+    FOnPaneClosedByUser: TLedPaneNotify;
+    { Above 0 while the dock itself is closing a pane: HidePane, which a
+      reset, the View menu and the rails all go through. }
+    FCodeCloses: Integer;
     FAliases: TStringList;   { alias=id, for AddPaneAlias }
     FOnDefaultLayout: TNotifyEvent;
     { The size the user last dragged each edge to, in device pixels; 0 until
@@ -417,6 +424,12 @@ type
       the terminal above all, needs starting when it appears and not only
       when one particular menu item was the thing that showed it. }
     property OnPaneShown: TLedPaneNotify read FOnPaneShown write FOnPaneShown;
+    { A pane closed by the reader at its header -- the close button, or the
+      header's own menu -- and not by the program hiding it. }
+    property OnPaneClosedByUser: TLedPaneNotify
+      read FOnPaneClosedByUser write FOnPaneClosedByUser;
+    { Called by a pane as its site closes. }
+    procedure PaneClosing(APane: TLedPaneForm);
 
     { Asked to build this program's default arrangement, after a reset has
       closed everything and thrown the saved layout away.  Unset in the
@@ -610,6 +623,13 @@ const
     (ledRight, ledLeft, ledBottom, ledTop);
 
 { TLedPaneForm }
+
+function TLedPaneForm.CloseQuery: Boolean;
+begin
+  Result := inherited CloseQuery;
+  if Result and (Owner is TLedDockHost) then
+    TLedDockHost(Owner).PaneClosing(Self);
+end;
 
 constructor TLedPaneForm.CreatePane(AOwner: TComponent;
   const AId, ACaption: string; AEdge: TLedDockEdge; AControl: TControl;
@@ -1732,6 +1752,12 @@ begin
     FOnPaneShown(AId);
 end;
 
+procedure TLedDockHost.PaneClosing(APane: TLedPaneForm);
+begin
+  if (FCodeCloses = 0) and Assigned(FOnPaneClosedByUser) then
+    FOnPaneClosedByUser(APane.PaneId);
+end;
+
 procedure TLedDockHost.RaisePane(const AId: string);
 var
   Pane: TLedPaneForm;
@@ -1777,7 +1803,15 @@ begin
   { Closing the site is what the header's close button does, so hiding a pane
     from the menu leaves exactly the state closing it by hand would. }
   if Site <> nil then
-    Site.CloseSite
+  begin
+    { the same close as the header's, but the program's: see PaneClosing }
+    Inc(FCodeCloses);
+    try
+      Site.CloseSite;
+    finally
+      Dec(FCodeCloses);
+    end;
+  end
   else
     Pane.Hide;
 

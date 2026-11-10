@@ -99,6 +99,10 @@ const
   LedPrefWrapEnable      = 'Editor/wrapping_enable';
   { Not one of medit's: medit had no minimap. }
   LedPrefMiniMap         = 'Editor/minimap';
+  { Whether the preview pane opens by itself for a Markdown, wiki or notebook
+    file, or a document shown as pages (its resources), and closes for any
+    other.  Asked when the pane is closed on one. }
+  LedPrefAutoPreview     = 'View/auto_preview';
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
   { the visual editor's line breaking as one types: 'hybrid' (lines away from
@@ -112,8 +116,8 @@ const
     which mean something different: those write the user's actual file behind
     their back, this keeps a private journal and never touches it. }
   LedPrefShowPaneButtons  = 'Editor/show_pane_buttons';
-  { the close cross on the tab under the pointer rather than once at the end
-    of the strip (medit's, and the default) }
+  { the close cross on the tab under the pointer, the default, rather than
+    once at the end of the strip (medit's) }
   LedPrefTabHoverClose    = 'Editor/tab_close_hover';
   LedPrefLockPanes        = 'Editor/lock_pane_layout';
   { Not a setting: a note that the stale lock below has been cleared once.

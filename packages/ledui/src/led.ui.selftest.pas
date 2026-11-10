@@ -2640,6 +2640,133 @@ begin
   DeleteFile(Path);
 end;
 
+{ The preview pane follows the document in front: it opens for a Markdown
+  file and a document shown as pages (its Resources), closes for a source
+  file, asks only about a close at its header, and with the preference off no
+  longer opens by itself. }
+{ The toolbar has no cut, copy or paste: the keys and the Edit menu do it, and
+  a Paste button kept asking the clipboard whether it had text. }
+procedure TestToolbarHasNoClipboard(F: TLedMainForm);
+var
+  i, N: Integer;
+begin
+  Say('the toolbar without the clipboard');
+  N := 0;
+  for i := 0 to F.ToolBar1.ButtonCount - 1 do
+    if (F.ToolBar1.Buttons[i].Action = F.actCut) or (F.ToolBar1.Buttons[i].Action = F.actCopy) or
+       (F.ToolBar1.Buttons[i].Action = F.actPaste) then
+      Inc(N);
+  CheckEqInt('no Cut, Copy or Paste button', 0, N);
+  Check('and the toolbar still has its buttons', F.ToolBar1.ButtonCount > 8);
+end;
+
+procedure TestPreviewFollowsDocument(F: TLedMainForm);
+var
+  Md, Src, Vis: TLedTab;
+  P, Q, Dx, DxSrc: string;
+  L: TStringList;
+  Was: Boolean;
+begin
+  Say('the preview follows the document');
+  if F.Preview = nil then Exit;
+  Was := LedPrefs.GetBool(LedPrefAutoPreview, True);
+  LedPrefs.SetBool(LedPrefAutoPreview, True);
+  P := TempName('follows.md');
+  Q := TempName('follows.c');
+  L := TStringList.Create;
+  try
+    L.Text := '# A page' + LineEnding + LineEnding + 'Some text.';
+    L.SaveToFile(P);
+    L.Text := 'int main(void) { return 0; }';
+    L.SaveToFile(Q);
+  finally
+    L.Free;
+  end;
+  F.Dock.HidePane('preview');
+  Pump;
+  Md := F.AddTab(F.Documents.OpenFile(P));
+  Pump; Pump;
+  Check('opening a Markdown file opens the preview', F.Dock.PaneVisible('preview'));
+  Src := F.AddTab(F.Documents.OpenFile(Q));
+  Pump; Pump;
+  Check('a C file in front closes it', not F.Dock.PaneVisible('preview'));
+  Vis := nil;
+  {$IFDEF LED_PARADE}
+  DxSrc := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/smartart.docx');
+  if LedVisualAvailable and FileExists(DxSrc) then
+  begin
+    Dx := TempName('follows.docx');
+    LedWriteRawFile(Dx, LedReadRawFile(DxSrc), False);
+    Vis := F.AddTab(F.Documents.OpenFile(Dx));
+    Pump; Pump; Pump;
+    Check('a Word file shown as pages opens it, on its resources', (Vis <> nil) and Vis.VisualMode and
+      F.Dock.PaneVisible('preview') and (F.Dock.FindPane('preview') <> nil) and
+      (F.Dock.FindPane('preview').Caption = 'Resources'));
+    F.Notebook.ActivePage := Src.Sheet;
+    Pump; Pump;
+    Check('and the C file in front closes it again', not F.Dock.PaneVisible('preview'));
+  end
+  else
+    Say('  (no Word file to show as pages; skipped)');
+  {$ENDIF}
+  if (Md <> nil) and (Src <> nil) then
+  begin
+    F.Notebook.ActivePage := Md.Sheet;
+    Pump; Pump;
+    Check('and back on the Markdown file it opens again', F.Dock.PaneVisible('preview'));
+    { Only the reader's close at the header is asked about: a reset or the
+      View menu hiding it is not "I do not want a preview". }
+    F.Dock.HidePane('preview');
+    Check('hidden by the program, it is not a close to ask about', not F.PreviewClosedByUser);
+    F.Dock.ShowPane('preview');
+    Pump; Pump;
+    if DockMaster.GetAnchorSite(F.Dock.FindPane('preview')) <> nil then
+    begin
+      DockMaster.GetAnchorSite(F.Dock.FindPane('preview')).CloseSite;
+      Check('closed at its header, it is', F.PreviewClosedByUser and not F.Dock.PaneVisible('preview'));
+      Pump; Pump;
+    end;
+    F.Dock.ShowPane('preview');
+    Pump;
+    LedPrefs.SetBool(LedPrefAutoPreview, False);
+    F.Notebook.ActivePage := Src.Sheet;
+    Pump;
+    F.Notebook.ActivePage := Md.Sheet;
+    Pump; Pump;
+    Check('with the preference off it stays closed', not F.Dock.PaneVisible('preview'));
+    { a pane opened by hand over a source file stays while that file is in front }
+    F.Notebook.ActivePage := Src.Sheet;
+    Pump;
+    F.actTogglePreviewExecute(nil);
+    Pump; Pump;
+    Check('opened by hand over a C file, it stays open', F.Dock.PaneVisible('preview'));
+  end;
+  LedPrefs.SetBool(LedPrefAutoPreview, Was);
+  if Vis <> nil then
+  begin
+    F.Notebook.ActivePage := Vis.Sheet;
+    Pump;
+    Vis.Document.Master.Modified := False;
+    F.CloseActiveTab(False);
+  end;
+  if Src <> nil then
+  begin
+    F.Notebook.ActivePage := Src.Sheet;
+    Pump;
+    F.CloseActiveTab(False);
+  end;
+  if Md <> nil then
+  begin
+    F.Notebook.ActivePage := Md.Sheet;
+    Pump;
+    F.CloseActiveTab(False);
+  end;
+  F.Dock.HidePane('preview');
+  Pump;
+  DeleteFile(P);
+  DeleteFile(Q);
+end;
+
 { Asking for a pane shows that pane, and only that pane.
 
   ShowPane docks what was asked for and then, if the edge still does not
@@ -18355,9 +18482,9 @@ begin
   A.Free;
 end;
 
-{ General > Show the close cross on the tab under the pointer: off by
-  default (medit's one cross at the end of the strip); on, the tabs make
-  room for it, and off again they do not. }
+{ General > Show the close cross on the tab under the pointer: on by
+  default, the tabs making room for it; off, medit's one cross at the end of
+  the strip, the tabs with no room, and on again they have it. }
 procedure TestTabHoverClosePref(F: TLedMainForm);
 var
   Tab: TLedTab;
@@ -18366,21 +18493,21 @@ begin
   {$IFNDEF MIMA}
   LedPrefs.Remove(LedPrefTabHoverClose);
   F.PrefsApplied(nil);
-  Check('off by default: one cross at the end of the strip', not LedTabHoverClose);
+  Check('on by default: the cross is on the tab under the pointer', LedTabHoverClose);
   Tab := F.AddTab(F.Documents.NewDocument);
   Pump;
-  Check('a tab without room for a cross', Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption), 1) <> ' ');
-  LedPrefs.SetBool(LedPrefTabHoverClose, True);
-  F.PrefsApplied(nil);
-  Pump;
-  Check('on: the cross is on the tab under the pointer', LedTabHoverClose);
   Check('and the tab makes room for it', Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption) -
     Length(LedTabCaptionPad) + 1, Length(LedTabCaptionPad)) = LedTabCaptionPad);
+  LedPrefs.SetBool(LedPrefTabHoverClose, False);
+  F.PrefsApplied(nil);
+  Pump;
+  Check('off: one cross at the end of the strip', not LedTabHoverClose);
+  Check('a tab without room for a cross', Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption), 1) <> ' ');
   LedPrefs.Remove(LedPrefTabHoverClose);
   F.PrefsApplied(nil);
   Pump;
-  Check('off again', not LedTabHoverClose and
-    (Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption), 1) <> ' '));
+  Check('on again', LedTabHoverClose and (Copy(Tab.Sheet.Caption, Length(Tab.Sheet.Caption) -
+    Length(LedTabCaptionPad) + 1, Length(LedTabCaptionPad)) = LedTabCaptionPad));
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
@@ -19127,6 +19254,11 @@ begin
   { No modal dialog may ever appear during a scripted run: it would block the
     harness and, worse, land on the screen of whoever happens to be logged in. }
   F.Silent := True;
+  { The preview opening by itself for a Markdown file or a document shown as
+    pages narrows the editor every check below was written against; the one
+    test about it turns it back on for itself.  (The sandbox's prefs, not
+    yours: see the first check.) }
+  LedPrefs.SetBool(LedPrefAutoPreview, False);
   F.Show;
   Pump;
 
@@ -19177,6 +19309,8 @@ begin
   TestUntitledNumbering(F);
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
+  TestPreviewFollowsDocument(F);
+  TestToolbarHasNoClipboard(F);
   TestEditKeysGoToTheFocusedBox(F);
   { The AI pane.  All but one of these press Send or drive a turn, and with
     something installed to ask that means a real question to a real model,
