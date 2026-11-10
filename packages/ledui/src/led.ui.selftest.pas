@@ -55,7 +55,7 @@ uses
   {$IFDEF UNIX}BaseUnix,{$ENDIF}
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
-  ctypes, x, xlib,
+  ctypes, x, xlib, glib2, gdk2, gtk2,
   {$ENDIF}
   Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls, Spin,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
@@ -4609,6 +4609,65 @@ begin
   Before := F.ClipboardPolls;
   F.ClipboardHasText(V);
   CheckEqInt('and asking resumes', Before + 1, F.ClipboardPolls);
+end;
+
+{$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+const
+  LedUtf8OnlyText = 'pasted from an owner of UTF8_STRING alone, '#$CE#$A6;
+
+procedure LedUtf8OnlyGet(Cb: PGtkClipboard; Sel: PGtkSelectionData; Info: guint; Data: gpointer); cdecl;
+begin
+  gtk_selection_data_set_text(Sel, PGChar(LedUtf8OnlyText), Length(LedUtf8OnlyText));
+end;
+
+procedure LedUtf8OnlyClear(Cb: PGtkClipboard; Data: gpointer); cdecl;
+begin
+end;
+{$ENDIF}
+
+{ The clipboard owned by a program that offers its text as UTF8_STRING and by no other name -- xclip does, and
+  other X clients.  The LCL counts no text there (it looks for text/plain, TEXT, STRING or COMPOUND_TEXT), so Paste
+  stayed off, while a GTK program (medit) pasted it.  The owner here is gtk's own clipboard, offering that one
+  target; the LCL asks it across X as it asks anyone. }
+procedure TestClipboardUtf8Only(F: TLedMainForm);
+{$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+var
+  V: TLedEdit;
+  Target: TGtkTargetEntry;
+  Before: string;
+{$ENDIF}
+begin
+  Say('a clipboard offering UTF8_STRING alone');
+  {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+  if (F.ActiveTab = nil) or (F.ActiveTab.ActiveView = nil) then
+  begin
+    Say('  (no document; skipped)');
+    Exit;
+  end;
+  V := F.ActiveTab.ActiveView;
+  Target.target := 'UTF8_STRING';
+  Target.flags := 0;
+  Target.info := 0;
+  Check('gtk takes the clipboard with that one target', gtk_clipboard_set_with_data(
+    gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), @Target, 1, @LedUtf8OnlyGet, @LedUtf8OnlyClear, nil));
+  Pump;
+  Say('  (the LCL itself counts text there: ' + BoolToStr(Clipboard.HasFormat(CF_TEXT), True) + ')');
+  Sleep(300);   { past the poll's cache }
+  Check('Paste is on for it', F.ClipboardHasText(V));
+  Before := V.Text;
+  V.ReadOnly := False;
+  V.CaretXY := Point(1, 1);
+  LedClearSelection(V);
+  LedPaste(V);
+  Pump;
+  CheckEq('and pastes its text', LedUtf8OnlyText, Copy(V.Lines[0], 1, Length(LedUtf8OnlyText)));
+  V.Undo;
+  Pump;
+  CheckEq('undone, the document is as it was', Before, V.Text);
+  Clipboard.AsText := '';
+  {$ELSE}
+  Say('  (not gtk2; skipped)');
+  {$ENDIF}
 end;
 
 procedure TestLanguageAndTheme(F: TLedMainForm);
@@ -19163,6 +19222,7 @@ begin
   TestRecentFiles(F);
   WriteLn;
   TestClipboardUnderGrab(F);
+  TestClipboardUtf8Only(F);
   WriteLn;
   TestLanguageAndTheme(F);
   TestJSONAndYAMLColour(F);

@@ -16,7 +16,7 @@ interface
 uses
   Classes, SysUtils, Controls, Clipbrd, SynEdit, SynEditTypes,
   SynEditHighlighter, SynEditHighlighterFoldBase,
-  Led.Syn.Languages, Led.UI.Edit;
+  Led.Syn.Languages, Led.UI.Edit, Led.UI.ClipHandover;
 
 { Moves the caret to ALine, clamped, and scrolls it into view. }
 procedure LedGotoLine(AView: TLedEdit; ALine: Integer);
@@ -375,6 +375,9 @@ begin
   if ((FColumnClip <> '') and (Clipboard.AsText = FColumnClip)) or
      LedHasColumnSelection(AView) then
     LedPasteColumn(AView)
+  else if (Clipboard.AsText = '') and (LedClipboardText <> '') then
+    { the LCL reads nothing an owner offers (see LedClipboardHasText): gtk's text, over the selection as a paste is }
+    AView.SelText := LedClipboardText
   else
     AView.PasteFromClipboard;
 end;
@@ -386,7 +389,7 @@ var
   Text, Existing: string;
 begin
   if (AView = nil) or AView.ReadOnly then Exit;
-  Text := Clipboard.AsText;
+  Text := LedClipboardText;
   if Text = '' then Exit;
 
   Lines := TStringList.Create;
