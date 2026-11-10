@@ -102,7 +102,7 @@ begin
   Lbl.WordWrap := True;
   Lbl.Caption := Format(
     'These %d documents have unsaved changes.'#10 +
-    'Ticked documents will be saved; the rest will be closed as they are.',
+    'Selected documents will be saved; the rest will be closed as they are.',
     [ANames.Count]);
 
   Bottom := TPanel.Create(Self);
@@ -120,7 +120,7 @@ begin
   FButtons[3] := AddButton('Close Without Saving', @DoDiscard, mrNo, 150);
   Chain(FButtons[3], akRight, FButtons[4], asrLeft, 8);
 
-  FButtons[2] := AddButton('Save Ticked', @DoSave, mrYes, 110);
+  FButtons[2] := AddButton('Save Selected', @DoSave, mrYes, 110);
   Chain(FButtons[2], akRight, FButtons[3], asrLeft, 8);
   FButtons[2].Default := True;
 

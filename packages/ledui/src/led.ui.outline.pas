@@ -47,6 +47,9 @@ type
       active document changes: ctags over one file takes a few
       milliseconds. }
     procedure Reload(const AFileName: string);
+    { Shows what Tags holds, as Reload does once ctags has run: for a check,
+      which fills Tags from text, ctags being absent where checks run. }
+    procedure ShowTags(const AFileName: string);
 
     { Shows a document's headings instead: nested by level, in the order they
       appear.  AFileName is only what the pane reports it is showing.
@@ -160,11 +163,6 @@ begin
 end;
 
 procedure TLedOutlinePane.Reload(const AFileName: string);
-var
-  i, k: Integer;
-  Kinds: TStringList;
-  Group, Node: TTreeNode;
-  KindLabel, Label_: string;
 begin
   Clear(AFileName);
 
@@ -177,11 +175,24 @@ begin
 
   if (AFileName = '') or not FileExists(AFileName) then Exit;
   if not FTags.RunOn(AFileName) then Exit;
+  ShowTags(AFileName);
+end;
 
+procedure TLedOutlinePane.ShowTags(const AFileName: string);
+var
+  i, k: Integer;
+  Kinds, Vars: TStringList;
+  Group, Node: TTreeNode;
+  KindLabel, Label_: string;
+begin
+  Clear(AFileName);
   Kinds := TStringList.Create;
+  Vars := TStringList.Create;
   try
     Kinds.Sorted := True;
     Kinds.Duplicates := dupIgnore;
+    Vars.Sorted := True;
+    Vars.CaseSensitive := True;
     FTree.Items.BeginUpdate;
     try
       { A group is created on first use, so empty groups never appear. }
@@ -200,14 +211,35 @@ begin
         Label_ := FTags[i].Name;
         if FTags[i].Scope <> '' then
           Label_ := FTags[i].Scope + '::' + Label_;
+
+        { ctags tags every assignment to a script's variable, so a variable
+          set in twelve places was twelve rows.  One row a variable, at the
+          first line that sets it.  Only variables: two functions of one
+          name -- C++'s overloads -- are two definitions, each worth its row. }
+        if KindLabel = 'Variables' then
+        begin
+          k := Vars.IndexOf(Label_);
+          if k >= 0 then
+          begin
+            Node := TTreeNode(Vars.Objects[k]);
+            if (FTags[i].Line > 0) and ((PtrInt(Node.Data) <= 0) or
+               (FTags[i].Line < PtrInt(Node.Data))) then
+              Node.Data := Pointer(PtrInt(FTags[i].Line));
+            Continue;
+          end;
+        end;
+
         Node := FTree.Items.AddChild(Group, Label_);
         Node.Data := Pointer(PtrInt(FTags[i].Line));
+        if KindLabel = 'Variables' then
+          Vars.AddObject(Label_, Node);
       end;
       FTree.FullExpand;
     finally
       FTree.Items.EndUpdate;
     end;
   finally
+    Vars.Free;
     Kinds.Free;
   end;
 end;

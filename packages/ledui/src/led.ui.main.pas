@@ -660,6 +660,9 @@ type
     { Where the action update is in an idle pass, for the rails: 0 outside
       one, 1 inside one with the rails not yet refreshed, 2 once they have
       been.  See ActionList1Update. }
+    { One NBFollowBuffer queued at a time, however many lines a paste
+      changed.  See NBBufferEdited. }
+    FNBFollowQueued: Boolean;
     FRailsPass: Integer;
     procedure RailsIdleBegin(Sender: TObject; var Done: Boolean);
     procedure RailsIdleEnd(Sender: TObject);
@@ -817,6 +820,9 @@ type
     procedure SyncActiveDocument;
 
     procedure DocChanged(ADoc: TLedDocument);
+    { The notebook pane following the line view; see NBFollowBuffer. }
+    procedure NBBufferEdited(ADoc: TLedDocument);
+    procedure NBFollowBuffer(Data: PtrInt);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
     function ConfirmClose(ADoc: TLedDocument): Boolean;
@@ -3334,6 +3340,8 @@ var
   W: TLedMainForm;
 begin
   W := TLedMainForm.Create(Application);
+  { a scripted window's hand-off is scripted too: no dialog of its own }
+  W.Silent := Silent;
   W.Show;
   W.ApplyCommandLine(ACmd, ACwd);
   if W.WindowState = wsMinimized then W.WindowState := wsNormal;
@@ -3520,9 +3528,29 @@ end;
 
 { --- editing commands ------------------------------------------------------ }
 
-{ Every command is a no-op without a view, so one guard serves them all. }
+{ The editor an editing command applies to.
+
+  Every command is a no-op without a view, so one guard serves them all --
+  but which view is not always the document's.  A notebook cell's box is a
+  real editor, and when it has the keyboard the Edit menu is about it.
+
+  It has to be, because a TLedEdit is built without the shortcuts the window
+  reserves (LedStripReservedKeystrokes): SynEdit's own Ctrl+C is deleted so
+  that the menu owns it and one thing happens wherever it is pressed.  Aimed
+  at the line view regardless, that left a cell with no copy of its own and
+  a menu copying something else -- so code could not be taken out of a cell
+  at all, which is exactly how it was reported.  Cut, paste, select all and
+  undo were the same.
+
+  Only this window's: ActiveControl is nil in a window that is not in front,
+  and a cell in another window is that window's business. }
 function TLedMainForm.CurrentView: TLedEdit;
+var
+  C: TWinControl;
 begin
+  C := ActiveControl;
+  if (C is TLedNBCellEdit) and (GetParentForm(C) = Self) then
+    Exit(TLedEdit(C));
   Result := ActiveView;
 end;
 
@@ -6290,6 +6318,7 @@ begin
   Result.Parent := Sheet;
   Result.Sheet := Sheet;
   ADoc.OnChanged := @DocChanged;
+  ADoc.OnNBBufferEdited := @NBBufferEdited;
   ADoc.OnConfirmExpand := @ConfirmBJExpand;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.OnVisualStatus := @VisualStatusChange;
@@ -6378,6 +6407,46 @@ begin
     Tabs.Free;
   end;
   UpdateStatusBar;
+end;
+
+{ A notebook's buffer has been typed into, so the page of cells has to say
+  the same thing.
+
+  Queued rather than done here: this arrives from inside SynEdit's own change
+  notification, and reading the buffer back into the notebook and rebuilding
+  a cell's box underneath that is how a text editor comes apart.  One queued
+  at a time, so a paste that changed four hundred lines costs one pass.
+
+  Not while the pane is the one changing things (FNBSyncing), and not for a
+  document that is not the one on screen: the pane shows one notebook. }
+procedure TLedMainForm.NBBufferEdited(ADoc: TLedDocument);
+begin
+  if FNBPane = nil then Exit;
+  if FNBSyncing or FNBFollowQueued then Exit;
+  if not NotebookShowing then Exit;
+  if (ActiveTab = nil) or (ActiveTab.Document <> ADoc) then Exit;
+  if FNBPane.Document <> ADoc then Exit;
+  FNBFollowQueued := True;
+  Application.QueueAsyncCall(@NBFollowBuffer, 0);
+end;
+
+{ The lines read back into the notebook, and the cells that changed drawn
+  again -- those only, because rebuilding the whole page would take the
+  caret out of a cell someone is typing in and lose the reader's place. }
+procedure TLedMainForm.NBFollowBuffer(Data: PtrInt);
+var
+  Doc: TLedDocument;
+  i: Integer;
+begin
+  FNBFollowQueued := False;
+  if FNBPane = nil then Exit;
+  if not NotebookShowing then Exit;
+  if ActiveTab = nil then Exit;
+  Doc := ActiveTab.Document;
+  if (not Doc.IsNotebook) or (FNBPane.Document <> Doc) then Exit;
+  Doc.NBSyncFromBuffer;
+  for i := 0 to Doc.NBSyncedCount - 1 do
+    FNBPane.RefreshCell(Doc.NBSyncedCell(i));
 end;
 
 { The backstop.  nboDoChangeOnSetIndex, set on both notebooks, means the
@@ -7010,11 +7079,15 @@ begin
     not, so this is answered per line rather than per document. }
   actEditValue.Enabled := HasDoc and Tab.Document.IsBJData and
     Tab.Document.BJRowCanEdit(Tab.ActiveView.CaretY - 1, Why);
-  CutOn := HasDoc and Tab.ActiveView.SelAvail;
+  { Of CurrentView, not of the document's: with a notebook cell holding the
+    keyboard these commands are about the cell, and offering them greyed out
+    while a cell has a selection is the menu lying about what it can do
+    (mima-ide b6bfbb3). }
+  CutOn := (CurrentView <> nil) and CurrentView.SelAvail;
   PasteOn := CanPaste;
-  actSelectAll.Enabled := HasDoc;
+  actSelectAll.Enabled := CurrentView <> nil;
   actPasteColumn.Enabled := CanPaste;
-  actClearSelection.Enabled := HasDoc and Tab.ActiveView.SelAvail;
+  actClearSelection.Enabled := (CurrentView <> nil) and CurrentView.SelAvail;
   { A page in front answers for itself; the views behind it have not been
     touched since it came up. }
   actVisualEdit.Enabled := HasDoc and (Tab.VisualMode or Tab.CanVisual);

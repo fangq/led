@@ -201,6 +201,9 @@ type
     FOnRun: TLedNBCellEvent;
     FOnEdited: TLedNBCellEvent;
     FEditing: Boolean;         // a markdown cell being typed into
+    { Rebuild is putting the notebook's text into the editor, so the change
+      it causes is not the reader typing.  See EditTyped. }
+    FFilling: Boolean;
     FHovered: Boolean;         // the pointer is over this rendered prose cell
     { The editor's own notebook highlighter, and what it is told about the
       cell: the language to colour it in, and whether a line beginning % or !
@@ -302,6 +305,9 @@ type
       that per character would throw away that view's undo history a letter
       at a time. }
     procedure Commit;
+    { The editor's text as a cell's source, built the way the line buffer
+      builds it.  See the body. }
+    function EditorSource: string;
     property Cell: Integer read FCell;
     property Editor: TLedNBCellEdit read FEdit;
     property Rendered: TLedNBProse read FRender;
@@ -1143,11 +1149,33 @@ begin
   PaintHover;
 end;
 
+{ The editor's text as a cell's source: the lines joined with newlines and
+  no newline after the last.
+
+  Not Lines.Text, which is what this used to hand over.  TStrings.Text puts
+  a line break after every line including the final one, so a cell committed
+  from the pane came out one newline longer than the same cell read back
+  from the line buffer -- which builds it this way -- and a notebook typed
+  into here and saved differed from the file that went in.  The two views
+  have to produce the same bytes or they are not two views of one file. }
+function TLedNBCellBox.EditorSource: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  if FEdit = nil then Exit;
+  for i := 0 to FEdit.Lines.Count - 1 do
+  begin
+    if i > 0 then Result := Result + #10;
+    Result := Result + FEdit.Lines[i];
+  end;
+end;
+
 procedure TLedNBCellBox.Commit;
 begin
   if (FEdit = nil) or (not LedDocumentIsOpen(FDoc)) then Exit;
   if not FEdit.Modified then Exit;
-  FDoc.NBSetCellSource(FCell, FEdit.Lines.Text);
+  FDoc.NBSetCellSource(FCell, EditorSource);
   FEdit.Modified := False;
   if Assigned(FOnEdited) then FOnEdited(Self, FCell);
 end;
@@ -2026,7 +2054,16 @@ begin
     FEdit.Visible := True;
     if FEdit.Lines.Text <> Source then
     begin
-      FEdit.Lines.Text := Source;
+      { Not an edit: the text is coming from the notebook, and a box is
+        reused for another cell as the page scrolls -- so a write-through
+        here would put the cell that box last showed into the one it shows
+        now.  That is what it did. }
+      FFilling := True;
+      try
+        FEdit.Lines.Text := Source;
+      finally
+        FFilling := False;
+      end;
       FEdit.Modified := False;
     end;
     { In two steps, because the second answer depends on the first: how tall
@@ -2088,8 +2125,18 @@ end;
 { Each keystroke, not only on leaving: a new line has to have somewhere to
   go while it is being typed, or the box keeps its old height and the
   editor, with no scrollbar, shows only the line the caret is on. }
+{ A cell being typed into.
+
+  Written through to the document as it is typed, not only when the cell is
+  left: the line view is the other view of this file, and "the two never
+  disagree" was only true of a cell you had already finished with.  Commit
+  does nothing when the editor is unmodified and nothing again when the text
+  matches what the notebook already holds, so the cost falls on keystrokes
+  that actually changed something -- and the document rewrites that one
+  cell's lines rather than the buffer. }
 procedure TLedNBCellBox.EditTyped(Sender: TObject);
 begin
+  if not FFilling then Commit;
   if FitEditor then TellPane;
 end;
 

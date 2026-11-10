@@ -192,6 +192,11 @@ type
     FVisualDirty: Boolean;
     FOnFlushVisual: TNotifyEvent;
     FOnChanged: TLedDocumentEvent;
+    { Notebooks: the cells NBSyncFromBuffer last found different, and who to
+      tell that the buffer has been typed into.  See MasterChanged. }
+    FNBSynced: array of Integer;
+    FOnNBBufferEdited: TLedDocumentEvent;
+    procedure MasterChanged(Sender: TObject);
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
     function GetViewCount: Integer;
@@ -421,6 +426,12 @@ type
       Called before saving and before running: the buffer is what the reader
       has been typing into, so it is the truth about the source. }
     procedure NBSyncFromBuffer;
+    { The cells whose source that last NBSyncFromBuffer actually changed.  A
+      view mirroring the buffer redraws these and leaves the rest where they
+      are: rebuilding every box would take the caret out of whichever one is
+      being typed into. }
+    function NBSyncedCount: Integer;
+    function NBSyncedCell(AIndex: Integer): Integer;
     { Re-renders one cell's header and outputs from the notebook, leaving its
       source lines alone -- what running a cell needs. }
     procedure NBRefreshCell(ACell: Integer);
@@ -491,6 +502,12 @@ type
     property ViewCount: Integer read GetViewCount;
     property UntitledNo: Integer read FUntitledNo write FUntitledNo;
     property OnChanged: TLedDocumentEvent read FOnChanged write FOnChanged;
+    { A notebook's buffer has been typed into -- by the reader in the line
+      view, not by the notebook writing a cell through to it.  The page of
+      cells is the other view of this file and has to follow.  See
+      MasterChanged and NBSyncedCount. }
+    property OnNBBufferEdited: TLedDocumentEvent
+      read FOnNBBufferEdited write FOnNBBufferEdited;
   end;
 
   { Owns every open document.  In phase 1 this grows the recent-file list,
@@ -616,6 +633,7 @@ begin
   FMaster.Visible := False;
   FMaster.Parent := nil;
   FMaster.OnStatusChange := @MasterStatusChange;
+  FMaster.OnChange := @MasterChanged;
 
   FConfig := TLedDocConfig.Create(LedUserConfig);
   FConfig.OnChanged := @ConfigChanged;
@@ -950,6 +968,27 @@ procedure TLedDocument.MasterStatusChange(Sender: TObject;
 begin
   if (scModified in AChanges) and Assigned(FOnChanged) then
     FOnChanged(Self);
+end;
+
+{ Every change to the buffer, which for a notebook is the one signal the
+  page of cells never had.
+
+  The two views of a notebook are the lines and the cells, and only one
+  direction was wired: a cell typed into in the pane was written through to
+  the buffer, while the buffer reached the pane nowhere at all -- it was
+  filled when it was opened, when the tab changed and when a file was
+  opened, and whatever was typed in the line view in between simply was not
+  there.  A cell then typed into in the pane committed the stale text its
+  box still held, and the line view's work was gone with it.
+
+  Not while the notebook is writing to the buffer itself: NBSetCellSource
+  and NBRefreshCell both rewrite lines, and a round trip back through the
+  pane would be at best wasted and at worst a loop. }
+procedure TLedDocument.MasterChanged(Sender: TObject);
+begin
+  if not FIsNotebook then Exit;
+  if NBRewriting then Exit;
+  if Assigned(FOnNBBufferEdited) then FOnNBBufferEdited(Self);
 end;
 
 function TLedDocument.CreateView(AOwner: TComponent): TLedEdit;
@@ -1647,6 +1686,7 @@ begin
     seventeen million line lookups, on a path that runs before running a
     cell, before inserting or deleting one, before saving, and every time
     the Outline pane is filled. }
+  SetLength(FNBSynced, 0);
   SetLength(Done, FNotebook.CellCount);
   i := 0;
   while i < FMaster.Lines.Count do
@@ -1684,8 +1724,23 @@ begin
       same bytes: rewriting a cell's source splits it into lines afresh, and
       a file that stored its source as one string would come back as a list. }
     if Source <> FNotebook.CellSource(Cell) then
+    begin
       FNotebook.SetCellSource(Cell, Source);
+      SetLength(FNBSynced, Length(FNBSynced) + 1);
+      FNBSynced[High(FNBSynced)] := Cell;
+    end;
   end;
+end;
+
+function TLedDocument.NBSyncedCount: Integer;
+begin
+  Result := Length(FNBSynced);
+end;
+
+function TLedDocument.NBSyncedCell(AIndex: Integer): Integer;
+begin
+  if (AIndex < 0) or (AIndex > High(FNBSynced)) then Exit(-1);
+  Result := FNBSynced[AIndex];
 end;
 
 { ---- adding and removing cells ---- }
