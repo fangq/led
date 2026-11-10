@@ -37,11 +37,44 @@ interface
   back from the LCL. }
 procedure LedHandClipboardToManager;
 
+{ Whether the clipboard holds text, and the text: the LCL's answer, and when it has none, gtk's -- the one a GTK
+  program (medit) gets.  The LCL counts text only when the owner offers text/plain, TEXT, STRING or COMPOUND_TEXT;
+  an owner that offers UTF8_STRING alone (xclip, and others) has none for it, though it reads it, and Paste stayed
+  off.  gtk asks for every name text goes by.  Both wait for the owner by running the toolkit's loop: not while a
+  menu is open (see TLedMainForm.ClipboardHasText). }
+function LedClipboardHasText: Boolean;
+function LedClipboardText: string;
+
 implementation
 
 {$IFDEF LED_CLIP_HANDOVER}
 uses
-  SysUtils, Clipbrd, gdk2, gtk2;
+  SysUtils, Clipbrd, LCLType, glib2, gdk2, gtk2;
+
+function LedClipboardHasText: Boolean;
+var
+  Cb: PGtkClipboard;
+begin
+  Result := Clipboard.HasFormat(CF_TEXT);
+  if Result then Exit;
+  Cb := gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+  Result := (Cb <> nil) and gtk_clipboard_wait_is_text_available(Cb);
+end;
+
+function LedClipboardText: string;
+var
+  Cb: PGtkClipboard;
+  P: Pgchar;
+begin
+  Result := Clipboard.AsText;
+  if Result <> '' then Exit;
+  Cb := gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+  if Cb = nil then Exit;
+  P := gtk_clipboard_wait_for_text(Cb);
+  if P = nil then Exit;
+  Result := StrPas(P);
+  g_free(P);
+end;
 
 procedure LedHandClipboardToManager;
 var
@@ -66,8 +99,21 @@ begin
   end;
 end;
 {$ELSE}
+uses
+  Clipbrd, LCLType;
+
 procedure LedHandClipboardToManager;
 begin
+end;
+
+function LedClipboardHasText: Boolean;
+begin
+  Result := Clipboard.HasFormat(CF_TEXT);
+end;
+
+function LedClipboardText: string;
+begin
+  Result := Clipboard.AsText;
 end;
 {$ENDIF}
 

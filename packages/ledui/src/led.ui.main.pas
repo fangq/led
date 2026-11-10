@@ -20,7 +20,7 @@ uses
   Led.Core.Types, Led.Core.CLI, Led.Core.Instance, Led.Core.FileIO, Led.Core.Prefs, Led.Core.Session,
   Led.Core.Config, Led.Core.Encodings, Led.Core.Paths, Led.Core.Hex,
   Led.Core.BJDView, Led.Core.BJDEdit, Led.Core.Kernel, Led.Core.NBFormat,
-  Led.UI.TabClose, Led.UI.ImageWin, Led.UI.About, Led.Core.StartTrace,
+  Led.UI.TabClose, Led.UI.ImageWin, Led.UI.About, Led.Core.StartTrace, Led.UI.ClipHandover,
   Led.Core.Outline,
   Led.Core.AI, Led.Core.AI.Ollama, Led.Core.AI.Claude,
   fpjson,
@@ -6671,7 +6671,8 @@ begin
   if FClipAsked and (Now_ - FClipAskedAt < ClipboardPollMs) then
     Exit(FClipHasText);
 
-  FClipHasText := AView.CanPaste;
+  { the LCL's answer, or gtk's when the LCL has none: an owner offering UTF8_STRING alone left Paste off }
+  FClipHasText := AView.CanPaste or LedClipboardHasText;
   Inc(FClipPolls);
   FClipAsked := True;
   FClipAskedAt := Now_;
