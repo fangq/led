@@ -163,6 +163,10 @@ type
       that has just run leaves the document changed in a way that has to be
       recorded here.  The hex view keeps its own flag for the same reason. }
     FNBDirty: Boolean;
+    { Above zero while the document itself rewrites lines of the buffer for
+      a cell -- its output, or its source from the notebook pane.  See
+      NBRewriting. }
+    FNBRewriting: Integer;
     { Event: the run reports a click on a GUI figure rather than running
       the cell, so it neither clears the cell nor numbers it }
     FRuns: array of record Id, Cell: Integer; Event: Boolean; end;
@@ -346,6 +350,12 @@ type
 
     { True when the buffer is a rendering of a Jupyter notebook. }
     property IsNotebook: Boolean read FIsNotebook;
+    { True while the document is rewriting a cell's lines in the buffer, and
+      putting its views back where they were.  A view scrolls on the way --
+      lines go and come back, its caret is put back -- and that is no reader
+      scrolling it: the notebook pane, which follows the text view's top
+      line, is not to follow those. }
+    function NBRewriting: Boolean;
     { The notebook itself, for the kernel and for anything that needs the
       file rather than the rendering.  nil unless IsNotebook. }
     property Notebook: TLedNotebook read FNotebook;
@@ -1590,6 +1600,7 @@ begin
   while (Stop < FMaster.Lines.Count) and (NBTagOf(Stop) = 0) do Inc(Stop);
 
   Lines := TStringList.Create;
+  Inc(FNBRewriting);
   FMaster.BeginUpdate;
   try
     Lines.TextLineBreakStyle := tlbsLF;
@@ -1611,6 +1622,7 @@ begin
     end;
   finally
     FMaster.EndUpdate;
+    Dec(FNBRewriting);
     Lines.Free;
   end;
 
@@ -1906,6 +1918,11 @@ begin
   if Assigned(FOnChanged) then FOnChanged(Self);
 end;
 
+function TLedDocument.NBRewriting: Boolean;
+begin
+  Result := FNBRewriting > 0;
+end;
+
 procedure TLedDocument.NBRefreshCell(ACell: Integer);
 var
   Head, i, Cell, Stop, Delta, Top: Integer;
@@ -1959,6 +1976,10 @@ begin
   end;
   Delta := -FMaster.Lines.Count;
 
+  { From here until every view is back, the views' scrolling is this
+    rewrite's and not the reader's. }
+  Inc(FNBRewriting);
+  try
   Outs := TStringList.Create;
   FMaster.BeginUpdate;
   try
@@ -2020,6 +2041,9 @@ begin
     Top := Moved(Tops[i]);
     if V.TopLine <> Top then
       V.TopLine := Top;
+  end;
+  finally
+    Dec(FNBRewriting);
   end;
 
   if Assigned(FOnCell) then FOnCell(Self, ACell);

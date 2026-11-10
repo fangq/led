@@ -11376,6 +11376,121 @@ begin
   DeleteFile(Path);
 end;
 
+{ Running a cell leaves the notebook pane where it was (mima-ide 1eb5339).
+  The cell's output rewritten in the buffer scrolled the line view on the
+  way -- to its caret, put back into the replaced block, and back to its top
+  line -- and the pane, which follows the line view a cell at a time, went
+  to the top of the cell the reader was half way down.  The output is
+  rewritten here as a run rewrites it, without a kernel. }
+procedure TestNotebookRewriteStays(F: TLedMainForm);
+var
+  Path, Text, Outs: string;
+  Doc: TLedDocument;
+  V: TLedEdit;
+  Pane: TLedNotebookPane;
+  B: TLedNBCellBox;
+  WasShown: Boolean;
+  i, Was, Moves, Code, OutLine: Integer;
+  Out: TJSONObject;
+  OutText: TJSONArray;
+
+  procedure Settle;
+  var
+    j: Integer;
+  begin
+    for j := 1 to 10 do
+    begin
+      Pump;
+      Sleep(10);
+    end;
+  end;
+
+begin
+  Say('a cell rewritten leaves the notebook pane where it was');
+  Text := '"# A function\n","\n"';
+  for i := 1 to 60 do
+    Text := Text + ',"Paragraph ' + IntToStr(i) + ' of the description, long ' +
+      'enough to wrap in a pane a third of the window wide.\n","\n"';
+  { output longer than the line view is tall, so that scrolling to its last
+    line takes the view's top line out of the prose }
+  Outs := '';
+  for i := 1 to 60 do
+    Outs := Outs + '"row ' + IntToStr(i) + '\n",';
+  Path := TempName('nbstays.ipynb');
+  WriteBytes(Path, '{"cells":[{"cell_type":"markdown","metadata":{},"source":[' +
+    Text + ']},{"cell_type":"code","execution_count":1,"metadata":{},' +
+    '"outputs":[{"name":"stdout","output_type":"stream","text":[' + Outs + '"42\n"]}],' +
+    '"source":["x = 6*7\n","print(x)"]},' +
+    '{"cell_type":"code","execution_count":null,"metadata":{},"outputs":[],' +
+    '"source":["b = 1"]}],"metadata":{"kernelspec":{"name":"python3",' +
+    '"language":"python","display_name":"Python 3"}},"nbformat":4,"nbformat_minor":5}');
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  V := F.ActiveTab.ActiveView;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Pane := F.NotebookPane;
+  WasShown := F.Dock.PaneVisible('notebook');
+  if not WasShown then
+    F.actToggleNotebookPane.Execute;
+  Settle;
+  Check('the notebook pane is showing', (Pane <> nil) and F.Dock.PaneVisible('notebook'));
+  if (Pane <> nil) and F.Dock.PaneVisible('notebook') then
+  begin
+    { The line view at its top, its caret in the output of the cell that
+      runs, off the screen: the block is replaced, the caret put back into
+      it, and that scrolled the view down to it and back. }
+    Code := 1;
+    OutLine := -1;
+    for i := Doc.NBSourceLineOf(Code) + 2 to Doc.NBSourceLineOf(Code + 1) - 1 do
+      if Doc.NBCellOfLine(i) = Code then OutLine := i;
+    Check('the cell''s output is in the line view', OutLine > 0);
+    V.CaretXY := Point(3, OutLine + 1);
+    V.TopLine := 1;
+    Settle;
+    Check(Format('below the screen (line %d, %d on screen)',
+      [OutLine + 1, V.LinesInWindow]), OutLine + 1 > V.TopLine + V.LinesInWindow);
+    { the page half way down the prose, twice as the range settles }
+    for i := 1 to 2 do
+    begin
+      B := Pane.BoxOf(0);
+      if B <> nil then
+        Pane.ScrollPos := B.Height div 2;
+      Settle;
+    end;
+    Was := Pane.ScrollPos;
+    Check(Format('the page is half way down the prose (%d)', [Was]), Was > 0);
+    Moves := 0;
+    { three more lines of output, as a run writes them }
+    Out := TJSONObject.Create;
+    Out.Add('name', 'stdout');
+    Out.Add('output_type', 'stream');
+    OutText := TJSONArray.Create;
+    OutText.Add('one' + #10);
+    OutText.Add('two' + #10);
+    OutText.Add('three' + #10);
+    Out.Add('text', OutText);
+    Doc.Notebook.AddCellOutput(Code, Out);
+    Doc.NBRefreshCell(Code);
+    for i := 1 to 20 do
+    begin
+      Pump;
+      if Abs(Pane.ScrollPos - Was) >= LedScale96(40) then Inc(Moves);
+      Sleep(10);
+    end;
+    Check(Format('and stays there when a cell''s output is rewritten (%d, was %d)',
+      [Pane.ScrollPos, Was]), Abs(Pane.ScrollPos - Was) < LedScale96(40));
+    CheckEqInt('without going anywhere in between', 0, Moves);
+  end;
+
+  Doc.Master.Modified := False;
+  F.CloseActiveTab(False);
+  if not WasShown then F.Dock.HidePane('notebook');
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestNotebookEditing(F: TLedMainForm);
 var
   Path, Saved, Raw, Was: string;
@@ -19732,6 +19847,7 @@ begin
   TestNotebookPane(F);
   TestNotebookCellKeys(F);
   TestNotebookProseHeight(F);
+  TestNotebookRewriteStays(F);
   TestNotebookPolish(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
