@@ -1017,6 +1017,11 @@ var
   it, as RevealDocument's does. }
 function LedFindWindowFor(ADoc: TLedDocument; out ATab: TLedTab): TLedMainForm;
 
+{ a PDF save dialog's types for its pictures (photographs compressed, or exactly as they are), the last choice
+  first; and, once it is done, the JPEG quality chosen (0: lossless), kept for the next }
+procedure PdfPicturesOffer(Dlg: TSaveDialog);
+function PdfPicturesChosen(Dlg: TSaveDialog): Integer;
+
 implementation
 
 { Forward: FormCreate installs it, and it is written where the other window
@@ -7729,15 +7734,46 @@ begin
   LedPageSetup(Self);
 end;
 
+{ a PDF's pictures, as its save dialog's types offer them: photographs as JPEGs (the first, smaller) or exactly as they
+  are (the second); the choice kept for the next time.  Lossy shows only where it pays: a photograph a JPEG makes much
+  smaller, not a drawing or a screenshot }
+const
+  PdfPictureFilter = 'PDF, photographs compressed (smaller)|*.pdf|PDF, pictures exactly as they are|*.pdf|All files|*';
+  PdfPhotoQuality = 85;
+
+procedure PdfPicturesOffer(Dlg: TSaveDialog);
+begin
+  Dlg.Filter := PdfPictureFilter;
+  if LedPrefs.GetBool('Editor/pdf_photos_jpeg', True) then
+    Dlg.FilterIndex := 1
+  else
+    Dlg.FilterIndex := 2;
+end;
+
+function PdfPicturesChosen(Dlg: TSaveDialog): Integer;
+begin
+  if Dlg.FilterIndex in [1, 2] then
+    LedPrefs.SetBool('Editor/pdf_photos_jpeg', Dlg.FilterIndex = 1);
+  if LedPrefs.GetBool('Editor/pdf_photos_jpeg', True) then
+    Result := PdfPhotoQuality
+  else
+    Result := 0;
+end;
+
 procedure TLedMainForm.actPrintPdfExecute(Sender: TObject);
 var
   Dlg: TSaveDialog;
+  Q: Integer;
 begin
   if (Silent) or (ActiveTab = nil) then Exit;
   Dlg := TSaveDialog.Create(nil);
   try
     Dlg.Title := 'Export as PDF';
     Dlg.Filter := 'PDF files|*.pdf|All files|*';
+    {$IFDEF LED_PARADE}
+    if CurrentVisual <> nil then
+      PdfPicturesOffer(Dlg);    { (a document's pictures; text alone has none) }
+    {$ENDIF}
     Dlg.DefaultExt := '.pdf';
     Dlg.Options := Dlg.Options + [ofOverwritePrompt];
     Dlg.FileName := ChangeFileExt(ExtractFileName(
@@ -7745,10 +7781,15 @@ begin
     Dlg.InitialDir := LedPrefs.GetStr('Editor/pdf_last_dir', DialogStartDir);
     if not Dlg.Execute then Exit;
     LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
+    Q := 0;
+    {$IFDEF LED_PARADE}
+    if CurrentVisual <> nil then
+      Q := PdfPicturesChosen(Dlg);
+    {$ENDIF}
     try
       {$IFDEF LED_PARADE}
       if CurrentVisual <> nil then  { the pages as they are laid out (with comment balloons when it has comments) }
-        CurrentVisual.Page.ExportPDF(Dlg.FileName)
+        CurrentVisual.Page.ExportPDF(Dlg.FileName, Q)
       else
       {$ENDIF}
         LedExportPdf(ActiveView, ActiveTab.Document.DisplayName, Dlg.FileName);
@@ -7773,7 +7814,7 @@ begin
   Dlg := TSaveDialog.Create(nil);
   try
     Dlg.Title := 'Export Slide Show as Animated PDF';
-    Dlg.Filter := 'PDF files|*.pdf|All files|*';
+    PdfPicturesOffer(Dlg);
     Dlg.DefaultExt := '.pdf';
     Dlg.Options := Dlg.Options + [ofOverwritePrompt];
     Dlg.FileName := ChangeFileExt(ExtractFileName(ActiveTab.Document.DisplayName), '') + '-show.pdf';
@@ -7782,7 +7823,7 @@ begin
     LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
     Screen.Cursor := crHourGlass;
     try
-      if not CurrentVisual.ExportShowPdf(Dlg.FileName, Err) then
+      if not CurrentVisual.ExportShowPdf(Dlg.FileName, Err, PdfPicturesChosen(Dlg)) then
         ReportError('Could not write the slide show: ' + Err);
     finally
       Screen.Cursor := crDefault;

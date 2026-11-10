@@ -334,7 +334,8 @@ type
     function IsPresentation: Boolean;
     { the slide show as a PDF that plays it (ParadeShowPdf): a page for each click, the effects' frames shown by
       themselves in a viewer's full-screen mode; False, Err why, when it could not be written }
-    function ExportShowPdf(const FileName: string; out Err: string): Boolean;
+    { the slide show as an animated PDF; JpegQuality 1..100 its photographs as JPEGs, 0 its pictures as they are }
+    function ExportShowPdf(const FileName: string; out Err: string; JpegQuality: Integer = 85): Boolean;
     property SlideShowForm: TForm read FShowForm;
     { the animation pane (nil before it is made) and whether it is shown }
     property AnimPane: TLedAnimPane read FAnimPane;
@@ -2842,10 +2843,14 @@ begin
   Result := (FEdit <> nil) and FEdit.CanvasPage and (FEdit.SlideCount > 0);
 end;
 
-function TLedVisualPane.ExportShowPdf(const FileName: string; out Err: string): Boolean;
+function TLedVisualPane.ExportShowPdf(const FileName: string; out Err: string; JpegQuality: Integer): Boolean;
+var
+  Opt: TShowPdfOptions;
 begin
   Err := 'not a presentation';
-  Result := IsPresentation and ParadeShowToPdf(FEdit, FileName, ShowPdfDefaults, Err);
+  Opt := ShowPdfDefaults;
+  Opt.JpegQuality := JpegQuality;
+  Result := IsPresentation and ParadeShowToPdf(FEdit, FileName, Opt, Err);
 end;
 
 procedure TLedVisualPane.StartSlideShow(FromCurrent: Boolean);
