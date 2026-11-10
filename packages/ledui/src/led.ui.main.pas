@@ -328,10 +328,6 @@ type
     tbSep2: TToolButton;
     tbUndo: TToolButton;
     tbRedo: TToolButton;
-    tbSep3: TToolButton;
-    tbCut: TToolButton;
-    tbCopy: TToolButton;
-    tbPaste: TToolButton;
     tbSep4: TToolButton;
     tbFind: TToolButton;
     tbReplace: TToolButton;
@@ -632,6 +628,15 @@ type
     { Set while a click on the preview is moving the caret, so the scroll that
       move causes does not come straight back and move the page. }
     FPreviewJumping: Boolean;
+    FPreviewWasVisible: Boolean;
+    { The preview was closed at its header by the reader since the last idle
+      pass: the only close worth asking about.  A reset or the View menu are
+      the program's doing or another choice. }
+    FPreviewClosedByUser: Boolean;
+    FPreviewAsking: Boolean;
+    FGateQueued: Boolean;
+    FGatedDoc: TObject;
+    FGatedName: string;
     { One view is being moved to follow the other, so its own report of
       having moved is not a request to move anything back. }
     FNBSyncing: Boolean;
@@ -666,6 +671,18 @@ type
     procedure ApplyTabCloseMode;
     procedure PlaceTabCloseButtonsDeferred(AData: PtrInt);
     procedure RefreshPreview(AImmediate: Boolean = False);
+    { The preview pane follows the document in front: open for a Markdown,
+      wiki or notebook file, or a document shown as pages (when
+      LedPrefAutoPreview says so), closed for any other.  Before
+      RefreshPreview, wherever the document changes. }
+    procedure GatePreview;
+    procedure DoGatePreview(Data: PtrInt);
+    function ActivePreviewable: Boolean;
+    { Whether the pane was on screen at the last idle: a pane closed with its
+      header's button says nothing, so a close is seen as the change. }
+    procedure WatchPreviewClosed;
+    procedure PaneClosedByUser(const AId: string);
+    procedure AskAutoPreview(Data: PtrInt);
     procedure ChooseView;
     function PreviewShowing: Boolean;
     function NotebookShowing: Boolean;
@@ -872,6 +889,12 @@ type
       editing keys reach its box rather than the document behind it. }
     property FindWindow: TLedFindForm read FFindForm;
     property Preview: TLedPreviewPane read FPreview;
+    { See FPreviewClosedByUser: read by a check. }
+    property PreviewClosedByUser: Boolean read FPreviewClosedByUser;
+    { The preview opened or closed for the document in front as though it had
+      just come to the front: after a reset, or a document turned to pages or
+      back to text. }
+    procedure RegatePreview;
     { For the self-test, which drives the pane without a model behind it. }
     property AIPane: TLedAIPane read FAIPane;
     { Picks the backend up again after a preference has changed. }
@@ -1256,6 +1279,7 @@ begin
   AIRefresh;
   LedStartTrace('FormCreate: dock made, AI refreshed');
   FDock.OnPaneShown := @PaneShown;
+  FDock.OnPaneClosedByUser := @PaneClosedByUser;
 
   { Dropping files on the window opens them.  Set here rather than in the
     designer because the handler has to exist first, and because this is
@@ -1716,6 +1740,110 @@ begin
   FDock.EdgeVisible[ledBottom] := True;
 end;
 
+function TLedMainForm.ActivePreviewable: Boolean;
+var
+  Doc: TLedDocument;
+  First: string;
+begin
+  Result := False;
+  if ActiveTab = nil then Exit;
+  { a document shown as pages: the pane shows what it carries (Resources) }
+  if CurrentVisual <> nil then Exit(True);
+  Doc := ActiveTab.Document;
+  if Doc.IsNotebook then Exit(True);
+  First := '';
+  if Doc.Master.Lines.Count > 0 then First := Doc.Master.Lines[0];
+  Result := LedPreviewHandles(Doc.FileName, First);
+end;
+
+{ Only .md, .wiki and .ipynb, and a document shown as pages, have anything for
+  the pane to show, so it opens for them and closes for the rest, rather than
+  taking a third of the window to say "nothing to preview".  Opening is the
+  preference's to allow; a pane opened by hand over a source file stays until
+  the document changes. }
+procedure TLedMainForm.GatePreview;
+begin
+  { Queued, not done here: this runs from the editor tabs' page change, and
+    docking a pane in or out from inside that relayout sent the tab
+    control's autosizing round in a loop that never ended. }
+  if FGateQueued then Exit;
+  FGateQueued := True;
+  Application.QueueAsyncCall(@DoGatePreview, 0);
+end;
+
+procedure TLedMainForm.RegatePreview;
+begin
+  FGatedDoc := nil;
+  FGatedName := '';
+  GatePreview;
+end;
+
+procedure TLedMainForm.DoGatePreview(Data: PtrInt);
+begin
+  FGateQueued := False;
+  if (FPreview = nil) or (FDock = nil) then Exit;
+  if ActiveTab = nil then Exit;
+  { Only when what is in front has changed: the same document activated
+    again -- focus coming back, a pane opened by hand -- leaves the pane as
+    the user has it. }
+  if (FGatedDoc = TObject(ActiveTab.Document)) and (FGatedName = ActiveTab.Document.FileName) then Exit;
+  FGatedDoc := ActiveTab.Document;
+  FGatedName := ActiveTab.Document.FileName;
+  if ActivePreviewable then
+  begin
+    if LedPrefs.GetBool(LedPrefAutoPreview, True) and not FDock.PaneVisible('preview') then
+    begin
+      FDock.ShowPane('preview');
+      FDock.EdgeVisible[ledRight] := True;
+    end;
+    RefreshPreview(True);
+  end
+  else if FDock.PaneVisible('preview') then
+    FDock.HidePane('preview');
+  { What it is now is the gate's doing, not a close to ask about. }
+  FPreviewWasVisible := FDock.PaneVisible('preview');
+end;
+
+procedure TLedMainForm.WatchPreviewClosed;
+var
+  Vis: Boolean;
+begin
+  if FDock = nil then Exit;
+  Vis := FDock.PaneVisible('preview');
+  { Closed by the reader at its header, over a document it had something to
+    show for, while it opens by itself: ask whether it should keep doing
+    that.  Not when a reset or the View menu put it away.  Queued, not asked
+    here: this is the idle handler, and a modal dialog inside it would run
+    the idle handler again underneath. }
+  if FPreviewClosedByUser and not Vis and not Silent and not FPreviewAsking and ActivePreviewable and
+     LedPrefs.GetBool(LedPrefAutoPreview, True) then
+  begin
+    FPreviewAsking := True;
+    Application.QueueAsyncCall(@AskAutoPreview, 0);
+  end;
+  FPreviewWasVisible := Vis;
+  FPreviewClosedByUser := False;
+end;
+
+procedure TLedMainForm.PaneClosedByUser(const AId: string);
+begin
+  if SameText(AId, 'preview') then
+    FPreviewClosedByUser := True;
+end;
+
+procedure TLedMainForm.AskAutoPreview(Data: PtrInt);
+begin
+  try
+    if not Confirm('Open the preview by itself when a Markdown, wiki, notebook or page-view document is in front?' +
+                   LineEnding + LineEnding +
+                   '(It closes for other files either way.  Preferences, General, Notebooks changes this later.)',
+                   True) then
+      LedPrefs.SetBool(LedPrefAutoPreview, False);
+  finally
+    FPreviewAsking := False;
+  end;
+end;
+
 procedure TLedMainForm.RefreshPreview(AImmediate: Boolean);
 var
   Doc: TLedDocument;
@@ -1824,6 +1952,7 @@ begin
   RefreshTabCaption(Tab);
   UpdateStatusBar;
   RefreshPreview(True);   { pages now, or text: the pane's view follows }
+  RegatePreview;          { and pages have resources to show, text may have nothing }
 end;
 
 procedure TLedMainForm.SetMiniMaps(AOn: Boolean);
@@ -5523,12 +5652,12 @@ var
   Tabs: TFPList;
 begin
   {$IFNDEF MIMA}    { the fork turns hover mode on itself }
-  if LedPrefs.GetBool(LedPrefTabHoverClose, False) = LedTabHoverClose then
+  if LedPrefs.GetBool(LedPrefTabHoverClose, True) = LedTabHoverClose then
     Exit;
   for i := 0 to 1 do
     if FTabClose[i] <> nil then
       FTabClose[i].HideHover;
-  LedTabHoverClose := LedPrefs.GetBool(LedPrefTabHoverClose, False);
+  LedTabHoverClose := LedPrefs.GetBool(LedPrefTabHoverClose, True);
   Tabs := TFPList.Create;
   try
     CollectTabs(Tabs);
@@ -6201,6 +6330,7 @@ begin
   RefreshOutline;
   { Immediately: this is a different document now, and a pane still holding
     the last one for a quarter of a second is showing the wrong file. }
+  GatePreview;
   RefreshPreview(True);
   RefreshNotebookPane;
 end;
@@ -6907,6 +7037,7 @@ begin
     if FRailsPass = 1 then
       FRailsPass := 2;
   end;
+  WatchPreviewClosed;
 
   { medit enables these only when there is more than one tab, because
     splitting a window to move its only document into the empty half is not a
@@ -7035,6 +7166,7 @@ begin
     relied on to have fired.  The notebook pane is refreshed for the same
     reason: a notebook opened while it was showing left it on the last
     file. }
+  GatePreview;
   RefreshPreview(True);
   RefreshNotebookPane;
 end;
@@ -8106,6 +8238,7 @@ begin
     + 'layout?', False)
     then Exit;
   FDock.ResetLayout(LedConfigFile('layout.xml'));
+  RegatePreview;
   ResetZoom;
   UpdateStatusBar;
 end;

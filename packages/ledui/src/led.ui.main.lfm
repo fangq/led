@@ -1226,28 +1226,6 @@ object LedMainForm: TLedMainForm
       Top = 2
       Action = actRedo
     end
-    object tbSep3: TToolButton
-      Left = 193
-      Height = 24
-      Top = 2
-      Caption = '-'
-      Style = tbsDivider
-    end
-    object tbCut: TToolButton
-      Left = 217
-      Top = 2
-      Action = actCut
-    end
-    object tbCopy: TToolButton
-      Left = 241
-      Top = 2
-      Action = actCopy
-    end
-    object tbPaste: TToolButton
-      Left = 265
-      Top = 2
-      Action = actPaste
-    end
     object tbSep4: TToolButton
       Left = 289
       Height = 24

@@ -181,7 +181,7 @@ const
     carries over even though the storage format does not.  Every field is
     spelled out because FPC requires typed-constant records to be complete
     and in order. }
-  PrefItems: array[0..74] of TLedPrefItem = (
+  PrefItems: array[0..75] of TLedPrefItem = (
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Indentation'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -226,7 +226,7 @@ const
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/tab_close_hover';
      Caption: 'Show the close cross on the tab under the pointer'; DefStr: '';
-     DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+     DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkBool; Key: 'Editor/recovery_enabled';
      Caption: 'Keep unsaved changes for recovery after a crash'; DefStr: '';
      DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
@@ -346,6 +346,9 @@ const
     (Category: 'General'; Kind: pkHeading; Key: '';
      Caption: 'Notebooks'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),
+    (Category: 'General'; Kind: pkBool; Key: 'View/auto_preview';
+     Caption: 'Open the preview by itself for Markdown, wiki, notebook and page-view (Word, PowerPoint) documents, and close it for others'; DefStr: '';
+     DefInt: 1; MinInt: 0; MaxInt: 0; Choices: ''),
     (Category: 'General'; Kind: pkString; Key: 'Notebook/python';
      Caption: 'Python for Jupyter kernels (blank: a .venv beside the notebook, $VIRTUAL_ENV, $CONDA_PREFIX, then python3)'; DefStr: '';
      DefInt: 0; MinInt: 0; MaxInt: 0; Choices: ''),

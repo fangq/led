@@ -25,9 +25,9 @@ uses
 var
   { The cross shown on the tab under the pointer, at its right-hand end,
     rather than once at the end of the strip.  A program built on LED turns
-    it on (Mima does, before its window shows); LED keeps medit's single
-    cross. }
-  LedTabHoverClose: Boolean = False;
+    it on (Mima does, before its window shows); LED has it on too unless
+    Preferences, General turns it off for medit's single cross. }
+  LedTabHoverClose: Boolean = True;
 
 const
   { Room at the end of a tab's caption for the hover cross to sit in, so it
