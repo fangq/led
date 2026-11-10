@@ -17737,7 +17737,7 @@ begin
     (Ctl('AnimTransAll') as TButton).Click;
     Pump;
     Check('applied to all: the second slide''s push now the wipe, its animation kept',
-      (Timing(1).Trans.Kind = 'wipe') and (A.Trans.Dir = 'd') and (Length(A.Effects) = 1));
+      (Timing(1).Trans.Kind = 'wipe') and (A.Trans.Dir = 'd') and (Length(A.Effects) = 2));
     { the show plays what was set }
     (Ctl('AnimPlay') as TButton).Click;
     Pump;
@@ -17753,8 +17753,8 @@ begin
     { another slide: its own }
     E.GoToSlide(1);
     Pump;
-    Check('the second slide''s, when it is edited', (P.Slide = 1) and (L.Items.Count = 1) and
-      (Pos('Wipe', L.Items[0]) > 0));
+    Check('the second slide''s, when it is edited: the wipe by itself, the group''s wheel', (P.Slide = 1) and
+      (L.Items.Count = 2) and (Pos('Wipe', L.Items[0]) > 0) and (Pos('Wheel', L.Items[1]) > 0));
     TSpeedButton(C).Click;
     Pump;
     Check('and the pane closed again', not P.Visible);
