@@ -430,6 +430,10 @@ object LedMainForm: TLedMainForm
       Caption = 'Export as P&DF...'
       OnExecute = actPrintPdfExecute
     end
+    object actExportShowPdf: TAction
+      Caption = 'Export Slide Show as Animated PDF...'
+      OnExecute = actExportShowPdfExecute
+    end
     object actExportHtml: TAction
       Caption = 'Export as &HTML...'
       OnExecute = actExportHtmlExecute
@@ -716,6 +720,9 @@ object LedMainForm: TLedMainForm
       end
       object mi_PrintPdf: TMenuItem
         Action = actPrintPdf
+      end
+      object mi_ExportShowPdf: TMenuItem
+        Action = actExportShowPdf
       end
       object mi_PageSetup: TMenuItem
         Action = actPageSetup

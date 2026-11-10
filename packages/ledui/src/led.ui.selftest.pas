@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
   Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -17522,6 +17522,8 @@ procedure TestSlideShowRun(F: TLedMainForm);
 var
   Tab: TLedTab;
   Src, Copy_: string;
+  PdfFn, PdfErr, PdfHead: string;
+  PdfOk: Boolean;
   E: TParadeEdit;
   C: TComponent;
   Sh: TParadeShowForm;
@@ -17555,6 +17557,24 @@ begin
   C := Tab.Visual.FindComponent('SlideShowStartBtn');
   Check('View has Slide show, on for a presentation', (C is TSpeedButton) and TSpeedButton(C).Enabled);
   if not (C is TSpeedButton) then Exit;
+  { File > Export Slide Show as Animated PDF: there for a presentation, and what it writes plays the show }
+  PdfOk := False;
+  F.ActionList1Update(nil, PdfOk);
+  Check('File offers the slide show as an animated PDF', F.actExportShowPdf.Visible);
+  PdfFn := GetTempDir + 'led_showpdf_' + IntToStr(GetProcessID) + '.pdf';
+  PdfOk := Tab.Visual.ExportShowPdf(PdfFn, PdfErr);
+  PdfHead := '';
+  if FileExists(PdfFn) then
+    with TFileStream.Create(PdfFn, fmOpenRead) do
+    try
+      SetLength(PdfHead, 8);
+      ReadBuffer(PdfHead[1], 8);
+    finally
+      Free;
+    end;
+  Check('written: a page for each still state, the frames between (' + PdfErr + ')', PdfOk and
+    (Copy(PdfHead, 1, 5) = '%PDF-') and (ShowPdfStill = 7) and (ShowPdfPages > ShowPdfStill + 40));
+  DeleteFile(PdfFn);
   TSpeedButton(C).Click;
   Pump;
   Check('it opens the show', Tab.Visual.SlideShowForm is TParadeShowForm);
@@ -18027,6 +18047,7 @@ begin
     F.ActionList1Update(nil, H);
     Pump;
   end;
+  Check('a document''s pages, not slides: no slide show to export', not F.actExportShowPdf.Visible);
   Before := LedToolPaints;
   for I := 1 to 20 do
   begin
