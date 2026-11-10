@@ -6485,6 +6485,13 @@ begin
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
   if (not Doc.IsNotebook) or (FNBPane.Document <> Doc) then Exit;
+  { Not while the document is rewriting a cell's lines: the text view moves
+    then -- its caret put back into a block that has just been replaced,
+    a short buffer pulling its top line in -- and the pane, following it a
+    cell at a time, lost its place within the cell it was in.  In a help
+    page, whose first cell is a tall page of prose, every Run took the pane
+    to the top of the notebook. }
+  if Doc.NBRewriting then Exit;
   View := ActiveView;
   if View = nil then Exit;
 
