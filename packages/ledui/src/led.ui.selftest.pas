@@ -17782,6 +17782,7 @@ var
   Sid, PicRow: Integer;
   PicId: pd_res_id;
   Gone: Boolean;
+  Pic: string;
   It: TLedResItem;
   Pane: TLedPaneForm;
 
@@ -17919,6 +17920,46 @@ begin
     if RP.RowCount_ = N then Break;
   end;
   Check(Format('undone: listed again (%d rows)', [RP.RowCount_]), (RP.RowCount_ = N) and (RP.Hidden = 0));
+
+  { a picture put in the page from a file: listed within the second; the same picture again is that one (no
+    second row), and one deleted, put in again, is listed again }
+  N := RP.RowCount_;
+  Pic := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/photo.jpg');
+  Tab.Visual.Page.ProcessKey(VK_END, [ssCtrl]);
+  Check('a picture put in from a file', Tab.Visual.Page.InsertPicture(Pic));
+  for I := 1 to 40 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ = N + 1 then Break;
+  end;
+  Check(Format('listed within the second (%d rows, were %d)', [RP.RowCount_, N]), RP.RowCount_ = N + 1);
+  Check('the same picture again', Tab.Visual.Page.InsertPicture(Pic));
+  for I := 1 to 25 do
+  begin
+    Sleep(50);
+    Pump;
+  end;
+  Check(Format('one row still: the same picture is one (%d rows)', [RP.RowCount_]), RP.RowCount_ = N + 1);
+  Tab.Visual.Page.Undo;
+  Tab.Visual.Page.Undo;
+  for I := 1 to 40 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ = N then Break;
+  end;
+  Check(Format('both undone: not listed (%d rows)', [RP.RowCount_]), RP.RowCount_ = N);
+  Check('put in again', Tab.Visual.Page.InsertPicture(Pic));
+  for I := 1 to 40 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ = N + 1 then Break;
+  end;
+  Check(Format('the picture kept for Undo, put in again: listed again (%d rows)', [RP.RowCount_]),
+    RP.RowCount_ = N + 1);
+  Tab.Visual.Page.Undo;
 
   { a resource added while the pane shows: listed within the second }
   pd_doc_add_resource(Tab.Visual.Page.Doc, 'text/plain', PAnsiChar('added'), 5, R);
