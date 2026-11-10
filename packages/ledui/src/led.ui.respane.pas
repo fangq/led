@@ -50,7 +50,12 @@ type
     FTimer: TTimer;
     FEdit: TParadeEdit;
     FDoc: Ppd_doc;
-    FItems: TFPList;         { TLedResItem, in the order shown }
+    FAll: TFPList;           { TLedResItem: every resource, owned }
+    FItems: TFPList;         { those shown, in the order shown: not a picture deleted from the pages }
+    FUse: TParadeUseArray;   { which the pages show, as of revision FRev }
+    FRev: UInt64;
+    FHidden: Integer;
+    FDouble: Boolean;        { the press just made was a double click's second }
     FSort: TLedResSort;
     FDescending: Boolean;
     FPictures: TLedPictureCache;
@@ -59,6 +64,10 @@ type
     FLastN: Integer;
     procedure ClearItems;
     procedure GridUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+    procedure GridDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+    function RefreshUse: Boolean;
+    procedure Filter;
+    function Unused(It: TLedResItem): Boolean;
     procedure Build;
     procedure Order;
     procedure ShowCount;
@@ -83,6 +92,11 @@ type
     function ItemAt(ARow: Integer): TLedResItem;
     { the page taken to where the item at ARow is shown (again: to the next place); how many places it has }
     function Jump(ARow: Integer): Integer;
+    { a double click on the row: the page goes to the place the click before it went to (not on to the next), and
+      takes the keys -- Delete then deletes it; False when it is shown nowhere }
+    function Choose(ARow: Integer): Boolean;
+    { how many pictures, metafiles and drawings are left out of the list: deleted from the pages (kept for Undo) }
+    property Hidden: Integer read FHidden;
     { for tests: how many thumbnails have been made }
     property ThumbsMade: Integer read FThumbsMade;
     property Grid: TDrawGrid read FGrid;
@@ -176,6 +190,7 @@ begin
   Caption := '';
   BevelOuter := bvNone;
   FItems := TFPList.Create;
+  FAll := TFPList.Create;
   FPictures := TLedPictureCache.Create(4 * 1000 * 1000);
   FHead := TPanel.Create(Self);
   FHead.Parent := Self;
@@ -208,7 +223,8 @@ begin
     goHeaderHotTracking, goHeaderPushedLook];
   FGrid.OnDrawCell := @GridDraw;
   FGrid.OnHeaderClick := @GridHeader;
-  FGrid.OnMouseUp := @GridUp;     { a click on a row: the page goes to it (each click again, the next place) }
+  FGrid.OnMouseUp := @GridUp;
+  FGrid.OnMouseDown := @GridDown;     { a click on a row: the page goes to it (each click again, the next place) }
   { a picture inserted while the pane shows: the list follows within a second, and is drawn again only then }
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 1000;
@@ -221,6 +237,7 @@ destructor TLedResourcePane.Destroy;
 begin
   ClearItems;
   FItems.Free;
+  FAll.Free;
   FPictures.Free;
   inherited Destroy;
 end;
@@ -229,8 +246,9 @@ procedure TLedResourcePane.ClearItems;
 var
   I: Integer;
 begin
-  for I := 0 to FItems.Count - 1 do
-    TLedResItem(FItems[I]).Free;
+  for I := 0 to FAll.Count - 1 do
+    TLedResItem(FAll[I]).Free;
+  FAll.Clear;
   FItems.Clear;
   FPictures.Clear;
 end;
@@ -252,9 +270,9 @@ function TLedResourcePane.FindItem(AId: pd_res_id): TLedResItem;
 var
   I: Integer;
 begin
-  for I := 0 to FItems.Count - 1 do
-    if TLedResItem(FItems[I]).Id = AId then
-      Exit(TLedResItem(FItems[I]));
+  for I := 0 to FAll.Count - 1 do
+    if TLedResItem(FAll[I]).Id = AId then
+      Exit(TLedResItem(FAll[I]));
   Result := nil;
 end;
 
@@ -284,11 +302,11 @@ begin
         It.DH := JsonInt(Head, 'h');
         It.MadeFrom := Max(0, JsonInt(Head, 'src'));
       end;
-      FItems.Add(It);
+      FAll.Add(It);
     end;
-  for I := 0 to FItems.Count - 1 do
+  for I := 0 to FAll.Count - 1 do
   begin
-    It := TLedResItem(FItems[I]);
+    It := TLedResItem(FAll[I]);
     if It.MadeFrom > 0 then
     begin
       Src := FindItem(It.MadeFrom);
@@ -300,9 +318,9 @@ begin
       end;
     end;
   end;
-  for I := 0 to FItems.Count - 1 do
+  for I := 0 to FAll.Count - 1 do
   begin
-    It := TLedResItem(FItems[I]);
+    It := TLedResItem(FAll[I]);
     if It.Kind = 'drawing' then
     begin
       It.Details := FormatFloat('0.#', It.DW / PD_SP_PER_PT) + ' x ' + FormatFloat('0.#', It.DH / PD_SP_PER_PT) + ' pt';
@@ -321,6 +339,45 @@ begin
     else
       It.Details := It.Mime;
   end;
+  FRev := pd_doc_revision(FDoc) + 1;     { what the pages show: asked now }
+  RefreshUse;
+  Filter;
+end;
+
+function TLedResourcePane.Unused(It: TLedResItem): Boolean;
+begin   { a picture, metafile or drawing the pages show nowhere now; fonts and kept parts are not shown as these }
+  Result := ((It.Kind = 'picture') or (It.Kind = 'metafile') or (It.Kind = 'drawing')) and
+            (Integer(It.Id) < Length(FUse)) and not FUse[It.Id];
+end;
+
+{ what the pages show, asked again when the document has changed; True when that is not what it was }
+function TLedResourcePane.RefreshUse: Boolean;
+var
+  Old: TParadeUseArray;
+  I: Integer;
+begin
+  Result := False;
+  if (FEdit = nil) or (FDoc = nil) or (pd_doc_revision(FDoc) = FRev) then
+    Exit;
+  FRev := pd_doc_revision(FDoc);
+  Old := FUse;
+  FUse := FEdit.ResourcesInUse;
+  Result := Length(Old) <> Length(FUse);
+  for I := 0 to Min(High(Old), High(FUse)) do
+    Result := Result or (Old[I] <> FUse[I]);
+end;
+
+procedure TLedResourcePane.Filter;
+var
+  I: Integer;
+begin
+  FItems.Clear;
+  FHidden := 0;
+  for I := 0 to FAll.Count - 1 do
+    if Unused(TLedResItem(FAll[I])) then
+      Inc(FHidden)
+    else
+      FItems.Add(FAll[I]);
   Order;
   ShowCount;
 end;
@@ -338,8 +395,12 @@ begin
   else if FItems.Count = 0 then
     FSummary.Caption := 'No embedded resources.'
   else
+  begin
     FSummary.Caption := Format('%d resources, %s in all (click a heading to sort, a row to go to it)',
       [FItems.Count, LedByteSize(Total)]);
+    if FHidden > 0 then
+      FSummary.Caption := FSummary.Caption + Format('; %d deleted from the pages, kept for Undo', [FHidden]);
+  end;
   FGrid.RowCount := 1 + FItems.Count;
   FGrid.RowHeights[0] := 22;    { the headings' row: not a thumbnail's height }
   FGrid.Invalidate;
@@ -410,11 +471,13 @@ begin
     D := AEdit.Doc
   else
     D := nil;
-  if (D <> FDoc) or (Count_(D) <> FItems.Count) then
+  if (D <> FDoc) or (Count_(D) <> FAll.Count) then
   begin
     FDoc := D;
     Build;
-  end;
+  end
+  else if RefreshUse then
+    Filter;
   FTimer.Enabled := (FDoc <> nil) and Visible;
 end;
 
@@ -425,11 +488,13 @@ begin
     FTimer.Enabled := False;
     Exit;
   end;
-  if (FEdit <> nil) and ((FEdit.Doc <> FDoc) or (Count_(FEdit.Doc) <> FItems.Count)) then
+  if (FEdit <> nil) and ((FEdit.Doc <> FDoc) or (Count_(FEdit.Doc) <> FAll.Count)) then
   begin
     FDoc := FEdit.Doc;
     Build;
-  end;
+  end
+  else if RefreshUse then   { a picture deleted, or brought back: the list follows }
+    Filter;
 end;
 
 function TLedResourcePane.Item(ARow: Integer): TLedResItem;
@@ -468,6 +533,29 @@ begin
       Result]);
 end;
 
+function TLedResourcePane.Choose(ARow: Integer): Boolean;
+var
+  It: TLedResItem;
+begin
+  Result := False;
+  It := ItemAt(ARow);
+  if (It = nil) or (FEdit = nil) then
+    Exit;
+  if It.Id <> FLastId then
+  begin
+    FLastId := It.Id;
+    FLastN := 0;
+  end;
+  Result := FEdit.ShowResource(It.Id, FLastN) > 0;
+  if Result and FEdit.CanFocus then
+    FEdit.SetFocus;     { the keys to the page: Delete, Ctrl+C, the arrows act on what is selected there }
+end;
+
+procedure TLedResourcePane.GridDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+begin
+  FDouble := (Button = mbLeft) and (ssDouble in Shift);
+end;
+
 procedure TLedResourcePane.GridUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var
   C, R: Integer;
@@ -475,7 +563,14 @@ begin
   if Button <> mbLeft then
     Exit;
   FGrid.MouseToCell(X, Y, C, R);
-  if R >= 1 then
+  if R < 1 then
+    Exit;
+  if FDouble then
+  begin   { a double click's second: where its first went, and the page takes the keys }
+    FDouble := False;
+    Choose(R - 1);
+  end
+  else
     Jump(R - 1);
 end;
 

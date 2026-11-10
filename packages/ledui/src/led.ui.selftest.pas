@@ -17779,7 +17779,9 @@ var
   R: pd_res_id;
   Sorted, PicOK, DrawOK, Shown: Boolean;
   At: pd_pos;
-  Sid: Integer;
+  Sid, PicRow: Integer;
+  PicId: pd_res_id;
+  Gone: Boolean;
   It: TLedResItem;
   Pane: TLedPaneForm;
 
@@ -17876,6 +17878,47 @@ begin
     end;
   end;
   Check('a picture and something not on the pages (its font table), to click', PicOK and DrawOK);
+
+  { a double click on the picture's row: it selected and the page has the keys; Delete there, and within the second
+    it is gone from the list -- kept for Undo, and back with it }
+  N := RP.RowCount_;
+  PicRow := -1;
+  for I := 0 to RP.RowCount_ - 1 do
+    if (PicRow < 0) and (RP.ItemAt(I).Kind = 'picture') then
+    begin
+      PicRow := I;
+      PicId := RP.ItemAt(I).Id;
+    end;
+  if RP.Grid.CanFocus then
+    RP.Grid.SetFocus;   { the keys in the list, as a click on it leaves them }
+  Pump;
+  Check('the list has the keys before', F.ActiveControl = RP.Grid);
+  Check('a double click on the picture''s row: it selected on the page', (PicRow >= 0) and RP.Choose(PicRow) and
+    Tab.Visual.Page.SelectedShape(At, Sid) and (Sid = -1));
+  Pump;
+  Check('and the page has them after', F.ActiveControl = Tab.Visual.Page);
+  Tab.Visual.Page.ProcessKey(VK_DELETE, []);
+  for I := 1 to 40 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ < N then Break;
+  end;
+  Gone := True;   { the picture's row, and what only it showed (a drawing made from it): none listed now }
+  for I := 0 to RP.RowCount_ - 1 do
+    Gone := Gone and (RP.ItemAt(I).Id <> PicId);
+  Check(Format('deleted from the page: gone from the list (%d rows, were %d, %d left out)', [RP.RowCount_, N,
+    RP.Hidden]), Gone and (RP.RowCount_ < N) and (RP.Hidden = N - RP.RowCount_));
+  Check('and the list says it is kept: ' + RP.Summary.Caption, Pos('deleted from the pages, kept for Undo',
+    RP.Summary.Caption) > 0);
+  Tab.Visual.Page.Undo;
+  for I := 1 to 40 do
+  begin
+    Sleep(50);
+    Pump;
+    if RP.RowCount_ = N then Break;
+  end;
+  Check(Format('undone: listed again (%d rows)', [RP.RowCount_]), (RP.RowCount_ = N) and (RP.Hidden = 0));
 
   { a resource added while the pane shows: listed within the second }
   pd_doc_add_resource(Tab.Visual.Page.Doc, 'text/plain', PAnsiChar('added'), 5, R);
