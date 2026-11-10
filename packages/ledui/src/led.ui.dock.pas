@@ -1689,12 +1689,13 @@ var
   Other: TLedPaneForm;
   Side, BestSide: TLedDockEdge;
   E: TLedDockEdge;
+  MineForm, TheirForm: TControl;
 
-  function ScreenRect(C: TControl): TRect;
+  function FormRect(C: TControl; out Form_: TControl): TRect;
   var
     P: TPoint;
   begin
-    P := C.ClientToScreen(Point(0, 0));
+    P := OriginInForm(C, Form_);
     Result := Rect(P.X, P.Y, P.X + C.Width, P.Y + C.Height);
   end;
 
@@ -1706,7 +1707,7 @@ var
 begin
   Mine := DockMaster.GetAnchorSite(APane);
   if (Mine = nil) or (Mine.Parent = nil) or (not Mine.HandleAllocated) then Exit;
-  R := ScreenRect(Mine);
+  R := FormRect(Mine, MineForm);
   E := EdgeOfPane(APane);
   Best := MaxInt;
   BestSide := E;
@@ -1718,7 +1719,8 @@ begin
     if EdgeOfPane(TLedPaneForm(FPanes[i])) <> E then Continue;
     Theirs := DockMaster.GetAnchorSite(TLedPaneForm(FPanes[i]));
     if (Theirs = nil) or (Theirs = Mine) or (not Theirs.HandleAllocated) then Continue;
-    Q := ScreenRect(Theirs);
+    Q := FormRect(Theirs, TheirForm);
+    if TheirForm <> MineForm then Continue;       // not in the same window
     if (Q.Left = R.Left) and (Q.Top = R.Top) and (Q.Right = R.Right) and
        (Q.Bottom = R.Bottom) then Continue;         // tabbed together
     D := MaxInt;
@@ -2698,10 +2700,16 @@ begin
     back at whatever the layout being thrown away had them at. }
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
     FUserSize[E] := 0;
+  { ...and where they were moved to, for every pane and not just the ones on
+    screen: a pane dragged to another edge and closed kept that edge in
+    FLastEdge, so the next time it was opened after a reset it came back
+    where the thrown-away layout had it, at that layout's size (mima-ide
+    ad0a01e). }
   for i := 0 to FPanes.Count - 1 do
   begin
     TLedPaneForm(FPanes[i]).FUserSize := 0;
     TLedPaneForm(FPanes[i]).FNeighbour := '';     { the registered places again }
+    TLedPaneForm(FPanes[i]).FLastEdge := TLedPaneForm(FPanes[i]).FEdge;
   end;
 
   { The editor may have been floated by an older layout, or left somewhere
