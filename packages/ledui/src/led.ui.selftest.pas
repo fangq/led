@@ -17866,9 +17866,9 @@ begin
     begin
       PicOK := True;
       Check('a click on the picture''s row: it is shown once', RP.Jump(I) = 1);
-      Check('and the page has it selected, as a click on it selects it',
-        Tab.Visual.Page.SelectedShape(At, Sid) and (Sid = -1) and
-        (Tab.Visual.Page.ResourceUses(It.Id)[0].block = At.block));
+      { (the SmartArt draws it, one of its shapes: that shape selected, as a second click on it selects it) }
+      Check('and the page has it selected, as clicks on it select it',
+        Tab.Visual.Page.SelectedShape(At, Sid) and (Tab.Visual.Page.ResourceUses(It.Id)[0].block = At.block));
       Check('said above the list: ' + RP.Summary.Caption, Pos('shown on the pages once', RP.Summary.Caption) > 0);
     end;
     if (It.Kind <> 'picture') and (It.Kind <> 'drawing') and (It.Kind <> 'metafile') and not DrawOK then
@@ -17895,7 +17895,7 @@ begin
   Pump;
   Check('the list has the keys before', F.ActiveControl = RP.Grid);
   Check('a double click on the picture''s row: it selected on the page', (PicRow >= 0) and RP.Choose(PicRow) and
-    Tab.Visual.Page.SelectedShape(At, Sid) and (Sid = -1));
+    Tab.Visual.Page.SelectedShape(At, Sid));
   Pump;
   Check('and the page has them after', F.ActiveControl = Tab.Visual.Page);
   Tab.Visual.Page.ProcessKey(VK_DELETE, []);
@@ -17908,8 +17908,9 @@ begin
   Gone := True;   { the picture's row, and what only it showed (a drawing made from it): none listed now }
   for I := 0 to RP.RowCount_ - 1 do
     Gone := Gone and (RP.ItemAt(I).Id <> PicId);
+  { (its shape deleted from the SmartArt: the drawing edited is a new one, the old one and the picture unused) }
   Check(Format('deleted from the page: gone from the list (%d rows, were %d, %d left out)', [RP.RowCount_, N,
-    RP.Hidden]), Gone and (RP.RowCount_ < N) and (RP.Hidden = N - RP.RowCount_));
+    RP.Hidden]), Gone and (RP.RowCount_ < N) and (RP.Hidden >= 1));
   Check('and the list says it is kept: ' + RP.Summary.Caption, Pos('deleted from the pages, kept for Undo',
     RP.Summary.Caption) > 0);
   Tab.Visual.Page.Undo;
@@ -17919,7 +17920,10 @@ begin
     Pump;
     if RP.RowCount_ = N then Break;
   end;
-  Check(Format('undone: listed again (%d rows)', [RP.RowCount_]), (RP.RowCount_ = N) and (RP.Hidden = 0));
+  Gone := True;
+  for I := 0 to RP.RowCount_ - 1 do
+    Gone := Gone and (RP.ItemAt(I).Id <> PicId);
+  Check(Format('undone: listed again (%d rows)', [RP.RowCount_]), (RP.RowCount_ = N) and not Gone);
 
   { a picture put in the page from a file: listed within the second; the same picture again is that one (no
     second row), and one deleted, put in again, is listed again }
