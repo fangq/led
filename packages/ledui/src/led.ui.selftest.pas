@@ -5266,6 +5266,7 @@ type
     class procedure Press(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
     class procedure Move(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
     class procedure Release(AView: TLedEdit; AShift: TShiftState; X, Y: Integer);
+    class procedure Middle(AView: TLedEdit; X, Y: Integer);
     class procedure Drag(AView: TLedEdit; AShift: TShiftState;
       X1, Y1, X2, Y2, ASteps: Integer);
   end;
@@ -5331,6 +5332,12 @@ class procedure TLedMousePoke.Press(AView: TLedEdit; AShift: TShiftState;
   X, Y: Integer);
 begin
   TLedMousePoke(AView).MouseDown(mbLeft, AShift, X, Y);
+end;
+
+class procedure TLedMousePoke.Middle(AView: TLedEdit; X, Y: Integer);
+begin
+  TLedMousePoke(AView).MouseDown(mbMiddle, [ssMiddle], X, Y);
+  TLedMousePoke(AView).MouseUp(mbMiddle, [], X, Y);
 end;
 
 class procedure TLedMousePoke.Move(AView: TLedEdit; AShift: TShiftState;
@@ -8821,6 +8828,8 @@ var
   Opened: TStringList;
   FontWant: string;
   SizeWant: Integer;
+  WasHtml: TObject;
+  WasColour: TColor;
 
   function Fixture: string;
   begin
@@ -9105,6 +9114,23 @@ begin
     set well above that and well below what a heading and three paragraphs
     come to in any font the renderer might choose. }
   CheckGt('a prose cell is as tall as its prose', 70, B.Rendered.Height);
+
+  { Hovering over it shades the background and does nothing else.  It used
+    to render the page again in the new colour, which laid the text out
+    afresh and made it jump on every pass of the pointer. }
+  Pane.HoverPolling := False;
+  WasHtml := B.Rendered.MasterFrame.Html;
+  WasColour := B.Rendered.BgColor;
+  Pane.HoverAt(Point(B.Left + LedScale96(20), B.Top + LedScale96(10)));
+  Pump;
+  Check('hovering over prose marks the cell', B.Hovered);
+  Check('and shades its background', B.Rendered.BgColor <> WasColour);
+  Check('without laying the page out again',
+    B.Rendered.MasterFrame.Html = WasHtml);
+  Pane.HoverAt(Point(-10, -10));
+  Pump;
+  Check('moving away takes the shade off', B.Rendered.BgColor = WasColour);
+  Pane.HoverPolling := True;
 
   { ---- code and its text output ---- }
   B := CellBox(Pane, 1);
@@ -15504,6 +15530,54 @@ begin
   V.SelectionMode := smNormal;
   V.BlockBegin := Point(1, 1);
   V.BlockEnd := Point(1, 1);
+  Pump;
+
+  { --- up and down from past the end of a line --- }
+  { They land at the end of a shorter line rather than out beside it, and
+    the column they came from is kept for a longer line further on. }
+  V.CaretXY := Point(30, 2);
+  V.CommandProcessor(ecDown, '', nil);
+  CheckEqInt('down onto a shorter line stops at its end',
+    Length(V.Lines[2]) + 1, V.CaretX);
+  V.CommandProcessor(ecDown, '', nil);
+  CheckEqInt('and the next longer line gets the column back', 30, V.CaretX);
+  V.CommandProcessor(ecUp, '', nil);
+  CheckEqInt('up onto the shorter line stops at its end too',
+    Length(V.Lines[2]) + 1, V.CaretX);
+  V.CommandProcessor(ecSelUp, '', nil);
+  CheckEqInt('a selection grown upward follows the same rule', 30, V.CaretX);
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(30, 2);
+  V.CommandProcessor(ecColSelDown, '', nil);
+  CheckEqInt('a rectangle grown downward still reaches past the line', 30,
+    V.CaretX);
+  V.SelectionMode := smNormal;
+  V.BlockBegin := Point(1, 1);
+  V.BlockEnd := Point(1, 1);
+  V.CaretXY := Point(1, 1);
+  Pump;
+
+  { --- a middle click pastes at the caret --- }
+  { Not under the pointer, and not out past the end of the line with
+    spaces to fill the gap. }
+  Saved := V.Lines[0];
+  PrimarySelection.AsText := 'XY';
+  V.CaretXY := Point(3, 1);
+  TLedMousePoke.Middle(V,
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight * 2 + 2);
+  Pump;
+  CheckEq('a middle click pastes at the caret', 'shXYort', V.Lines[0]);
+  CheckEq('and not where the pointer is', 'tiny', V.Lines[2]);
+  V.Lines[0] := Saved;
+  V.CaretXY := Point(20, 1);
+  TLedMousePoke.Middle(V,
+    V.Gutter.Width + 2 + 40 * V.CharWidth, V.LineHeight * 2 + 2);
+  Pump;
+  CheckEq('a caret past the end pastes at the end, with no spaces',
+    'shortXY', V.Lines[0]);
+  V.Lines[0] := Saved;
+  V.CaretXY := Point(1, 1);
   Pump;
 
   { --- a selection stops where the text does --- }
