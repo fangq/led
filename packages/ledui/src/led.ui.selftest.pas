@@ -659,8 +659,9 @@ var
   Doc, Other: TLedDocument;
   L: TStringList;
   Path: string;
-  Before, WinsBefore: Integer;
+  Before, WinsBefore, Want, Elsewhere, i: Integer;
   Files: TStringList;
+  Dlg: TLedPrefsDialog;
 begin
   Say('documents across windows');
 
@@ -689,10 +690,39 @@ begin
       is how one save silently discarded the other's work. }
     W := TLedMainForm.Create(Application);
     try
+      { Silent as the first window is: shown, a window offers to recover
+        what an earlier run killed mid-edit left in the journal, and that
+        dialog, which no one answers under the harness, held the whole
+        self-test until its timeout -- leaving more such work each time. }
+      W.Silent := F.Silent;
       W.Show;
       Pump;
       CheckEqInt('the second window registered', WinsBefore + 1,
         LedWindows.Count);
+
+      { Preferences opened from the second window is centred over it, as far
+        as the screen lets it be, not over the first window: it was
+        poMainFormCenter (mima-ide 2c052af). }
+      W.SetBounds(Screen.Width - 640, 80, 600, 500);
+      Pump;
+      Dlg := TLedPrefsDialog.CreateDialog(W);
+      try
+        Dlg.Show;
+        for i := 1 to 10 do
+          Pump;
+        Want := Max(0, Min(W.Left + W.Width div 2 - Dlg.Width div 2,
+                           Screen.Width - Dlg.Width));
+        Elsewhere := Max(0, Min(F.Left + F.Width div 2 - Dlg.Width div 2,
+                                Screen.Width - Dlg.Width));
+        Check(Format('the windows are far enough apart to tell (%d, %d)',
+          [Want, Elsewhere]), Abs(Want - Elsewhere) > LedScale96(48));
+        Check(Format('Preferences opens over the window that asked for it ' +
+          '(%d against %d; the first window''s %d)', [Dlg.Left, Want, Elsewhere]),
+          Abs(Dlg.Left - Want) <= LedScale96(16));
+        Dlg.Hide;
+      finally
+        Dlg.Free;
+      end;
 
       Other := W.Documents.FindByFileName(Path);
       Check('both windows see the same document', Other = Doc);
@@ -2515,7 +2545,7 @@ end;
   document holding it has gone. }
 { The batch-close dialog's buttons sit in a row, in order, without one
   laid over the next.  Their widths were pixels chosen at 96 dpi and a
-  larger interface font ran "None" into "Save Ticked"; a large font here
+  larger interface font ran "None" into "Save Selected"; a large font here
   is that case. }
 procedure TestSaveManyButtons(F: TLedMainForm);
 var
@@ -2563,7 +2593,7 @@ begin
     Caps := '';
     for i := 0 to High(Btns) do
       Caps := Caps + TButton(Btns[i]).Caption + '|';
-    CheckEq('left to right', 'All|None|Save Ticked|Close Without Saving|Cancel|',
+    CheckEq('left to right', 'All|None|Save Selected|Close Without Saving|Cancel|',
       Caps);
     for i := 1 to High(Btns) do
       Check(Format('%s ends before %s starts (%d <= %d)',
@@ -7179,7 +7209,7 @@ var
   V: TLedEdit;
   Node: TTreeNode;
   Items: TLedOutline;
-  i: Integer;
+  i, V2: Integer;
 
   function TreeText: string;
   var
@@ -7338,6 +7368,36 @@ begin
   while F.TabCount > 1 do F.CloseActiveTab(True);
   Pump;
   DeleteFile(NbPath);
+
+  { ---- a script's variable is one row, at the first line setting it ----
+    ctags tags every assignment, and every tag was a row: benchmark_json.m
+    listed `times` twelve times.  ctags's answer is given as text, so this
+    runs where ctags is not installed.  Two functions of one name stay two
+    rows: C++'s overloads are two definitions. }
+  F.SymbolPane.Tags.ParseText(
+    'times'#9'b.m'#9'12;"'#9'variable'#10 +
+    'times'#9'b.m'#9'4;"'#9'variable'#10 +
+    'times'#9'b.m'#9'30;"'#9'variable'#10 +
+    'n'#9'b.m'#9'2;"'#9'variable'#10 +
+    'over'#9'b.m'#9'40;"'#9'function'#10 +
+    'over'#9'b.m'#9'50;"'#9'function'#10);
+  F.SymbolPane.ShowTags('b.m');
+  Node := nil;
+  i := 0;
+  for V2 := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+    if F.SymbolPane.Tree.Items[V2].Text = 'times' then
+    begin
+      Inc(i);
+      Node := F.SymbolPane.Tree.Items[V2];
+    end;
+  CheckEqInt('a variable set three times is one row: ' + TreeText, 1, i);
+  if Node <> nil then
+    CheckEqInt('at the first line that sets it', 4, PtrInt(Node.Data));
+  i := 0;
+  for V2 := 0 to F.SymbolPane.Tree.Items.Count - 1 do
+    if F.SymbolPane.Tree.Items[V2].Text = 'over' then Inc(i);
+  CheckEqInt('two functions of one name are two rows', 2, i);
+  Check('and the other variable is there', Pos('|n|', TreeText) > 0);
 
   { ---- and source is still grouped by what a symbol is ---- }
   if not LedCtagsAvailable then
@@ -11501,6 +11561,10 @@ var
   NB: TLedNotebook;
   Err: string;
   Written: TJSONObject;
+  Pane: TLedNotebookPane;
+  B: TLedNBCellBox;
+  Key: Word;
+  NBHandled: Boolean;
 
   function Fixture: string;
   begin
@@ -11763,6 +11827,121 @@ begin
     end;
   CheckEq('a notebook saved without being touched is the same bytes',
     Fixture, Raw);
+
+  DeleteFile(Path);
+
+  { ---- the two views of one notebook keep in step ---- }
+
+  { The line view and the page of cells are two views of one file, so what is
+    typed into either has to show up in the other.  Only one direction was
+    wired: the pane wrote a cell through to the buffer, while the buffer
+    reached the pane nowhere at all -- the pane was filled when it was
+    opened, when the tab changed and when a file was opened, and everything
+    typed in between was invisible there.  Worse than invisible: a cell then
+    typed into in the pane committed the stale text its box still held, and
+    what had been typed in the line view was gone. }
+
+  Path := TempName('nbsync.ipynb');
+  WriteBytes(Path, Fixture);
+  Doc.LoadFromFile(Path);
+  Pump;
+
+  Pane := F.NotebookPane;
+  Check('the window has a notebook pane', Pane <> nil);
+  if Pane <> nil then
+  begin
+    if not F.Dock.PaneVisible('notebook') then
+      F.actToggleNotebookPane.Execute;
+    Pump;
+    Check('the notebook pane is showing', F.Dock.PaneVisible('notebook'));
+
+    B := Pane.BoxOf(0);
+    Check('the first cell has a box', B <> nil);
+    if (B <> nil) and (B.Editor <> nil) then
+      Check('showing the cell as the file has it: ' + B.Editor.Lines.Text,
+        Pos('a = 1', B.Editor.Lines.Text) = 1);
+
+    { The line view, typed into: the pane has to follow. }
+    V.CaretXY := Point(1, 2);
+    V.CommandProcessor(ecChar, 'q', nil);
+    Pump;
+    CheckEq('a character typed in the line view lands in the buffer',
+      'qa = 1', Doc.Master.Lines[1]);
+    B := Pane.BoxOf(0);
+    Check('and the page of cells shows it too: ' +
+      StringReplace(B.Editor.Lines.Text, #10, '\n', [rfReplaceAll]),
+      (B <> nil) and (B.Editor <> nil) and
+      (Pos('qa = 1', B.Editor.Lines.Text) = 1));
+
+    { A prose cell is rendered rather than shown as source, so the typed
+      text has to reach the page that is drawn, not just the editor behind
+      it. }
+    Line := LineOfText('# Notes');
+    Check('the markdown cell is in the buffer', Line > 0);
+    if Line > 0 then
+    begin
+      V.CaretXY := Point(Length(Doc.Master.Lines[Line]) + 1, Line + 1);
+      V.CommandProcessor(ecChar, '!', nil);
+      Pump;
+      CheckEq('typing in the prose cell''s lines lands in the buffer',
+        '# Notes!', Doc.Master.Lines[Line]);
+      B := Pane.BoxOf(1);
+      Check('and the rendered prose says the same',
+        (B <> nil) and (Pos('Notes!', B.PageShown) > 0));
+    end;
+
+    { And the other way, while the cell still has the keyboard: the pane
+      used to write a cell through only when it was left, so the line view
+      disagreed with the page for as long as someone kept typing. }
+    B := Pane.BoxOf(0);
+    if (B <> nil) and (B.Editor <> nil) then
+    begin
+      B.Editor.CaretXY := Point(1, 1);
+      B.Editor.CommandProcessor(ecChar, 'z', nil);
+      Pump;
+      Check('typing in a cell reaches the line view without leaving it: ' +
+        Doc.Master.Lines[1], Pos('zqa = 1', Doc.Master.Lines[1]) = 1);
+    end;
+
+    { Ctrl+C in a cell.
+
+      A TLedEdit is built without the shortcuts the window reserves, so the
+      cell's own editor has no Ctrl+C: the menu owns it, which is how one
+      thing happens wherever it is pressed.  The menu then has to be about
+      the cell that holds the keyboard.  Aimed at the line view regardless,
+      code could not be copied out of a cell at all -- reported as exactly
+      that. }
+    B := Pane.BoxOf(0);
+    if (B <> nil) and (B.Editor <> nil) then
+    begin
+      Key := 0;
+      for Cell := 0 to B.Editor.Keystrokes.Count - 1 do
+        if B.Editor.Keystrokes[Cell].ShortCut = ShortCut(VK_C, [ssCtrl]) then
+          Key := 1;
+      CheckEqInt('a cell editor has no Ctrl+C of its own, so the menu owns it',
+        0, Key);
+
+      Clipboard.AsText := 'not the cell';
+      LedTryFocus(B.Editor);
+      B.Editor.SelectAll;
+      Pump;
+      Check('the cell has the keyboard', F.ActiveControl = B.Editor);
+      Check('and a selection to copy', B.Editor.SelAvail);
+      NBHandled := False;
+      F.ActionList1Update(F.actCopy, NBHandled);
+      Check('Copy is offered while a cell has the selection', F.actCopy.Enabled);
+      F.actCopy.Execute;
+      Pump;
+      { Both of the cell's lines and none of the buffer's furniture: the
+        line view holds the same words, so "it copied something with qa in
+        it" would pass on the wrong editor. }
+      Check('and it copies the cell, not the line view: ' +
+        StringReplace(Clipboard.AsText, #10, '\n', [rfReplaceAll]),
+        (Pos('qa = 1', Clipboard.AsText) > 0) and
+        (Pos('print(a + 2)', Clipboard.AsText) > 0) and
+        (Pos('python', Clipboard.AsText) = 0));
+    end;
+  end;
 
   DeleteFile(Path);
 end;

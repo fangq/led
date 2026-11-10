@@ -121,6 +121,9 @@ type
     FReplaces: Boolean;
     FCut: Boolean;
     FLayingOut: Boolean;
+    { The width and the cap the live box was last capped at: past the cap
+      it is not measured again until one of them changes.  See Relayout. }
+    FCapInner, FCapTall: Integer;
     { Its contents have changed since it was last measured.  See Grow. }
     FDirty: Boolean;
     { What the button that puts this back into the file should be called:
@@ -1180,9 +1183,17 @@ begin
         full width wraps into more lines than were paid for -- and the
         difference is not a scrollbar here, it is the end of the sentence
         simply not being shown. }
-      Tall := Max(LedScale96(16),
-            TextBlockHeight(FLive.Font, FLive.Text, Inner - LedScale96(8)) +
-            TextTall(FLive.Font));
+      Cap := FPane.ViewHeight - LedScale96(24);
+      { already capped at this width and this height: the text has only
+        grown since, so it is past the cap still, and wrapping all of it
+        again to find that out cost the measure of the whole answer on
+        every word -- three minutes for an answer of four hundred lines }
+      if (FLive.ScrollBars <> ssNone) and (Inner = FCapInner) and (Cap = FCapTall) then
+        Tall := MaxInt
+      else
+        Tall := Max(LedScale96(16),
+              TextBlockHeight(FLive.Font, FLive.Text, Inner - LedScale96(8)) +
+              TextTall(FLive.Font));
 
       { **Up to the height of the pane, and no further.**
 
@@ -1199,10 +1210,11 @@ begin
         at the last lines either way -- which is where the words are
         arriving.  When the turn finishes it becomes a page of its full
         height and the transcript can be read from the top. }
-      Cap := FPane.ViewHeight - LedScale96(24);
       if (Cap > LedScale96(80)) and (Tall > Cap) then
       begin
         Tall := Cap;
+        FCapInner := Inner;
+        FCapTall := Cap;
         if FLive.ScrollBars = ssNone then
           FLive.ScrollBars := ssAutoVertical;
       end;

@@ -707,7 +707,9 @@ var
 
 begin
   Caption := 'Preferences';
-  Position := poMainFormCenter;
+  { over the window that opened it, which is its owner: with a second
+    window open, poMainFormCenter put it over the first one instead }
+  Position := poOwnerFormCenter;
   { Wide enough for the value column at x=300 plus the 150px category tree,
     tall enough that the longest page needs little scrolling. }
   Width := 800;
