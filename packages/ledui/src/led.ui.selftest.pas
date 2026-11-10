@@ -65,7 +65,7 @@ uses
   Led.Core.Ctags,
   Led.Core.Tools, Led.Core.OutputFilter, Led.Core.Filters,
   Clipbrd, SynEditTypes, SynEditKeyCmds, SynEditMouseCmds, ActnList, Menus,
-  Controls,
+  Controls, Led.UI.SaveAll,
   PairSplitter, LCLProc{$IFDEF LED_PARADE_SYNC}, paraderelay, paradetextsync, Led.UI.Collab{$ENDIF};
 
 type
@@ -2506,6 +2506,85 @@ end;
   what ran before it.  What is checked is the behaviour: the name does not
   move when a document is replaced, and a number comes back into use once the
   document holding it has gone. }
+{ The batch-close dialog's buttons sit in a row, in order, without one
+  laid over the next.  Their widths were pixels chosen at 96 dpi and a
+  larger interface font ran "None" into "Save Ticked"; a large font here
+  is that case. }
+procedure TestSaveManyButtons(F: TLedMainForm);
+var
+  Names: TStringList;
+  Dlg: TForm;
+  Row: TWinControl;
+  Btns: array of TControl;
+  i, j: Integer;
+  T: TControl;
+  Caps: string;
+begin
+  Say('the unsaved-changes dialog''s buttons');
+  Names := TStringList.Create;
+  Dlg := nil;
+  try
+    Names.Add('Untitled1');
+    Names.Add('notes.ipynb');
+    Dlg := LedSaveManyDialog(F, Names);
+    Dlg.Font.Size := 20;
+    Dlg.Show;
+    Pump; Pump;
+    Row := nil;
+    for i := 0 to Dlg.ControlCount - 1 do
+      if (Dlg.Controls[i] is TPanel) then Row := TWinControl(Dlg.Controls[i]);
+    Check('the buttons have a row of their own', Row <> nil);
+    if Row = nil then Exit;
+    SetLength(Btns, 0);
+    for i := 0 to Row.ControlCount - 1 do
+      if Row.Controls[i] is TButton then
+      begin
+        SetLength(Btns, Length(Btns) + 1);
+        Btns[High(Btns)] := Row.Controls[i];
+      end;
+    for i := 1 to High(Btns) do
+    begin
+      T := Btns[i];
+      j := i - 1;
+      while (j >= 0) and (Btns[j].Left > T.Left) do
+      begin
+        Btns[j + 1] := Btns[j];
+        Dec(j);
+      end;
+      Btns[j + 1] := T;
+    end;
+    Caps := '';
+    for i := 0 to High(Btns) do
+      Caps := Caps + TButton(Btns[i]).Caption + '|';
+    CheckEq('left to right', 'All|None|Save Ticked|Close Without Saving|Cancel|',
+      Caps);
+    for i := 1 to High(Btns) do
+      Check(Format('%s ends before %s starts (%d <= %d)',
+        [TButton(Btns[i - 1]).Caption, TButton(Btns[i]).Caption,
+         Btns[i - 1].Left + Btns[i - 1].Width, Btns[i].Left]),
+        Btns[i - 1].Left + Btns[i - 1].Width <= Btns[i].Left);
+    if Length(Btns) > 0 then
+    begin
+      Check('the first is inside the dialog', Btns[0].Left >= 0);
+      Check(Format('and so is the last (%d <= %d)',
+        [Btns[High(Btns)].Left + Btns[High(Btns)].Width, Row.ClientWidth]),
+        Btns[High(Btns)].Left + Btns[High(Btns)].Width <= Row.ClientWidth);
+    end;
+    for i := 0 to High(Btns) do
+      Check(Format('%s is wide enough for its caption (%d >= %d)',
+        [TButton(Btns[i]).Caption, Btns[i].Width,
+         Dlg.Canvas.TextWidth(TButton(Btns[i]).Caption)]),
+        Btns[i].Width >= Dlg.Canvas.TextWidth(TButton(Btns[i]).Caption));
+  finally
+    if Dlg <> nil then
+    begin
+      Dlg.Hide;
+      Dlg.Free;
+    end;
+    Names.Free;
+  end;
+end;
+
 procedure TestUntitledNumbering(F: TLedMainForm);
 var
   i: Integer;
@@ -19360,6 +19439,7 @@ begin
   TestMeditTrim(F);
   TestBundledFont(F);
   TestUntitledNumbering(F);
+  TestSaveManyButtons(F);
   TestBinarySurvivesFailedDecode(F);
   TestShowPaneShowsThatPane(F);
   TestPreviewFollowsDocument(F);
