@@ -2045,9 +2045,16 @@ begin
 
   { A pane opening for the first time is a fifth of the window, not the size
     the pane already on its edge was dragged to: every pane shared one size
-    per edge, so a second pane beside a wide one opened just as wide. }
-  F.Dock.HidePane('preview');
-  F.Dock.HidePane('debug');
+    per edge, so a second pane beside a wide one opened just as wide.
+
+    After a reset, which forgets every pane's size and neighbour, and on the
+    AI pane: 'notebook' is the preview's other name, and the preview has
+    been open in this check, its size settled then and kept -- so once the
+    preview came back beside the pane it was last against (mima-ide
+    f586cf1) it was its own size again, as it should be, and this asked a
+    pane that had been opened for the size of one that never was. }
+  F.Dock.ResetLayout;
+  Pump;
   F.Dock.ShowPane('symbols');
   Pump; Pump;
   { dragged, the way a hand does it: the splitter moved, then noted }
@@ -2058,14 +2065,14 @@ begin
       -(F.Dock.Width * 2 div 5 - DragSite.Width));
   Pump; Pump;
   F.Dock.NoteUserResize;
-  F.Dock.ShowPane('notebook');
+  F.Dock.ShowPane('ai');
   Pump; Pump;
   Check(Format('a pane never opened is a fifth of the window (%d of %d), ' +
-    'not its neighbour''s dragged %d', [F.Dock.PaneSize('notebook'),
+    'not its neighbour''s dragged %d', [F.Dock.PaneSize('ai'),
     F.Dock.Width, F.Dock.PaneSize('symbols')]),
-    (Abs(F.Dock.PaneSize('notebook') - F.Dock.Width div 5) <= LedScale96(48)) and
-    (F.Dock.PaneSize('notebook') < F.Dock.PaneSize('symbols')));
-  F.Dock.HidePane('notebook');
+    (Abs(F.Dock.PaneSize('ai') - F.Dock.Width div 5) <= LedScale96(48)) and
+    (F.Dock.PaneSize('ai') < F.Dock.PaneSize('symbols')));
+  F.Dock.HidePane('ai');
   Pump;
 
   for i := 0 to 2 do
@@ -11212,7 +11219,7 @@ var
   Tab: TLedTab;
   Pane: TLedNotebookPane;
   B: TLedNBCellBox;
-  Handled: Boolean;
+  Handled, WasShown: Boolean;
   Gap, i: Integer;
 const
   Fixture =
@@ -11233,7 +11240,8 @@ begin
   Doc.LoadFromFile(Path);
   Pump;
   Pane := F.NotebookPane;
-  if not F.Dock.PaneVisible('notebook') then
+  WasShown := F.Dock.PaneVisible('notebook');
+  if not WasShown then
     F.actToggleNotebookPane.Execute;
   Pump; Pump;
   Check('the notebook pane is showing', (Pane <> nil) and F.Dock.PaneVisible('notebook'));
@@ -11286,6 +11294,7 @@ begin
 
   Doc.Master.Modified := False;
   F.CloseActiveTab(False);
+  if not WasShown then F.Dock.HidePane('notebook');
   Pump;
   DeleteFile(Path);
 end;
@@ -12545,12 +12554,58 @@ begin
   Pump;
 end;
 
+{ A pane whose neighbour is on a tab comes back on its edge (mima-ide
+  73fcaa7).  Last in the suite: AnchorDocking leaves the window's layout
+  changed by two panes tabbed together, which the dock checks before this
+  are not written for. }
+procedure TestPaneBesideTab(F: TLedMainForm);
+
+  { True when the pane sits on a tab's page, directly or in a split of it. }
+  function PaneOnTab(const AId: string): Boolean;
+  var
+    Up: TWinControl;
+  begin
+    Result := False;
+    Up := DockMaster.GetAnchorSite(F.Dock.FindPane(AId));
+    if Up <> nil then Up := Up.Parent;
+    while Up <> nil do
+    begin
+      if Up is TAnchorDockPage then Exit(True);
+      Up := Up.Parent;
+    end;
+  end;
+
+begin
+  Say('a pane beside a tab');
+  { A pane whose neighbour is on a tab comes back on its edge, not into the
+    tab: docked beside a pane that shares its site as a tab, AnchorDocking
+    split that tab's page, and the pane was then half of it (mima-ide
+    73fcaa7).  The Files and Project panes tabbed on the left, the Outline
+    moved beside them, closed and opened again. }
+  F.Dock.ShowPane('files');
+  Pump; Pump;
+  F.Dock.DockPaneOn('project', 'files');
+  Pump; Pump;
+  F.Dock.MovePaneTo('symbols', ledLeft);
+  Pump; Pump;
+  F.Dock.HidePane('symbols');
+  Pump; Pump;
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  Check('the files and project panes share a tabbed site',
+    (DockMaster.GetAnchorSite(F.Dock.FindPane('files')) <> nil) and
+    (DockMaster.GetAnchorSite(F.Dock.FindPane('files')).Parent is TAnchorDockPage));
+  Check('a pane last beside a tab comes back on its edge, not into the tab',
+    not PaneOnTab('symbols'));
+end;
+
 procedure TestPaneRail(F: TLedMainForm);
 var
   Names: TStringArray;
   i: Integer;
   Found: Boolean;
   Other: string;
+
 begin
   Say('pane buttons on the edges');
 
@@ -12632,6 +12687,7 @@ begin
     F.Dock.PaneEdge('output') = ledBottom);
   F.Dock.HidePane('output');
   Pump;
+
 
   { Locking must stop the drag without stopping anything else -- the two
     places AnchorDocking consults AllowDragging are the header's and the tab's
@@ -19592,12 +19648,12 @@ begin
   TestBJDataFolding(F);
   TestBJDataEditing(F);
   TestNotebookEditing(F);
-  TestNotebookCellKeys(F);
   TestNotebookColouring(F);
   TestNotebookRunning(F);
   TestNotebookBounds(F);
   TestWindowDetails(F);
   TestNotebookPane(F);
+  TestNotebookCellKeys(F);
   TestNotebookPolish(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);
@@ -19759,6 +19815,7 @@ begin
   TestWindowPlacement(F);
   TestWordWrapToggling(F);
   TestMenusAndDetection(F);
+  TestPaneBesideTab(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));
