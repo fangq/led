@@ -25,17 +25,25 @@ type
 function LedAskSaveMany(AOwner: TComponent; ANames: TStrings;
   AChecked: TList): TLedSaveManyResult;
 
+{ The dialog itself, not shown, for the self-test to look at its layout. }
+function LedSaveManyDialog(AOwner: TComponent; ANames: TStrings): TForm;
+
 implementation
 
 type
   TSaveManyForm = class(TForm)
   private
     FList: TCheckListBox;
+    FButtons: array[0..4] of TButton;     { All, None, Save, Discard, Cancel }
+    procedure FitButtons;
     procedure DoSave(Sender: TObject);
     procedure DoDiscard(Sender: TObject);
     procedure DoCancel(Sender: TObject);
     procedure DoSelectAll(Sender: TObject);
     procedure DoSelectNone(Sender: TObject);
+  protected
+    procedure DoShow; override;
+    procedure Activate; override;
   public
     constructor CreateFor(AOwner: TComponent; ANames: TStrings);
     property List: TCheckListBox read FList;
@@ -46,20 +54,36 @@ var
   i: Integer;
   Lbl: TLabel;
   Bottom: TPanel;
-  Btn: TButton;
-  X: Integer;
 
+  { As wide as its caption needs, never narrower than AWidth: the widths
+    were pixels once, and a larger interface font ran each caption into the
+    button beside it. }
   function AddButton(const ACaption: string; AHandler: TNotifyEvent;
     AResult: TModalResult; AWidth: Integer): TButton;
   begin
     Result := TButton.Create(Self);
     Result.Parent := Bottom;
     Result.Caption := ACaption;
-    Result.Width := AWidth;
-    Result.Height := 28;
+    Result.AutoSize := True;
+    Result.Constraints.MinWidth := AWidth;
+    Result.Constraints.MinHeight := 28;
     Result.Top := 8;
     Result.OnClick := AHandler;
     Result.ModalResult := AResult;
+  end;
+
+  { Each button anchored to its neighbour, so none can be laid over another
+    whatever the captions come to. }
+  procedure Chain(AButton: TButton; ASide: TAnchorKind; ATo: TControl;
+    AToSide: TAnchorSideReference; AGap: Integer);
+  begin
+    AButton.Anchors := [akTop, ASide];
+    AButton.AnchorSide[ASide].Control := ATo;
+    AButton.AnchorSide[ASide].Side := AToSide;
+    if ASide = akLeft then
+      AButton.BorderSpacing.Left := AGap
+    else
+      AButton.BorderSpacing.Right := AGap;
   end;
 
 begin
@@ -89,24 +113,21 @@ begin
   Bottom.Caption := '';
 
   { Right to left, so the default answer sits where the eye lands. }
-  X := Width - 12;
-  Btn := AddButton('Cancel', @DoCancel, mrCancel, 90);
-  Dec(X, Btn.Width); Btn.Left := X;
-  Btn.Cancel := True;
+  FButtons[4] := AddButton('Cancel', @DoCancel, mrCancel, 90);
+  Chain(FButtons[4], akRight, Bottom, asrRight, 12);
+  FButtons[4].Cancel := True;
 
-  Dec(X, 8);
-  Btn := AddButton('Close Without Saving', @DoDiscard, mrNo, 150);
-  Dec(X, Btn.Width); Btn.Left := X;
+  FButtons[3] := AddButton('Close Without Saving', @DoDiscard, mrNo, 150);
+  Chain(FButtons[3], akRight, FButtons[4], asrLeft, 8);
 
-  Dec(X, 8);
-  Btn := AddButton('Save Ticked', @DoSave, mrYes, 110);
-  Dec(X, Btn.Width); Btn.Left := X;
-  Btn.Default := True;
+  FButtons[2] := AddButton('Save Ticked', @DoSave, mrYes, 110);
+  Chain(FButtons[2], akRight, FButtons[3], asrLeft, 8);
+  FButtons[2].Default := True;
 
-  Btn := AddButton('All', @DoSelectAll, mrNone, 50);
-  Btn.Left := 12;
-  Btn := AddButton('None', @DoSelectNone, mrNone, 50);
-  Btn.Left := 66;
+  FButtons[0] := AddButton('All', @DoSelectAll, mrNone, 50);
+  Chain(FButtons[0], akLeft, Bottom, asrLeft, 12);
+  FButtons[1] := AddButton('None', @DoSelectNone, mrNone, 50);
+  Chain(FButtons[1], akLeft, FButtons[0], asrRight, 6);
 
   FList := TCheckListBox.Create(Self);
   FList.Parent := Self;
@@ -119,6 +140,37 @@ begin
     FList.Items.Add(ANames[i]);
   for i := 0 to FList.Items.Count - 1 do
     FList.Checked[i] := True;
+end;
+
+{ The dialog is widened to hold its buttons, once they know how wide they
+  are: that is after the form scaler has run and the widgetset has measured
+  the captions, which is why it is done on showing and again on the first
+  activation rather than in the constructor. }
+procedure TSaveManyForm.FitButtons;
+var
+  i, Need, Grow: Integer;
+begin
+  Need := 0;
+  for i := 0 to High(FButtons) do
+    Inc(Need, FButtons[i].Width);
+  { the margins and gaps, and room between the two groups }
+  Inc(Need, Scale96ToForm(12 + 6 + 24 + 8 + 8 + 12));
+  Grow := Need - ClientWidth;
+  if Grow <= 0 then Exit;
+  ClientWidth := Need;
+  Left := Left - Grow div 2;
+end;
+
+procedure TSaveManyForm.DoShow;
+begin
+  inherited DoShow;
+  FitButtons;
+end;
+
+procedure TSaveManyForm.Activate;
+begin
+  inherited Activate;
+  FitButtons;
 end;
 
 procedure TSaveManyForm.DoSave(Sender: TObject);
@@ -148,6 +200,11 @@ var
   i: Integer;
 begin
   for i := 0 to FList.Items.Count - 1 do FList.Checked[i] := False;
+end;
+
+function LedSaveManyDialog(AOwner: TComponent; ANames: TStrings): TForm;
+begin
+  Result := TSaveManyForm.CreateFor(AOwner, ANames);
 end;
 
 function LedAskSaveMany(AOwner: TComponent; ANames: TStrings;
