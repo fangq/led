@@ -1780,6 +1780,13 @@ var
     Result := DockMaster.GetAnchorSite(AHost);
     if (Result <> nil) and (Result.Parent = nil) then
       Result := nil;
+    { Nor one on a tab.  Docked beside, AnchorDocking splits the page that
+      tab shows rather than the tabs' site: the preview came back as half of
+      the Editors tab -- "Editors,Notebook" -- beside the figures, and once
+      there was remembered as on the top edge, so it came back there every
+      time after.  The edge it was on is the place to go back to. }
+    if (Result <> nil) and (Result.Parent is TAnchorDockPage) then
+      Result := nil;
     if Result = nil then
       AHost := nil;
   end;
