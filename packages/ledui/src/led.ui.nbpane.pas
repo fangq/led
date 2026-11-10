@@ -270,10 +270,10 @@ type
     function RenderedHeight(const APage: string; AWidth: Integer): Integer;
     function ImageSize(const AURL: string; out AW, AH: Integer): Boolean;
     function Pictures: TLedPictureSource;
-    { The page's colour, shaded when the pointer is over it; and a rendered
-      page with that colour put in, which is how the renderer is told it. }
+    { The page's colour, shaded when the pointer is over it; and that colour
+      given to the page already laid out, which is all a hover changes. }
     function HoverColour: TColor;
-    function HoverPage(const APage: string): string;
+    procedure PaintHover;
     function EmbeddedPicture(const AURL: string;
       out ABytes, AMime: string): Boolean;
 
@@ -583,6 +583,8 @@ implementation
 type
   { Font is protected in a TControl; this reaches it }
   TRendererFontAccess = class(TControl);
+  { A document's BgColor is protected in a TIpHtml; this reaches it }
+  THtmlBgAccess = class(TIpHtml);
 
 { For LED_DPI_REPORT: a renderer's font and canvas dpis, and the face and
   size it was given -- what decides how big its text is drawn. }
@@ -1104,15 +1106,33 @@ begin
     Result := LedMixColours(Result, LedNBColours.Text, 93);
 end;
 
-function TLedNBCellBox.HoverPage(const APage: string): string;
-var
-  Page: TColor;
+{ The prose cell's shade, the page's or the hover's, given to the page
+  that is already laid out: its document's background, which the body
+  paints when it names no colour of its own (ProsePage leaves it none), and
+  the panel's.  Nothing is parsed or laid out again -- loading the page anew
+  in the other colour re-wrapped every line on each pass of the pointer,
+  and the cell flickered. }
+procedure TLedNBCellBox.PaintHover;
+
+  procedure Repaint(AControl: TWinControl);
+  var
+    i: Integer;
+  begin
+    AControl.Invalidate;
+    for i := 0 to AControl.ControlCount - 1 do
+      if AControl.Controls[i] is TWinControl then
+        Repaint(TWinControl(AControl.Controls[i]))
+      else
+        AControl.Controls[i].Invalidate;
+  end;
+
 begin
-  Result := APage;
-  Page := LedNBColours.Page;
-  if HoverColour = Page then Exit;
-  Result := StringReplace(APage, 'bgcolor="' + LedHtmlColour(Page) + '"',
-    'bgcolor="' + LedHtmlColour(HoverColour) + '"', []);
+  Color := HoverColour;
+  if FRender = nil then Exit;
+  FRender.BgColor := HoverColour;
+  if (FRender.MasterFrame <> nil) and (FRender.MasterFrame.Html <> nil) then
+    THtmlBgAccess(FRender.MasterFrame.Html).BgColor := HoverColour;
+  Repaint(FRender);
 end;
 
 procedure TLedNBCellBox.SetHovered(AValue: Boolean);
@@ -1120,13 +1140,7 @@ begin
   if FHovered = AValue then Exit;
   FHovered := AValue;
   if (FRender = nil) or (not FRender.Visible) or (FPageShown = '') then Exit;
-  { The same page again with the other colour: the same layout, so the cell
-    keeps its height and nothing below it moves. }
-  Color := HoverColour;
-  FRender.BgColor := HoverColour;
-  FRender.SetHtmlFromStr(HoverPage(FPageShown));
-  HookRenderChildren;
-  FRender.Invalidate;
+  PaintHover;
 end;
 
 procedure TLedNBCellBox.Commit;
@@ -1538,8 +1552,11 @@ begin
     small page, for the reason given where TLedNotebookPane is declared. }
   Html := LedFlattenHeadings(Html);
   { The page around it is the shared one -- see Led.UI.PageStyle -- so that
-    a cell and a Markdown file are drawn the same way. }
-  Result := LedPageHead('', C) + Html + LedPageTail;
+    a cell and a Markdown file are drawn the same way: but with no
+    background of the body's own, so the panel's shows through it and a
+    hover can change that without laying the page out again (PaintHover) }
+  Result := StringReplace(LedPageHead('', C),
+    ' bgcolor="' + LedHtmlColour(C.Page) + '"', '', []) + Html + LedPageTail;
 end;
 
 { How tall a page of HTML comes out at a given width.
@@ -1912,7 +1929,8 @@ begin
       Preferences shows the next time the cell is drawn }
     FRender.DefaultTypeFace := LedPreviewFace;
     FRender.DefaultFontSize := ProseSize(FDoc);
-    FRender.SetHtmlFromStr(HoverPage(Page));
+    FRender.BgColor := HoverColour;    { the page's background: it names none }
+    FRender.SetHtmlFromStr(Page);
     { and as tall as the panel itself lays the page out, when that is more
       than it was measured at: the two layouts differ by a few pixels at
       some widths, and a page a row taller than its panel scrolls inside

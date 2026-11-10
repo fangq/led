@@ -9,12 +9,12 @@ unit Led.UI.Edit;
 interface
 
 uses
-  Classes, SysUtils, Controls, Forms, StdCtrls, Graphics, Menus, SynEdit,
+  Classes, SysUtils, Controls, Forms, StdCtrls, Graphics, Menus, Clipbrd, SynEdit,
   SynEditTypes,
   SynEditMouseCmds, SynEditWrappedView, SynCompletion, SynEditFoldedView,
   SynEditKeyCmds, LCLType, LazSynEditText, SynEditViewedLineMap,
   SynEditHighlighterFoldBase, SynEditHighlighter, SynEditMarkupHighAll,
-  SynEditMarkup, SynEditMiscClasses, LazVersion,
+  SynEditMarkup, SynEditMiscClasses, SynEditPointClasses, LazVersion,
   Led.Core.Hex, Led.Core.BJDView, Led.Syn.BJData,
   Led.UI.Dpi, Led.UI.FoldGutter, Led.UI.SpellMarkup, Led.UI.HexMarkup, Led.UI.LongLine,
   Led.Core.Spell, Led.Core.Gdb;
@@ -236,6 +236,13 @@ type
       list of things: a container opens, a value is typed over.  Nothing else
       is listening for it -- the buffer is read-only, so SynEdit drops it. }
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    { Up and down from past the end of a line land at the end of the next
+      one, not straight above or below in the empty space beyond it.  The
+      caret is allowed out there only because column selection needs it
+      (eoScrollPastEol); it still remembers the column it came from, so a
+      longer line further on gets it back. }
+    procedure ExecuteCommand(Command: TSynEditorCommand;
+      const AChar: TUTF8Char; Data: pointer); override;
     { The same gesture with the mouse.  Selecting the word under the pointer,
       which is what a double click does everywhere else, is worth little in a
       view whose words are a rendering. }
@@ -2062,12 +2069,38 @@ begin
   ShowHint := False;
 end;
 
+procedure TLedEdit.ExecuteCommand(Command: TSynEditorCommand;
+  const AChar: TUTF8Char; Data: pointer);
+var
+  Caret: TSynEditCaret;
+  Past: Boolean;
+begin
+  case Command of
+    ecUp, ecDown, ecPageUp, ecPageDown,
+    ecSelUp, ecSelDown, ecSelPageUp, ecSelPageDown:
+      if SelectionMode <> smColumn then
+      begin
+        Caret := GetCaretObj;
+        Past := Caret.AllowPastEOL;
+        Caret.AllowPastEOL := False;
+        try
+          inherited ExecuteCommand(Command, AChar, Data);
+        finally
+          Caret.AllowPastEOL := Past;
+        end;
+        Exit;
+      end;
+  end;
+  inherited ExecuteCommand(Command, AChar, Data);
+end;
+
 procedure TLedEdit.MouseDown(AButton: TMouseButton; AShift: TShiftState;
   X, Y: Integer);
 var
   P: TPoint;
   TextIdx, Col, ZLeft, ZRight, Row: Integer;
   FV: TSynEditFoldedView;
+  Clip: TSynClipboardStream;
 begin
   { Where the caret was, so the release can tell whether this click moved it
     to another line: see MouseUp. }
@@ -2113,6 +2146,32 @@ begin
       Invalidate;
       Exit;
     end;
+  end;
+
+  { A middle click pastes the primary selection at the caret, not under the
+    pointer.  SynEdit's own action moves the caret to the pointer first,
+    which with eoScrollPastEol on can be out past the end of the line, and
+    the paste then pads the gap with spaces.  The caret is pulled back to
+    the line's end for the same reason a left click is. }
+  if (AButton = mbMiddle) and not ReadOnly then
+  begin
+    Clip := TSynClipboardStream.Create;
+    try
+      Clip.ReadFromClipboard(PrimarySelection);
+      if Clip.TextP <> nil then
+      begin
+        P := LogicalCaretXY;
+        if (P.Y >= 1) and (P.Y <= Lines.Count) and
+           (P.X > Length(Lines[P.Y - 1]) + 1) then
+          P.X := Length(Lines[P.Y - 1]) + 1;
+        LogicalCaretXY := P;
+        BlockBegin := P;
+        PasteFromClipboardEx(Clip);
+      end;
+    finally
+      Clip.Free;
+    end;
+    Exit;
   end;
   inherited MouseDown(AButton, AShift, X, Y);
 

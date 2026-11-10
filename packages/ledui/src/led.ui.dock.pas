@@ -77,6 +77,14 @@ type
       back to the edge its neighbour is on. }
     FBeside: string;
     FBesideSide: TLedDockEdge;
+    { The pane it was last seen beside on its edge, and on which side of
+      that one -- measured from the layout each time it is on screen (see
+      NoteNeighbour), so it is where the reader last left it, not a pairing
+      made once.  Closing the preview and opening it again docked it
+      against the editor area, which put it on the other side of the help
+      pane it had been to the right of. }
+    FNeighbour: string;
+    FNeighbourSide: TLedDockEdge;
     FWasOpen: Boolean;
     { A pane that must always have somewhere to be.
 
@@ -226,6 +234,7 @@ type
     procedure DockPane(APane: TLedPaneForm);
     function EdgeOfPane(APane: TLedPaneForm): TLedDockEdge;
     procedure ReconcilePanes;
+    procedure NoteNeighbour(APane: TLedPaneForm);
     procedure MasterCreateControl(Sender: TObject; aName: string;
       var AControl: TControl; DoDisableAutoSizing: Boolean);
   public
@@ -1648,6 +1657,7 @@ begin
     if PaneVisible(Pane.PaneId) then
     begin
       Pane.FLastEdge := EdgeOfPane(Pane);
+      NoteNeighbour(Pane);
       Pane.FWasOpen := True;
     end
     else if Pane.FWasOpen then
@@ -1664,11 +1674,114 @@ begin
       SizeEdgePanes(E, False);
 end;
 
+{ Which pane on the same edge this one sits against, and on which side of
+  it, read from where the two are on screen: the nearest whose side faces
+  this one's across a splitter.  A pane on its own on its edge, or tabbed
+  with the other (the two in one place), notes nothing, and the last thing
+  noted stands. }
+procedure TLedDockHost.NoteNeighbour(APane: TLedPaneForm);
+const
+  Gap = 12;                    // a splitter's width, and some
+var
+  i, Best, D: Integer;
+  Mine, Theirs: TAnchorDockHostSite;
+  R, Q: TRect;
+  Other: TLedPaneForm;
+  Side, BestSide: TLedDockEdge;
+  E: TLedDockEdge;
+
+  function ScreenRect(C: TControl): TRect;
+  var
+    P: TPoint;
+  begin
+    P := C.ClientToScreen(Point(0, 0));
+    Result := Rect(P.X, P.Y, P.X + C.Width, P.Y + C.Height);
+  end;
+
+  function Overlap(A1, A2, B1, B2: Integer): Boolean;
+  begin
+    Result := (A1 < B2) and (B1 < A2);
+  end;
+
+begin
+  Mine := DockMaster.GetAnchorSite(APane);
+  if (Mine = nil) or (Mine.Parent = nil) or (not Mine.HandleAllocated) then Exit;
+  R := ScreenRect(Mine);
+  E := EdgeOfPane(APane);
+  Best := MaxInt;
+  BestSide := E;
+  Other := nil;
+  for i := 0 to FPanes.Count - 1 do
+  begin
+    if FPanes[i] = Pointer(APane) then Continue;
+    if not PaneVisible(TLedPaneForm(FPanes[i]).PaneId) then Continue;
+    if EdgeOfPane(TLedPaneForm(FPanes[i])) <> E then Continue;
+    Theirs := DockMaster.GetAnchorSite(TLedPaneForm(FPanes[i]));
+    if (Theirs = nil) or (Theirs = Mine) or (not Theirs.HandleAllocated) then Continue;
+    Q := ScreenRect(Theirs);
+    if (Q.Left = R.Left) and (Q.Top = R.Top) and (Q.Right = R.Right) and
+       (Q.Bottom = R.Bottom) then Continue;         // tabbed together
+    D := MaxInt;
+    if Overlap(R.Top, R.Bottom, Q.Top, Q.Bottom) and (Q.Right <= R.Left + Gap) then
+    begin
+      D := R.Left - Q.Right;
+      Side := ledRight;                             // this one right of that
+    end
+    else if Overlap(R.Top, R.Bottom, Q.Top, Q.Bottom) and (Q.Left >= R.Right - Gap) then
+    begin
+      D := Q.Left - R.Right;
+      Side := ledLeft;
+    end
+    else if Overlap(R.Left, R.Right, Q.Left, Q.Right) and (Q.Bottom <= R.Top + Gap) then
+    begin
+      D := R.Top - Q.Bottom;
+      Side := ledBottom;                            // this one under that
+    end
+    else if Overlap(R.Left, R.Right, Q.Left, Q.Right) and (Q.Top >= R.Bottom - Gap) then
+    begin
+      D := Q.Top - R.Bottom;
+      Side := ledTop;
+    end;
+    if (D <> MaxInt) and (Abs(D) < Best) then
+    begin
+      Best := Abs(D);
+      BestSide := Side;
+      Other := TLedPaneForm(FPanes[i]);
+    end;
+  end;
+  if Other = nil then Exit;
+  APane.FNeighbour := Other.PaneId;
+  APane.FNeighbourSide := BestSide;
+end;
+
 procedure TLedDockHost.DockPane(APane: TLedPaneForm);
 var
   Site, Beside: TAnchorDockHostSite;
   Host: TLedPaneForm;
-  E: TLedDockEdge;
+  E, Side: TLedDockEdge;
+
+  { The site of the pane named, when it is on screen on AEdge, and the pane
+    itself in AHost; nil when it cannot be docked beside }
+  function Neighbour(const AId: string; AEdge: TLedDockEdge;
+    out AHost: TLedPaneForm): TAnchorDockHostSite;
+  begin
+    Result := nil;
+    AHost := nil;
+    if AId = '' then Exit;
+    AHost := PaneById(AId);
+    if (AHost = nil) or (not PaneVisible(AHost.PaneId))
+       or (PaneEdge(AHost.PaneId) <> AEdge) then
+    begin
+      AHost := nil;
+      Exit;
+    end;
+    Result := DockMaster.GetAnchorSite(AHost);
+    if (Result <> nil) and (Result.Parent = nil) then
+      Result := nil;
+    if Result = nil then
+      AHost := nil;
+  end;
+
 begin
   { First appearance: put it on the edge it was registered for, against the
     editor area.  Afterwards AnchorDocking remembers where it was, so this
@@ -1699,18 +1812,22 @@ begin
       closed it gets it back on the right, because the file list it is
       paired with is not there.  An edge cannot say "under the file list" --
       see TLedPaneForm.FBeside. }
-    Beside := nil;
-    Host := nil;
-    if APane.FBeside <> '' then
+    { Where it was last seen first: beside the pane it was against, on the
+      same side, when that one is still on the edge this one comes back to;
+      then the pane it belongs beside; then against the editor area }
+    Side := APane.FLastEdge;
+    Beside := Neighbour(APane.FNeighbour, APane.FLastEdge, Host);
+    if Beside <> nil then
+      Side := APane.FNeighbourSide
+    else
     begin
-      Host := PaneById(APane.FBeside);
-      if (Host <> nil) and PaneVisible(Host.PaneId)
-         and (PaneEdge(Host.PaneId) = APane.FLastEdge) then
-        Beside := DockMaster.GetAnchorSite(Host);
+      Beside := Neighbour(APane.FBeside, APane.FLastEdge, Host);
+      if Beside <> nil then
+        Side := APane.FBesideSide;
     end;
 
-    if (Beside <> nil) and (Beside.Parent <> nil) then
-      DockMaster.ManualDock(Site, Beside, EdgeAlign[APane.FBesideSide], Host)
+    if Beside <> nil then
+      DockMaster.ManualDock(Site, Beside, EdgeAlign[Side], Host)
     else
       DockMaster.ManualDock(Site, FSite, EdgeAlign[APane.FLastEdge]);
     SizeEdgePanes(APane.FLastEdge, True);
@@ -1822,6 +1939,7 @@ begin
     takes it out of the layout, and then the only answer available is the
     one written down here. }
   Pane.FLastEdge := EdgeOfPane(Pane);
+  NoteNeighbour(Pane);
 
   Site := DockMaster.GetAnchorSite(Pane);
   { Closing the site is what the header's close button does, so hiding a pane
@@ -2581,7 +2699,10 @@ begin
   for E := Low(TLedDockEdge) to High(TLedDockEdge) do
     FUserSize[E] := 0;
   for i := 0 to FPanes.Count - 1 do
+  begin
     TLedPaneForm(FPanes[i]).FUserSize := 0;
+    TLedPaneForm(FPanes[i]).FNeighbour := '';     { the registered places again }
+  end;
 
   { The editor may have been floated by an older layout, or left somewhere
     unhelpful.  It has no header to drag back by, so put it back here. }
