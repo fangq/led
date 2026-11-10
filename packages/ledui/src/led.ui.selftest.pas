@@ -17778,6 +17778,8 @@ var
   L: csize_t;
   R: pd_res_id;
   Sorted, PicOK, DrawOK, Shown: Boolean;
+  At: pd_pos;
+  Sid: Integer;
   It: TLedResItem;
   Pane: TLedPaneForm;
 
@@ -17850,6 +17852,30 @@ begin
   for I := 0 to RP.RowCount_ - 2 do
     Sorted := Sorted and (RP.ItemAt(I).Size <= RP.ItemAt(I + 1).Size);
   Check('and again: the smallest first', Sorted);
+
+  { a click on a row: the page goes to it -- the picture selected whole; one never shown says so }
+  PicOK := False;
+  DrawOK := False;
+  for I := 0 to RP.RowCount_ - 1 do
+  begin
+    It := RP.ItemAt(I);
+    if (It.Kind = 'picture') and not PicOK then
+    begin
+      PicOK := True;
+      Check('a click on the picture''s row: it is shown once', RP.Jump(I) = 1);
+      Check('and the page has it selected, as a click on it selects it',
+        Tab.Visual.Page.SelectedShape(At, Sid) and (Sid = -1) and
+        (Tab.Visual.Page.ResourceUses(It.Id)[0].block = At.block));
+      Check('said above the list: ' + RP.Summary.Caption, Pos('shown on the pages once', RP.Summary.Caption) > 0);
+    end;
+    if (It.Kind <> 'picture') and (It.Kind <> 'drawing') and (It.Kind <> 'metafile') and not DrawOK then
+    begin
+      DrawOK := True;
+      Check('one never on the pages: nowhere to go', RP.Jump(I) = 0);
+      Check('and said so: ' + RP.Summary.Caption, Pos('not shown on the pages', RP.Summary.Caption) > 0);
+    end;
+  end;
+  Check('a picture and something not on the pages (its font table), to click', PicOK and DrawOK);
 
   { a resource added while the pane shows: listed within the second }
   pd_doc_add_resource(Tab.Visual.Page.Doc, 'text/plain', PAnsiChar('added'), 5, R);

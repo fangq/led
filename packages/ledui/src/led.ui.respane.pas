@@ -55,7 +55,10 @@ type
     FDescending: Boolean;
     FPictures: TLedPictureCache;
     FThumbsMade: Integer;
+    FLastId: pd_res_id;         { the row clicked last, and which of its places it went to }
+    FLastN: Integer;
     procedure ClearItems;
+    procedure GridUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     procedure Build;
     procedure Order;
     procedure ShowCount;
@@ -78,6 +81,8 @@ type
     function RowCount_: Integer;
     { for tests: the item shown at row ARow (0 the first under the header) }
     function ItemAt(ARow: Integer): TLedResItem;
+    { the page taken to where the item at ARow is shown (again: to the next place); how many places it has }
+    function Jump(ARow: Integer): Integer;
     { for tests: how many thumbnails have been made }
     property ThumbsMade: Integer read FThumbsMade;
     property Grid: TDrawGrid read FGrid;
@@ -203,6 +208,7 @@ begin
     goHeaderHotTracking, goHeaderPushedLook];
   FGrid.OnDrawCell := @GridDraw;
   FGrid.OnHeaderClick := @GridHeader;
+  FGrid.OnMouseUp := @GridUp;     { a click on a row: the page goes to it (each click again, the next place) }
   { a picture inserted while the pane shows: the list follows within a second, and is drawn again only then }
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 1000;
@@ -332,7 +338,8 @@ begin
   else if FItems.Count = 0 then
     FSummary.Caption := 'No embedded resources.'
   else
-    FSummary.Caption := Format('%d resources, %s in all (click a heading to sort)', [FItems.Count, LedByteSize(Total)]);
+    FSummary.Caption := Format('%d resources, %s in all (click a heading to sort, a row to go to it)',
+      [FItems.Count, LedByteSize(Total)]);
   FGrid.RowCount := 1 + FItems.Count;
   FGrid.RowHeights[0] := 22;    { the headings' row: not a thumbnail's height }
   FGrid.Invalidate;
@@ -436,6 +443,40 @@ end;
 function TLedResourcePane.ItemAt(ARow: Integer): TLedResItem;
 begin
   Result := Item(ARow + 1);
+end;
+
+function TLedResourcePane.Jump(ARow: Integer): Integer;
+var
+  It: TLedResItem;
+begin
+  Result := 0;
+  It := ItemAt(ARow);
+  if (It = nil) or (FEdit = nil) then
+    Exit;
+  if It.Id = FLastId then
+    Inc(FLastN)
+  else
+    FLastN := 0;
+  FLastId := It.Id;
+  Result := FEdit.ShowResource(It.Id, FLastN);
+  if Result = 0 then
+    FSummary.Caption := Format('#%d is not shown on the pages', [It.Id])
+  else if Result = 1 then
+    FSummary.Caption := Format('#%d: shown on the pages once', [It.Id])
+  else
+    FSummary.Caption := Format('#%d: place %d of %d (click again for the next)', [It.Id, FLastN mod Result + 1,
+      Result]);
+end;
+
+procedure TLedResourcePane.GridUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  C, R: Integer;
+begin
+  if Button <> mbLeft then
+    Exit;
+  FGrid.MouseToCell(X, Y, C, R);
+  if R >= 1 then
+    Jump(R - 1);
 end;
 
 function TLedResourcePane.RowCount_: Integer;
