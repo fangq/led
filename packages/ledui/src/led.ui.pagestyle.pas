@@ -46,6 +46,11 @@ type
       cannot find -- and a measurement that raises is a cell given the
       fallback height, one line tall with a scrollbar. }
     property OnGetImageX;
+    { And so that it can be given the margins the panel's frame gives its
+      page: without them it measures a wider column than the panel wraps
+      the text in. }
+    property MarginWidth;
+    property MarginHeight;
   end;
 
   { The colours a page is drawn in, all of them derived from the theme. }

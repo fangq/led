@@ -11299,6 +11299,83 @@ begin
   DeleteFile(Path);
 end;
 
+{ A notebook's text cell shows all of its text at any width (mima-ide
+  a515fc9).  It was measured by a page with no margins, in a column 20
+  pixels wider than the one the panel wraps it in, so a cell could come out
+  lines short; the panel's scrollbar, once on, narrowed the page further and
+  stayed.  Checked at two widths of the pane. }
+procedure TestNotebookProseHeight(F: TLedMainForm);
+var
+  Path, Text: string;
+  Doc: TLedDocument;
+  Pane: TLedNotebookPane;
+  B: TLedNBCellBox;
+  WasShown: Boolean;
+  i, k, Size: Integer;
+  GotCy: Integer;
+
+  procedure Settle;
+  var
+    j: Integer;
+  begin
+    for j := 1 to 15 do
+    begin
+      Pump;
+      Sleep(15);
+    end;
+  end;
+
+begin
+  Say('a notebook''s text cell is as tall as its text');
+  Text := '"# A function\n","\n"';
+  for i := 1 to 30 do
+    Text := Text + ',"Paragraph ' + IntToStr(i) + ' of the description, long ' +
+      'enough to wrap in a pane a third of the window wide, as a help page''s ' +
+      'prose does.\n","\n"';
+  Path := TempName('nbprose.ipynb');
+  WriteBytes(Path, '{"cells":[{"cell_type":"markdown","metadata":{},"source":[' +
+    Text + ']},{"cell_type":"code","execution_count":null,"metadata":{},' +
+    '"outputs":[],"source":["x = 1"]}],"metadata":{"kernelspec":{"name":"python3",' +
+    '"language":"python","display_name":"Python 3"}},"nbformat":4,"nbformat_minor":5}');
+  F.AddTab(F.Documents.NewDocument);
+  Pump;
+  Doc := F.ActiveTab.Document;
+  Doc.LoadFromFile(Path);
+  Pump;
+  Pane := F.NotebookPane;
+  WasShown := F.Dock.PaneVisible('notebook');
+  if not WasShown then
+    F.actToggleNotebookPane.Execute;
+  Settle;
+  Check('the notebook pane is showing', (Pane <> nil) and F.Dock.PaneVisible('notebook'));
+  if (Pane <> nil) and F.Dock.PaneVisible('notebook') then
+    for k := 0 to 1 do
+    begin
+      if k = 0 then Size := F.Dock.Width div 4 else Size := F.Dock.Width * 2 div 5;
+      F.Dock.PreferEdgeSize(ledRight, Size);
+      Settle;
+      F.RefreshNotebookPane;
+      Settle;
+      Pane.ScrollPos := 0;
+      Settle;
+      B := Pane.BoxOf(0);
+      Check('the prose cell is rendered', (B <> nil) and (B.Rendered <> nil));
+      if (B = nil) or (B.Rendered = nil) then Break;
+      B.Rendered.Invalidate;
+      Settle;
+      GotCy := B.Rendered.GetContentSize.cy;
+      Check(Format('all of it on show in a pane %d wide: page %d, box %d',
+        [Pane.Width, GotCy, B.Rendered.ClientHeight]),
+        (GotCy > 0) and (GotCy <= B.Rendered.ClientHeight));
+    end;
+
+  Doc.Master.Modified := False;
+  F.CloseActiveTab(False);
+  if not WasShown then F.Dock.HidePane('notebook');
+  Pump;
+  DeleteFile(Path);
+end;
+
 procedure TestNotebookEditing(F: TLedMainForm);
 var
   Path, Saved, Raw, Was: string;
@@ -19654,6 +19731,7 @@ begin
   TestWindowDetails(F);
   TestNotebookPane(F);
   TestNotebookCellKeys(F);
+  TestNotebookProseHeight(F);
   TestNotebookPolish(F);
   TestBJDataGuides(F);
   TestBJDataSearch(F);

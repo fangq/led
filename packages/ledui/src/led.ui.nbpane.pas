@@ -1592,6 +1592,16 @@ begin
       Doc.DefaultTypeFace := LedPreviewFace;
       Doc.DefaultFontSize := ProseSize(FDoc);
       Doc.FixedTypeface := FDoc.Master.Font.Name;
+      { And the margins the panel's frame gives its page, ten pixels a side
+        unless told otherwise.  The bare document has none, so it measured
+        a column 20 pixels wider than the one the panel then wrapped the
+        text in, and came out lines short: plotvolume's first cell, 1442
+        pixels measured for a page of 1536. }
+      if FRender <> nil then
+      begin
+        Doc.MarginWidth := FRender.MarginWidth;
+        Doc.MarginHeight := FRender.MarginHeight;
+      end;
       { And the pictures, through the same hook the panel uses.  Without it
         the measuring document opens each <img> itself, raises on the first
         one it cannot find, and the whole measurement is lost -- a prose cell
@@ -1850,9 +1860,27 @@ begin
   end;
 end;
 
+{ The renderer's drawing control, which it makes afresh for every page it is
+  given, somewhere under the panel.  nil before the first page. }
+function InnerPanelOf(AControl: TWinControl): TIpHtmlInternalPanel;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to AControl.ControlCount - 1 do
+    if AControl.Controls[i] is TIpHtmlInternalPanel then
+      Exit(TIpHtmlInternalPanel(AControl.Controls[i]))
+    else if AControl.Controls[i] is TWinControl then
+    begin
+      Result := InnerPanelOf(TWinControl(AControl.Controls[i]));
+      if Result <> nil then Exit;
+    end;
+end;
+
 function TLedNBCellBox.Rebuild(AWidth: Integer): Integer;
 var
   Y, Count, i, Room, Need: Integer;
+  Drawn: TIpHtmlInternalPanel;
   Source, Page: string;
   Prose: Boolean;
   Inner: TSynCustomHighlighter;
@@ -1931,14 +1959,36 @@ begin
     FRender.DefaultFontSize := ProseSize(FDoc);
     FRender.BgColor := HoverColour;    { the page's background: it names none }
     FRender.SetHtmlFromStr(Page);
-    { and as tall as the panel itself lays the page out, when that is more
-      than it was measured at: the two layouts differ by a few pixels at
-      some widths, and a page a row taller than its panel scrolls inside
-      it -- its last line hidden, and the scrollbar coming and going as a
-      hover drew the page again, the cell flickering }
-    Need := FRender.GetContentSize.cy;
-    if (Need > 0) and (Need > FRender.ClientHeight) then
-      FRender.Height := FRender.Height + (Need - FRender.ClientHeight) + ProseSize(FDoc);
+    { The panel's content size, which this used to ask for here, is nothing
+      yet: the panel lays the page out when it is next drawn.  So the
+      measurement has to be right to begin with, which is what the margins
+      given to it and the width below are for.
+
+      No scrollbars in the panel.  It lays its page out in its client width
+      less a scrollbar when one is showing, and the first layout of a new
+      page comes before the panel has its size: the page is too tall for
+      it, the bar comes on, the page laid out narrower is taller still, and
+      the bar stays -- a cell whose last rows were scrolled out of it, the
+      page 239 pixels wide in a panel of 264.  A cell is made as tall as
+      its prose, and the wheel over it scrolls the page of cells, so the
+      bars had nothing to do here. }
+    Drawn := InnerPanelOf(FRender);
+    if Drawn <> nil then
+    begin
+      Drawn.VScroll.Visible := False;
+      Drawn.HScroll.Visible := False;
+    end;
+    { And measured again at the width the page is laid out in, which is the
+      panel's client width -- inside its border, known only now -- not the
+      width it was given: a cell 215 pixels wide, measured at that, was a
+      row short of plotvolume's first paragraph laid out at 211. }
+    if (FRender.ClientWidth > 0) and (FRender.ClientWidth < FRender.Width) then
+    begin
+      Need := RenderedHeight(Page, FRender.ClientWidth) +
+        (FRender.Height - FRender.ClientHeight);
+      if Need > FRender.Height then
+        FRender.Height := Need;
+    end;
     LedDpiReport('notebook prose', 0, RendererReport(FRender, FRender.DefaultFontSize, FRender.DefaultTypeFace));
     Color := HoverColour;
     { The renderer makes its drawing control when it is given a page, so the
