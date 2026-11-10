@@ -663,7 +663,8 @@ begin
   At := -1;
   if FList.ItemIndex >= 0 then
     At := FList.ItemIndex + 1;
-  At := FAnim.Add(Sh, FPresets[Index].Cls, FPresets[Index].Preset, FPresets[Index].Subtype, asClick, 500, At);
+  At := FAnim.Add(Sh, FPresets[Index].Cls, FPresets[Index].Preset, FPresets[Index].Subtype, asClick,
+    IfThen((FPresets[Index].Cls = 'emph') and (FPresets[Index].Preset = 32), 1000, 500), At);   { (a Teeter: a second) }
   Commit(At);
 end;
 
