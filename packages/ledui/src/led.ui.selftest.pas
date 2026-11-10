@@ -55,7 +55,7 @@ uses
   {$IFDEF UNIX}BaseUnix,{$ENDIF}
   SynEditMarkupHighAll,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
-  ctypes, x, xlib, glib2, gdk2, gtk2,
+  ctypes, x, xlib, glib2, gdk2, gdk2x, gtk2,
   {$ENDIF}
   Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls, Spin,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
@@ -2644,6 +2644,59 @@ end;
   file and a document shown as pages (its Resources), closes for a source
   file, asks only about a close at its header, and with the preference off no
   longer opens by itself. }
+{ An idle window sends the X server next to nothing: the idle pass once
+  asked the server where every docked pane was (ClientToScreen, a round trip
+  each) and whether the clipboard held text (a selection request, fetched
+  across the link under x2go).  Counted as Xlib numbers the requests it
+  sends, over twenty idle passes with panes docked and a document open. }
+procedure TestIdleXTraffic(F: TLedMainForm);
+{$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+var
+  D: PDisplay;
+  N0, N1: culong;
+  i, Polls: Integer;
+  Tab: TLedTab;
+{$ENDIF}
+begin
+  Say('an idle window and the X server');
+  {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
+  D := gdk_x11_get_default_xdisplay;
+  if D = nil then
+  begin
+    Say('  (no X display; skipped)');
+    Exit;
+  end;
+  Tab := F.AddTab(F.Documents.NewDocument);
+  F.Dock.ShowPane('preview');
+  F.Dock.EdgeVisible[ledRight] := True;
+  Pump; Pump;
+  for i := 1 to 5 do
+  begin
+    Application.Idle(False);
+    Sleep(20);
+  end;
+  Polls := F.ClipboardPolls;
+  N0 := XNextRequest(D);
+  for i := 1 to 20 do
+  begin
+    Application.Idle(False);
+    Sleep(20);   { past the clipboard's cache every ten passes }
+  end;
+  N1 := XNextRequest(D);
+  Say(Format('  %d X requests in 20 idle passes', [Integer(N1 - N0)]));
+  { 153 before: a round trip per docked pane a pass, and the clipboard twice a second }
+  Check(Format('next to none: %d X requests in 20 idle passes', [Integer(N1 - N0)]), N1 - N0 <= 20);
+  CheckEqInt('the clipboard is not asked while idle', Polls, F.ClipboardPolls);
+  Check('and Paste is on for the document', F.actPaste.Enabled);
+  F.Dock.HidePane('preview');
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ELSE}
+  Say('  (not X; skipped)');
+  {$ENDIF}
+end;
+
 { The toolbar has no cut, copy or paste: the keys and the Edit menu do it, and
   a Paste button kept asking the clipboard whether it had text. }
 procedure TestToolbarHasNoClipboard(F: TLedMainForm);
@@ -19311,6 +19364,7 @@ begin
   TestShowPaneShowsThatPane(F);
   TestPreviewFollowsDocument(F);
   TestToolbarHasNoClipboard(F);
+  TestIdleXTraffic(F);
   TestEditKeysGoToTheFocusedBox(F);
   { The AI pane.  All but one of these press Send or drive a turn, and with
     something installed to ask that means a real question to a real model,

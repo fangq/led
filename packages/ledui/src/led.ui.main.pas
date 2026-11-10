@@ -6837,7 +6837,14 @@ begin
 
   Tab := ActiveTab;
   HasDoc := Tab <> nil;
-  CanPaste := HasDoc and ClipboardHasText(Tab.ActiveView);
+  { Paste is offered wherever there is a document, not only when the
+    clipboard holds text.  Asking the clipboard is a selection conversion,
+    and this pass runs on every idle: even throttled to five times a second
+    it was a stream of requests, and under x2go each one has the clipboard
+    fetched across the link from the other end (mima-ide b24a8d1).  Pasting
+    an empty clipboard does nothing, which is all a disabled Paste would
+    have said. }
+  CanPaste := HasDoc;
 
   actSave.Enabled := HasDoc and (Tab.Document.Modified or Tab.Document.IsUntitled);
   actSaveAs.Enabled := HasDoc;

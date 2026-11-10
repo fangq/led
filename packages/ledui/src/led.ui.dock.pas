@@ -1550,13 +1550,35 @@ begin
   end;
 end;
 
+{ Where a control sits in its window, by its own and its parents' Left
+  and Top, and the window it is in.
+
+  ClientToScreen would answer the same, but each call is a round trip to
+  the X server (gdk_window_get_origin -> XTranslateCoordinates), and the
+  idle pass asks this for every pane: with the window doing nothing, over
+  x2go, that was traffic all the time (mima-ide b24a8d1 measured megabytes
+  a second).  Two controls are only compared when they are in the same
+  window, where these offsets share an origin. }
+function OriginInForm(C: TControl; out Top_: TControl): TPoint;
+begin
+  Result := Point(0, 0);
+  Top_ := C;
+  while C <> nil do
+  begin
+    Inc(Result.X, C.Left);
+    Inc(Result.Y, C.Top);
+    Top_ := C;
+    C := C.Parent;
+  end;
+end;
+
 { Which edge a docked pane is sitting on, read off the layout rather than
   taken from where the pane was registered.
 
   AnchorDocking has no notion of an edge -- a pane is wherever it was
   dropped -- so the only honest answer is where it is in relation to the
-  editor.  Measured in screen coordinates because the two controls are at
-  different depths in the dock tree: a pane can be a direct child of the
+  editor.  Measured from the window's origin because the two controls are
+  at different depths in the dock tree: a pane can be a direct child of the
   dock panel or nested inside another site, and their Lefts are then not
   about the same origin.
 
@@ -1569,14 +1591,16 @@ var
   Site: TAnchorDockHostSite;
   S, C: TPoint;
   SW, SH, CW, CH: Integer;
+  SForm, CForm: TControl;
 begin
   Result := APane.FLastEdge;
   if (FCentreContent = nil) or (not FCentreContent.IsVisible) then Exit;
   Site := DockMaster.GetAnchorSite(APane);
   if (Site = nil) or (Site.Parent = nil) or (not Site.IsVisible) then Exit;
 
-  S := Site.ClientToScreen(Point(0, 0));
-  C := FCentreContent.ClientToScreen(Point(0, 0));
+  S := OriginInForm(Site, SForm);
+  C := OriginInForm(FCentreContent, CForm);
+  if SForm <> CForm then Exit;              // floating in a window of its own
   SW := Site.Width; SH := Site.Height;
   CW := FCentreContent.Width; CH := FCentreContent.Height;
 
