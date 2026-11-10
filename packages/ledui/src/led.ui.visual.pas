@@ -332,6 +332,9 @@ type
       from the slide shown; when it ends, the slide it ended on is the one shown }
     procedure StartSlideShow(FromCurrent: Boolean);
     function IsPresentation: Boolean;
+    { the slide show as a PDF that plays it (ParadeShowPdf): a page for each click, the effects' frames shown by
+      themselves in a viewer's full-screen mode; False, Err why, when it could not be written }
+    function ExportShowPdf(const FileName: string; out Err: string): Boolean;
     property SlideShowForm: TForm read FShowForm;
     { the animation pane (nil before it is made) and whether it is shown }
     property AnimPane: TLedAnimPane read FAnimPane;
@@ -440,7 +443,7 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
-  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg, paradeshow{$ENDIF}
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg, paradeshow, paradeshowpdf{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 {$IFDEF LED_PARADE}
@@ -2837,6 +2840,12 @@ end;
 function TLedVisualPane.IsPresentation: Boolean;
 begin
   Result := (FEdit <> nil) and FEdit.CanvasPage and (FEdit.SlideCount > 0);
+end;
+
+function TLedVisualPane.ExportShowPdf(const FileName: string; out Err: string): Boolean;
+begin
+  Err := 'not a presentation';
+  Result := IsPresentation and ParadeShowToPdf(FEdit, FileName, ShowPdfDefaults, Err);
 end;
 
 procedure TLedVisualPane.StartSlideShow(FromCurrent: Boolean);

@@ -168,6 +168,7 @@ type
     actReopenEncoding: TAction;
     actPageSetup: TAction;
     actPrintPdf: TAction;
+    actExportShowPdf: TAction;
     actExportHtml: TAction;
     actExportOffice: TAction;
     actDelete: TAction;
@@ -404,6 +405,7 @@ type
     procedure actPageSetupExecute(Sender: TObject);
     procedure actPrevTabExecute(Sender: TObject);
     procedure actPrintPdfExecute(Sender: TObject);
+    procedure actExportShowPdfExecute(Sender: TObject);
     procedure actReopenEncodingExecute(Sender: TObject);
     procedure actReportBugExecute(Sender: TObject);
     procedure actShowToolbarExecute(Sender: TObject);
@@ -6689,7 +6691,7 @@ procedure TLedMainForm.ActionList1Update(AAction: TBasicAction;
   var Handled: Boolean);
 var
   Tab: TLedTab;
-  HasDoc, CanPaste, On, UndoOn, RedoOn, CutOn, PasteOn: Boolean;
+  HasDoc, CanPaste, On, On2, UndoOn, RedoOn, CutOn, PasteOn: Boolean;
   Why: string;
   DState: TLedDebugState;
 begin
@@ -6717,6 +6719,13 @@ begin
   if HasDoc and (CurrentVisual <> nil) and CurrentVisual.IsPresentation then
     On := True;    { F5: the slide show (actReloadExecute) }
   {$ENDIF}
+  {$IFDEF LED_PARADE}
+  On2 := HasDoc and (CurrentVisual <> nil) and CurrentVisual.IsPresentation;
+  {$ELSE}
+  On2 := False;
+  {$ENDIF}
+  if actExportShowPdf.Visible <> On2 then
+    actExportShowPdf.Visible := On2;    { (only for a presentation; set only when it changes: see above) }
   actReload.Enabled := On;
   { Only offered where there is something to overrule. }
   actOpenAsText.Enabled := HasDoc and Tab.Document.IsBinary;
@@ -7749,6 +7758,39 @@ begin
   finally
     Dlg.Free;
   end;
+end;
+
+{ a presentation's slide show as a PDF that plays it, for showing where there is no presentation program }
+procedure TLedMainForm.actExportShowPdfExecute(Sender: TObject);
+{$IFDEF LED_PARADE}
+var
+  Dlg: TSaveDialog;
+  Err: string;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE}
+  if Silent or (ActiveTab = nil) or (CurrentVisual = nil) or not CurrentVisual.IsPresentation then Exit;
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title := 'Export Slide Show as Animated PDF';
+    Dlg.Filter := 'PDF files|*.pdf|All files|*';
+    Dlg.DefaultExt := '.pdf';
+    Dlg.Options := Dlg.Options + [ofOverwritePrompt];
+    Dlg.FileName := ChangeFileExt(ExtractFileName(ActiveTab.Document.DisplayName), '') + '-show.pdf';
+    Dlg.InitialDir := LedPrefs.GetStr('Editor/pdf_last_dir', DialogStartDir);
+    if not Dlg.Execute then Exit;
+    LedPrefs.SetStr('Editor/pdf_last_dir', ExtractFilePath(Dlg.FileName));
+    Screen.Cursor := crHourGlass;
+    try
+      if not CurrentVisual.ExportShowPdf(Dlg.FileName, Err) then
+        ReportError('Could not write the slide show: ' + Err);
+    finally
+      Screen.Cursor := crDefault;
+    end;
+  finally
+    Dlg.Free;
+  end;
+  {$ENDIF}
 end;
 
 procedure TLedMainForm.actExportHtmlExecute(Sender: TObject);
