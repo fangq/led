@@ -5867,6 +5867,7 @@ procedure TLedMainForm.CheckExternalChanges;
 var
   Tab: TLedTab;
   Doc: TLedDocument;
+  Why: string;
 begin
   { Only the visible document is checked, and only on focus: polling every
     open file on a timer costs more than it is worth. }
@@ -5887,6 +5888,9 @@ begin
     end
     else
       Doc.Reload;
+    { a PDF's pages made again from the file as it is now }
+    if Tab.PdfMode and (Doc.Bytes <> '') then
+      Tab.ReloadPdf(Why);
     UpdateStatusBar;
   finally
     FCheckingDisk := False;
@@ -6274,6 +6278,11 @@ begin
   begin
     Tab.LeaveVisual;
     ReportError('Visual editor: ' + Why);
+  end;
+  if Tab.PdfMode and not Tab.ReloadPdf(Why) then
+  begin
+    Tab.LeavePdf;
+    ReportError('PDF: ' + Why);
   end;
   UpdateStatusBar;
 end;
