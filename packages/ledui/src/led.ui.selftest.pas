@@ -19481,6 +19481,7 @@ procedure TestOpenPptx(F: TLedMainForm);
 var
   Tab: TLedTab;
   M: string;
+  Files_: TStringList;
   Src, Copy_, Before, Out_, Back, Why: string;
   E: TParadeEdit;
   TW: Integer;
@@ -19499,9 +19500,18 @@ begin
   LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
   Before := LedReadRawFile(Copy_);
   Check('a .pptx is read as pages', LedVisualKindOf(Copy_) = lvkPptx);
-  Tab := F.AddTab(F.Documents.OpenFile(Copy_));
+  Files_ := TStringList.Create;
+  try
+    Files_.Add(Copy_);
+    F.OpenFiles(Files_);     { as File > Open opens it }
+  finally
+    Files_.Free;
+  end;
   Pump;
+  Tab := F.ActiveTab;
   Check('it opens as its slides', (Tab <> nil) and Tab.VisualMode);
+  Check('and is in Open Recent, though the document it opens as is untitled', (F.Recent.Count > 0) and
+    (F.Recent[0] = ExpandFileName(Copy_)));
   Check('an untitled Parade document named as the deck', (Tab <> nil) and Tab.Document.IsUntitled and
     (Tab.Document.DisplayName = ChangeFileExt(ExtractFileName(Copy_), '')) and
     (LedVisualKindOf(Tab.Document.KindName) = lvkPdoc));

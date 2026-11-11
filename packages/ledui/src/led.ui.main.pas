@@ -3398,7 +3398,8 @@ begin
       Tab := AddTab(Doc)
     else
       Tab := FindTabFor(Doc);
-    FRecent.Add(Doc.FileName);
+    { the file asked for: a .pptx opens as an untitled copy, which has no name of its own to remember it by }
+    if Doc.FileName <> '' then FRecent.Add(Doc.FileName) else FRecent.Add(Path);
     { The other way in.  A file named on the command line reaches a tab here
       rather than through OpenFiles, so the report has to be made here too --
       before the explicit line below, which is the user asking for somewhere
@@ -7336,7 +7337,8 @@ begin
       that overwrite each other. }
     if not RevealDocument(Doc) then
       AddTab(Doc);
-    FRecent.Add(Doc.FileName);
+    { the file asked for: a .pptx opens as an untitled copy, which has no name of its own to remember it by }
+    if Doc.FileName <> '' then FRecent.Add(Doc.FileName) else FRecent.Add(AFiles[i]);
     { After the tab exists, because the caret it moves belongs to the view. }
     ReportBJDataFallback(Doc);
   end;
