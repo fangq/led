@@ -20608,6 +20608,131 @@ begin
   RemoveDir(Dir);
 end;
 
+{ A .tex shown set as TeX sets it: its paragraphs justified, long words hyphenated in the language the preamble
+  names, a hyphen at a line's end out in the margin (protrusion).  Read off the lines the preview lays out. }
+procedure TestLatexTypeset(F: TLedMainForm);
+const
+  Words: array[0..11] of string = ('electromagnetic', 'characterization', 'photoacoustic', 'tomographic',
+    'reconstruction', 'computationally', 'heterogeneous', 'illumination', 'spectroscopic', 'interferometry',
+    'microstructures', 'implementations');
+var
+  Dir, Path, Src: string;
+  Tab: TLedTab;
+  V: TLedParadeView;
+  B, Body: pd_block_id;
+  P: PAnsiChar;
+  N: UInt32;
+  Items: array of pd_draw;
+  Count, i, k, NL, Hyphens, LetterLines: Integer;
+  Ys, Rights: array of Int64;
+  Lasts: array of UInt32;
+  LetterMin, LetterMax, HyphenRight: Int64;
+  Piece: string;
+begin
+  Say('a .tex in the preview set as TeX sets it');
+  Check('babel''s language for the patterns', TexLanguage('\documentclass{article}\usepackage[british]{babel}') = 'en_GB');
+  Check('the last of babel''s options its main one, or main=',
+    (TexLanguage('\usepackage[french,ngerman]{babel}') = 'de_DE') and
+    (TexLanguage('\usepackage[main=french,english]{babel}') = 'fr_FR'));
+  Check('the class''s options, which babel takes', TexLanguage('\documentclass[a4paper,ngerman]{article}' + #10 +
+    '\usepackage{babel}') = 'de_DE');
+  Check('polyglossia''s', TexLanguage('\usepackage{polyglossia}\setmainlanguage[variant=british]{english}') = 'en_GB');
+  Check('US English when it names none, as TeX''s own patterns are',
+    TexLanguage('\documentclass[11pt]{article}\begin{document}\usepackage[german]{babel}') = 'en_US');
+  Dir := IncludeTrailingPathDelimiter(TempName('texset'));
+  ForceDirectories(Dir);
+  Path := Dir + 'set.tex';
+  Src := '\documentclass{article}' + #10 + '\usepackage[british]{babel}' + #10 + '\begin{document}' + #10 + 'Start ';
+  for i := 0 to 159 do
+    Src := Src + Words[(i * 7) mod 12] + ' ';
+  Src := Src + 'end.' + #10 + '\end{document}' + #10;
+  WriteBytes(Path, Src);
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Path, ''));
+  Pump; Pump;
+  F.Preview.RenderNow;
+  Pump;
+  V := F.Preview.ParadeView;
+  Body := 0;
+  if (V <> nil) and (V.Doc <> nil) then
+  begin
+    B := pd_doc_next_paragraph(V.Doc, 0);
+    while (B <> 0) and (Body = 0) do
+    begin
+      Piece := '';
+      if (pd_doc_para_text(V.Doc, B, P, N) = 0) and (N > 0) then SetString(Piece, P, N);
+      if Pos('Start ', Piece) = 1 then Body := B;
+      B := pd_doc_next_paragraph(V.Doc, B);
+    end;
+  end;
+  Check('the paragraph is there to look at', Body <> 0);
+  NL := 0;
+  if Body <> 0 then
+  begin
+    Count := 0;
+    pd_layout_page_items(V.Layout, 0, nil, 0, Count);
+    SetLength(Items, Count);
+    if Count > 0 then
+      pd_layout_page_items(V.Layout, 0, @Items[0], Count, Count);
+    { its lines: each one's right edge and the character it ends with }
+    for i := 0 to Count - 1 do
+      if (Items[i].kind = PD_DRAW_GLYPH) and (Items[i].block = Body) and (Items[i].region = 0) then
+      begin
+        k := 0;
+        while (k < NL) and (Abs(Ys[k] - Items[i].y) > 65536) do Inc(k);
+        if k = NL then
+        begin
+          Inc(NL);
+          SetLength(Ys, NL); SetLength(Rights, NL); SetLength(Lasts, NL);
+          Ys[k] := Items[i].y;
+          Rights[k] := Low(Int64);
+        end;
+        if Items[i].x + Items[i].w > Rights[k] then
+        begin
+          Rights[k] := Items[i].x + Items[i].w;
+          Lasts[k] := Items[i].text;
+        end;
+      end;
+  end;
+  Check(Format('it takes lines enough to tell (%d)', [NL]), NL >= 8);
+  Hyphens := 0;
+  LetterLines := 0;
+  LetterMin := High(Int64);
+  LetterMax := Low(Int64);
+  HyphenRight := Low(Int64);
+  for k := 0 to NL - 2 do      { (not the last, which is not filled out) }
+    if Lasts[k] = Ord('-') then
+    begin
+      Inc(Hyphens);
+      if Rights[k] > HyphenRight then HyphenRight := Rights[k];
+    end
+    else if Chr(Lasts[k] and $7F) in ['a'..'z'] then
+    begin
+      Inc(LetterLines);
+      if Rights[k] < LetterMin then LetterMin := Rights[k];
+      if Rights[k] > LetterMax then LetterMax := Rights[k];
+    end;
+  Check(Format('justified: the lines that end in a letter end together (%d of them, within %.2f pt)',
+    [LetterLines, (LetterMax - LetterMin) / 65536]), (LetterLines >= 3) and (LetterMax - LetterMin <= 65536 div 2));
+  if FileExists('/usr/share/hyphen/hyph_en_GB.dic') then
+  begin
+    Check(Format('long words hyphenated at a line''s end (%d lines of %d)', [Hyphens, NL]), Hyphens >= 1);
+    if Hyphens = 0 then HyphenRight := LetterMax;
+    Check(Format('and the hyphen out in the margin, protruded (%.2f pt past the letters)',
+      [(HyphenRight - LetterMax) / 65536]), (Hyphens >= 1) and (HyphenRight - LetterMax > 65536 div 2));
+  end
+  else
+    Say('  (no en_GB hyphenation patterns on this system: the hyphen checks skipped)');
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  F.Dock.HidePane('preview');
+  Pump;
+  DeleteFile(Path);
+  RemoveDir(Dir);
+end;
+
 { The Outline pane for a PDF: its bookmarks, nested, in order; one double-clicked goes to its page. }
 procedure TestPdfBookmarks(F: TLedMainForm);
 var
@@ -21296,6 +21421,7 @@ begin
   end;
   if LedVisualAvailable then
     TestLatexPreview(F);
+    TestLatexTypeset(F);
   {$ENDIF}
   TestLatexOutline(F);
   TestVisualShapeTab(F);
