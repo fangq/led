@@ -1881,6 +1881,13 @@ begin
       P.Ellipse(1.5, 3, 14.5, 13);
     'pdfline':
       P.Line(2.5, 13.5, 13.5, 2.5);
+    'pdfpresent':
+      begin   { a screen on its stand, a play mark on it }
+        P.Box(1, 2, 15, 11.5);
+        P.Line(8, 11.5, 8, 14);
+        P.Line(5, 14.5, 11, 14.5);
+        P.Poly([6.5, 4.5, 10.5, 6.8, 6.5, 9, 6.5, 4.5], True);
+      end;
     'pdfarrow':
       begin
         P.Line(2.5, 13.5, 12, 4);
