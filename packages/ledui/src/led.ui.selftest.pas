@@ -37,7 +37,7 @@ uses
   Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
-  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
+  Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.Ruler, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
   Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
@@ -17630,6 +17630,113 @@ end;
 
 {$IFDEF LED_PARADE}
 type
+  TLedRulerHand = class(TLedRuler);    { its mouse, as a hand moves it }
+
+{ The ruler above the page: the margins where the page's are, and the paragraph's indents and tabs moved by
+  dragging them -- the left indent's box half an inch in, the first line a quarter inch on from it, the right indent
+  half an inch in; a click two inches in a left tab there; that tab dragged off the ruler gone. }
+procedure TestVisualRuler(F: TLedMainForm);
+var
+  Md, Why: string;
+  Tab: TLedTab;
+  P: TParadeEdit;
+  R: TLedRuler;
+  K: Double;
+  Pg: Int32;
+  X0, Base, Asc, Desc: pd_sp;
+  PP: pd_para_props;
+  X: Integer;
+  SP: pd_section_props;
+
+  procedure Drag(FromX, ToX, Y, ToY: Integer);
+  begin
+    TLedRulerHand(R).MouseDown(mbLeft, [], FromX, Y);
+    TLedRulerHand(R).MouseMove([ssLeft], (FromX + ToX) div 2, Y);
+    TLedRulerHand(R).MouseMove([ssLeft], ToX, ToY);
+    TLedRulerHand(R).MouseUp(mbLeft, [], ToX, ToY);
+    Pump;
+  end;
+
+  function Pts(V: pd_sp): Double;
+  begin
+    Result := V / PD_SP_PER_PT;
+  end;
+
+begin
+  Say('the ruler above the page');
+  Md := IncludeTrailingPathDelimiter(TempName('ruler')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page, a paragraph to indent and to set tabs in.'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump; Pump;
+  P := Tab.Visual.Page;
+  R := TLedRuler(Tab.Visual.FindComponent('PageRuler'));
+  Check('a ruler above the page', (R <> nil) and R.Visible and (R.Top < P.Top));
+  if R = nil then
+    Exit;
+  P.GoToPos(PdPos(pd_doc_next_paragraph(P.Doc, 0), 3));
+  Pump;
+  pd_layout_caret(P.Layout, P.CaretPos, Pg, X0, Base, Asc, Desc);
+  K := (P.PageToClient(Pg, 72, 0).X - P.PageToClient(Pg, 0, 0).X) / 72;
+  SP := P.CurrentSectionProps;
+  Check(Format('its white where the page''s text is: from the left margin (%d, page''s %d)', [R.TextLeft,
+    P.PageToClient(Pg, Pts(SP.margin_left), 0).X + P.Left - R.Left]),
+    Abs(R.TextLeft - (P.PageToClient(Pg, Pts(SP.margin_left), 0).X + P.Left - R.Left)) <= 1);
+  PP := P.CurrentParaProps;
+  Check('the indents where the paragraph has them', (Abs(R.MarkerX(rgHanging) - (R.TextLeft +
+    Round(Pts(PP.indent_left) * K))) <= 1) and (Abs(R.MarkerX(rgRight) - (R.TextRight -
+    Round(Pts(PP.indent_right) * K))) <= 1));
+
+  X := R.MarkerX(rgLeftBox);
+  Drag(X, X + Round(36 * K), R.Height - 2, R.Height - 2);
+  PP := P.CurrentParaProps;
+  Check(Format('the left indent''s box half an inch in: 36pt (%.1f), the first line with it (%.1f)',
+    [Pts(PP.indent_left), Pts(PP.indent_left + PP.indent_first)]), (Abs(Pts(PP.indent_left) - 36) < 0.6) and
+    (Abs(Pts(PP.indent_first)) < 0.6));
+  X := R.MarkerX(rgFirst);
+  Drag(X, X + Round(18 * K), 2, 2);
+  PP := P.CurrentParaProps;
+  Check(Format('the first line a quarter inch on: 18pt more (%.1f), the left indent kept (%.1f)',
+    [Pts(PP.indent_first), Pts(PP.indent_left)]), (Abs(Pts(PP.indent_first) - 18) < 0.6) and
+    (Abs(Pts(PP.indent_left) - 36) < 0.6));
+  X := R.MarkerX(rgRight);
+  Drag(X, X - Round(36 * K), R.Height - 8, R.Height - 8);
+  PP := P.CurrentParaProps;
+  Check(Format('the right indent half an inch in (%.1f)', [Pts(PP.indent_right)]), Abs(Pts(PP.indent_right) - 36) < 0.6);
+
+  X := R.TextLeft + Round(144 * K);
+  Drag(X, X, R.Height div 2, R.Height div 2);
+  PP := P.CurrentParaProps;
+  Check(Format('a click two inches in: a left tab there (%d tabs, the first at %.1f)', [PP.ntabs,
+    IfThen(PP.ntabs > 0, Pts(PP.tabs[0].position), -1)]), (PP.ntabs = 1) and
+    (Abs(Pts(PP.tabs[0].position) - 144) < 0.6) and (PP.tabs[0].align = PD_TAB_LEFT));
+  if PP.ntabs = 1 then
+  begin
+    X := R.MarkerX(rgTab, 0);
+    Drag(X, X, R.Height - 4, R.Height + 60);
+    PP := P.CurrentParaProps;
+    CheckEqInt('dragged off the ruler: gone', 0, PP.ntabs);
+  end;
+  P.Undo;
+  Pump;
+  CheckEqInt('and back with undo', 1, P.CurrentParaProps.ntabs);
+
+  Tab.LeaveVisual;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+end;
+{$ENDIF}
+
+{$IFDEF LED_PARADE}
+type
   TLedCtxEdit = class(TParadeEdit);   { DoContextPopup, as a right click calls it }
 
 { The right button's menu is made for what it is on: a picture's crop, wrap and size and none of the text's dialogs;
@@ -20402,6 +20509,10 @@ begin
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualZoomBar(F);
+  {$ENDIF}
+  {$IFDEF LED_PARADE}
+  if LedVisualAvailable then
+    TestVisualRuler(F);
   {$ENDIF}
   TestVisualShapeTab(F);
   TestStatusCounts(F);
