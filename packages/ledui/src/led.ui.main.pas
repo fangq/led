@@ -6803,6 +6803,7 @@ begin
     case ActiveTab.Visual.Kind of
       lvkMarkdown: StatusBar1.Panels[3].Text := 'Visual (Markdown)';
       lvkHtml: StatusBar1.Panels[3].Text := 'Visual (HTML)';
+      lvkLatex: StatusBar1.Panels[3].Text := 'Visual (LaTeX, read only)';
       lvkDocx: StatusBar1.Panels[3].Text := 'Visual (Word)';
       lvkPdoc: StatusBar1.Panels[3].Text := 'Visual (Parade)';
       lvkJdoc: StatusBar1.Panels[3].Text := 'Visual (Parade JSON)';

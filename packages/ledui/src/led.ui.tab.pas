@@ -389,7 +389,7 @@ begin
   if not CanVisual then
   begin
     if LedVisualKindOf(FDocument.KindName) = lvkNone then
-      AWhy := 'the visual editor opens Markdown, HTML, Word (.docx) and Parade (.pdoc, .jdoc) files'
+      AWhy := 'the visual editor opens Markdown, HTML, LaTeX (.tex), Word (.docx) and Parade (.pdoc, .jdoc) files'
     else
       AWhy := 'the file is not open as what its name says it is';
     Exit;
@@ -565,6 +565,7 @@ begin
     Exit;
   end;
   if FVisual = nil then Exit;
+  if FVisual.Kind = lvkLatex then Exit;   { shown, not edited: the .tex as it is stays the file }
   Data := FVisual.Export;
   if LedVisualKindIsBinary(FVisual.Kind) then
     FDocument.TakeVisualBytes(Data)
