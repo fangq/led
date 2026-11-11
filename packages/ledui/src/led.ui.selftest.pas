@@ -20476,6 +20476,8 @@ var
   A, B: TPoint;
   Ann: pd_pdfr_annot;
   WasZoom: Int64;
+  PX0, PY0: Double;
+  K: Integer;
   Slider: TComponent;
 
   function Obj(K: Integer; const S: string): string;
@@ -20643,6 +20645,32 @@ begin
     Pump;
     Content := PdfCharsText(PdfPageChars(P.Pdf, 0), 0, MaxInt);
     Check('Undo brings the old text back', (Pos('Hello PDF pages', Content) > 0) and (Pos('One paragraph', Content) = 0));
+
+    { the paragraph selected again and dragged: its text moves with the mouse, each letter as it was }
+    V.MouseDown(mbLeft, [ssTriple], A.X, A.Y);
+    V.MouseUp(mbLeft, [], A.X, A.Y);
+    Pump;
+    C := PdfPageChars(P.Pdf, 0);
+    PX0 := C[0].x0;
+    PY0 := C[0].y0;
+    V.MouseDown(mbLeft, [], A.X, A.Y);
+    V.MouseMove([ssLeft], A.X + 15, A.Y + 20);
+    V.MouseMove([ssLeft], A.X + 30, A.Y + 40);
+    V.MouseUp(mbLeft, [], A.X + 30, A.Y + 40);
+    Pump;
+    C := PdfPageChars(P.Pdf, 0);
+    K := -1;
+    for i := 0 to High(C) do
+      if (C[i].cp = Ord('H')) and (K < 0) then K := i;
+    Check(Format('dragged, the paragraph''s text moves with the mouse (%.1f, %.1f)',
+      [IfThen(K >= 0, C[Max(K, 0)].x0 - PX0, -1), IfThen(K >= 0, C[Max(K, 0)].y0 - PY0, -1)]),
+      (K >= 0) and (Abs(C[K].x0 - PX0 - 30 / P.Scale) < 0.05) and (Abs(C[K].y0 - PY0 - 40 / P.Scale) < 0.05));
+    Content := PdfCharsText(C, 0, MaxInt);
+    Check('the same text', (Pos('Hello PDF pages', Content) > 0) and (Pos('Second line here', Content) > 0));
+    F.actUndo.Execute;
+    Pump;
+    C := PdfPageChars(P.Pdf, 0);
+    Check('Undo puts it back', (Length(C) > 0) and (Abs(C[0].x0 - PX0) < 0.05) and (Abs(C[0].y0 - PY0) < 0.05));
   end;
 
   Doc.Master.Modified := False;

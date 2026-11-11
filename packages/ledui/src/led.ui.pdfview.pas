@@ -103,6 +103,7 @@ type
     { an annotation picked (Delete, drag, colour) }
     FAnnPage, FAnnIndex: Integer;
     FDragAnn: Boolean;
+    FMoveText: Boolean;             { the selection being dragged to a new place (FDragStart..FDragNow) }
     FDragStart, FDragNow: TPoint;
     { a shape, box or ink being drawn }
     FDrawing: Boolean;
@@ -177,6 +178,7 @@ type
     function BlockAt(APage, AChar: Integer): Integer;
     procedure BlockRange(APage, ABlock: Integer; ASkipMark: Boolean; out AFrom, ATo: Integer);
     function EditableText(APage, AFrom, ATo: Integer): string;
+    function OnSelection(APage: Integer; PX, PY: Double): Boolean;
     procedure MenuEditParagraph(Sender: TObject);
     procedure ViewKey(var Key: Word; Shift: TShiftState);
   public
@@ -213,6 +215,8 @@ type
     function SelectionEditText: string;
     { the selection written again as AText (a '\n' a new line); False if it could not be }
     function ReplaceSelection(const AText: string): Boolean;
+    { the selection moved by (DX, DY) points on the page (y down), each glyph as it was; False if it could not be }
+    function MoveSelection(DX, DY: Double): Boolean;
     property Tool: TLedPdfTool read FTool write SetTool;
     property Scale: Double read FScale;
     property View: TLedPdfView read FView;
@@ -764,7 +768,7 @@ begin
     step of the wheel is a screenful of pixels sent again, slow over a remote display (x2go, ssh -X). A shape
     being drawn or an annotation dragged is in window coordinates, and is drawn whole }
   if (DX = 0) and (DY = 0) then
-  else if FView.HandleAllocated and FView.IsVisible and not FDrawing and not FDragAnn and
+  else if FView.HandleAllocated and FView.IsVisible and not FDrawing and not FDragAnn and not FMoveText and
      (Abs(DX) < FView.ClientWidth) and (Abs(DY) < FView.ClientHeight) and
      ScrollWindowEx(FView.Handle, -DX, -DY, nil, nil, 0, nil, SW_INVALIDATE) then
   else
@@ -1236,6 +1240,12 @@ var
   {$ENDIF}
   P0, P1: TPoint;
   Tinted: Boolean;
+  {$IFDEF LED_PARADE}
+  Ls: TLedPdfSpanArray;
+  Cs: TLedPdfCharArray;
+  j: Integer;
+  MX0, MX1: Double;
+  {$ENDIF}
 begin
   {$IFDEF LED_PARADE}
   if FPdf = nil then Exit;
@@ -1311,6 +1321,36 @@ begin
     C.Pen.Style := psDash;
     C.Pen.Width := 1;
     C.Rectangle(P0.X - 3, P0.Y - 3, P1.X + 3, P1.Y + 3);
+    C.Pen.Style := psSolid;
+    C.Brush.Style := bsSolid;
+  end;
+
+  { the selection being moved: its lines' outlines where they are going }
+  if FMoveText and (FSelPage = APage) then
+  begin
+    Ls := Lines(APage);
+    Cs := Chars(APage);
+    C.Brush.Style := bsClear;
+    C.Pen.Color := RGBToColor(0, 90, 220);
+    C.Pen.Style := psDash;
+    C.Pen.Width := 1;
+    for i := 0 to High(Ls) do
+    begin
+      if (Ls[i].end_ <= FSelA) or (Ls[i].first >= FSelB) then Continue;
+      MX0 := 1e30;
+      MX1 := -1e30;
+      for j := Max(FSelA, Ls[i].first) to Min(FSelB, Ls[i].end_) - 1 do
+        if (Cs[j].flags = 0) and (Cs[j].cp <> 32) then
+        begin
+          MX0 := Min(MX0, Cs[j].x0);
+          MX1 := Max(MX1, Cs[j].x1);
+        end;
+      if MX1 < MX0 then Continue;
+      P0 := ToView(APage, MX0, Ls[i].y0);
+      P1 := ToView(APage, MX1, Ls[i].y1);
+      C.Rectangle(P0.X + FDragNow.X - FDragStart.X, P0.Y + FDragNow.Y - FDragStart.Y,
+        P1.X + FDragNow.X - FDragStart.X, P1.Y + FDragNow.Y - FDragStart.Y);
+    end;
     C.Pen.Style := psSolid;
     C.Brush.Style := bsSolid;
   end;
@@ -2065,6 +2105,15 @@ begin
           FAnnPage := -1;
           Exit;
         end;
+        { on the selection: dragged, it moves there }
+        if not (ssDouble in Shift) and OnSelection(Page, PX, PY) then
+        begin
+          FMoveText := True;
+          FDragStart := Point(X, Y);
+          FDragNow := FDragStart;
+          FAnnPage := -1;
+          Exit;
+        end;
         { a form field }
         Fi := pd_pdfr_field_at(FPdf, Page, PX, PY);
         if (Fi >= 0) and (pd_pdfr_field_get(FPdf, Fi, F) = 0) and (F.readonly = 0) then
@@ -2174,7 +2223,7 @@ begin
     else if Y > FView.ClientHeight then FVBar.Position := FVBar.Position + 20;
     Exit;
   end;
-  if FDragAnn then
+  if FDragAnn or FMoveText then
   begin
     FDragNow := Point(X, Y);
     FView.Invalidate;
@@ -2191,13 +2240,19 @@ begin
     FView.Invalidate;
     Exit;
   end;
-  { the pointer: a hand over a link, a beam over text }
+  { the pointer: a hand over a link, a beam over text, the move cross over the selection }
   if FTool = ptSelect then
   begin
     Page := PageAt(X, Y, PX, PY);
     if Page < 0 then
     begin
       FView.Cursor := crDefault;
+      Exit;
+    end;
+    if OnSelection(Page, PX, PY) then
+    begin
+      FView.Cursor := crSizeAll;
+      FView.Hint := 'Drag to move the selected text';
       Exit;
     end;
     A := pd_pdfr_annot_at(FPdf, Page, PX, PY);
@@ -2257,6 +2312,23 @@ begin
       end;
       MarkSelection(Kind);
     end;
+    Exit;
+  end;
+  if FMoveText then
+  begin
+    FMoveText := False;
+    if (Abs(X - FDragStart.X) > 2) or (Abs(Y - FDragStart.Y) > 2) then
+    begin
+      if not MoveSelection((X - FDragStart.X) / FScale, (Y - FDragStart.Y) / FScale) then
+        MessageDlg('Move Text', 'This text cannot be moved: it is drawn from a part of the page that cannot be ' +
+          'changed here.', mtWarning, [mbOK], 0);
+    end
+    else
+    begin   { a click on the selection, not a drag: it goes, the caret's place a new start }
+      FSelPage := -1;
+      Status;
+    end;
+    FView.Invalidate;
     Exit;
   end;
   if FDragAnn then
@@ -2397,6 +2469,51 @@ function TLedPdfPane.SelectionEditText: string;
 begin
   Result := '';
   if SelAvail then Result := EditableText(FSelPage, FSelA, FSelB);
+end;
+
+function TLedPdfPane.MoveSelection(DX, DY: Double): Boolean;
+begin
+  Result := False;
+  {$IFDEF LED_PARADE}
+  if not SelAvail then Exit;
+  Result := pd_pdfr_move_text(FPdf, FSelPage, FSelA, FSelB, DX, DY) = 0;
+  if Result then
+  begin
+    FSelPage := -1;
+    Changed;
+  end;
+  {$ENDIF}
+end;
+
+{ a point of a page on the selection: in the band of one of its lines }
+function TLedPdfPane.OnSelection(APage: Integer; PX, PY: Double): Boolean;
+{$IFDEF LED_PARADE}
+var
+  Ls: TLedPdfSpanArray;
+  C: TLedPdfCharArray;
+  k, i: Integer;
+  X0, X1: Double;
+{$ENDIF}
+begin
+  Result := False;
+  {$IFDEF LED_PARADE}
+  if not SelAvail or (APage <> FSelPage) then Exit;
+  Ls := Lines(APage);
+  C := Chars(APage);
+  for k := 0 to High(Ls) do
+  begin
+    if (Ls[k].end_ <= FSelA) or (Ls[k].first >= FSelB) or (PY < Ls[k].y0) or (PY > Ls[k].y1) then Continue;
+    X0 := 1e30;
+    X1 := -1e30;
+    for i := Max(FSelA, Ls[k].first) to Min(FSelB, Ls[k].end_) - 1 do
+      if (C[i].flags = 0) and (C[i].cp <> 32) then
+      begin
+        X0 := Min(X0, C[i].x0);
+        X1 := Max(X1, C[i].x1);
+      end;
+    if (PX >= X0) and (PX <= X1) then Exit(True);
+  end;
+  {$ENDIF}
 end;
 
 function TLedPdfPane.ReplaceSelection(const AText: string): Boolean;
