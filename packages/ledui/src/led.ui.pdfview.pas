@@ -23,7 +23,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms, Dialogs, LCLType, LCLIntf, Menus, ComCtrls,
-  Buttons, Types, IntfGraphics, GraphType
+  Buttons, Types, IntfGraphics, GraphType, ImgList
   {$IFDEF LED_PARADE}, paradepdf{$ENDIF};
 
 { a file the PDF pages open: its name says so }
@@ -67,6 +67,7 @@ type
     FView: TLedPdfView;
     FVBar, FHBar: TScrollBar;
     FTools: TToolBar;
+    FToolImages: TImageList;
     FToolButtons: array[TLedPdfTool] of TToolButton;
     FColorBtn: TColorButton;
     FZoomBox: TComboBox;
@@ -231,7 +232,7 @@ type
 implementation
 
 uses
-  Clipbrd, Math, StrUtils, Led.UI.Dpi, Led.Core.Prefs;
+  Clipbrd, Math, StrUtils, Led.UI.Dpi, Led.Core.Prefs, Led.UI.Icons;
 
 { the zoom slider's positions: 0..100 is 10%..100%, 100..200 is 100%..500%, as under a Word document }
 function SliderToZoom(V: Integer): Double;
@@ -474,7 +475,11 @@ procedure TLedPdfPane.BuildTools;
 const
   Names: array[TLedPdfTool] of string = ('Select', 'Highlight', 'Underline', 'Strike', 'Squiggly', 'Note',
     'Text Box', 'Draw', 'Rectangle', 'Ellipse', 'Line', 'Arrow');
-  Hints: array[TLedPdfTool] of string = ('Select text, links, form fields and annotations',
+  { the ribbon's own pictures where it has them (highlight, underline, strike), drawn ones in its style else }
+  Icons: array[TLedPdfTool] of string = ('pdfselect', 'highlight', 'fmtunderline', 'fmtstrike', 'pdfsquiggly',
+    'pdfnote', 'pdftextbox', 'pdfink', 'pdfrect', 'pdfellipse', 'pdfline', 'pdfarrow');
+  Hints: array[TLedPdfTool] of string = ('Select text (a third click: a paragraph; drag the selection to move it), ' +
+    'links, form fields and annotations',
     'Highlight text: drag over it', 'Underline text', 'Strike text out', 'A wavy underline',
     'A sticky note: click where it goes', 'A box of text: drag it out', 'Draw freehand',
     'A rectangle: drag it out', 'An ellipse: drag it out', 'A line: drag it out', 'An arrow: drag it out');
@@ -482,21 +487,32 @@ var
   T: TLedPdfTool;
   B: TToolButton;
   Sep: TToolButton;
+  IconNames: array[0..Ord(High(TLedPdfTool))] of string;
 begin
   FTools := TToolBar.Create(Self);
   FTools.Parent := Self;
   FTools.Align := alTop;
-  FTools.ShowCaptions := True;
-  FTools.List := True;
+  FToolImages := TImageList.Create(Self);
+  FToolImages.Width := LedScale96(20);
+  FToolImages.Height := LedScale96(20);
+  for T := Low(TLedPdfTool) to High(TLedPdfTool) do
+    IconNames[Ord(T)] := Icons[T];
+  LedBuildIconList(FToolImages, IconNames, clBtnText);
+  FTools.Images := FToolImages;
+  FTools.ShowCaptions := False;
+  FTools.ButtonWidth := LedScale96(28);
+  FTools.ButtonHeight := LedScale96(28);
   FTools.AutoSize := True;
   FTools.EdgeBorders := [];
+  LedStyleToolBar(FTools);
   for T := Low(TLedPdfTool) to High(TLedPdfTool) do
   begin
     B := TToolButton.Create(FTools);
     B.Left := 1000 * (Ord(T) + 1);
     B.Parent := FTools;
     B.Caption := Names[T];
-    B.Hint := Hints[T];
+    B.ImageIndex := Ord(T);
+    B.Hint := Names[T] + ': ' + Hints[T];
     B.ShowHint := True;
     B.Style := tbsCheck;
     B.Tag := Ord(T);

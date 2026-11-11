@@ -1841,6 +1841,51 @@ begin
         P.Box(1.5, 12.5, 14.5, 15, True);
         P.Colour(AColour);
       end;
+    { the PDF view's tools }
+    'pdfselect':
+      begin   { the pointer }
+        P.Poly([3.5, 1.5, 3.5, 13, 6.3, 10.3, 8.6, 14.8, 10.6, 13.8, 8.4, 9.4, 12.3, 9.4, 3.5, 1.5]);
+      end;
+    'pdfsquiggly':
+      begin   { a U over a wavy line }
+        P.Poly([4.5, 1.5, 4.5, 7.5, 6, 9.5, 10, 9.5, 11.5, 7.5, 11.5, 1.5]);
+        P.Colour(clRed);
+        P.Poly([1.5, 13.5, 3.5, 11.8, 5.5, 13.5, 7.5, 11.8, 9.5, 13.5, 11.5, 11.8, 13.5, 13.5, 14.5, 12.6]);
+        P.Colour(AColour);
+      end;
+    'pdfnote':
+      begin   { a sticky note, its corner folded, lines of writing on it }
+        P.Colour($0040D0F8);
+        P.Poly([2, 2, 14, 2, 14, 10, 10, 14, 2, 14, 2, 2], True);
+        P.Colour(AColour);
+        P.Poly([2, 2, 14, 2, 14, 10, 10, 14, 2, 14, 2, 2]);
+        P.Poly([10, 14, 10, 10, 14, 10]);
+        P.Line(4.5, 5.5, 11.5, 5.5);
+        P.Line(4.5, 8, 9, 8);
+      end;
+    'pdftextbox':
+      begin   { a box with a T in it }
+        P.Box(1.5, 2, 14.5, 14);
+        P.Line(4.5, 5, 11.5, 5);
+        P.Line(8, 5, 8, 11.5);
+      end;
+    'pdfink':
+      begin   { a pencil and the stroke it drew }
+        P.Poly([11, 1.5, 14.5, 5, 7, 12.5, 3.5, 12.5, 3.5, 9, 11, 1.5]);
+        P.Line(9.5, 3, 13, 6.5);
+        P.Poly([1, 15, 3.5, 13.5, 6, 14.5, 9, 13.8, 12, 15]);
+      end;
+    'pdfrect':
+      P.Box(1.5, 3.5, 14.5, 12.5);
+    'pdfellipse':
+      P.Ellipse(1.5, 3, 14.5, 13);
+    'pdfline':
+      P.Line(2.5, 13.5, 13.5, 2.5);
+    'pdfarrow':
+      begin
+        P.Line(2.5, 13.5, 12, 4);
+        P.Poly([14, 2, 7.5, 3.6, 12.4, 8.5, 14, 2], True);
+      end;
   end;
 end;
 
