@@ -6533,6 +6533,8 @@ end;
 procedure TLedMainForm.VisualStatusChange(Sender: TObject);
 begin
   if (ActiveTab <> nil) and ActiveTab.VisualMode and (Sender = ActiveTab.Visual) then
+    UpdateStatusBar
+  else if (ActiveTab <> nil) and ActiveTab.PdfMode and (Sender = ActiveTab.Pdf) then
     UpdateStatusBar;
 end;
 
