@@ -19940,6 +19940,62 @@ begin
   {$ENDIF}
 end;
 
+{ A .tex file's citations numbered from the .bib beside it, as BibTeX and the style would: the list made of the
+  entries cited, in the order cited; biblatex's \addbibresource put in at \printbibliography; with no .bib, the
+  .bbl BibTeX last wrote. The .tex is read through the same loader the Visual Editor uses. }
+procedure TestLatexBibliography;
+var
+  Dir, Tex, Why, T: string;
+  P: TLedVisualPane;
+
+  function Shown(const Source: string): string;
+  begin
+    Result := '';
+    WriteBytes(Tex, Source);
+    P := TLedVisualPane.Create(nil);
+    try
+      if P.Load(LedReadRawFile(Tex), lvkLatex, Tex, Why) then
+        Result := P.PlainText;
+    finally
+      P.Free;
+    end;
+  end;
+
+begin
+  Say('LaTeX bibliography');
+  if not LedVisualAvailable then
+  begin
+    WriteLn('  (built without Parade; nothing to check)');
+    Exit;
+  end;
+  Dir := IncludeTrailingPathDelimiter(TempName('bib'));
+  ForceDirectories(Dir);
+  Tex := Dir + 'paper.tex';
+  WriteBytes(Dir + 'refs.bib',
+    '@article{late, author = {Zed, Zoe}, title = {Cited Second}, journal = {J. Opt.}, year = 2020}'#10 +
+    '@book{early, author = {Ann Alpha}, title = {Cited First}, publisher = {P}, year = 1999}'#10 +
+    '@misc{never, title = {Not Cited}}'#10);
+  T := Shown('\documentclass{article}\begin{document}'#10'See \cite{early} and \cite{late}.'#10 +
+    '% \bibliography{nothere}'#10'\bibliographystyle{unsrt}\bibliography{refs}'#10'\end{document}'#10);
+  Check('a citation is numbered from the .bib beside the .tex', Pos('See [1] and [2].', T) > 0);
+  Check('the list has the cited entries, in the order cited',
+    (Pos('[1] Ann'#$C2#$A0'Alpha. Cited First.', T) > 0) and (Pos('[2] Zoe'#$C2#$A0'Zed. Cited Second.', T) > 0));
+  Check('and not the one never cited', Pos('Not Cited', T) = 0);
+  T := Shown('\documentclass{article}\usepackage[sorting=none]{biblatex}\addbibresource{refs.bib}'#10 +
+    '\begin{document}'#10'See \cite{late}.'#10'{\printbibliography}'#10'\end{document}'#10);
+  Check('biblatex''s \addbibresource is put in at \printbibliography',
+    (Pos('See [1].', T) > 0) and (Pos('[1] Zoe'#$C2#$A0'Zed.', T) > 0));
+  DeleteFile(Dir + 'refs.bib');
+  WriteBytes(Dir + 'paper.bbl', '\begin{thebibliography}{1}'#10'\bibitem{late} Z. Zed, from the bbl.'#10 +
+    '\end{thebibliography}'#10);
+  T := Shown('\documentclass{article}\begin{document}'#10'See \cite{late}.'#10'\bibliography{refs}'#10 +
+    '\end{document}'#10);
+  Check('with no .bib, the .bbl BibTeX wrote', (Pos('See [1].', T) > 0) and (Pos('Z. Zed, from the bbl.', T) > 0));
+  DeleteFile(Dir + 'paper.bbl');
+  DeleteFile(Tex);
+  RemoveDir(Dir);
+end;
+
 procedure TestVisualEditor(F: TLedMainForm);
 var
   Dir, Md, Docx, Why, Original, Saved: string;
@@ -20893,6 +20949,7 @@ begin
   TestDropFiles(F);
   WriteLn;
   TestVisualEditor(F);
+  TestLatexBibliography;
   TestVisualLineBreaking(F);
   TestParadeFiles(F);
   TestTabHoverClosePref(F);
