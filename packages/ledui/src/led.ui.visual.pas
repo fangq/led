@@ -79,6 +79,10 @@ type
     FBulletBtn, FNumberBtn: TSpeedButton;
     FAlignBtns: array[0..3] of TSpeedButton;
     FColorMenu, FHighlightMenu, FSpacingMenu, FListMenu, FPageMenu: TPopupMenu;
+    {$IFDEF LED_PARADE}
+    FCtx: TParadeContext;       { what the menu showing was made for }
+    FCtxPoint: TPoint;
+    {$ENDIF}
     FTextColor, FHighlightColor: Integer;   { $RRGGBB the colour buttons put on; -1: automatic / none }
     FTextTheme: Integer;                    { or the theme's colour: slot * 10 + its tint or shade; -1: FTextColor }
     FThemeColorItems: array of TMenuItem;   { the font colour menu's theme colours, drawn as the theme is now }
@@ -297,6 +301,13 @@ type
     procedure StylesDialogClicked(Sender: TObject);
     procedure PageMenuClicked(Sender: TObject);
     procedure EditCommentText(Id: pd_comment_id);
+    { the right button's menu, made for what the click is on (TParadeEdit.ContextAt): a picture's, a line's, a
+      table's, a comment's, a field's ... and the text's own last }
+    procedure PageContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
+    procedure BuildPageMenu(const C: TParadeContext);
+    procedure ContextItemClicked(Sender: TObject);
+    procedure CropDialog;
+    procedure ObjectSizeDialog;
     {$ENDIF}
     procedure MarkupChosen(Sender: TObject);
     procedure BackToPage;
@@ -444,8 +455,9 @@ implementation
 
 uses
   Led.UI.EditKeys, Led.UI.Dpi, Led.UI.Icons, Led.UI.Focus, Led.Core.Prefs, Math, StrUtils, IntfGraphics, GraphType, FPImage
-  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg, paradeshow, paradeshowpdf{$ENDIF}
-  {$IFDEF LED_PARADE_SYNC}, IniFiles, Clipbrd, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
+  {$IFDEF LED_PARADE}, fpjson, jsonparser, ctypes, Led.Core.FileIO, Led.UI.FormatDlg, paradeshow, paradeshowpdf, Clipbrd,
+  DateUtils{$ENDIF}
+  {$IFDEF LED_PARADE_SYNC}, IniFiles, Led.Core.Paths{$IFDEF UNIX}, BaseUnix, Unix{$ENDIF}{$ENDIF};
 
 {$IFDEF LED_PARADE}
 type
@@ -843,6 +855,7 @@ begin
       Free;
     end;
   FEdit.PopupMenu := FPageMenu;
+  TLedPageKeys(FEdit).OnContextPopup := @PageContextPopup;
   FEdit.OnResize := @EditResized;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
@@ -5080,6 +5093,528 @@ begin
     Result := False;
   end;
 end;
+
+{$IFDEF LED_PARADE}
+{ ---- the right button's menu ---- }
+
+const
+  CtxColours: array[0..9] of Integer = ($FFFFFF, $000000, $4472C4, $ED7D31, $A5A5A5, $FFC000, $5B9BD5, $70AD47,
+    $C00000, $7030A0);
+  CtxColourNames: array[0..9] of string = ('White', 'Black', 'Blue', 'Orange', 'Grey', 'Gold', 'Light blue', 'Green',
+    'Dark red', 'Purple');
+  CtxShades: array[0..6] of Integer = ($D9E2F3, $E2EFD9, $FFF2CC, $FBE4D5, $EDEDED, $BDD7EE, $C5E0B3);
+  CtxShadeNames: array[0..6] of string = ('Light blue', 'Light green', 'Light yellow', 'Light orange', 'Light grey',
+    'Blue', 'Green');
+  { ContextItemClicked's tags }
+  ctxDelete = 1000; ctxCrop = 1001; ctxResetCrop = 1002; ctxSize = 1003;
+  ctxEditComment = 1010; ctxReply = 1011; ctxResolve = 1012; ctxDeleteComment = 1013;
+  ctxAccept = 1020; ctxReject = 1021; ctxPrevChange = 1022; ctxNextChange = 1023;
+  ctxOpenLink = 1030; ctxEditLink = 1031; ctxCopyLink = 1032; ctxRemoveLink = 1033;
+  ctxSelectField = 1040; ctxFieldTarget = 1041; ctxUpdateToc = 1042; ctxCopyFieldCode = 1043;
+  ctxToggleCheck = 1050; ctxPickDate = 1052; ctxChooseItem = 1060;    { + the item's index }
+  ctxEditHeader = 1100; ctxEditFooter = 1101; ctxNewComment = 1110; ctxInsertLink = 1111;
+
+procedure TLedVisualPane.PageContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
+begin
+  if (MousePos.X < 0) and (MousePos.Y < 0) then
+    MousePos := FEdit.ScreenToClient(Mouse.CursorPos);   { the menu key: where the pointer is }
+  FEdit.ContextClick(MousePos.X, MousePos.Y);
+  FCtxPoint := MousePos;
+  FCtx := FEdit.ContextAt(MousePos.X, MousePos.Y);
+  BuildPageMenu(FCtx);
+  Handled := False;     { the menu itself, as built }
+end;
+
+procedure TLedVisualPane.BuildPageMenu(const C: TParadeContext);
+var
+  Root: TMenuItem;
+  Cm: pd_comment;
+  Items: TStringList;
+  i: Integer;
+  Pic, Obj, Lines, Filled, InDrawing: Boolean;
+  Sids: TIntegerArray;
+  At: pd_pos;
+  Sid: Integer;
+
+  function Add(AParent: TMenuItem; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
+  begin
+    Result := TMenuItem.Create(FPageMenu);
+    Result.Caption := ACaption;
+    Result.Tag := ATag;
+    if ACaption <> '-' then
+      Result.OnClick := AClick;
+    AParent.Add(Result);
+  end;
+
+  function Sub(const ACaption: string): TMenuItem;
+  begin
+    Result := Add(Root, ACaption, 0, nil);
+  end;
+
+  procedure Sep;
+  begin   { one line between groups, never two, nor one first }
+    if (Root.Count > 0) and (Root.Items[Root.Count - 1].Caption <> '-') then
+      Add(Root, '-', 0, nil);
+  end;
+
+  procedure Clipboard3;
+  begin
+    Add(Root, 'Cut', 0, @PageMenuClicked);
+    Add(Root, 'Copy', 1, @PageMenuClicked);
+    Add(Root, 'Paste', 2, @PageMenuClicked);
+  end;
+
+  procedure Wrap;
+  var
+    M: TMenuItem;
+  begin
+    M := Sub('Wrap Text');
+    Add(M, 'In line with text', -1, @WrapItemClicked);
+    Add(M, '-', 0, nil);
+    Add(M, 'Square, on the left', PD_WRAP_LEFT, @WrapItemClicked);
+    Add(M, 'Square, on the right', PD_WRAP_RIGHT, @WrapItemClicked);
+    Add(M, 'Top and bottom', PD_WRAP_NONE, @WrapItemClicked);
+    Add(M, '-', 0, nil);
+    Add(M, 'Behind text', PD_WRAP_BEHIND, @WrapItemClicked);
+    Add(M, 'In front of text', PD_WRAP_FRONT, @WrapItemClicked);
+  end;
+
+  procedure Order;
+  var
+    M: TMenuItem;
+  begin
+    M := Sub('Order');
+    Add(M, 'Bring to front', 2, @ShapeOrderItemClicked);
+    Add(M, 'Bring forward', 0, @ShapeOrderItemClicked);
+    Add(M, 'Send backward', 1, @ShapeOrderItemClicked);
+    Add(M, 'Send to back', 3, @ShapeOrderItemClicked);
+    Add(M, '-', 0, nil);
+    Add(M, 'Duplicate', 4, @ShapeOrderItemClicked);
+  end;
+
+  procedure Rotate;
+  var
+    M: TMenuItem;
+  begin
+    M := Sub('Rotate');
+    Add(M, 'Rotate right 90' + #$C2#$B0, 0, @ShapeRotateItemClicked);
+    Add(M, 'Rotate left 90' + #$C2#$B0, 1, @ShapeRotateItemClicked);
+    Add(M, 'Flip horizontal', 2, @ShapeRotateItemClicked);
+    Add(M, 'Flip vertical', 3, @ShapeRotateItemClicked);
+    Add(M, 'No rotation', 4, @ShapeRotateItemClicked);
+  end;
+
+  procedure Outline;
+  var
+    M: TMenuItem;
+    k: Integer;
+  begin
+    M := Sub('Line Colour');
+    for k := 0 to High(CtxColours) do
+      Swatch(Add(M, CtxColourNames[k], CtxColours[k], @ShapeLineItemClicked), FromRGB(CtxColours[k]), False);
+    Add(M, 'More colours...', -2, @ShapeLineItemClicked);
+    if not Lines then
+      Swatch(Add(M, 'No outline', -1, @ShapeLineItemClicked), clWhite, True);
+    M := Sub('Line Weight');
+    Add(M, 'Thin (0.75 pt)', -75, @ShapeLineItemClicked);
+    Add(M, 'Medium (1.5 pt)', -150, @ShapeLineItemClicked);
+    Add(M, 'Thick (3 pt)', -300, @ShapeLineItemClicked);
+    M := Sub(IfThen(Lines, 'Dashes and Arrows', 'Dashes'));
+    for k := 0 to High(LineStyles) do
+      if not Lines and (k >= 5) then
+        Break
+      else if LineStyles[k, 0] = '-' then
+        Add(M, '-', 0, nil)
+      else
+        Add(M, LineStyles[k, 0], k, @ShapeLineStyleItemClicked);
+  end;
+
+  procedure Fill;
+  var
+    M: TMenuItem;
+    k: Integer;
+  begin
+    M := Sub('Fill');
+    for k := 0 to High(CtxColours) do
+      Swatch(Add(M, CtxColourNames[k], CtxColours[k], @ShapeFillItemClicked), FromRGB(CtxColours[k]), False);
+    Add(M, 'More colours...', -2, @ShapeFillItemClicked);
+    Swatch(Add(M, 'No fill', -1, @ShapeFillItemClicked), clWhite, True);
+  end;
+
+begin
+  Root := FPageMenu.Items;
+  Root.Clear;
+
+  if C.Shape <> '' then
+  begin   { an object: its own commands, not the text's }
+    Pic := C.Shape = 'picture';
+    Obj := AnsiMatchStr(C.Shape, ['picture', 'chart', 'equation', 'canvas', 'drawing']);
+    Lines := C.Shape = 'line';
+    Filled := AnsiMatchStr(C.Shape, ['shape', 'textbox']);
+    InDrawing := FEdit.SelectedShape(At, Sid) and (Sid >= 0);   { a shape of a drawing, not the drawing }
+    Clipboard3;
+    Add(Root, 'Delete', ctxDelete, @ContextItemClicked);
+    Sep;
+    if Pic and not InDrawing then
+    begin
+      Add(Root, 'Crop...', ctxCrop, @ContextItemClicked);
+      Add(Root, 'Reset Crop', ctxResetCrop, @ContextItemClicked);
+    end;
+    if Filled then
+    begin
+      Fill;
+      Outline;
+      if C.Shape = 'shape' then
+        Add(Root, 'Add Text', 0, @AddTextClicked);
+      Add(Root, 'Edit Points', 0, @EditPointsClicked);
+    end
+    else if Lines then
+      Outline;
+    Sep;
+    if Obj and not InDrawing and (C.Shape <> 'equation') then
+      Wrap;
+    if InDrawing then
+    begin
+      Order;
+      Rotate;
+    end;
+    Sids := FEdit.SelectedShapes;
+    if Length(Sids) > 1 then
+      Add(Root, 'Group', 0, @GroupClicked)
+    else if C.Shape = 'drawing' then
+      Add(Root, 'Ungroup', 0, @UngroupClicked);
+    Sep;
+    Add(Root, 'Size and Position...', ctxSize, @ContextItemClicked);
+    if Obj and not InDrawing then
+      if C.Shape = 'equation' then
+        Add(Root, 'Insert Caption...', 2, @CaptionItemClicked)
+      else
+        Add(Root, 'Insert Caption...', 0, @CaptionItemClicked);
+    Exit;
+  end;
+
+  Clipboard3;
+
+  if C.Comment <> 0 then
+  begin
+    Sep;
+    Add(Root, 'Edit Comment...', ctxEditComment, @ContextItemClicked);
+    Add(Root, 'Reply to Comment...', ctxReply, @ContextItemClicked);
+    if (pd_doc_comment_get(FEdit.Doc, C.Comment, Cm) = PD_OK) and (Cm.resolved <> 0) then
+      Add(Root, 'Reopen Comment', ctxResolve, @ContextItemClicked)
+    else
+      Add(Root, 'Resolve Comment', ctxResolve, @ContextItemClicked);
+    Add(Root, 'Delete Comment', ctxDeleteComment, @ContextItemClicked);
+  end;
+
+  if C.Change then
+  begin
+    Sep;
+    Add(Root, 'Accept Change', ctxAccept, @ContextItemClicked);
+    Add(Root, 'Reject Change', ctxReject, @ContextItemClicked);
+    Add(Root, 'Previous Change', ctxPrevChange, @ContextItemClicked);
+    Add(Root, 'Next Change', ctxNextChange, @ContextItemClicked);
+  end;
+
+  if C.Link <> '' then
+  begin
+    Sep;
+    Add(Root, 'Open Link', ctxOpenLink, @ContextItemClicked);
+    Add(Root, 'Edit Link...', ctxEditLink, @ContextItemClicked);
+    Add(Root, 'Copy Link Address', ctxCopyLink, @ContextItemClicked);
+    Add(Root, 'Remove Link', ctxRemoveLink, @ContextItemClicked);
+  end;
+
+  if C.Field then
+  begin
+    Sep;
+    Add(Root, 'Field: ' + C.FieldCode, 0, nil).Enabled := False;
+    Add(Root, 'Select Field', ctxSelectField, @ContextItemClicked);
+    if C.FieldTarget <> '' then
+      Add(Root, 'Go to ' + C.FieldTarget, ctxFieldTarget, @ContextItemClicked);
+    if Pos('TOC', UpperCase(C.FieldCode)) = 1 then
+      Add(Root, 'Update Table of Contents', ctxUpdateToc, @ContextItemClicked);
+    Add(Root, 'Copy Field Code', ctxCopyFieldCode, @ContextItemClicked);
+  end;
+
+  if C.Control <> '' then
+  begin
+    Sep;
+    if SameText(C.Control, 'checkbox') then
+      Add(Root, 'Check / Uncheck', ctxToggleCheck, @ContextItemClicked)
+    else if SameText(C.Control, 'date') then
+      Add(Root, 'Pick Date...', ctxPickDate, @ContextItemClicked)
+    else
+    begin
+      Items := TStringList.Create;
+      try
+        if FEdit.ControlItems(FEdit.CaretPos, Items) and (Items.Count > 0) then
+        begin
+          Root := Sub('Choose');
+          for i := 0 to Min(Items.Count, 39) - 1 do
+            Add(Root, Items[i], ctxChooseItem + i, @ContextItemClicked);
+          Root := FPageMenu.Items;
+        end;
+      finally
+        Items.Free;
+      end;
+    end;
+  end;
+
+  if C.Table then
+  begin
+    Sep;
+    Root := Sub('Insert');
+    Add(Root, 'Row above', 0, @TableInsertItemClicked);
+    Add(Root, 'Row below', 1, @TableInsertItemClicked);
+    Add(Root, 'Column left', 2, @TableInsertItemClicked);
+    Add(Root, 'Column right', 3, @TableInsertItemClicked);
+    Root := FPageMenu.Items;
+    Root := Sub('Delete');
+    Add(Root, 'Row', 0, @TableDeleteItemClicked);
+    Add(Root, 'Column', 1, @TableDeleteItemClicked);
+    Add(Root, 'Table', 2, @TableDeleteItemClicked);
+    Root := FPageMenu.Items;
+    Root := Sub('Merge and Split');
+    Add(Root, 'With the cell to the right', 0, @TableMergeItemClicked);
+    Add(Root, 'With the cell below', 1, @TableMergeItemClicked);
+    Add(Root, 'Split the merged cell', 2, @TableMergeItemClicked);
+    Root := FPageMenu.Items;
+    Root := Sub('Cell Shading');
+    for i := 0 to High(CtxShades) do
+      Swatch(Add(Root, CtxShadeNames[i], CtxShades[i], @ShadingItemClicked), FromRGB(CtxShades[i]), False);
+    Swatch(Add(Root, 'No shading', -1, @ShadingItemClicked), clWhite, True);
+    Root := FPageMenu.Items;
+    Root := Sub('Borders');
+    Add(Root, 'None', 0, @BordersItemClicked);
+    Add(Root, 'Thin (0.5 pt)', 5, @BordersItemClicked);
+    Add(Root, 'Medium (1 pt)', 10, @BordersItemClicked);
+    Add(Root, 'Thick (1.5 pt)', 15, @BordersItemClicked);
+    Root := FPageMenu.Items;
+    Add(Root, 'Repeat as Header Row', 0, @HeaderRowClicked);
+    Add(Root, 'Distribute Columns', 0, @DistributeClicked);
+    Add(Root, 'Insert Caption...', 1, @CaptionItemClicked);
+  end;
+
+  if C.HeaderFooter > 0 then
+  begin
+    Sep;
+    Add(Root, 'Edit Header...', ctxEditHeader, @ContextItemClicked);
+    Add(Root, 'Edit Footer...', ctxEditFooter, @ContextItemClicked);
+  end;
+
+  { the text's own, last: as Word has them }
+  Sep;
+  Add(Root, 'Font...', 4, @PageMenuClicked);
+  Add(Root, 'Paragraph...', 5, @PageMenuClicked);
+  Add(Root, 'Bullets and numbering...', 6, @PageMenuClicked);
+  Sep;
+  if C.Link = '' then
+    Add(Root, 'Link...', ctxInsertLink, @ContextItemClicked);
+  if C.Comment = 0 then
+    Add(Root, 'New Comment...', ctxNewComment, @ContextItemClicked);
+  Sep;
+  Add(Root, 'Modify style...', 8, @PageMenuClicked);
+  Add(Root, 'Styles...', 9, @PageMenuClicked);
+end;
+
+procedure TLedVisualPane.ContextItemClicked(Sender: TObject);
+var
+  T: Integer;
+  V: array of string;
+  U, S: string;
+  A, B: pd_pos;
+  F: TParadeRanges;
+  Cm: pd_comment;
+  D: TDateTime;
+begin
+  T := TMenuItem(Sender).Tag;
+  case T of
+    ctxDelete: FEdit.ProcessKey(VK_DELETE, []);
+    ctxCrop: CropDialog;
+    ctxResetCrop: FEdit.SetPictureCrop(0, 0, 0, 0);
+    ctxSize:
+      if FEdit.SelectedShape(A, T) and (T >= 0) then
+        ShapeSizeItemClicked(Sender)
+      else
+        ObjectSizeDialog;
+    ctxEditComment: EditCommentText(FCtx.Comment);
+    ctxReply:
+      begin
+        S := '';
+        if InputQuery('Reply', 'Your reply:', S) and (Trim(S) <> '') then
+          FEdit.ReplyToComment(FCtx.Comment, Trim(S));
+      end;
+    ctxResolve:
+      if pd_doc_comment_get(FEdit.Doc, FCtx.Comment, Cm) = PD_OK then
+        FEdit.ResolveComment(FCtx.Comment, Cm.resolved = 0);
+    ctxDeleteComment: FEdit.DeleteComment(FCtx.Comment);
+    ctxAccept: FEdit.AcceptChange;
+    ctxReject: FEdit.RejectChange;
+    ctxPrevChange: FEdit.NextChange(-1);
+    ctxNextChange: FEdit.NextChange(1);
+    ctxOpenLink: OpenURL(FCtx.Link);
+    ctxCopyLink: Clipboard.AsText := FCtx.Link;
+    ctxRemoveLink: FEdit.RemoveLink(FEdit.CaretPos);
+    ctxEditLink:
+      if FEdit.LinkAt(FEdit.CaretPos, U, A, B) then
+      begin
+        SetLength(V, 1);
+        V[0] := U;
+        if InputQuery('Edit link', ['Address'], V) and (Trim(V[0]) <> '') and (Trim(V[0]) <> U) and
+           FEdit.RemoveLink(FEdit.CaretPos) then
+        begin   { its text, without the two marks the link had round it, made the new link }
+          FEdit.SetSelection(A, PdPos(B.block, B.offset - 6));
+          FEdit.InsertLink(Trim(V[0]), '');
+        end;
+      end;
+    ctxSelectField:
+      begin
+        F := FEdit.SelectedFields;
+        if Length(F) > 0 then
+          FEdit.SetSelection(F[0].start, F[0].finish);
+      end;
+    ctxFieldTarget:
+      if not FEdit.GoToBookmark(FCtx.FieldTarget) then
+        MessageDlg('Go to', 'There is no bookmark named ' + FCtx.FieldTarget + ' in this document.', mtInformation,
+          [mbOK], 0);
+    ctxUpdateToc: FEdit.UpdateTableOfContents;
+    ctxCopyFieldCode: Clipboard.AsText := FCtx.FieldCode;
+    ctxToggleCheck: FEdit.ToggleCheckBox(FEdit.CaretPos);
+    ctxPickDate:
+      begin
+        if not FEdit.ControlDate(FEdit.CaretPos, D) then
+          D := Date;
+        S := FormatDateTime('yyyy-mm-dd', D);
+        if InputQuery('Pick date', 'The date (year-month-day):', S) then
+          try
+            FEdit.SetControlDate(FEdit.CaretPos, ScanDateTime('yyyy-mm-dd', Trim(S)));
+          except
+            MessageDlg('Pick date', 'Not a date: ' + S, mtError, [mbOK], 0);
+          end;
+      end;
+    ctxEditHeader: EditHeaderFooter(False);
+    ctxEditFooter: EditHeaderFooter(True);
+    ctxNewComment: CommentClicked(Sender);
+    ctxInsertLink: LinkClicked(Sender);
+  else
+    if (T >= ctxChooseItem) and (T < ctxChooseItem + 40) then
+      FEdit.ChooseControlItem(FEdit.CaretPos, T - ctxChooseItem);
+  end;
+  BackToPage;
+end;
+
+{ Word's Crop, as numbers: each side's share of the picture cut off }
+procedure TLedVisualPane.CropDialog;
+var
+  D: TForm;
+  Eds: array[0..3] of TFloatSpinEdit;
+  B: TButtonPanel;
+  V: array[0..3] of Double;
+  i: Integer;
+const
+  Caps: array[0..3] of string = ('Left (%)', 'Top (%)', 'Right (%)', 'Bottom (%)');
+begin
+  if not FEdit.PictureCrop(V[0], V[1], V[2], V[3]) then
+    Exit;
+  D := TForm.CreateNew(nil);
+  try
+    D.Caption := 'Crop Picture';
+    D.Position := poOwnerFormCenter;
+    D.BorderStyle := bsDialog;
+    D.ChildSizing.LeftRightSpacing := LedScale96(12);
+    D.ChildSizing.TopBottomSpacing := LedScale96(12);
+    D.ChildSizing.HorizontalSpacing := LedScale96(8);
+    D.ChildSizing.VerticalSpacing := LedScale96(6);
+    D.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+    D.ChildSizing.ControlsPerLine := 2;
+    D.AutoSize := True;
+    for i := 0 to 3 do
+    begin
+      with TLabel.Create(D) do
+      begin
+        Parent := D;
+        Caption := Caps[i];
+      end;
+      Eds[i] := TFloatSpinEdit.Create(D);
+      Eds[i].Parent := D;
+      Eds[i].DecimalPlaces := 1;
+      Eds[i].MinValue := 0;
+      Eds[i].MaxValue := 95;
+      Eds[i].Width := LedScale96(100);
+      Eds[i].Value := V[i];
+    end;
+    B := TButtonPanel.Create(D);
+    B.Parent := D;
+    B.ShowButtons := [pbOK, pbCancel];
+    if D.ShowModal = mrOK then
+      FEdit.SetPictureCrop(Eds[0].Value, Eds[1].Value, Eds[2].Value, Eds[3].Value);
+  finally
+    D.Free;
+  end;
+end;
+
+{ a picture's, a chart's or a whole drawing's size, in points, its proportions kept or not }
+procedure TLedVisualPane.ObjectSizeDialog;
+var
+  D: TForm;
+  EW, EH: TFloatSpinEdit;
+  Lock: TCheckBox;
+  B: TButtonPanel;
+  At: pd_pos;
+  Sid: Integer;
+  O: pd_inline;
+  W0, H0: Double;
+begin
+  if not FEdit.SelectedShape(At, Sid) or (pd_doc_inline_at(FEdit.Doc, At, O) <> PD_OK) or (O.width <= 0) or
+     (O.height <= 0) then
+    Exit;
+  W0 := O.width / PD_SP_PER_PT;
+  H0 := O.height / PD_SP_PER_PT;
+  D := TForm.CreateNew(nil);
+  try
+    D.Caption := 'Size';
+    D.Position := poOwnerFormCenter;
+    D.BorderStyle := bsDialog;
+    D.ChildSizing.LeftRightSpacing := LedScale96(12);
+    D.ChildSizing.TopBottomSpacing := LedScale96(12);
+    D.ChildSizing.HorizontalSpacing := LedScale96(8);
+    D.ChildSizing.VerticalSpacing := LedScale96(6);
+    D.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+    D.ChildSizing.ControlsPerLine := 2;
+    D.AutoSize := True;
+    with TLabel.Create(D) do begin Parent := D; Caption := 'Width (pt)'; end;
+    EW := TFloatSpinEdit.Create(D);
+    EW.Parent := D;
+    EW.DecimalPlaces := 1; EW.MinValue := 1; EW.MaxValue := 5000; EW.Width := LedScale96(100);
+    EW.Value := W0;
+    with TLabel.Create(D) do begin Parent := D; Caption := 'Height (pt)'; end;
+    EH := TFloatSpinEdit.Create(D);
+    EH.Parent := D;
+    EH.DecimalPlaces := 1; EH.MinValue := 1; EH.MaxValue := 5000; EH.Width := LedScale96(100);
+    EH.Value := H0;
+    with TLabel.Create(D) do Parent := D;
+    Lock := TCheckBox.Create(D);
+    Lock.Parent := D;
+    Lock.Caption := 'Keep proportions';
+    Lock.Checked := True;
+    B := TButtonPanel.Create(D);
+    B.Parent := D;
+    B.ShowButtons := [pbOK, pbCancel];
+    if D.ShowModal = mrOK then
+    begin
+      if Lock.Checked then
+        if Abs(EW.Value - W0) >= Abs(EH.Value - H0) then
+          EH.Value := EW.Value * H0 / W0
+        else
+          EW.Value := EH.Value * W0 / H0;
+      FEdit.ResizeObject(Round(EW.Value * PD_SP_PER_PT), Round(EH.Value * PD_SP_PER_PT));
+    end;
+  finally
+    D.Free;
+  end;
+end;
+{$ENDIF}
 
 initialization
   LedEditKeyClaim := @LedVisualClaimKey;
