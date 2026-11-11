@@ -20519,6 +20519,95 @@ type
 { A PDF opens as its pages, its text found, selected by dragging over it and highlighted; a rectangle drawn; undone
   and done again; saved as the file it was with an update appended (what the save writes, read back by Parade's
   reader), the file never written over. }
+{ A .tex file in the preview pane: its document as Parade reads it (its \input files and .bib put in), whatever
+  engine Markdown is set to; again a moment after it is typed into, where the reader was in it kept; the file on
+  disk not touched. }
+procedure TestLatexPreview(F: TLedMainForm);
+var
+  Dir, Path, Before, T, Src: string;
+  Tab: TLedTab;
+  V: TLedParadeView;
+  i, WasTop: Integer;
+  Start: QWord;
+
+  function Shown: string;
+  var
+    B: pd_block_id;
+    P: PAnsiChar;
+    N: UInt32;
+    Piece: string;
+  begin
+    Result := '';
+    V := F.Preview.ParadeView;
+    if (V = nil) or (V.Doc = nil) then Exit;
+    B := pd_doc_next_paragraph(V.Doc, 0);
+    while B <> 0 do
+    begin
+      Piece := '';
+      if (pd_doc_para_text(V.Doc, B, P, N) = 0) and (N > 0) then SetString(Piece, P, N);
+      Result := Result + StringReplace(Piece, #$EF#$BF#$BC, '', [rfReplaceAll]) + '|';
+      B := pd_doc_next_paragraph(V.Doc, B);
+    end;
+  end;
+
+begin
+  Say('a LaTeX file in the preview pane, live');
+  Dir := IncludeTrailingPathDelimiter(TempName('texprev'));
+  ForceDirectories(Dir);
+  Path := Dir + 'paper.tex';
+  WriteBytes(Dir + 'part.tex', 'Text from the part.' + #10);
+  WriteBytes(Dir + 'refs.bib', '@article{k, author = {Ann Alpha}, title = {A Paper}, journal = {J}, year = 2001}' + #10);
+  Src := '\documentclass{article}' + #10 + '\begin{document}' + #10 + '\section{Alpha}' + #10 + '\input{part}' + #10 +
+    'As shown \cite{k}.' + #10;
+  for i := 1 to 120 do
+    Src := Src + 'Paragraph ' + IntToStr(i) + ' of the long body, long enough to fill some of the page.' + #10 + #10;
+  Src := Src + '\bibliography{refs}' + #10 + '\end{document}' + #10;
+  WriteBytes(Path, Src);
+  Before := LedReadRawFile(Path);
+  F.Preview.Engine := lpeIPro;      { (Markdown's engine: LaTeX is Parade's whatever it is) }
+  F.Dock.ShowPane('preview');
+  Pump; Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Path, ''));
+  Pump; Pump;
+  Pump;
+  F.Preview.RenderNow;
+  Pump;
+  T := Shown;
+  Check('a .tex previews as its document: ' + Copy(T, 1, 60), Pos('1  Alpha|', T) > 0);
+  Check('with what it \input s and the entries of its .bib', (Pos('Text from the part.', T) > 0) and
+    (Pos('As shown [1].', T) > 0) and (Pos('[1] Ann'#$C2#$A0'Alpha. A Paper.', T) > 0));
+  Check('drawn by Parade with Markdown set to IPro', (V <> nil) and V.Visible);
+  if V <> nil then
+  begin
+    V.ViewTop := 600;
+    WasTop := V.ViewTop;
+    { typed into: an edit at the top of the body }
+    Tab.ActiveView.CaretXY := Point(1, 4);
+    Tab.ActiveView.InsertTextAtCaret('\section{Beta}' + #10);
+    Start := GetTickCount64;
+    repeat
+      Sleep(20);
+      Application.ProcessMessages;
+      T := Shown;
+    until (Pos('2  Beta|', T) > 0) or (GetTickCount64 - Start > 5000);
+    Check('typed into, it is shown again by itself (in ' + IntToStr(GetTickCount64 - Start) + ' ms)',
+      Pos('2  Beta|', T) > 0);
+    Check(Format('where the reader was in it kept (%d, was %d)', [F.Preview.ParadeView.ViewTop, WasTop]),
+      (WasTop > 0) and (Abs(F.Preview.ParadeView.ViewTop - WasTop) <= 2));
+  end;
+  Check('the file on disk as it was', LedReadRawFile(Path) = Before);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  F.Preview.Engine := lpeFromPrefs;
+  F.Dock.HidePane('preview');
+  Pump;
+  DeleteFile(Path);
+  DeleteFile(Dir + 'part.tex');
+  DeleteFile(Dir + 'refs.bib');
+  RemoveDir(Dir);
+end;
+
 { The Outline pane for a PDF: its bookmarks, nested, in order; one double-clicked goes to its page. }
 procedure TestPdfBookmarks(F: TLedMainForm);
 var
@@ -21205,6 +21294,8 @@ begin
     TestPdfPages(F);
     TestPdfBookmarks(F);
   end;
+  if LedVisualAvailable then
+    TestLatexPreview(F);
   {$ENDIF}
   TestLatexOutline(F);
   TestVisualShapeTab(F);

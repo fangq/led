@@ -196,6 +196,7 @@ type
       tell that the buffer has been typed into.  See MasterChanged. }
     FNBSynced: array of Integer;
     FOnNBBufferEdited: TLedDocumentEvent;
+    FOnTextEdited: TLedDocumentEvent;
     procedure MasterChanged(Sender: TObject);
     function GetModified: Boolean;
     function GetView(AIndex: Integer): TLedEdit;
@@ -508,6 +509,9 @@ type
       MasterChanged and NBSyncedCount. }
     property OnNBBufferEdited: TLedDocumentEvent
       read FOnNBBufferEdited write FOnNBBufferEdited;
+    { The text typed into (any document but a notebook, which has the event above): for a preview that follows
+      what is typed. }
+    property OnTextEdited: TLedDocumentEvent read FOnTextEdited write FOnTextEdited;
   end;
 
   { Owns every open document.  In phase 1 this grows the recent-file list,
@@ -986,7 +990,11 @@ end;
   pane would be at best wasted and at worst a loop. }
 procedure TLedDocument.MasterChanged(Sender: TObject);
 begin
-  if not FIsNotebook then Exit;
+  if not FIsNotebook then
+  begin
+    if Assigned(FOnTextEdited) then FOnTextEdited(Self);
+    Exit;
+  end;
   if NBRewriting then Exit;
   if Assigned(FOnNBBufferEdited) then FOnNBBufferEdited(Self);
 end;

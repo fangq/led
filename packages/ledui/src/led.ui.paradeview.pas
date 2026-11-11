@@ -183,6 +183,12 @@ type
     procedure ShowHtml(const AHtml, ABaseDir: string;
       APictures: TLedPictureSource);
 
+    { Shows a LaTeX document's source as its document, AFileName the file it
+      is (the folder its \input files, .bib and pictures are read from, and
+      its name the .bbl's), '' for one not saved yet.  Its own fonts kept:
+      the reader's prose face is for Markdown. }
+    procedure ShowLatex(const ASource, AFileName: string);
+
     { The prose face and size the reader chose in Preferences (View,
       "Notebook and preview text font").  The size is applied as a zoom,
       because the size the document carries is the HTML's and the
@@ -763,6 +769,27 @@ begin
   FLaidOutFor := -1;
   { A page of its own: how tall the last document wanted to be says
     nothing about this one. }
+  FTallPt := 0;
+  LayOutForWidth;
+end;
+
+procedure TLedParadeView.ShowLatex(const ASource, AFileName: string);
+var
+  S: TStringStream;
+begin
+  FPics := nil;
+  S := TStringStream.Create(ASource);
+  try
+    { (with its name, the loader puts in what it \inputs and the .bib it names, and fetches its figures) }
+    LoadFromStream(S, PD_CONV_LATEX, AFileName);
+  finally
+    S.Free;
+  end;
+  UseFallbackGlyphs;
+  UseThemeInk;
+  FBodyPt := BodyPointSize;
+  CollectAnchors;
+  FLaidOutFor := -1;
   FTallPt := 0;
   LayOutForWidth;
 end;

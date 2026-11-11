@@ -824,6 +824,8 @@ type
     procedure DocChanged(ADoc: TLedDocument);
     { The notebook pane following the line view; see NBFollowBuffer. }
     procedure NBBufferEdited(ADoc: TLedDocument);
+    { the text of the document in front typed into: its preview (Markdown, wiki, LaTeX) drawn again after a pause }
+    procedure TextEdited(ADoc: TLedDocument);
     procedure NBFollowBuffer(Data: PtrInt);
     procedure RefreshTabCaption(ATab: TLedTab);
     procedure ViewStatusChange(Sender: TObject; AChanges: TSynStatusChanges);
@@ -1891,6 +1893,7 @@ begin
   if LedPreviewHandles(Doc.FileName, First) then
   begin
     FPreview.IsWiki := LedIsWikiFile(Doc.FileName, First);
+    if LedIsLatexName(Doc.FileName) then FPreview.LatexFile := Doc.FileName else FPreview.LatexFile := '';
     FPreview.Update(Doc.Master.Lines.Text, Doc.DisplayName,
       ExtractFileDir(Doc.FileName), AImmediate);
     { A page that has just been built starts at the top; the document may not
@@ -1898,7 +1901,7 @@ begin
     if AImmediate then SyncPreviewToLine;
   end
   else
-    FPreview.ShowMessage_('Nothing to preview: this is not a Markdown, wiki or notebook file.');
+    FPreview.ShowMessage_('Nothing to preview: this is not a Markdown, wiki, LaTeX or notebook file.');
 end;
 
 { The pane on the right shows the notebook's cells when the document in
@@ -6389,6 +6392,7 @@ begin
   Result.Sheet := Sheet;
   ADoc.OnChanged := @DocChanged;
   ADoc.OnNBBufferEdited := @NBBufferEdited;
+  ADoc.OnTextEdited := @TextEdited;
   ADoc.OnConfirmExpand := @ConfirmBJExpand;
   Result.ActiveView.OnStatusChange := @ViewStatusChange;
   Result.OnVisualStatus := @VisualStatusChange;
@@ -6500,6 +6504,14 @@ end;
 
   Not while the pane is the one changing things (FNBSyncing), and not for a
   document that is not the one on screen: the pane shows one notebook. }
+procedure TLedMainForm.TextEdited(ADoc: TLedDocument);
+begin
+  if (FPreview = nil) or (ActiveTab = nil) or (ActiveTab.Document <> ADoc) then Exit;
+  if not PreviewShowing then Exit;
+  { not immediately: the pane waits for the typing to pause, and draws once }
+  RefreshPreview(False);
+end;
+
 procedure TLedMainForm.NBBufferEdited(ADoc: TLedDocument);
 begin
   if FNBPane = nil then Exit;

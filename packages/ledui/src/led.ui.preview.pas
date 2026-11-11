@@ -17,7 +17,7 @@ unit Led.UI.Preview;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
+  Classes, SysUtils, StrUtils, Math, Controls, ExtCtrls, StdCtrls, Graphics, Forms,
   LCLIntf, LCLType,
   IpHtml, Ipfilebroker,
   Led.Core.Markdown, Led.Core.Wiki, Led.Core.Prefs, Led.Core.NBImage,
@@ -88,6 +88,8 @@ type
     FNote: TLabel;
     FBaseDir: string;
     FIsWiki: Boolean;
+    FLatexFile: string;           { a .tex shown (its file, or a name for one not saved), '' else }
+    FRenderedLatex: string;
     FTimer: TTimer;
     FResizeTimer: TTimer;
     FImageTimer: TTimer;
@@ -190,6 +192,7 @@ type
       will never be shown at. }
     procedure EnsureParade;
     procedure ParadeRender(const APage: string);
+    procedure LatexRender;
     procedure ParadeClicked(Sender: TObject; ALine: Integer);
     {$ENDIF}
   public
@@ -209,6 +212,9 @@ type
     { Which dialect to render.  Set from the file name, so a .wiki and a .md
       in adjacent tabs each render as themselves. }
     property IsWiki: Boolean read FIsWiki write FIsWiki;
+    { A LaTeX file: its source shown as its document (always with Parade, which reads LaTeX; the file's name for
+      what it \inputs, its .bib and its figures).  '' for Markdown and wiki. }
+    property LatexFile: string read FLatexFile write FLatexFile;
     { Which engine lays the page out, pinned.  Built without Parade,
       lpeParade still renders with IPro: there is nothing else there. }
     property Engine: TLedPreviewEngine read FEngine write SetEngine;
@@ -383,7 +389,8 @@ var
 begin
   Ext := LowerCase(ExtractFileExt(AFileName));
   Result := (Ext = '.md') or (Ext = '.markdown') or (Ext = '.mdx') or
-            LedIsWikiFile(AFileName, AFirstLine);
+            LedIsWikiFile(AFileName, AFirstLine)
+            {$IFDEF LED_PARADE} or (Ext = '.tex') or (Ext = '.ltx') or (Ext = '.latex'){$ENDIF};
 end;
 
 constructor TLedPreviewPane.Create(AOwner: TComponent);
@@ -555,6 +562,9 @@ begin
   FPendingTitle := ATitle;
   FBaseDir := ABaseDir;
   FTimer.Enabled := False;
+  { Markdown a quarter second after the typing stops; LaTeX as long as its last reading took, twice over }
+  if FLatexFile = '' then FTimer.Interval := 250
+  else if FTimer.Interval < 400 then FTimer.Interval := 400;
   if AImmediate then
   begin
     Render(nil);
@@ -1183,6 +1193,53 @@ end;
 
 { The page handed to Parade, which is the page IPro would have been given:
   the engine is the only thing that differs. }
+{ A .tex shown as its document, again as it is typed: where the reader was in it kept (a page drawn again starts
+  at its top, and there are no source lines on it to go back to) }
+procedure TLedPreviewPane.LatexRender;
+var
+  WasTop: Integer;
+  Colours: TLedPageColours;
+  Started: QWord;
+begin
+  EnsureParade;
+  Colours := LedPageColours;
+  FParade.SetThemeColours(Colours.Page, Colours.Text, False);
+  WasTop := 0;
+  if FHasRendered and (FRenderedLatex = FLatexFile) then WasTop := FParade.ViewTop;
+  Started := GetTickCount64;
+  FParadeSyncing := True;
+  try
+    try
+      FParade.ShowLatex(FPendingText, FLatexFile);
+    except
+      on E: Exception do
+      begin
+        ShowMessage_('The preview could not be rendered: ' + E.Message);
+        Exit;
+      end;
+    end;
+    FParade.ViewTop := WasTop;
+  finally
+    FParadeSyncing := False;
+  end;
+  { the next one no sooner than this one took, twice over, as the reader types on: a long paper is a long read }
+  FTimer.Interval := Max(400, Min(3000, 2 * Integer(GetTickCount64 - Started)));
+  FParade.Visible := True;
+  FHtml.Visible := False;
+  FTopsFor := -1;
+  FSyncedLine := 0;
+  FLineIds := nil;    { (a Markdown page's, not this one's) }
+  FLastScroll := FParade.ScrollTop;
+  FRenderedWidth := EngineWidth;
+  FRenderedText := FPendingText;
+  FRenderedTitle := FPendingTitle;
+  FRenderedLatex := FLatexFile;
+  FRenderedWiki := FIsWiki;
+  FPendingRender := False;
+  FNote.Visible := False;
+  FHasRendered := True;
+end;
+
 procedure TLedPreviewPane.ParadeRender(const APage: string);
 begin
   EnsureParade;
@@ -1214,6 +1271,7 @@ begin
   FRenderedText := FPendingText;
   FRenderedTitle := FPendingTitle;
   FRenderedWiki := FIsWiki;
+  FRenderedLatex := '';
   FPendingRender := False;
   FNote.Visible := False;
   FHasRendered := True;
@@ -1264,7 +1322,7 @@ begin
   { And the same document at the same width is the same page.  Opening a file
     asks for the preview from more than one direction -- the tab change, the
     command line, the pane appearing -- and each of them is right to ask. }
-  if FHasRendered and (not FPendingRender) and
+  if FHasRendered and (not FPendingRender) and (FLatexFile = FRenderedLatex) and
      (EngineWidth = FRenderedWidth) and (FIsWiki = FRenderedWiki) and
      (FPendingTitle = FRenderedTitle) and (FPendingText = FRenderedText) then
   begin
@@ -1277,6 +1335,17 @@ begin
     if FParade <> nil then FParade.Visible := False;
     {$ENDIF}
     FHtml.Visible := True;
+    Exit;
+  end;
+
+  { LaTeX: Parade's reading of it, whichever engine Markdown is set to (IPro reads no LaTeX) }
+  if FLatexFile <> '' then
+  begin
+    {$IFDEF LED_PARADE}
+    LatexRender;
+    {$ELSE}
+    ShowMessage_('A LaTeX preview needs LED built with Parade.');
+    {$ENDIF}
     Exit;
   end;
 
@@ -1346,6 +1415,7 @@ begin
     FRenderedText := FPendingText;
     FRenderedTitle := FPendingTitle;
     FRenderedWiki := FIsWiki;
+    FRenderedLatex := '';
     FPendingRender := False;
     FNote.Visible := False;
     {$IFDEF LED_PARADE}
@@ -1369,7 +1439,7 @@ begin
   FTimer.Enabled := False;
   Render(nil);
   {$IFDEF LED_PARADE}
-  if UseParade then
+  if UseParade or (FLatexFile <> '') then
     Exit((FParade <> nil) and FParade.Visible and not FNote.Visible);
   {$ENDIF}
   Result := FHtml.Visible and not FNote.Visible;
