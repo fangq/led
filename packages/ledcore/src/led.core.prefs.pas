@@ -103,6 +103,9 @@ const
     file, or a document shown as pages (its resources), and closes for any
     other.  Asked when the pane is closed on one. }
   LedPrefAutoPreview     = 'View/auto_preview';
+  { the zoom a document's pages open at, in percent (capped at the page's width when the view is narrower);
+    the last one chosen }
+  LedPrefVisualZoom      = 'Visual/zoom';
   LedPrefEncodings       = 'Editor/encodings';
   LedPrefSaveSession     = 'Editor/save_session';
   { the visual editor's line breaking as one types: 'hybrid' (lines away from
