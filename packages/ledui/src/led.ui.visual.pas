@@ -25,7 +25,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
-  Dialogs, LCLType, LCLIntf, Menus, Spin, ButtonPanel
+  Dialogs, LCLType, LCLIntf, Menus, Spin, ButtonPanel, ComCtrls
   {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts, Led.UI.AnimPane{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
@@ -232,6 +232,14 @@ type
     FSlideMenuAt: Integer;
     FThumbW: Integer;           { the width the slides' pictures were made at }
     FFitWidth: Boolean;         { the zoom follows the width of the view (Page width), until another is chosen }
+    { a document's opening zoom (Visual/zoom), kept no wider than the page fits while it is the zoom: 0 none }
+    FFitCap: Double;
+    { the zoom slider under the pages, as Word's: its bar, the percentage, - and + }
+    FZoomBar: TPanel;
+    FZoomSlider: TTrackBar;
+    FZoomLabel: TLabel;
+    FZoomSliding: Boolean;
+    FMultiBtn: TSpeedButton;
     FFitPage: Boolean;          { ... the whole page instead (Whole page; slides) }
     FFitZoom: Double;           { the zoom it last set: another one found means Ctrl+wheel chose it }
     procedure FitWidth;
@@ -304,6 +312,11 @@ type
     { the right button's menu, made for what the click is on (TParadeEdit.ContextAt): a picture's, a line's, a
       table's, a comment's, a field's ... and the text's own last }
     procedure PageContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
+    procedure BuildZoomBar;
+    procedure ZoomSliderChanged(Sender: TObject);
+    procedure EditZoomChanged(Sender: TObject);
+    procedure MultiPageClicked(Sender: TObject);
+    procedure RememberZoom;
     procedure BuildPageMenu(const C: TParadeContext);
     procedure ContextItemClicked(Sender: TObject);
     procedure CropDialog;
@@ -857,6 +870,8 @@ begin
   FEdit.PopupMenu := FPageMenu;
   TLedPageKeys(FEdit).OnContextPopup := @PageContextPopup;
   FEdit.OnResize := @EditResized;
+  FEdit.OnZoomChange := @EditZoomChanged;
+  BuildZoomBar;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
   ApplyPrefs;
@@ -3945,6 +3960,12 @@ begin
   AddIconButton('zoomout', 'Zoom out', @ZoomOutClicked);
   AddIconButton('zoomin', 'Zoom in', @ZoomInClicked);
   EndRows;
+  {$IFDEF LED_PARADE}
+  FMultiBtn := AddToggle('Multiple pages', 'Pages side by side when more than one fits across (as Word''s ' +
+    'Multiple Pages)', [], @MultiPageClicked);
+  FMultiBtn.Down := True;
+  FMultiBtn.Name := 'MultiPageBtn';
+  {$ENDIF}
   AddSeparator;
   BeginRows;
   FMarksBtn := AddToggle('Marks', 'Show formatting marks: where each paragraph ends', [], @MarksClicked);
@@ -4334,6 +4355,8 @@ begin
   else
     Z := FEdit.PageWidthZoom;
   if Z <= 0 then Exit;
+  if FFitCap > 0 then
+    Z := Min(Z, FFitCap);     { the opening zoom, no wider than the view }
   FEdit.Zoom := Z;
   FFitZoom := FEdit.Zoom;     { as the editor kept it, within its limits }
   if FFitPage and FEdit.CanvasPage then
@@ -4351,6 +4374,9 @@ procedure TLedVisualPane.ShowZoom;
 begin
   if not FZoomBox.Focused then
     FZoomBox.Text := IntToStr(Round(FEdit.Zoom * 100)) + '%';
+  {$IFDEF LED_PARADE}
+  EditZoomChanged(nil);
+  {$ENDIF}
 end;
 
 procedure TLedVisualPane.ZoomChosen(Sender: TObject);
@@ -4365,10 +4391,14 @@ begin
   FFitWidth := (S = 'Page width') or (S = 'Whole page');   { either kept as the view is sized }
   FFitPage := S = 'Whole page';
   FFitZoom := 0;
+  FFitCap := 0;
   if FFitWidth then
     FitWidth
   else if TryStrToFloat(Trim(StringReplace(S, '%', '', [])), V) and (V >= 10) and (V <= 600) then
+  begin
     FEdit.Zoom := V / 100;
+    RememberZoom;
+  end;
   FZoomBox.ItemIndex := -1;
   BackToPage;
   ShowZoom;
@@ -4393,7 +4423,9 @@ end;
 procedure TLedVisualPane.ZoomInClicked(Sender: TObject);
 begin
   FFitWidth := False;
+  FFitCap := 0;
   FEdit.Zoom := FEdit.Zoom * 1.25;
+  RememberZoom;
   ShowZoom;
   BackToPage;
 end;
@@ -4401,7 +4433,9 @@ end;
 procedure TLedVisualPane.ZoomOutClicked(Sender: TObject);
 begin
   FFitWidth := False;
+  FFitCap := 0;
   FEdit.Zoom := FEdit.Zoom / 1.25;
+  RememberZoom;
   ShowZoom;
   BackToPage;
 end;
@@ -4555,6 +4589,12 @@ begin
       FFitPage := FEdit.CanvasPage;     { slides, a drawing: a whole page in view, as the view is sized }
       FFitWidth := True;
       FFitZoom := 0;
+      { a document: at the zoom Word would open it at (the last one chosen, 110% to begin with), centred, not
+        stretched across the view; no wider than the view, there being no sideways scrolling }
+      if FFitPage then
+        FFitCap := 0
+      else
+        FFitCap := EnsureRange(LedPrefs.GetInt(LedPrefVisualZoom, 110), 10, 500) / 100;
       FitWidth;
       {$IFDEF LED_PARADE_SYNC}
       FFileName := AFileName;   { a name to host it under }
@@ -5093,6 +5133,133 @@ begin
     Result := False;
   end;
 end;
+
+{$IFDEF LED_PARADE}
+{ ---- the zoom slider ---- }
+
+{ the slider's 0..200 and the zoom: 10% to 100% on its left half, 100% to 500% on its right, as Word's }
+function SliderToZoom(V: Integer): Double;
+begin
+  if V <= 100 then
+    Result := (10 + V * 0.9) / 100
+  else
+    Result := (100 + (V - 100) * 4) / 100;
+end;
+
+function ZoomToSlider(Z: Double): Integer;
+begin
+  Z := Z * 100;
+  if Z <= 100 then
+    Result := Round((Z - 10) / 0.9)
+  else
+    Result := 100 + Round((Z - 100) / 4);
+  Result := EnsureRange(Result, 0, 200);
+end;
+
+procedure TLedVisualPane.BuildZoomBar;
+var
+  B: TSpeedButton;
+begin
+  FZoomBar := TPanel.Create(Self);
+  FZoomBar.Parent := Self;
+  FZoomBar.Align := alBottom;
+  FZoomBar.BevelOuter := bvNone;
+  FZoomBar.Caption := '';
+  FZoomBar.Height := LedScale96(24);
+  FZoomLabel := TLabel.Create(Self);
+  FZoomLabel.Parent := FZoomBar;
+  FZoomLabel.Align := alRight;
+  FZoomLabel.Layout := tlCenter;
+  FZoomLabel.Alignment := taRightJustify;
+  FZoomLabel.AutoSize := False;
+  FZoomLabel.Width := LedScale96(48);
+  FZoomLabel.BorderSpacing.Right := LedScale96(8);
+  FZoomLabel.Caption := '100%';
+  FZoomLabel.Name := 'ZoomPercent';
+  FZoomLabel.Caption := '100%';
+  B := TSpeedButton.Create(Self);
+  B.Parent := FZoomBar;
+  B.Align := alRight;
+  B.Width := LedScale96(22);
+  B.Caption := '+';
+  B.Flat := True;
+  B.Hint := 'Zoom in';
+  B.ShowHint := True;
+  B.OnClick := @ZoomInClicked;
+  FZoomSlider := TTrackBar.Create(Self);
+  FZoomSlider.Parent := FZoomBar;
+  FZoomSlider.Align := alRight;
+  FZoomSlider.Width := LedScale96(160);
+  FZoomSlider.Min := 0;
+  FZoomSlider.Max := 200;
+  FZoomSlider.Frequency := 100;     { a tick at 100% }
+  FZoomSlider.TickStyle := tsNone;
+  FZoomSlider.Position := 100;
+  FZoomSlider.Hint := 'Zoom: 10% to 500%, 100% in the middle';
+  FZoomSlider.ShowHint := True;
+  FZoomSlider.OnChange := @ZoomSliderChanged;
+  FZoomSlider.Name := 'ZoomSlider';
+  B := TSpeedButton.Create(Self);
+  B.Parent := FZoomBar;
+  B.Align := alRight;
+  B.Width := LedScale96(22);
+  B.Caption := #$E2#$88#$92;    { minus }
+  B.Flat := True;
+  B.Hint := 'Zoom out';
+  B.ShowHint := True;
+  B.OnClick := @ZoomOutClicked;
+  { in order from the right: the percentage, +, the bar, - }
+  FZoomLabel.Left := 10000;
+end;
+
+procedure TLedVisualPane.ZoomSliderChanged(Sender: TObject);
+begin
+  if FZoomSliding then
+    Exit;
+  FZoomSliding := True;
+  try
+    FFitWidth := False;
+    FFitCap := 0;
+    FEdit.Zoom := SliderToZoom(FZoomSlider.Position);
+    FZoomLabel.Caption := IntToStr(Round(FEdit.Zoom * 100)) + '%';
+    if (FZoomBox <> nil) and not FZoomBox.Focused then
+      FZoomBox.Text := FZoomLabel.Caption;
+    RememberZoom;
+  finally
+    FZoomSliding := False;
+  end;
+end;
+
+{ the slider and the percentage after any zoom: the box, the buttons, Ctrl+wheel, Page width }
+procedure TLedVisualPane.EditZoomChanged(Sender: TObject);
+begin
+  if (FZoomSlider = nil) or FZoomSliding or (FEdit = nil) then
+    Exit;
+  FZoomSliding := True;
+  try
+    FZoomSlider.Position := ZoomToSlider(FEdit.Zoom);
+    FZoomLabel.Caption := IntToStr(Round(FEdit.Zoom * 100)) + '%';
+    if (FZoomBox <> nil) and not FZoomBox.Focused then
+      FZoomBox.Text := FZoomLabel.Caption;
+  finally
+    FZoomSliding := False;
+  end;
+end;
+
+procedure TLedVisualPane.MultiPageClicked(Sender: TObject);
+begin
+  FEdit.MultiPage := not FEdit.MultiPage;
+  FMultiBtn.Down := FEdit.MultiPage;
+  BackToPage;
+end;
+
+{ a zoom the reader chose, for the next document to open at; not a slide's or a drawing's fitted one }
+procedure TLedVisualPane.RememberZoom;
+begin
+  if (FEdit <> nil) and not FEdit.CanvasPage then
+    LedPrefs.SetInt(LedPrefVisualZoom, Round(FEdit.Zoom * 100));
+end;
+{$ENDIF}
 
 {$IFDEF LED_PARADE}
 { ---- the right button's menu ---- }

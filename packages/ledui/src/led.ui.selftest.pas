@@ -17562,6 +17562,73 @@ end;
 { The Delete key on a page: the page's, not the text views hidden behind it (it deleted a character there, out of
   sight, and nothing on the page). }
 {$IFDEF LED_PARADE}
+{ A document's pages open at a zoom of their own, as Word's do -- 110% to begin with, the page centred rather than
+  stretched across the view, no wider than the view -- and the zoom chosen is the next one's; a slider under the
+  pages, 10% to 500% with 100% in the middle, follows every zoom and sets it; Multiple pages turns the pages side
+  by side off and on. }
+procedure TestVisualZoomBar(F: TLedMainForm);
+var
+  Md, Why: string;
+  Tab: TLedTab;
+  P: TParadeEdit;
+  Sl: TTrackBar;
+  Lb: TLabel;
+  Mb: TSpeedButton;
+  Was: Integer;
+begin
+  Say('a page''s zoom, and the slider under the pages');
+  Was := LedPrefs.GetInt(LedPrefVisualZoom, 110);
+  LedPrefs.SetInt(LedPrefVisualZoom, 110);
+  Md := IncludeTrailingPathDelimiter(TempName('zoombar')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page.'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump; Pump;
+  P := Tab.Visual.Page;
+  Check(Format('it opens at 110%% or the page''s width, whichever is less (%.0f%%, page width %.0f%%)',
+    [P.Zoom * 100, P.PageWidthZoom * 100]), Abs(P.Zoom - Min(1.1, P.PageWidthZoom)) < 0.01);
+  Sl := TTrackBar(Tab.Visual.FindComponent('ZoomSlider'));
+  Lb := TLabel(Tab.Visual.FindComponent('ZoomPercent'));
+  Mb := TSpeedButton(Tab.Visual.FindComponent('MultiPageBtn'));
+  Check('a zoom slider under the pages', (Sl <> nil) and (Lb <> nil) and Sl.Visible);
+  if (Sl = nil) or (Lb = nil) then
+    Exit;
+  CheckEq('the percentage beside it', IntToStr(Round(P.Zoom * 100)) + '%', Lb.Caption);
+  Sl.Position := 50;
+  Pump;
+  Check(Format('the slider at its quarter: 55%% (%.0f%%)', [P.Zoom * 100]), Abs(P.Zoom - 0.55) < 0.01);
+  CheckEq('said beside it', '55%', Lb.Caption);
+  CheckEqInt('and the next document''s zoom', 55, LedPrefs.GetInt(LedPrefVisualZoom, 0));
+  P.Zoom := 2;      { as Ctrl+wheel or the View tab sets it }
+  Pump;
+  CheckEqInt('a zoom set elsewhere moves the slider: 200% at 125', 125, Sl.Position);
+  CheckEq('and the percentage', '200%', Lb.Caption);
+  Check('Multiple pages, on to begin with', (Mb <> nil) and P.MultiPage);
+  if Mb <> nil then
+  begin
+    Mb.Click;
+    Pump;
+    Check('Multiple pages clicked: one column', not P.MultiPage);
+    Mb.Click;
+    Pump;
+    Check('and back', P.MultiPage);
+  end;
+  LedPrefs.SetInt(LedPrefVisualZoom, Was);
+  Tab.LeaveVisual;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+end;
+{$ENDIF}
+
+{$IFDEF LED_PARADE}
 type
   TLedCtxEdit = class(TParadeEdit);   { DoContextPopup, as a right click calls it }
 
@@ -20331,6 +20398,10 @@ begin
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);
+  {$ENDIF}
+  {$IFDEF LED_PARADE}
+  if LedVisualAvailable then
+    TestVisualZoomBar(F);
   {$ENDIF}
   TestVisualShapeTab(F);
   TestStatusCounts(F);
