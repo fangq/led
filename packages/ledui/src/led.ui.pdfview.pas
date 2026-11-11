@@ -85,6 +85,7 @@ type
     FCacheScale: Double;
     FCacheChanges: Integer;
     FCacheOrder: TList;             // pages with a cached bitmap, the most recently drawn last
+    FPrefetch: TTimer;              // the pages next to those shown drawn ahead, once scrolling pauses
     { the text selected: on one page, characters FSelA..FSelB-1 }
     FSelPage, FSelA, FSelB, FSelAnchor: Integer;
     FSelecting: Boolean;
@@ -135,7 +136,9 @@ type
     function ToView(APage: Integer; PX, PY: Double): TPoint;
     function Chars(APage: Integer): TLedPdfCharArray;
     function CharAt(APage: Integer; PX, PY: Double; ANearest: Boolean): Integer;
-    procedure DrawPage(C: TCanvas; APage: Integer; const R: TRect);
+    procedure DrawPage(C: TCanvas; APage: Integer; const R, AClip: TRect);
+    procedure KickPrefetch;
+    procedure PrefetchTick(Sender: TObject);
     function PageImage(APage: Integer): TLazIntfImage;
     procedure Tint(Img: TLazIntfImage; APage, AFrom, ATo: Integer; AColor: TColor; AOffX, AOffY: Integer);
     procedure Changed;
@@ -227,18 +230,22 @@ end;
 procedure TLedPdfView.Paint;
 var
   i: Integer;
-  R: TRect;
+  R, Clip: TRect;
 begin
+  { only the part asked for: after a scroll, the strip that came into view }
+  Clip := Canvas.ClipRect;
+  if (Clip.Right <= Clip.Left) or (Clip.Bottom <= Clip.Top) then Clip := ClientRect;
   Canvas.Brush.Color := $00707070;
-  Canvas.FillRect(ClientRect);
+  Canvas.FillRect(Clip);
   if FPane = nil then Exit;
   for i := 0 to FPane.PageCount - 1 do
   begin
     R := FPane.PageRectOnView(i);
-    if R.Bottom < 0 then Continue;
-    if R.Top > ClientHeight then Break;
-    FPane.DrawPage(Canvas, i, R);
+    if R.Bottom + 3 < Clip.Top then Continue;
+    if R.Top > Clip.Bottom then Break;
+    FPane.DrawPage(Canvas, i, R, Clip);
   end;
+  FPane.KickPrefetch;
 end;
 
 procedure TLedPdfView.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -321,6 +328,10 @@ begin
   FAnnPage := -1;
   FFieldIndex := -1;
   FCacheOrder := TList.Create;
+  FPrefetch := TTimer.Create(Self);
+  FPrefetch.Enabled := False;
+  FPrefetch.Interval := 120;
+  FPrefetch.OnTimer := @PrefetchTick;
   BuildTools;
 
   FFindBar := TPanel.Create(Self);
@@ -382,6 +393,7 @@ end;
 
 destructor TLedPdfPane.Destroy;
 begin
+  FreeAndNil(FPrefetch);
   ClearCache;
   FCacheOrder.Free;
   {$IFDEF LED_PARADE}
@@ -662,12 +674,72 @@ begin
 end;
 
 procedure TLedPdfPane.ScrollChange(Sender: TObject);
+var
+  DX, DY: Integer;
 begin
+  DX := FHBar.Position - FScrollX;
+  DY := FVBar.Position - FScrollY;
   FScrollY := FVBar.Position;
   FScrollX := FHBar.Position;
   CancelField;
-  FView.Invalidate;
+  { what is on the screen moved over and only the strip that comes into view drawn: a whole repaint at each
+    step of the wheel is a screenful of pixels sent again, slow over a remote display (x2go, ssh -X). A shape
+    being drawn or an annotation dragged is in window coordinates, and is drawn whole }
+  if (DX = 0) and (DY = 0) then
+  else if FView.HandleAllocated and FView.IsVisible and not FDrawing and not FDragAnn and
+     (Abs(DX) < FView.ClientWidth) and (Abs(DY) < FView.ClientHeight) and
+     ScrollWindowEx(FView.Handle, -DX, -DY, nil, nil, 0, nil, SW_INVALIDATE) then
+  else
+    FView.Invalidate;
   Status;
+end;
+
+procedure TLedPdfPane.KickPrefetch;
+begin
+  if FPrefetch = nil then Exit;
+  FPrefetch.Enabled := False;
+  FPrefetch.Enabled := True;
+end;
+
+{ one page near those shown, not yet drawn, drawn into the cache: the ones below first, then the one above }
+procedure TLedPdfPane.PrefetchTick(Sender: TObject);
+var
+  First, Last, i, P: Integer;
+  R: TRect;
+  Order: array[0..3] of Integer;
+begin
+  FPrefetch.Enabled := False;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (PageCount = 0) or not FView.IsVisible then Exit;
+  First := -1;
+  Last := -1;
+  for i := 0 to PageCount - 1 do
+  begin
+    R := PageRectOnView(i);
+    if R.Bottom < 0 then Continue;
+    if R.Top > FView.ClientHeight then Break;
+    if First < 0 then First := i;
+    Last := i;
+  end;
+  if First < 0 then Exit;
+  Order[0] := Last + 1;
+  Order[1] := Last + 2;
+  Order[2] := First - 1;
+  Order[3] := Last + 3;
+  for i := 0 to High(Order) do
+  begin
+    P := Order[i];
+    if (P < 0) or (P >= PageCount) then Continue;
+    if (FCacheScale = FScale) and (FCacheChanges = pd_pdfr_changes(FPdf)) and (FCacheImg[P] <> nil) then Continue;
+    if Int64(Round(FPageW[P] * FScale)) * Round(FPageH[P] * FScale) > 8000000 then Continue;
+    { drawn without taking the place of the pages shown: those are touched again after it }
+    PageImage(P);
+    for P := Last downto First do
+      if FCacheImg[P] <> nil then PageImage(P);
+    FPrefetch.Enabled := True;  { the next one, at the next pause }
+    Exit;
+  end;
+  {$ENDIF}
 end;
 
 function TLedPdfPane.PageLeft(APage: Integer): Integer;
@@ -954,7 +1026,7 @@ begin
   {$ENDIF}
 end;
 
-procedure TLedPdfPane.DrawPage(C: TCanvas; APage: Integer; const R: TRect);
+procedure TLedPdfPane.DrawPage(C: TCanvas; APage: Integer; const R, AClip: TRect);
 var
   Img, TmpImg: TLazIntfImage;
   Tmp: TBitmap;
@@ -998,10 +1070,10 @@ begin
   begin
     { too large to keep: the part on the screen drawn now }
     Vis := R;
-    if Vis.Left < 0 then Vis.Left := 0;
-    if Vis.Top < 0 then Vis.Top := 0;
-    if Vis.Right > FView.ClientWidth then Vis.Right := FView.ClientWidth;
-    if Vis.Bottom > FView.ClientHeight then Vis.Bottom := FView.ClientHeight;
+    if Vis.Left < AClip.Left then Vis.Left := AClip.Left;
+    if Vis.Top < AClip.Top then Vis.Top := AClip.Top;
+    if Vis.Right > AClip.Right then Vis.Right := AClip.Right;
+    if Vis.Bottom > AClip.Bottom then Vis.Bottom := AClip.Bottom;
     if (Vis.Right > Vis.Left) and (Vis.Bottom > Vis.Top) then
     begin
       TmpImg := RenderImage(FPdf, APage, FScale, Vis.Left - R.Left, Vis.Top - R.Top, Vis.Right - Vis.Left,
