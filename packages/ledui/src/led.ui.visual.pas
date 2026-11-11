@@ -4378,8 +4378,8 @@ begin
     Z := Min(Z, FFitCap);     { the opening zoom, no wider than the view }
   FEdit.Zoom := Z;
   FFitZoom := FEdit.Zoom;     { as the editor kept it, within its limits }
-  if FFitPage and FEdit.CanvasPage then
-    FEdit.ShowSlide(Max(0, FEdit.CurrentSlide));    { the slide being edited, whole, after the zoom }
+  if FFitPage and FEdit.CanvasPage and (FEdit.CurrentSlide >= 0) then
+    FEdit.ShowSlide(FEdit.CurrentSlide);    { the slide being edited, whole, after the zoom; not known: the view stays }
   if FZoomBox <> nil then
     ShowZoom;
 end;
