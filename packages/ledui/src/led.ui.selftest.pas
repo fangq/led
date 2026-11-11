@@ -19455,12 +19455,28 @@ begin
   {$ENDIF}
 end;
 
+{$IFDEF LED_PARADE}
+{ the right button's menu at a point of the page, as its items' captions, '|' between }
+function CtxMenuAt(E: TParadeEdit; Q: TPoint): string;
+var
+  H: Boolean;
+  k: Integer;
+begin
+  H := False;
+  TLedCtxEdit(E).DoContextPopup(Q, H);
+  Result := '|';
+  for k := 0 to E.PopupMenu.Items.Count - 1 do
+    Result := Result + E.PopupMenu.Items[k].Caption + '|';
+end;
+{$ENDIF}
+
 procedure TestOpenPptx(F: TLedMainForm);
 { Parade's API throughout, and nothing to assert without it: a build with no
   pages in it has no .pptx behaviour to be right or wrong about. }
 {$IFDEF LED_PARADE}
 var
   Tab: TLedTab;
+  M: string;
   Src, Copy_, Before, Out_, Back, Why: string;
   E: TParadeEdit;
   TW: Integer;
@@ -19536,6 +19552,19 @@ begin
   DeleteFile(Out_);
   E.Undo;
   Check('Ctrl+Z: shown again', not E.SlideHidden(1));
+  { Ctrl+M: a new slide after the one being edited, on its layout; a slide's ground right-clicked, the slide's menu }
+  E.GoToSlide(0);
+  Pump;
+  Check('Ctrl+M taken by the page', LedVisualClaimKey(VK_M, [ssCtrl], E));
+  Pump;
+  Check(Format('a slide more, after the first, being edited (%d slides, slide %d)', [E.SlideCount, E.CurrentSlide]),
+    (E.SlideCount = 3) and (E.CurrentSlide = 1));
+  E.ShowSlide(1);
+  Pump;
+  with E.PageToClient(E.SlidePage(1), 6, 6) do
+    M := CtxMenuAt(E, Point(X, Y));
+  Check('a slide''s ground right-clicked: its New Slide and Reset Slide: ' + M, (Pos('|New Slide', M) > 0) and
+    (Pos('|Reset Slide|', M) > 0) and (Pos('|Wrap Text', M) = 0));
   F.CloseActiveTab(False);
   Pump;
   Check('closed unsaved: the .pptx as it was', LedReadRawFile(Copy_) = Before);
