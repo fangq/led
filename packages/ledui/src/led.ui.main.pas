@@ -6260,6 +6260,12 @@ begin
     CurrentVisual.StartSlideShow(False);
     Exit;
   end;
+  if (CurrentPdf <> nil) and (ActiveControl = CurrentPdf.View) and (GetKeyState($74 { VK_F5 }) < 0) then
+  begin   { the F5 key in a PDF's pages: presented, as a viewer's presentation mode (File > Reload, chosen, still
+            reads it again) }
+    CurrentPdf.Present(False);
+    Exit;
+  end;
   {$ENDIF}
   Tab := ActiveTab;
   if (Tab = nil) or Tab.Document.IsUntitled then Exit;

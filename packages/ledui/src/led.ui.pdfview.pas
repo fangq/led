@@ -38,6 +38,42 @@ type
   { The pages: what is drawn, where each page is, the mouse on them. }
   TLedPdfPane = class;
 
+  { A PDF presented: its pages one at a time, as large as the screen takes them, on black. A click, the arrows,
+    Space, Page Down go on; the right button, Backspace, Page Up back; Home, End; a page's number then Enter; B or .
+    black, W or , white; a link followed where it is clicked; Esc the end, the view at the page shown last. The next
+    page is drawn while the one shown is looked at. }
+  TLedPdfShow = class(TForm)
+  private
+    FPane: TLedPdfPane;
+    FPage: Integer;
+    FBmp: array[0..2] of TBitmap;     { the page shown, the one after it, the one before }
+    FBmpPage: array[0..2] of Integer;
+    FBmpW, FBmpH: Integer;            { the screen they were drawn for }
+    FBlank: TColor;
+    FBlanked: Boolean;
+    FTyped: string;
+    FIdle: TTimer;
+    FAhead: TTimer;
+    FLastMove: QWord;
+    function PageBitmap(APage: Integer): TBitmap;
+    procedure GoTo_(APage: Integer);
+    procedure IdleTick(Sender: TObject);
+    procedure AheadTick(Sender: TObject);
+    function PageRect(APage: Integer): TRect;
+  protected
+    procedure Paint; override;
+    procedure KeyDown(var Key: Word; Shift: TShiftState); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
+    procedure Resize; override;
+    procedure DoClose(var CloseAction: TCloseAction); override;
+  public
+    constructor CreateShow(APane: TLedPdfPane; AFrom: Integer);
+    destructor Destroy; override;
+    property Page: Integer read FPage;
+  end;
+
   TLedPdfView = class(TCustomControl)
   private
     FPane: TLedPdfPane;
@@ -123,6 +159,7 @@ type
     procedure BuildTools;
     procedure ToolClick(Sender: TObject);
     procedure ZoomChange(Sender: TObject);
+    procedure PresentClick(Sender: TObject);
     procedure BuildZoomBar;
     procedure ZoomSliderChanged(Sender: TObject);
     procedure ZoomInClicked(Sender: TObject);
@@ -206,6 +243,8 @@ type
     procedure ShowFind;
     procedure ZoomBy(AFactor: Double);
     procedure ZoomFitWidth;
+    { the pages full screen, one at a time (F5: from the first; Shift+F5, the button: from the one shown) }
+    procedure Present(FromCurrent: Boolean);
     { the text selected marked: PD_ANNOT_HIGHLIGHT, _UNDERLINE, _STRIKEOUT or _SQUIGGLY, in the tool's colour }
     procedure MarkSelectionAs(AKind: Integer);
     { the text found, from the start of APage on: True if it was (the page shows it, it is selected) }
@@ -487,7 +526,7 @@ var
   T: TLedPdfTool;
   B: TToolButton;
   Sep: TToolButton;
-  IconNames: array[0..Ord(High(TLedPdfTool))] of string;
+  IconNames: array[0..Ord(High(TLedPdfTool)) + 1] of string;
 begin
   FTools := TToolBar.Create(Self);
   FTools.Parent := Self;
@@ -497,6 +536,7 @@ begin
   FToolImages.Height := LedScale96(20);
   for T := Low(TLedPdfTool) to High(TLedPdfTool) do
     IconNames[Ord(T)] := Icons[T];
+  IconNames[High(IconNames)] := 'pdfpresent';
   LedBuildIconList(FToolImages, IconNames, clBtnText);
   FTools.Images := FToolImages;
   FTools.ShowCaptions := False;
@@ -535,6 +575,16 @@ begin
   FColorBtn.Hint := 'The colour of what the tools make';
   FColorBtn.ShowHint := True;
   FColorBtn.Left := FToolButtons[ptArrow].Left + FToolButtons[ptArrow].Width + 1;
+  { the pages full screen }
+  B := TToolButton.Create(FTools);
+  B.Left := 900;   { (before the tools: a reader's first button) }
+  B.Parent := FTools;
+  B.Style := tbsButton;
+  B.ImageIndex := High(IconNames);
+  B.Hint := 'Present: the pages full screen, from this one (F5 from the first, Shift+F5 from this one; Esc ends)';
+  B.ShowHint := True;
+  B.OnClick := @PresentClick;
+  B.Name := 'PdfPresentBtn';
 
   FZoomBox := TComboBox.Create(FTools);
   FZoomBox.Parent := FTools;
@@ -2595,6 +2645,12 @@ procedure TLedPdfPane.ViewKey(var Key: Word; Shift: TShiftState);
 begin
   {$IFDEF LED_PARADE}
   if FPdf = nil then Exit;
+  if (Key = VK_F5) and (Shift * [ssCtrl, ssAlt] = []) then
+  begin   { presented: F5 from the first page, Shift+F5 from this one, as a slide show starts }
+    Present(ssShift in Shift);
+    Key := 0;
+    Exit;
+  end;
   case Key of
     VK_DELETE:
       if (FAnnPage >= 0) and (FAnnIndex >= 0) then
@@ -2837,6 +2893,299 @@ begin
   if AskText('Annotation', 'Its text:', S, True) then
     if pd_pdfr_annot_set_contents(FPdf, FAnnPage, FAnnIndex, PAnsiChar(S)) = 0 then Changed;
   {$ENDIF}
+end;
+
+
+{ ---- presenting ---- }
+
+procedure TLedPdfPane.PresentClick(Sender: TObject);
+begin
+  Present(True);
+end;
+
+procedure TLedPdfPane.Present(FromCurrent: Boolean);
+var
+  F: TLedPdfShow;
+begin
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (PageCount = 0) then Exit;
+  CancelField;
+  F := TLedPdfShow.CreateShow(Self, IfThen(FromCurrent, CurrentPage, 0));
+  F.Show;
+  {$ENDIF}
+end;
+
+constructor TLedPdfShow.CreateShow(APane: TLedPdfPane; AFrom: Integer);
+var
+  i: Integer;
+begin
+  inherited CreateNew(nil);
+  FPane := APane;
+  FPage := EnsureRange(AFrom, 0, Max(0, APane.PageCount - 1));
+  for i := 0 to 2 do
+    FBmpPage[i] := -1;
+  Caption := 'Presenting';
+  BorderStyle := bsNone;
+  Color := clBlack;
+  KeyPreview := True;
+  FBlank := clBlack;
+  { the monitor the window is on, all of it }
+  BoundsRect := Screen.MonitorFromWindow(Application.MainForm.Handle).BoundsRect;
+  WindowState := wsFullScreen;
+  FIdle := TTimer.Create(Self);
+  FIdle.Interval := 500;
+  FIdle.OnTimer := @IdleTick;
+  FAhead := TTimer.Create(Self);
+  FAhead.Enabled := False;
+  FAhead.Interval := 60;
+  FAhead.OnTimer := @AheadTick;
+  FLastMove := GetTickCount64;
+end;
+
+destructor TLedPdfShow.Destroy;
+var
+  i: Integer;
+begin
+  for i := 0 to 2 do
+    FBmp[i].Free;
+  inherited Destroy;
+end;
+
+{ where a page goes on the screen: as large as it fits, in the middle }
+function TLedPdfShow.PageRect(APage: Integer): TRect;
+var
+  Sc: Double;
+  W, H: Integer;
+begin
+  Result := Rect(0, 0, 0, 0);
+  if (APage < 0) or (APage >= FPane.PageCount) or (FPane.FPageW[APage] <= 0) or (FPane.FPageH[APage] <= 0) then
+    Exit;
+  Sc := Min(ClientWidth / FPane.FPageW[APage], ClientHeight / FPane.FPageH[APage]);
+  W := Max(1, Round(FPane.FPageW[APage] * Sc));
+  H := Max(1, Round(FPane.FPageH[APage] * Sc));
+  Result := Bounds((ClientWidth - W) div 2, (ClientHeight - H) div 2, W, H);
+end;
+
+{ a page drawn for the screen, opaque (so the display takes it as it is, nothing read back to blend), kept: the one
+  shown, the next, the one before }
+function TLedPdfShow.PageBitmap(APage: Integer): TBitmap;
+{$IFDEF LED_PARADE}
+var
+  R: TRect;
+  Img: TLazIntfImage;
+  Desc: TRawImageDescription;
+  i, Slot, Flags: Integer;
+{$ENDIF}
+begin
+  Result := nil;
+  {$IFDEF LED_PARADE}
+  if (FBmpW <> ClientWidth) or (FBmpH <> ClientHeight) then
+  begin
+    for i := 0 to 2 do
+    begin
+      FreeAndNil(FBmp[i]);
+      FBmpPage[i] := -1;
+    end;
+    FBmpW := ClientWidth;
+    FBmpH := ClientHeight;
+  end;
+  for i := 0 to 2 do
+    if (FBmpPage[i] = APage) and (FBmp[i] <> nil) then
+      Exit(FBmp[i]);
+  R := PageRect(APage);
+  if (R.Width <= 0) or (R.Height <= 0) then Exit;
+  { the slot of a page not near the one shown }
+  Slot := 0;
+  for i := 0 to 2 do
+    if (FBmpPage[i] < 0) or (Abs(FBmpPage[i] - FPage) > 1) then
+    begin
+      Slot := i;
+      Break;
+    end;
+  Img := TLazIntfImage.Create(0, 0);
+  try
+    Desc.Init_BPP32_B8G8R8_BIO_TTB(R.Width, R.Height);
+    Img.DataDescription := Desc;
+    Flags := 0;
+    if Desc.RedShift = 16 then Flags := PD_PDFR_BGRA;
+    pd_pdfr_render(FPane.FPdf, APage, R.Width / FPane.FPageW[APage], 0, 0, Img.PixelData, R.Width, R.Height,
+      Desc.BytesPerLine, Flags);
+    FreeAndNil(FBmp[Slot]);
+    FBmp[Slot] := TBitmap.Create;
+    FBmp[Slot].LoadFromIntfImage(Img);
+    FBmpPage[Slot] := APage;
+    Result := FBmp[Slot];
+  finally
+    Img.Free;
+  end;
+  {$ENDIF}
+end;
+
+procedure TLedPdfShow.Paint;
+var
+  B: TBitmap;
+  R: TRect;
+begin
+  if FBlanked then
+  begin
+    Canvas.Brush.Color := FBlank;
+    Canvas.FillRect(ClientRect);
+    Exit;
+  end;
+  B := PageBitmap(FPage);
+  R := PageRect(FPage);
+  Canvas.Brush.Color := clBlack;
+  { the black around the page, not under it: what is drawn twice is sent twice }
+  Canvas.FillRect(Rect(0, 0, ClientWidth, R.Top));
+  Canvas.FillRect(Rect(0, R.Bottom, ClientWidth, ClientHeight));
+  Canvas.FillRect(Rect(0, R.Top, R.Left, R.Bottom));
+  Canvas.FillRect(Rect(R.Right, R.Top, ClientWidth, R.Bottom));
+  if B <> nil then
+    Canvas.Draw(R.Left, R.Top, B);
+  FAhead.Enabled := True;
+end;
+
+procedure TLedPdfShow.GoTo_(APage: Integer);
+begin
+  APage := EnsureRange(APage, 0, Max(0, FPane.PageCount - 1));
+  FBlanked := False;
+  if APage = FPage then
+  begin
+    Invalidate;
+    Exit;
+  end;
+  FPage := APage;
+  Invalidate;
+end;
+
+{ the page after the one shown drawn while it is looked at, then the one before }
+procedure TLedPdfShow.AheadTick(Sender: TObject);
+begin
+  FAhead.Enabled := False;
+  if FPage + 1 < FPane.PageCount then
+    PageBitmap(FPage + 1);
+  if FPage > 0 then
+    PageBitmap(FPage - 1);
+end;
+
+procedure TLedPdfShow.IdleTick(Sender: TObject);
+begin
+  if (Cursor <> crNone) and (GetTickCount64 - FLastMove > 2500) then
+    Cursor := crNone;
+end;
+
+procedure TLedPdfShow.KeyDown(var Key: Word; Shift: TShiftState);
+begin
+  case Key of
+    VK_ESCAPE, VK_F5:
+      Close;
+    VK_RIGHT, VK_DOWN, VK_NEXT, VK_SPACE, VK_N, VK_RETURN:
+      if (Key = VK_RETURN) and (FTyped <> '') then
+      begin
+        GoTo_(StrToIntDef(FTyped, FPage + 1) - 1);
+        FTyped := '';
+      end
+      else
+        GoTo_(FPage + 1);
+    VK_LEFT, VK_UP, VK_PRIOR, VK_BACK, VK_P:
+      GoTo_(FPage - 1);
+    VK_HOME:
+      GoTo_(0);
+    VK_END:
+      GoTo_(FPane.PageCount - 1);
+    VK_B, VK_OEM_PERIOD, VK_W, VK_OEM_COMMA:
+      begin   { the screen blanked, black or white; the same key again, the page }
+        if FBlanked and (FBlank = IfThen((Key = VK_B) or (Key = VK_OEM_PERIOD), clBlack, clWhite)) then
+          FBlanked := False
+        else
+        begin
+          FBlanked := True;
+          if (Key = VK_B) or (Key = VK_OEM_PERIOD) then FBlank := clBlack else FBlank := clWhite;
+        end;
+        Invalidate;
+      end;
+    VK_0..VK_9:
+      FTyped := FTyped + Chr(Ord('0') + Key - VK_0);
+    VK_NUMPAD0..VK_NUMPAD9:
+      FTyped := FTyped + Chr(Ord('0') + Key - VK_NUMPAD0);
+  else
+    Exit;
+  end;
+  if not (Key in [VK_0..VK_9, VK_NUMPAD0..VK_NUMPAD9]) then
+    FTyped := '';
+  Key := 0;
+end;
+
+procedure TLedPdfShow.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+{$IFDEF LED_PARADE}
+var
+  R: TRect;
+  A: Integer;
+  Ann: pd_pdfr_annot;
+  S: string;
+  Sc: Double;
+{$ENDIF}
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  FLastMove := GetTickCount64;
+  Cursor := crDefault;
+  if Button = mbRight then
+  begin
+    GoTo_(FPage - 1);
+    Exit;
+  end;
+  if Button <> mbLeft then Exit;
+  {$IFDEF LED_PARADE}
+  { a link where it is clicked: followed (a page of the file, or the address) }
+  R := PageRect(FPage);
+  if (R.Width > 0) and PtInRect(R, Point(X, Y)) and not FBlanked then
+  begin
+    Sc := R.Width / FPane.FPageW[FPage];
+    A := pd_pdfr_annot_at(FPane.FPdf, FPage, (X - R.Left) / Sc, (Y - R.Top) / Sc);
+    if (A >= 0) and (pd_pdfr_annot_get(FPane.FPdf, FPage, A, Ann) = 0) and (Ann.kind = PD_ANNOT_LINK) then
+    begin
+      S := Ann.uri;
+      if Copy(S, 1, 6) = '#page=' then
+        GoTo_(StrToIntDef(Copy(S, 7, 10), 1) - 1)
+      else if S <> '' then
+        OpenURL(S);
+      Exit;
+    end;
+  end;
+  {$ENDIF}
+  GoTo_(FPage + 1);
+end;
+
+procedure TLedPdfShow.MouseMove(Shift: TShiftState; X, Y: Integer);
+begin
+  inherited MouseMove(Shift, X, Y);
+  FLastMove := GetTickCount64;
+  if Cursor = crNone then
+    Cursor := crDefault;
+end;
+
+function TLedPdfShow.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+begin
+  if WheelDelta < 0 then GoTo_(FPage + 1) else GoTo_(FPage - 1);
+  Result := True;
+end;
+
+procedure TLedPdfShow.Resize;
+begin
+  inherited Resize;
+  Invalidate;
+end;
+
+procedure TLedPdfShow.DoClose(var CloseAction: TCloseAction);
+begin
+  inherited DoClose(CloseAction);
+  CloseAction := caFree;
+  { back in the view at the page shown last }
+  if FPane <> nil then
+  begin
+    FPane.GoToPage(FPage);
+    if FPane.FView.CanFocus then FPane.FView.SetFocus;
+  end;
 end;
 
 end.

@@ -20458,6 +20458,7 @@ end;
 type
   { the view's mouse, driven as the reader's is }
   TPdfViewAccess = class(TLedPdfView);
+  TPdfShowAccess = class(TLedPdfShow);   { (its KeyDown, as the window gives it a key) }
 
 { A PDF opens as its pages, its text found, selected by dragging over it and highlighted; a rectangle drawn; undone
   and done again; saved as the file it was with an update appended (what the save writes, read back by Parade's
@@ -20478,6 +20479,8 @@ var
   WasZoom: Int64;
   PX0, PY0: Double;
   K: Integer;
+  Shown: TLedPdfShow;
+  Key: Word;
   Slider: TComponent;
 
   function Obj(K: Integer; const S: string): string;
@@ -20671,6 +20674,30 @@ begin
     Pump;
     C := PdfPageChars(P.Pdf, 0);
     Check('Undo puts it back', (Length(C) > 0) and (Abs(C[0].x0 - PX0) < 0.05) and (Abs(C[0].y0 - PY0) < 0.05));
+  end;
+
+  { presented: full screen, the pages one at a time; Esc ends it, the form gone }
+  P.Present(False);
+  Pump;
+  Shown := nil;
+  for i := 0 to Screen.FormCount - 1 do
+    if Screen.Forms[i] is TLedPdfShow then
+      Shown := TLedPdfShow(Screen.Forms[i]);
+  Check('F5 presents the pages, full screen', (Shown <> nil) and (Shown.WindowState = wsFullScreen) and
+    (Shown.Page = 0));
+  if Shown <> nil then
+  begin
+    Key := VK_END;
+    TPdfShowAccess(Shown).KeyDown(Key, []);
+    CheckEqInt('End: the last page', P.PageCount - 1, Shown.Page);
+    Key := VK_ESCAPE;
+    TPdfShowAccess(Shown).KeyDown(Key, []);
+    Pump;
+    Shown := nil;
+    for i := 0 to Screen.FormCount - 1 do
+      if Screen.Forms[i] is TLedPdfShow then
+        Shown := TLedPdfShow(Screen.Forms[i]);
+    Check('Esc ends it', Shown = nil);
   end;
 
   Doc.Master.Modified := False;
