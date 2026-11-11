@@ -1881,6 +1881,18 @@ begin
       P.Ellipse(1.5, 3, 14.5, 13);
     'pdfline':
       P.Line(2.5, 13.5, 13.5, 2.5);
+    'pdfsign':
+      begin   { a pen's nib over the line, a signature written along it }
+        P.Poly([1, 12, 3, 9.5, 4.5, 11, 6.5, 8, 7.5, 11, 9.5, 9.5]);
+        P.Line(1, 14.5, 15, 14.5);
+        P.Poly([10.5, 9.5, 15, 3, 13, 1.5, 9.5, 8, 10.5, 9.5], True);
+      end;
+    'pdfstamp':
+      begin   { a check mark in a box }
+        P.Box(1.5, 1.5, 14.5, 14.5);
+        P.Width(1.8);
+        P.Poly([4, 8.5, 7, 11.5, 12.5, 4.5]);
+      end;
     'pdfpresent':
       begin   { a screen on its stand, a play mark on it }
         P.Box(1, 2, 15, 11.5);
