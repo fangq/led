@@ -34,7 +34,9 @@ type
   { lvkPptx: PowerPoint, read as a Parade document's canvas pages (LedVisualImport), written only by an export to a
     new file (ExportToFile): the deck opened is never written over }
   { lvkDotx: a Word template, read only -- a new document of what it has (LedVisualImport) }
-  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx, lvkDotx);
+  { lvkLatex: a .tex file shown as its document, read only -- the source is what is edited (a page written back
+    through the LaTeX export would lose the file's own macros and preamble) }
+  TLedVisualKind = (lvkNone, lvkMarkdown, lvkHtml, lvkDocx, lvkPdoc, lvkJdoc, lvkPptx, lvkDotx, lvkLatex);
 
   { The page view, a strip of buttons above it.  One per tab, made when the
     tab is first switched to it. }
@@ -543,6 +545,7 @@ begin
   if E = '.jdoc' then Exit(lvkJdoc);
   if (E = '.pptx') or (E = '.pptm') or (E = '.potx') or (E = '.potm') or (E = '.ppsx') then Exit(lvkPptx);
   if (E = '.dotx') or (E = '.dotm') then Exit(lvkDotx);
+  if (E = '.tex') or (E = '.latex') or (E = '.ltx') then Exit(lvkLatex);
   Result := lvkNone;
 end;
 
@@ -580,6 +583,7 @@ begin
     lvkPdoc, lvkJdoc: Result := PD_CONV_JDATA;
     lvkPptx: Result := PD_CONV_PPTX;
     lvkDotx: Result := PD_CONV_DOTX;
+    lvkLatex: Result := PD_CONV_LATEX;
   else
     Result := -1;
   end;
@@ -4696,13 +4700,15 @@ begin
   {$IFDEF LED_PARADE}
   if AKind = lvkNone then
   begin
-    AWhy := 'the visual editor opens Markdown, HTML, Word (.docx), PowerPoint (.pptx) and Parade (.pdoc, .jdoc) files';
+    AWhy := 'the visual editor opens Markdown, HTML, LaTeX (.tex), Word (.docx), PowerPoint (.pptx) and Parade ' +
+      '(.pdoc, .jdoc) files';
     Exit;
   end;
   S := TStringStream.Create(AData);
   try
     try
       FEdit.LoadFromStream(S, ParadeFormat(AKind), AFileName);
+      FEdit.ReadOnly := AKind = lvkLatex;   { a .tex: its source is what is edited }
       UpdateSlidePane(True);
       FFitPage := FEdit.CanvasPage;     { slides, a drawing: a whole page in view, as the view is sized }
       FFitWidth := True;
