@@ -23,7 +23,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms, Dialogs, LCLType, LCLIntf, Menus, ComCtrls,
-  Buttons, Types
+  Buttons, Types, IntfGraphics, GraphType
   {$IFDEF LED_PARADE}, paradepdf{$ENDIF};
 
 { a file the PDF pages open: its name says so }
@@ -81,6 +81,7 @@ type
     FChars: array of TLedPdfCharArray;
     FCharsOk: array of Boolean;
     FCache: array of TBitmap;       // each page drawn whole at the scale (nil: not yet, or too big to keep)
+    FCacheImg: array of TLazIntfImage;  // its pixels (the selection is tinted into a copy)
     FCacheScale: Double;
     FCacheChanges: Integer;
     FCacheOrder: TList;             // pages with a cached bitmap, the most recently drawn last
@@ -135,8 +136,8 @@ type
     function Chars(APage: Integer): TLedPdfCharArray;
     function CharAt(APage: Integer; PX, PY: Double; ANearest: Boolean): Integer;
     procedure DrawPage(C: TCanvas; APage: Integer; const R: TRect);
-    function PageBitmap(APage: Integer): TBitmap;
-    procedure Tint(B: TBitmap; APage, AFrom, ATo: Integer; AColor: TColor; AOffX, AOffY: Integer);
+    function PageImage(APage: Integer): TLazIntfImage;
+    procedure Tint(Img: TLazIntfImage; APage, AFrom, ATo: Integer; AColor: TColor; AOffX, AOffY: Integer);
     procedure Changed;
     procedure Status;
     procedure ScrollTo(APage: Integer; PY: Double);
@@ -195,7 +196,7 @@ type
 implementation
 
 uses
-  Clipbrd, Math, StrUtils, GraphType, Led.UI.Dpi;
+  Clipbrd, Math, StrUtils, Led.UI.Dpi;
 
 const
   PageGap = 12;
@@ -419,7 +420,6 @@ begin
     B.Hint := Hints[T];
     B.ShowHint := True;
     B.Style := tbsCheck;
-    B.Grouped := True;
     B.Tag := Ord(T);
     B.OnClick := @ToolClick;
     FToolButtons[T] := B;
@@ -468,9 +468,13 @@ begin
 end;
 
 procedure TLedPdfPane.SetTool(AValue: TLedPdfTool);
+var
+  T: TLedPdfTool;
 begin
   FTool := AValue;
-  FToolButtons[AValue].Down := True;
+  { one down at a time (the divider splits the buttons into two groups, so the toolbar's grouping does not) }
+  for T := Low(TLedPdfTool) to High(TLedPdfTool) do
+    FToolButtons[T].Down := T = AValue;
   if AValue = ptSelect then
     FView.Cursor := crDefault
   else if AValue in [ptHighlight, ptUnderline, ptStrikeOut, ptSquiggly] then
@@ -546,6 +550,7 @@ begin
   SetLength(FChars, Length(FPageW));
   SetLength(FCharsOk, Length(FPageW));
   SetLength(FCache, Length(FPageW));
+  SetLength(FCacheImg, Length(FPageW));
   for i := 0 to High(FPageW) do
   begin
     pd_pdfr_page_size(P, i, W, H);
@@ -553,6 +558,7 @@ begin
     FPageH[i] := H;
     FCharsOk[i] := False;
     FCache[i] := nil;
+    FCacheImg[i] := nil;
   end;
   FSavedChanges := pd_pdfr_changes(P);
   FSelPage := -1;
@@ -810,34 +816,45 @@ var
   i: Integer;
 begin
   for i := 0 to High(FCache) do
+  begin
     FreeAndNil(FCache[i]);
+    FreeAndNil(FCacheImg[i]);
+  end;
   FCacheOrder.Clear;
 end;
 
-{ a page drawn into a bitmap at the scale: B's size, the page's part from (OX, OY) }
-procedure RenderPart(APdf: Pointer; APage: Integer; AScale: Double; OX, OY: Integer; B: TBitmap);
+{ a page's part drawn into an image of W x H pixels: the part from (OX, OY) of the page at the scale. A
+  TLazIntfImage's pixels, whatever the widget set keeps its bitmaps as, are what Parade draws into }
+function RenderImage(APdf: Pointer; APage: Integer; AScale: Double; OX, OY, W, H: Integer): TLazIntfImage;
 {$IFDEF LED_PARADE}
 var
   Flags: Int32;
-  Raw: TRawImage;
 {$ENDIF}
 begin
+  Result := TLazIntfImage.Create(W, H, [riqfRGB, riqfAlpha]);
   {$IFDEF LED_PARADE}
-  B.BeginUpdate(False);
-  try
-    Raw := B.RawImage;
-    Flags := 0;
-    if Raw.Description.RedShift = 16 then Flags := PD_PDFR_BGRA;
-    if (Raw.Data <> nil) and (Raw.Description.BitsPerPixel = 32) then
-      pd_pdfr_render(APdf, APage, AScale, OX, OY, Raw.Data, B.Width, B.Height,
-        Raw.Description.BytesPerLine, Flags);
-  finally
-    B.EndUpdate(False);
-  end;
+  Flags := 0;
+  if Result.DataDescription.RedShift = 16 then Flags := PD_PDFR_BGRA;
+  if (Result.PixelData <> nil) and (Result.DataDescription.BitsPerPixel = 32) then
+    pd_pdfr_render(APdf, APage, AScale, OX, OY, Result.PixelData, W, H, Result.DataDescription.BytesPerLine, Flags);
   {$ENDIF}
 end;
 
-function TLedPdfPane.PageBitmap(APage: Integer): TBitmap;
+function ImageCopy(Src: TLazIntfImage): TLazIntfImage;
+begin
+  Result := TLazIntfImage.Create(Src.Width, Src.Height, [riqfRGB, riqfAlpha]);
+  if (Result.PixelData <> nil) and (Src.PixelData <> nil) and
+     (Result.DataDescription.BytesPerLine = Src.DataDescription.BytesPerLine) then
+    Move(Src.PixelData^, Result.PixelData^, PtrInt(Src.DataDescription.BytesPerLine) * Src.Height);
+end;
+
+function ImageBitmap(Img: TLazIntfImage): TBitmap;
+begin
+  Result := TBitmap.Create;
+  Result.LoadFromIntfImage(Img);
+end;
+
+function TLedPdfPane.PageImage(APage: Integer): TLazIntfImage;
 var
   W, H, k: Integer;
 begin
@@ -850,39 +867,37 @@ begin
     FCacheScale := FScale;
     FCacheChanges := pd_pdfr_changes(FPdf);
   end;
-  if FCache[APage] <> nil then
+  if FCacheImg[APage] <> nil then
   begin
     k := FCacheOrder.IndexOf(Pointer(PtrInt(APage)));
     if k >= 0 then FCacheOrder.Move(k, FCacheOrder.Count - 1);
-    Exit(FCache[APage]);
+    Exit(FCacheImg[APage]);
   end;
   W := Round(FPageW[APage] * FScale);
   H := Round(FPageH[APage] * FScale);
   if (W <= 0) or (H <= 0) or (Int64(W) * H > 8000000) then Exit;  { too big to keep whole: drawn as shown }
-  Result := TBitmap.Create;
-  Result.PixelFormat := pf32bit;
-  Result.SetSize(W, H);
-  RenderPart(FPdf, APage, FScale, 0, 0, Result);
-  FCache[APage] := Result;
+  Result := RenderImage(FPdf, APage, FScale, 0, 0, W, H);
+  FCacheImg[APage] := Result;
+  FCache[APage] := ImageBitmap(Result);
   FCacheOrder.Add(Pointer(PtrInt(APage)));
-  { kept within about 40 million pixels (160 MB), the least recently drawn going first }
+  { kept within about 40 million pixels (twice: the pixels and the bitmap), the least recently drawn going first }
   while (FCacheOrder.Count > 1) and (Int64(FCacheOrder.Count) * W * H > 40000000) do
   begin
     k := PtrInt(FCacheOrder[0]);
     FreeAndNil(FCache[k]);
+    FreeAndNil(FCacheImg[k]);
     FCacheOrder.Delete(0);
   end;
   {$ENDIF}
 end;
 
-{ characters AFrom..ATo-1 of a page tinted in B (whose top left is the page's (AOffX, AOffY) pixel): the colour
+{ characters AFrom..ATo-1 of a page tinted in Img (whose top left is the page's (AOffX, AOffY) pixel): the colour
   multiplied in, so the text stays readable }
-procedure TLedPdfPane.Tint(B: TBitmap; APage, AFrom, ATo: Integer; AColor: TColor; AOffX, AOffY: Integer);
+procedure TLedPdfPane.Tint(Img: TLazIntfImage; APage, AFrom, ATo: Integer; AColor: TColor; AOffX, AOffY: Integer);
 {$IFDEF LED_PARADE}
 var
   C: TLedPdfCharArray;
   i, X, Y, X0, Y0, X1, Y1, Bpp, Stride: Integer;
-  Raw: TRawImage;
   P: PByte;
   RR, GG, BB: Integer;
   RIdx, BIdx: Integer;
@@ -892,62 +907,57 @@ begin
   C := Chars(APage);
   if AFrom < 0 then AFrom := 0;
   if ATo > Length(C) then ATo := Length(C);
-  if AFrom >= ATo then Exit;
+  if (AFrom >= ATo) or (Img.PixelData = nil) then Exit;
   AColor := ColorToRGB(AColor);
   RR := Red(AColor);
   GG := Green(AColor);
   BB := Blue(AColor);
-  B.BeginUpdate(False);
-  try
-    Raw := B.RawImage;
-    Bpp := Raw.Description.BitsPerPixel div 8;
-    Stride := Raw.Description.BytesPerLine;
-    if (Raw.Data = nil) or (Bpp < 3) then Exit;
-    if Raw.Description.RedShift = 16 then
+  Bpp := Img.DataDescription.BitsPerPixel div 8;
+  Stride := Img.DataDescription.BytesPerLine;
+  if Bpp < 3 then Exit;
+  if Img.DataDescription.RedShift = 16 then
+  begin
+    RIdx := 2;
+    BIdx := 0;
+  end
+  else
+  begin
+    RIdx := 0;
+    BIdx := 2;
+  end;
+  for i := AFrom to ATo - 1 do
+  begin
+    if C[i].flags and PD_PDFR_CHAR_NEWLINE <> 0 then Continue;
+    X0 := Floor(C[i].x0 * FScale) - AOffX;
+    Y0 := Floor(C[i].y0 * FScale) - AOffY;
+    X1 := Ceil(C[i].x1 * FScale) - AOffX;
+    Y1 := Ceil(C[i].y1 * FScale) - AOffY;
+    { a space put in where words are apart spans the gap between them }
+    if (C[i].flags and PD_PDFR_CHAR_SPACE <> 0) and (i + 1 < Length(C)) then
+      X1 := Floor(C[i + 1].x0 * FScale) - AOffX;
+    X0 := Max(X0, 0);
+    Y0 := Max(Y0, 0);
+    X1 := Min(X1, Img.Width);
+    Y1 := Min(Y1, Img.Height);
+    for Y := Y0 to Y1 - 1 do
     begin
-      RIdx := 2;
-      BIdx := 0;
-    end
-    else
-    begin
-      RIdx := 0;
-      BIdx := 2;
-    end;
-    for i := AFrom to ATo - 1 do
-    begin
-      if C[i].flags and PD_PDFR_CHAR_NEWLINE <> 0 then Continue;
-      X0 := Floor(C[i].x0 * FScale) - AOffX;
-      Y0 := Floor(C[i].y0 * FScale) - AOffY;
-      X1 := Ceil(C[i].x1 * FScale) - AOffX;
-      Y1 := Ceil(C[i].y1 * FScale) - AOffY;
-      { a space put in where words are apart spans the gap between them }
-      if (C[i].flags and PD_PDFR_CHAR_SPACE <> 0) and (i + 1 < Length(C)) then
-        X1 := Floor(C[i + 1].x0 * FScale) - AOffX;
-      X0 := Max(X0, 0);
-      Y0 := Max(Y0, 0);
-      X1 := Min(X1, B.Width);
-      Y1 := Min(Y1, B.Height);
-      for Y := Y0 to Y1 - 1 do
+      P := PByte(Img.PixelData) + PtrInt(Y) * Stride + PtrInt(X0) * Bpp;
+      for X := X0 to X1 - 1 do
       begin
-        P := PByte(Raw.Data) + PtrInt(Y) * Stride + PtrInt(X0) * Bpp;
-        for X := X0 to X1 - 1 do
-        begin
-          P[RIdx] := P[RIdx] * RR div 255;
-          P[1] := P[1] * GG div 255;
-          P[BIdx] := P[BIdx] * BB div 255;
-          Inc(P, Bpp);
-        end;
+        P[RIdx] := P[RIdx] * RR div 255;
+        P[1] := P[1] * GG div 255;
+        P[BIdx] := P[BIdx] * BB div 255;
+        Inc(P, Bpp);
       end;
     end;
-  finally
-    B.EndUpdate(False);
   end;
   {$ENDIF}
 end;
 
 procedure TLedPdfPane.DrawPage(C: TCanvas; APage: Integer; const R: TRect);
 var
-  B, Tmp: TBitmap;
+  Img, TmpImg: TLazIntfImage;
+  Tmp: TBitmap;
   Vis: TRect;
   i: Integer;
   {$IFDEF LED_PARADE}
@@ -962,24 +972,27 @@ begin
   C.Brush.Color := $00505050;
   C.FillRect(Rect(R.Left + 3, R.Top + 3, R.Right + 3, R.Bottom + 3));
   Tinted := ((FSelPage = APage) and (FSelB > FSelA)) or ((FFoundPage = APage) and (FFoundB > FFoundA));
-  B := PageBitmap(APage);
-  if B <> nil then
+  Img := PageImage(APage);
+  if Img <> nil then
   begin
     if Tinted then
     begin
-      Tmp := TBitmap.Create;
+      TmpImg := ImageCopy(Img);
       try
-        Tmp.Assign(B);
-        Tmp.PixelFormat := pf32bit;
-        if FFoundPage = APage then Tint(Tmp, APage, FFoundA, FFoundB, RGBToColor(255, 170, 60), 0, 0);
-        if FSelPage = APage then Tint(Tmp, APage, FSelA, FSelB, RGBToColor(150, 190, 255), 0, 0);
-        C.Draw(R.Left, R.Top, Tmp);
+        if FFoundPage = APage then Tint(TmpImg, APage, FFoundA, FFoundB, RGBToColor(255, 170, 60), 0, 0);
+        if FSelPage = APage then Tint(TmpImg, APage, FSelA, FSelB, RGBToColor(150, 190, 255), 0, 0);
+        Tmp := ImageBitmap(TmpImg);
+        try
+          C.Draw(R.Left, R.Top, Tmp);
+        finally
+          Tmp.Free;
+        end;
       finally
-        Tmp.Free;
+        TmpImg.Free;
       end;
     end
-    else
-      C.Draw(R.Left, R.Top, B);
+    else if FCache[APage] <> nil then
+      C.Draw(R.Left, R.Top, FCache[APage]);
   end
   else
   begin
@@ -991,18 +1004,21 @@ begin
     if Vis.Bottom > FView.ClientHeight then Vis.Bottom := FView.ClientHeight;
     if (Vis.Right > Vis.Left) and (Vis.Bottom > Vis.Top) then
     begin
-      Tmp := TBitmap.Create;
+      TmpImg := RenderImage(FPdf, APage, FScale, Vis.Left - R.Left, Vis.Top - R.Top, Vis.Right - Vis.Left,
+        Vis.Bottom - Vis.Top);
       try
-        Tmp.PixelFormat := pf32bit;
-        Tmp.SetSize(Vis.Right - Vis.Left, Vis.Bottom - Vis.Top);
-        RenderPart(FPdf, APage, FScale, Vis.Left - R.Left, Vis.Top - R.Top, Tmp);
         if FFoundPage = APage then
-          Tint(Tmp, APage, FFoundA, FFoundB, RGBToColor(255, 170, 60), Vis.Left - R.Left, Vis.Top - R.Top);
+          Tint(TmpImg, APage, FFoundA, FFoundB, RGBToColor(255, 170, 60), Vis.Left - R.Left, Vis.Top - R.Top);
         if FSelPage = APage then
-          Tint(Tmp, APage, FSelA, FSelB, RGBToColor(150, 190, 255), Vis.Left - R.Left, Vis.Top - R.Top);
-        C.Draw(Vis.Left, Vis.Top, Tmp);
+          Tint(TmpImg, APage, FSelA, FSelB, RGBToColor(150, 190, 255), Vis.Left - R.Left, Vis.Top - R.Top);
+        Tmp := ImageBitmap(TmpImg);
+        try
+          C.Draw(Vis.Left, Vis.Top, Tmp);
+        finally
+          Tmp.Free;
+        end;
       finally
-        Tmp.Free;
+        TmpImg.Free;
       end;
     end;
   end;
