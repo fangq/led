@@ -17561,6 +17561,179 @@ end;
 
 { The Delete key on a page: the page's, not the text views hidden behind it (it deleted a character there, out of
   sight, and nothing on the page). }
+{$IFDEF LED_PARADE}
+type
+  TLedCtxEdit = class(TParadeEdit);   { DoContextPopup, as a right click calls it }
+
+{ The right button's menu is made for what it is on: a picture's crop, wrap and size and none of the text's dialogs;
+  a link's open and remove; a table's rows and columns; a comment's edit and delete; plain text the text's own.
+  Each checked by its items, and one command of each by what it does. }
+procedure TestVisualContextMenus(F: TLedMainForm);
+var
+  Md, Why, Png: string;
+  Tab: TLedTab;
+  P: TParadeEdit;
+  Bmp: TPortableNetworkGraphic;
+  Para, Cell, Row, Tbl: pd_block_id;
+  U: string;
+  A, B: pd_pos;
+  Handled: Boolean;
+  i, Rows: Integer;
+
+  function Pt(Blk: pd_block_id; Off: UInt32): TPoint;
+  var
+    Pg: Int32;
+    CX, Base, Asc, Desc: pd_sp;
+  begin
+    Result := Point(-1, -1);
+    P.Repaint;
+    Pump;
+    if pd_layout_caret(P.Layout, PdPos(Blk, Off), Pg, CX, Base, Asc, Desc) = PD_OK then
+      Result := P.PageToClient(Pg, CX / PD_SP_PER_PT + 1.5, (Base - Asc div 2) / PD_SP_PER_PT);
+  end;
+
+  { the menu a right click at Blk:Off shows: its items' captions, '|' between, submenus' after a '>' }
+  function MenuAt(Blk: pd_block_id; Off: UInt32): string;
+  var
+    Q: TPoint;
+    k, j: Integer;
+  begin
+    Q := Pt(Blk, Off);
+    Handled := False;
+    TLedCtxEdit(P).DoContextPopup(Q, Handled);
+    Result := '|';
+    for k := 0 to P.PopupMenu.Items.Count - 1 do
+    begin
+      Result := Result + P.PopupMenu.Items[k].Caption;
+      for j := 0 to P.PopupMenu.Items[k].Count - 1 do
+        Result := Result + '>' + P.PopupMenu.Items[k].Items[j].Caption;
+      Result := Result + '|';
+    end;
+  end;
+
+  function Item(const ACaption: string): TMenuItem;
+  var
+    k, j: Integer;
+  begin
+    Result := nil;
+    for k := 0 to P.PopupMenu.Items.Count - 1 do
+    begin
+      if P.PopupMenu.Items[k].Caption = ACaption then
+        Exit(P.PopupMenu.Items[k]);
+      for j := 0 to P.PopupMenu.Items[k].Count - 1 do
+        if P.PopupMenu.Items[k].Items[j].Caption = ACaption then
+          Exit(P.PopupMenu.Items[k].Items[j]);
+    end;
+  end;
+
+  function Has(const AMenu, ACaption: string): Boolean;
+  begin
+    Result := (Pos('|' + ACaption + '|', AMenu) > 0) or (Pos('|' + ACaption + '>', AMenu) > 0) or
+      (Pos('>' + ACaption + '|', AMenu) > 0) or (Pos('>' + ACaption + '>', AMenu) > 0);
+  end;
+
+var
+  M: string;
+begin
+  Say('the right button''s menu, made for what it is on');
+  Md := IncludeTrailingPathDelimiter(TempName('ctxmenu')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page.'#10);
+  Png := ExtractFilePath(Md) + 'pic.png';
+  Bmp := TPortableNetworkGraphic.Create;
+  try
+    Bmp.SetSize(60, 40);
+    Bmp.Canvas.Brush.Color := clRed;
+    Bmp.Canvas.FillRect(0, 0, 60, 40);
+    Bmp.SaveToFile(Png);
+  finally
+    Bmp.Free;
+  end;
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump;
+  P := Tab.Visual.Page;
+  Para := pd_doc_next_paragraph(P.Doc, 0);
+
+  M := MenuAt(Para, 2);
+  Check('plain text: the text''s dialogs: ' + M, Has(M, 'Font...') and Has(M, 'Paragraph...'));
+  Check('and nothing of an object, a table or a link', not Has(M, 'Crop...') and not Has(M, 'Insert') and
+    not Has(M, 'Open Link') and not Has(M, 'Accept Change'));
+
+  { a link }
+  P.GoToPos(PdPos(Para, Length(P.ParaText(Para))));
+  P.InsertText(' see ');
+  P.InsertLink('https://example.org/', 'Example');
+  Pump;
+  M := MenuAt(Para, Pos('Example', P.ParaText(Para)) + 1);
+  Check('a link: open, edit, copy and remove it: ' + M, Has(M, 'Open Link') and Has(M, 'Edit Link...') and
+    Has(M, 'Copy Link Address') and Has(M, 'Remove Link'));
+  if Item('Remove Link') <> nil then
+    Item('Remove Link').Click;
+  Pump;
+  Check('Remove Link: the link gone', not P.LinkAt(PdPos(Para, Pos('Example', P.ParaText(Para)) + 1), U, A, B));
+  Check('its text kept: ' + P.ParaText(Para), Pos('Example', P.ParaText(Para)) > 0);
+
+  { a comment }
+  P.GoToPos(PdPos(Para, 0));
+  P.ProcessKey(VK_RIGHT, [ssShift, ssCtrl]);
+  P.AddComment('A note');
+  P.GoToPos(PdPos(Para, 2));
+  Pump;
+  M := MenuAt(Para, 2);
+  Check('commented text: the comment''s commands: ' + M, Has(M, 'Edit Comment...') and Has(M, 'Reply to Comment...')
+    and Has(M, 'Resolve Comment') and Has(M, 'Delete Comment'));
+  if Item('Delete Comment') <> nil then
+    Item('Delete Comment').Click;
+  Pump;
+  Check('Delete Comment: no comment there', P.CommentAt(PdPos(Para, 2)) = 0);
+
+  { a table }
+  P.GoToPos(PdPos(Para, Length(P.ParaText(Para))));
+  P.ProcessKey(VK_RETURN, []);
+  P.InsertTable(2, 2);
+  P.InsertText('cell');
+  Pump;
+  Check('in a table', P.CellAt(P.CaretPos, Cell, Row, Tbl));
+  Rows := 0;
+  while pd_doc_child(P.Doc, Tbl, Rows) <> 0 do
+    Inc(Rows);
+  M := MenuAt(P.CaretPos.block, 2);
+  Check('a table: its rows, columns and cells: ' + M, Has(M, 'Insert') and Has(M, 'Row below') and
+    Has(M, 'Delete') and Has(M, 'Merge and Split') and Has(M, 'Cell Shading') and Has(M, 'Borders'));
+  if Item('Row below') <> nil then
+    Item('Row below').Click;
+  Pump;
+  i := 0;
+  while pd_doc_child(P.Doc, Tbl, i) <> 0 do
+    Inc(i);
+  CheckEqInt('Insert > Row below: a row more', Rows + 1, i);
+
+  { a picture, after the table }
+  P.ProcessKey(VK_END, [ssCtrl]);
+  P.ProcessKey(VK_RETURN, []);
+  Check('a picture put in', P.InsertPicture(Png));
+  Pump;
+  Para := P.CaretPos.block;
+  M := MenuAt(Para, 0);
+  Check('a picture: crop, wrap, size and caption: ' + M, Has(M, 'Crop...') and Has(M, 'Wrap Text') and
+    Has(M, 'Size and Position...') and Has(M, 'Insert Caption...'));
+  Check('and none of the text''s dialogs', not Has(M, 'Font...') and not Has(M, 'Paragraph...'));
+  Check('the picture selected by the right click', P.SelectedShape(A, i));
+
+  Tab.LeaveVisual;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+end;
+{$ENDIF}
+
 procedure TestVisualDeleteKey(F: TLedMainForm);
 var
   Md, Why, Before: string;
@@ -20155,6 +20328,10 @@ begin
   TestTabHoverClosePref(F);
   TestIconCache(F);
   TestVisualDeleteKey(F);
+  {$IFDEF LED_PARADE}
+  if LedVisualAvailable then
+    TestVisualContextMenus(F);
+  {$ENDIF}
   TestVisualShapeTab(F);
   TestStatusCounts(F);
   TestNewPdoc(F);
