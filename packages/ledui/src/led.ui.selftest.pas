@@ -20475,6 +20475,8 @@ var
   C: TPdfChars;
   A, B: TPoint;
   Ann: pd_pdfr_annot;
+  WasZoom: Int64;
+  Slider: TComponent;
 
   function Obj(K: Integer; const S: string): string;
   begin
@@ -20483,6 +20485,9 @@ var
 
 begin
   Say('a PDF opens as its pages, is marked and saved as an update');
+  { the zoom a Word document opens at: 50%, a page narrower than any view, so not stretched to the width }
+  WasZoom := LedPrefs.GetInt(LedPrefVisualZoom, 110);
+  LedPrefs.SetInt(LedPrefVisualZoom, 50);
   { a page of Helvetica text: two lines }
   Content := 'BT /F1 24 Tf 72 700 Td (Hello PDF pages) Tj 0 -40 Td (Second line here) Tj ET';
   Body := '%PDF-1.4' + #10;
@@ -20512,6 +20517,7 @@ begin
   Check('a .pdf opens as its pages', Tab.PdfMode and (Tab.Pdf <> nil));
   if not Tab.PdfMode then
   begin
+    LedPrefs.SetInt(LedPrefVisualZoom, WasZoom);
     F.CloseActiveTab(False);
     DeleteFile(Path);
     Exit;
@@ -20519,6 +20525,26 @@ begin
   P := Tab.Pdf;
   V := TPdfViewAccess(P.View);
   CheckEqInt('one page', 1, P.PageCount);
+  Check(Format('it opens at the zoom a Word document does, not the view''s width (%.3f)', [P.Scale]),
+    Abs(P.Scale - 0.5 * 96 / 72) < 1e-6);
+  Slider := P.FindComponent('PdfZoomSlider');
+  Check('a zoom slider under it', Slider is TTrackBar);
+  if Slider is TTrackBar then
+  begin
+    CheckEqInt('at 50%', 44, TTrackBar(Slider).Position);
+    TTrackBar(Slider).Position := 113;    { 152% }
+    Pump;
+    Check(Format('the slider zooms the pages (%.3f)', [P.Scale]), Abs(P.Scale - 1.52 * 96 / 72) < 1e-6);
+    Check('the percentage beside it follows', (P.FindComponent('PdfZoomPercent') is TLabel) and
+      (TLabel(P.FindComponent('PdfZoomPercent')).Caption = '152%'));
+    CheckEqInt('and is the zoom the next document opens at', 152, LedPrefs.GetInt(LedPrefVisualZoom, 0));
+    P.ZoomBy(1 / 1.25);     { 121.6% }
+    Pump;
+    CheckEqInt('Ctrl+wheel moves the slider too', 105, TTrackBar(Slider).Position);
+    TTrackBar(Slider).Position := 44;     { back to a page narrower than the view, centred, for the drags below }
+    Pump;
+  end;
+  LedPrefs.SetInt(LedPrefVisualZoom, WasZoom);
   Check('its bytes kept, not a dump of them', Doc.IsBinary and (Doc.Master.Lines.Count <= 1));
   Check('the status bar says what it is', Pos('page 1 of 1', P.StatusText) > 0);
 

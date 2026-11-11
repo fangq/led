@@ -74,7 +74,12 @@ type
     FMenu: TPopupMenu;
     FTool: TLedPdfTool;
     FScale: Double;             // pixels a point
-    FFit: Integer;              // 0 none, 1 width, 2 page
+    FFit: Integer;              // 0 none, 1 width, 2 page, 3 the opening zoom (FFitCap) no wider than the view
+    FFitCap: Double;            // that zoom, pixels a point
+    FZoomBar: TPanel;           // -, the slider, +, the percentage: as under a Word document
+    FZoomSlider: TTrackBar;
+    FZoomLabel: TLabel;
+    FZoomSliding: Boolean;
     FScrollX, FScrollY: Integer;
     FPageTop: array of Integer;     // each page's top, in pixels at the scale (the gaps included)
     FPageW, FPageH: array of Double; // its size in points
@@ -112,6 +117,12 @@ type
     procedure BuildTools;
     procedure ToolClick(Sender: TObject);
     procedure ZoomChange(Sender: TObject);
+    procedure BuildZoomBar;
+    procedure ZoomSliderChanged(Sender: TObject);
+    procedure ZoomInClicked(Sender: TObject);
+    procedure ZoomOutClicked(Sender: TObject);
+    procedure ShowZoom;
+    procedure RememberZoom;
     procedure ScrollChange(Sender: TObject);
     procedure FindKey(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure FindClose(Sender: TObject);
@@ -199,7 +210,32 @@ type
 implementation
 
 uses
-  Clipbrd, Math, StrUtils, Led.UI.Dpi;
+  Clipbrd, Math, StrUtils, Led.UI.Dpi, Led.Core.Prefs;
+
+{ the zoom slider's positions: 0..100 is 10%..100%, 100..200 is 100%..500%, as under a Word document }
+function SliderToZoom(V: Integer): Double;
+begin
+  if V <= 100 then
+    Result := (10 + V * 0.9) / 100
+  else
+    Result := (100 + (V - 100) * 4) / 100;
+end;
+
+function ZoomToSlider(Z: Double): Integer;
+begin
+  Z := Z * 100;
+  if Z <= 100 then
+    Result := Round((Z - 10) / 0.9)
+  else
+    Result := 100 + Round((Z - 100) / 4);
+  Result := EnsureRange(Result, 0, 200);
+end;
+
+{ the zoom a Word document opens at (the last one chosen, 110% to begin with), as pixels a point; 100% is 96 dpi }
+function OpeningScale: Double;
+begin
+  Result := EnsureRange(LedPrefs.GetInt(LedPrefVisualZoom, 110), 10, 500) / 100 * 96 / 72;
+end;
 
 const
   PageGap = 12;
@@ -322,7 +358,8 @@ begin
   BevelOuter := bvNone;
   Caption := '';
   FScale := 96 / 72 * 1.1;
-  FFit := 1;
+  FFit := 3;
+  FFitCap := FScale;
   FSelPage := -1;
   FFoundPage := -1;
   FAnnPage := -1;
@@ -370,6 +407,7 @@ begin
   FHBar.Parent := Self;
   FHBar.Align := alBottom;
   FHBar.OnChange := @ScrollChange;
+  BuildZoomBar;
 
   FView := TLedPdfView.Create(Self);
   FView.FPane := Self;
@@ -458,7 +496,7 @@ begin
   FZoomBox.Width := LedScale96(90);
   FZoomBox.Style := csDropDownList;
   FZoomBox.Items.CommaText := '"Fit width","Fit page",50%,75%,100%,110%,125%,150%,200%,300%,400%';
-  FZoomBox.ItemIndex := 0;
+  FZoomBox.ItemIndex := 5;
   FZoomBox.OnChange := @ZoomChange;
   FZoomBox.Left := FColorBtn.Left + FColorBtn.Width + 1;
 end;
@@ -523,6 +561,7 @@ var
   Pw: string;
   i: Integer;
   W, H: Double;
+  Fresh: Boolean;
 {$ENDIF}
 begin
   Result := False;
@@ -553,6 +592,7 @@ begin
       AWhy := 'not a PDF file';
     Exit;
   end;
+  Fresh := FPdf = nil;   { not the file read again after a change on disk: that keeps its zoom and place }
   if FPdf <> nil then pd_pdfr_free(FPdf);
   FPdf := P;
   FFileName := AFileName;
@@ -576,6 +616,14 @@ begin
   FSelPage := -1;
   FFoundPage := -1;
   FAnnPage := -1;
+  { as a Word document opens: at the zoom chosen last, centred, narrowed only to fit a narrower view }
+  if Fresh then
+  begin
+    FFit := 3;
+    FFitCap := OpeningScale;
+    FScrollX := 0;
+    FScrollY := 0;
+  end;
   Relayout;
   FView.Invalidate;
   Status;
@@ -634,6 +682,8 @@ begin
     end;
     if FFit = 1 then
       FScale := (CW - 2 * PageGap) / Max(MaxW, 1)
+    else if FFit = 3 then
+      FScale := Min(FFitCap, (CW - 2 * PageGap) / Max(MaxW, 1))
     else
       FScale := Min((CW - 2 * PageGap) / Max(MaxW, 1), (FView.ClientHeight - 2 * PageGap) / Max(MaxH, 1));
     FScale := EnsureRange(FScale, 0.1, 16);
@@ -646,6 +696,7 @@ begin
     Inc(Y, Round(FPageH[i] * FScale) + PageGap);
   end;
   UpdateBars;
+  ShowZoom;
 end;
 
 function TLedPdfPane.DocHeight: Integer;
@@ -837,21 +888,128 @@ end;
 procedure TLedPdfPane.ZoomBy(AFactor: Double);
 begin
   FFit := 0;
-  FZoomBox.ItemIndex := -1;
   SetScaleKeep(FScale * AFactor);
+  RememberZoom;
 end;
 
 procedure TLedPdfPane.ZoomFitWidth;
 begin
   FFit := 1;
-  FZoomBox.ItemIndex := 0;
   SetScaleKeep(FScale);
+end;
+
+procedure TLedPdfPane.BuildZoomBar;
+var
+  B: TSpeedButton;
+begin
+  FZoomBar := TPanel.Create(Self);
+  FZoomBar.Parent := Self;
+  FZoomBar.Align := alBottom;
+  FZoomBar.Top := 30000;      { under the sideways scroll bar }
+  FZoomBar.BevelOuter := bvNone;
+  FZoomBar.Caption := '';
+  FZoomBar.Height := LedScale96(24);
+  FZoomLabel := TLabel.Create(Self);
+  FZoomLabel.Parent := FZoomBar;
+  FZoomLabel.Align := alRight;
+  FZoomLabel.Layout := tlCenter;
+  FZoomLabel.Alignment := taRightJustify;
+  FZoomLabel.AutoSize := False;
+  FZoomLabel.Width := LedScale96(48);
+  FZoomLabel.BorderSpacing.Right := LedScale96(8);
+  FZoomLabel.Caption := '110%';
+  FZoomLabel.Name := 'PdfZoomPercent';
+  B := TSpeedButton.Create(Self);
+  B.Parent := FZoomBar;
+  B.Align := alRight;
+  B.Width := LedScale96(22);
+  B.Caption := '+';
+  B.Flat := True;
+  B.Hint := 'Zoom in';
+  B.ShowHint := True;
+  B.OnClick := @ZoomInClicked;
+  B.Left := 9000;
+  FZoomSlider := TTrackBar.Create(Self);
+  FZoomSlider.Parent := FZoomBar;
+  FZoomSlider.Align := alRight;
+  FZoomSlider.Width := LedScale96(160);
+  FZoomSlider.Constraints.MinWidth := LedScale96(160);
+  FZoomSlider.Left := 8000;
+  FZoomSlider.Min := 0;
+  FZoomSlider.Max := 200;
+  FZoomSlider.Frequency := 100;
+  FZoomSlider.TickStyle := tsNone;
+  FZoomSlider.Position := ZoomToSlider(1.1);
+  FZoomSlider.Hint := 'Zoom: 10% to 500%, 100% in the middle';
+  FZoomSlider.ShowHint := True;
+  FZoomSlider.OnChange := @ZoomSliderChanged;
+  FZoomSlider.Name := 'PdfZoomSlider';
+  B := TSpeedButton.Create(Self);
+  B.Parent := FZoomBar;
+  B.Align := alRight;
+  B.Width := LedScale96(22);
+  B.Caption := #$E2#$88#$92;    { minus }
+  B.Flat := True;
+  B.Hint := 'Zoom out';
+  B.ShowHint := True;
+  B.OnClick := @ZoomOutClicked;
+  B.Left := 7000;
+  FZoomLabel.Left := 10000;   { from the right: the percentage, +, the bar, - }
+end;
+
+procedure TLedPdfPane.ZoomSliderChanged(Sender: TObject);
+begin
+  if FZoomSliding then Exit;
+  FFit := 0;
+  SetScaleKeep(SliderToZoom(FZoomSlider.Position) * 96 / 72);
+  RememberZoom;
+end;
+
+procedure TLedPdfPane.ZoomInClicked(Sender: TObject);
+begin
+  ZoomBy(1.25);
+  if FView.CanFocus then FView.SetFocus;
+end;
+
+procedure TLedPdfPane.ZoomOutClicked(Sender: TObject);
+begin
+  ZoomBy(1 / 1.25);
+  if FView.CanFocus then FView.SetFocus;
+end;
+
+{ the slider, the percentage and the box after any zoom }
+procedure TLedPdfPane.ShowZoom;
+var
+  Pct: Integer;
+begin
+  if (FZoomSlider = nil) or (FZoomBox = nil) or FZoomSliding then Exit;
+  FZoomSliding := True;
+  try
+    Pct := Round(FScale * 72 / 96 * 100);
+    FZoomSlider.Position := ZoomToSlider(FScale * 72 / 96);
+    FZoomLabel.Caption := IntToStr(Pct) + '%';
+    if FFit = 1 then
+      FZoomBox.ItemIndex := 0
+    else if FFit = 2 then
+      FZoomBox.ItemIndex := 1
+    else
+      FZoomBox.ItemIndex := FZoomBox.Items.IndexOf(IntToStr(Pct) + '%');
+  finally
+    FZoomSliding := False;
+  end;
+end;
+
+{ a zoom chosen is the one the next document opens at, a PDF or a Word one }
+procedure TLedPdfPane.RememberZoom;
+begin
+  LedPrefs.SetInt(LedPrefVisualZoom, EnsureRange(Round(FScale * 72 / 96 * 100), 10, 500));
 end;
 
 procedure TLedPdfPane.ZoomChange(Sender: TObject);
 var
   S: string;
 begin
+  if FZoomSliding then Exit;
   S := FZoomBox.Text;
   if FZoomBox.ItemIndex = 0 then
     FFit := 1
@@ -861,6 +1019,7 @@ begin
   begin
     FFit := 0;
     SetScaleKeep(StrToFloatDef(StringReplace(S, '%', '', []), 100) / 100 * 96 / 72);
+    RememberZoom;
     if FView.CanFocus then FView.SetFocus;
     Exit;
   end;
