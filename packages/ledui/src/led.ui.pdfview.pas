@@ -48,6 +48,7 @@ type
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
     procedure DblClick; override;
+    procedure TripleClick; override;
     procedure KeyDown(var Key: Word; Shift: TShiftState); override;
     procedure Resize; override;
   public
@@ -55,6 +56,7 @@ type
   end;
 
   TLedPdfCharArray = {$IFDEF LED_PARADE}TPdfChars{$ELSE}array of Integer{$ENDIF};
+  TLedPdfSpanArray = {$IFDEF LED_PARADE}TPdfSpans{$ELSE}array of Integer{$ENDIF};
 
   TLedPdfPane = class(TCustomPanel)
   private
@@ -84,6 +86,8 @@ type
     FPageTop: array of Integer;     // each page's top, in pixels at the scale (the gaps included)
     FPageW, FPageH: array of Double; // its size in points
     FChars: array of TLedPdfCharArray;
+    FLines, FBlocks: array of TLedPdfSpanArray;   { the page's text as lines and as blocks (made with FChars) }
+    FMenuAt: TPoint;                { where the right button's menu was opened, in the view }
     FCharsOk: array of Boolean;
     FCache: array of TBitmap;       // each page drawn whole at the scale (nil: not yet, or too big to keep)
     FCacheImg: array of TLazIntfImage;  // its pixels (the selection is tinted into a copy)
@@ -167,6 +171,13 @@ type
     procedure ViewMouseMove(Shift: TShiftState; X, Y: Integer);
     procedure ViewMouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     procedure ViewDblClick;
+    procedure ViewTripleClick;
+    function Lines(APage: Integer): TLedPdfSpanArray;
+    function Blocks(APage: Integer): TLedPdfSpanArray;
+    function BlockAt(APage, AChar: Integer): Integer;
+    procedure BlockRange(APage, ABlock: Integer; ASkipMark: Boolean; out AFrom, ATo: Integer);
+    function EditableText(APage, AFrom, ATo: Integer): string;
+    procedure MenuEditParagraph(Sender: TObject);
     procedure ViewKey(var Key: Word; Shift: TShiftState);
   public
     constructor Create(AOwner: TComponent); override;
@@ -196,6 +207,12 @@ type
     procedure MarkSelectionAs(AKind: Integer);
     { the text found, from the start of APage on: True if it was (the page shows it, it is selected) }
     function FindText(const AText: string; AFromPage: Integer = 0): Boolean;
+    { the paragraph (block) at a point of the view selected (ASkipMark: less a list item's mark); False if no text }
+    function SelectParagraphAt(X, Y: Integer; ASkipMark: Boolean): Boolean;
+    { the selection as text to edit (a block's wrapped lines joined) }
+    function SelectionEditText: string;
+    { the selection written again as AText (a '\n' a new line); False if it could not be }
+    function ReplaceSelection(const AText: string): Boolean;
     property Tool: TLedPdfTool read FTool write SetTool;
     property Scale: Double read FScale;
     property View: TLedPdfView read FView;
@@ -257,7 +274,7 @@ end;
 constructor TLedPdfView.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  ControlStyle := ControlStyle + [csOpaque];
+  ControlStyle := ControlStyle + [csOpaque, csTripleClicks];
   TabStop := True;
   DoubleBuffered := True;
   Color := $00808080;
@@ -321,6 +338,12 @@ procedure TLedPdfView.DblClick;
 begin
   inherited DblClick;
   if FPane <> nil then FPane.ViewDblClick;
+end;
+
+procedure TLedPdfView.TripleClick;
+begin
+  inherited TripleClick;
+  if FPane <> nil then FPane.ViewTripleClick;
 end;
 
 procedure TLedPdfView.KeyDown(var Key: Word; Shift: TShiftState);
@@ -422,6 +445,8 @@ begin
   AddItem('&Strike Out', @MenuMark, PD_ANNOT_STRIKEOUT);
   AddItem('S&quiggly', @MenuMark, PD_ANNOT_SQUIGGLY);
   AddItem('&Edit Text...', @MenuEditText);
+  AddItem('-', nil);
+  AddItem('Edit &Paragraph...', @MenuEditParagraph);
   AddItem('-', nil);
   AddItem('Note &Text...', @MenuNoteText);
   AddItem('Annotation C&olour...', @MenuColorAnn);
@@ -601,6 +626,8 @@ begin
   SetLength(FPageH, Length(FPageW));
   SetLength(FChars, Length(FPageW));
   SetLength(FCharsOk, Length(FPageW));
+  SetLength(FLines, Length(FPageW));
+  SetLength(FBlocks, Length(FPageW));
   SetLength(FCache, Length(FPageW));
   SetLength(FCacheImg, Length(FPageW));
   for i := 0 to High(FPageW) do
@@ -1132,6 +1159,9 @@ var
   P: PByte;
   RR, GG, BB: Integer;
   RIdx, BIdx: Integer;
+  Ls: TLedPdfSpanArray;
+  k: Integer;
+  FX0, FX1: Double;
 {$ENDIF}
 begin
   {$IFDEF LED_PARADE}
@@ -1156,20 +1186,30 @@ begin
     RIdx := 0;
     BIdx := 2;
   end;
-  for i := AFrom to ATo - 1 do
+  { a band a line: from the first character chosen on it to the last, as tall as the line, not a box a character }
+  Ls := Lines(APage);
+  for k := 0 to High(Ls) do
   begin
-    if C[i].flags and PD_PDFR_CHAR_NEWLINE <> 0 then Continue;
-    X0 := Floor(C[i].x0 * FScale) - AOffX;
-    Y0 := Floor(C[i].y0 * FScale) - AOffY;
-    X1 := Ceil(C[i].x1 * FScale) - AOffX;
-    Y1 := Ceil(C[i].y1 * FScale) - AOffY;
-    { a space put in where words are apart spans the gap between them }
-    if (C[i].flags and PD_PDFR_CHAR_SPACE <> 0) and (i + 1 < Length(C)) then
-      X1 := Floor(C[i + 1].x0 * FScale) - AOffX;
-    X0 := Max(X0, 0);
-    Y0 := Max(Y0, 0);
-    X1 := Min(X1, Img.Width);
-    Y1 := Min(Y1, Img.Height);
+    if (Ls[k].end_ <= AFrom) or (Ls[k].first >= ATo) then Continue;
+    FX0 := 1e30;
+    FX1 := -1e30;
+    for i := Max(AFrom, Ls[k].first) to Min(ATo, Ls[k].end_) - 1 do
+    begin
+      if (C[i].flags <> 0) or (C[i].cp = 32) then
+      begin
+        { a space chosen between two words: the gap to the next one }
+        if (C[i].flags and PD_PDFR_CHAR_NEWLINE = 0) and (i + 1 < Min(ATo, Ls[k].end_)) and (FX1 > -1e29) then
+          FX1 := Max(FX1, C[i + 1].x0);
+        Continue;
+      end;
+      FX0 := Min(FX0, C[i].x0);
+      FX1 := Max(FX1, C[i].x1);
+    end;
+    if FX1 < FX0 then Continue;
+    X0 := Max(Floor(FX0 * FScale) - AOffX, 0);
+    Y0 := Max(Floor(Ls[k].y0 * FScale) - AOffY, 0);
+    X1 := Min(Ceil(FX1 * FScale) - AOffX, Img.Width);
+    Y1 := Min(Ceil(Ls[k].y1 * FScale) - AOffY, Img.Height);
     for Y := Y0 to Y1 - 1 do
     begin
       P := PByte(Img.PixelData) + PtrInt(Y) * Stride + PtrInt(X0) * Bpp;
@@ -1313,9 +1353,155 @@ begin
   if not FCharsOk[APage] then
   begin
     FChars[APage] := PdfPageChars(FPdf, APage);
+    FLines[APage] := PdfPageSpans(FPdf, APage, PD_PDFR_LINES);
+    FBlocks[APage] := PdfPageSpans(FPdf, APage, PD_PDFR_BLOCKS);
     FCharsOk[APage] := True;
   end;
   Result := FChars[APage];
+  {$ENDIF}
+end;
+
+function TLedPdfPane.Lines(APage: Integer): TLedPdfSpanArray;
+begin
+  Result := nil;
+  if (APage < 0) or (APage >= PageCount) then Exit;
+  Chars(APage);
+  Result := FLines[APage];
+end;
+
+function TLedPdfPane.Blocks(APage: Integer): TLedPdfSpanArray;
+begin
+  Result := nil;
+  if (APage < 0) or (APage >= PageCount) then Exit;
+  Chars(APage);
+  Result := FBlocks[APage];
+end;
+
+{ the block character AChar is in; -1 none }
+function TLedPdfPane.BlockAt(APage, AChar: Integer): Integer;
+{$IFDEF LED_PARADE}
+var
+  B: TLedPdfSpanArray;
+  i: Integer;
+{$ENDIF}
+begin
+  Result := -1;
+  {$IFDEF LED_PARADE}
+  B := Blocks(APage);
+  for i := 0 to High(B) do
+    if (AChar >= B[i].first) and (AChar < B[i].end_) then Exit(i);
+  {$ENDIF}
+end;
+
+{ a list item's mark: a bullet, a square, a dash, an arrow (the Symbol and Wingdings ones too) }
+function IsListMark(Cp: UInt32): Boolean;
+begin
+  case Cp of
+    $2022, $25AA, $25CF, $25E6, $25A0, $25A1, $2023, $2043, $2013, $2014, $27A2, $2713, $00B7, $F0B7, $F0A7, $F0D8,
+    $F076, $F0FC, $F06E, $F071:
+      Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+{ a block's characters, less the line break and spaces at its end (and, ASkipMark, a list item's mark and the spaces
+  after it at its start: the mark stays when its text is written again) }
+procedure TLedPdfPane.BlockRange(APage, ABlock: Integer; ASkipMark: Boolean; out AFrom, ATo: Integer);
+{$IFDEF LED_PARADE}
+var
+  B: TLedPdfSpanArray;
+  C: TLedPdfCharArray;
+{$ENDIF}
+begin
+  AFrom := 0;
+  ATo := 0;
+  {$IFDEF LED_PARADE}
+  B := Blocks(APage);
+  C := Chars(APage);
+  if (ABlock < 0) or (ABlock > High(B)) then Exit;
+  AFrom := B[ABlock].first;
+  ATo := Min(B[ABlock].end_, Length(C));
+  while (ATo > AFrom) and ((C[ATo - 1].flags <> 0) or (C[ATo - 1].cp <= 32)) do Dec(ATo);
+  while (AFrom < ATo) and ((C[AFrom].flags <> 0) or (C[AFrom].cp <= 32)) do Inc(AFrom);
+  if ASkipMark and (AFrom < ATo) and (IsListMark(C[AFrom].cp) or
+    (((C[AFrom].cp = Ord('-')) or (C[AFrom].cp = Ord('*'))) and (AFrom + 1 < ATo) and
+     ((C[AFrom + 1].cp = 32) or (C[AFrom + 1].flags <> 0)))) then
+  begin
+    Inc(AFrom);
+    while (AFrom < ATo) and ((C[AFrom].flags <> 0) or (C[AFrom].cp <= 32)) do Inc(AFrom);
+  end;
+  {$ENDIF}
+end;
+
+{ characters AFrom..ATo-1 as text to edit: a line break within a block where the line was full (the next word would
+  not have fitted on it) a space, the text wrapping there again when it is written; one where the line stops short
+  (an address's lines, a heading's) kept, as between blocks; a word broken by a hyphen at a line's end joined }
+function TLedPdfPane.EditableText(APage, AFrom, ATo: Integer): string;
+{$IFDEF LED_PARADE}
+var
+  C: TLedPdfCharArray;
+  i, K: Integer;
+  U: UnicodeString;
+  Cp: UInt32;
+
+  { the line break at character AAt only where its line was full }
+  function Wrapped(AAt, ABlock: Integer): Boolean;
+  var
+    L, B: TLedPdfSpanArray;
+    j, m, e: Integer;
+    W: Double;
+  begin
+    Result := True;
+    L := Lines(APage);
+    B := Blocks(APage);
+    for j := 0 to High(L) - 1 do
+      if (AAt >= L[j].first) and (AAt < L[j].end_) then
+      begin
+        { the next line's first word, and what it is wide }
+        m := L[j + 1].first;
+        while (m < L[j + 1].end_) and ((C[m].flags <> 0) or (C[m].cp = 32)) do Inc(m);
+        e := m;
+        while (e < L[j + 1].end_) and (C[e].flags = 0) and (C[e].cp <> 32) do Inc(e);
+        if e <= m then Exit;
+        W := C[e - 1].x1 - C[m].x0;
+        Result := (L[j].x1 - L[j].x0) + 0.3 * L[j].size + W > (B[ABlock].x1 - B[ABlock].x0) * 0.98;
+        Exit;
+      end;
+  end;
+{$ENDIF}
+
+begin
+  Result := '';
+  {$IFDEF LED_PARADE}
+  C := Chars(APage);
+  U := '';
+  AFrom := Max(AFrom, 0);
+  ATo := Min(ATo, Length(C));
+  for i := AFrom to ATo - 1 do
+  begin
+    Cp := C[i].cp;
+    if C[i].flags and PD_PDFR_CHAR_NEWLINE <> 0 then
+    begin
+      K := BlockAt(APage, i);
+      if (K >= 0) and (K = BlockAt(APage, i + 1)) and Wrapped(i, K) then
+      begin
+        if (Length(U) > 1) and (U[Length(U)] = '-') and (U[Length(U) - 1] <> ' ') then
+          SetLength(U, Length(U) - 1)
+        else if (U = '') or (U[Length(U)] <> ' ') then
+          U := U + ' ';
+        Continue;
+      end;
+      U := U + #10;
+      Continue;
+    end;
+    if (Cp = 32) and (U <> '') and (U[Length(U)] = ' ') then Continue;   { spaces setting the line out: one }
+    if Cp >= $10000 then
+      U := U + WideChar($D800 + ((Cp - $10000) shr 10)) + WideChar($DC00 + ((Cp - $10000) and $3FF))
+    else
+      U := U + WideChar(Cp);
+  end;
+  Result := UTF8Encode(U);
   {$ENDIF}
 end;
 
@@ -1647,8 +1833,8 @@ begin
     F.Caption := ATitle;
     F.Position := poMainFormCenter;
     F.BorderStyle := bsDialog;
-    F.Width := LedScale96(420);
-    F.Height := LedScale96(IfThen(AMulti, 240, 140));
+    F.Width := LedScale96(IfThen(AMulti, 560, 420));
+    F.Height := LedScale96(IfThen(AMulti, 320, 140));
     L := TLabel.Create(F);
     L.Parent := F;
     L.Caption := APrompt;
@@ -1873,6 +2059,12 @@ begin
   case FTool of
     ptSelect:
       begin
+        { a third click: the block (the paragraph) the mouse is on, over a highlight of it too }
+        if (ssTriple in Shift) and SelectParagraphAt(X, Y, False) then
+        begin
+          FAnnPage := -1;
+          Exit;
+        end;
         { a form field }
         Fi := pd_pdfr_field_at(FPdf, Page, PX, PY);
         if (Fi >= 0) and (pd_pdfr_field_get(FPdf, Fi, F) = 0) and (F.readonly = 0) then
@@ -2165,6 +2357,63 @@ begin
   {$ENDIF}
 end;
 
+{ the block under the mouse selected }
+procedure TLedPdfPane.ViewTripleClick;
+var
+  P: TPoint;
+begin
+  if (FPdf = nil) or (FTool <> ptSelect) then Exit;
+  P := FView.ScreenToClient(Mouse.CursorPos);
+  SelectParagraphAt(P.X, P.Y, False);
+end;
+
+function TLedPdfPane.SelectParagraphAt(X, Y: Integer; ASkipMark: Boolean): Boolean;
+{$IFDEF LED_PARADE}
+var
+  Page, K, A, B: Integer;
+  PX, PY: Double;
+{$ENDIF}
+begin
+  Result := False;
+  {$IFDEF LED_PARADE}
+  if FPdf = nil then Exit;
+  Page := PageAt(X, Y, PX, PY);
+  if Page < 0 then Exit;
+  K := BlockAt(Page, CharAt(Page, PX, PY, True));
+  if K < 0 then Exit;
+  BlockRange(Page, K, ASkipMark, A, B);
+  if B <= A then Exit;
+  FSelPage := Page;
+  FSelA := A;
+  FSelB := B;
+  FSelecting := False;
+  FView.Invalidate;
+  Status;
+  Result := True;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.SelectionEditText: string;
+begin
+  Result := '';
+  if SelAvail then Result := EditableText(FSelPage, FSelA, FSelB);
+end;
+
+function TLedPdfPane.ReplaceSelection(const AText: string): Boolean;
+begin
+  Result := False;
+  {$IFDEF LED_PARADE}
+  if not SelAvail then Exit;
+  Result := pd_pdfr_replace_text(FPdf, FSelPage, FSelA, FSelB,
+    PAnsiChar(StringReplace(StringReplace(AText, #13#10, #10, [rfReplaceAll]), #13, #10, [rfReplaceAll]))) = 0;
+  if Result then
+  begin
+    FSelPage := -1;
+    Changed;
+  end;
+  {$ENDIF}
+end;
+
 procedure TLedPdfPane.ViewDblClick;
 {$IFDEF LED_PARADE}
 var
@@ -2325,11 +2574,45 @@ var
   HasAnn: Boolean;
 begin
   HasAnn := FAnnPage >= 0;
+  FMenuAt := FView.ScreenToClient(FMenu.PopupPoint);
   for i := 0 to FMenu.Items.Count - 1 do
     case i of
       0..5: FMenu.Items[i].Enabled := SelAvail;
-      7..9: FMenu.Items[i].Enabled := HasAnn;
+      7: FMenu.Items[i].Enabled := PageCount > 0;
+      9..11: FMenu.Items[i].Enabled := HasAnn;
     end;
+end;
+
+{ the paragraph (block) where the menu was opened, or the selection is, written again: wrapped as it was, in its
+  font when that has the characters; a list item's mark kept }
+procedure TLedPdfPane.MenuEditParagraph(Sender: TObject);
+var
+  S: string;
+  At: TPoint;
+  C: TLedPdfCharArray;
+begin
+  {$IFDEF LED_PARADE}
+  if FPdf = nil then Exit;
+  At := FMenuAt;
+  if not SelectParagraphAt(At.X, At.Y, True) then
+  begin
+    { not over text: the paragraph the selection begins in }
+    if SelAvail then
+    begin
+      C := Chars(FSelPage);
+      At := ToView(FSelPage, C[FSelA].x0 + 0.5, (C[FSelA].y0 + C[FSelA].y1) / 2);
+    end;
+    if not (SelAvail and SelectParagraphAt(At.X, At.Y, True)) then
+    begin
+      MessageDlg('Edit Paragraph', 'There is no text here to edit.', mtInformation, [mbOK], 0);
+      Exit;
+    end;
+  end;
+  S := SelectionEditText;
+  if AskText('Edit Paragraph', 'The paragraph as it should read (Enter starts a new line):', S, True) then
+    if not ReplaceSelection(S) then
+      MessageDlg('Edit Paragraph', 'The text could not be changed here.', mtWarning, [mbOK], 0);
+  {$ENDIF}
 end;
 
 procedure TLedPdfPane.MenuCopy(Sender: TObject);
@@ -2345,12 +2628,29 @@ end;
 procedure TLedPdfPane.MenuEditText(Sender: TObject);
 var
   S: string;
+  Multi: Boolean;
+
+  function LineOf(AChar: Integer): Integer;
+  var
+    L: TLedPdfSpanArray;
+    i: Integer;
+  begin
+    Result := -1;
+    {$IFDEF LED_PARADE}
+    L := Lines(FSelPage);
+    for i := 0 to High(L) do
+      if (AChar >= L[i].first) and (AChar < L[i].end_) then Exit(i);
+    {$ENDIF}
+  end;
+
 begin
   {$IFDEF LED_PARADE}
   if not SelAvail then Exit;
-  S := SelectedText;
-  if AskText('Edit Text', 'The selected text, as it should read:', S, False) then
-    if pd_pdfr_replace_text(FPdf, FSelPage, FSelA, FSelB, PAnsiChar(S)) = 0 then
+  S := EditableText(FSelPage, FSelA, FSelB);
+  Multi := (Lines(FSelPage) <> nil) and (LineOf(FSelA) <> LineOf(FSelB - 1));
+  if AskText('Edit Text', 'The selected text, as it should read:', S, Multi) then
+    if pd_pdfr_replace_text(FPdf, FSelPage, FSelA, FSelB,
+      PAnsiChar(StringReplace(StringReplace(S, #13#10, #10, [rfReplaceAll]), #13, #10, [rfReplaceAll]))) = 0 then
     begin
       FSelPage := -1;
       Changed;
