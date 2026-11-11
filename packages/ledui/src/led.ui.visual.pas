@@ -26,7 +26,7 @@ interface
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Buttons, Graphics, Forms,
   Dialogs, LCLType, LCLIntf, Menus, Spin, ButtonPanel, ComCtrls
-  {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts, Led.UI.AnimPane{$ENDIF}
+  {$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.ParadeFonts, Led.UI.AnimPane, Led.UI.Ruler{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, paradesync, paraderelay, Led.UI.Collab{$ENDIF};
 
 type
@@ -240,6 +240,10 @@ type
     FZoomLabel: TLabel;
     FZoomSliding: Boolean;
     FMultiBtn: TSpeedButton;
+    {$IFDEF LED_PARADE}
+    FRuler: TLedRuler;          { above the pages: the margins, the paragraph's indents and tabs }
+    FRulerBtn: TSpeedButton;
+    {$ENDIF}
     FFitPage: Boolean;          { ... the whole page instead (Whole page; slides) }
     FFitZoom: Double;           { the zoom it last set: another one found means Ctrl+wheel chose it }
     procedure FitWidth;
@@ -316,6 +320,8 @@ type
     procedure ZoomSliderChanged(Sender: TObject);
     procedure EditZoomChanged(Sender: TObject);
     procedure MultiPageClicked(Sender: TObject);
+    procedure RulerClicked(Sender: TObject);
+    procedure ShowRuler;
     procedure RememberZoom;
     procedure BuildPageMenu(const C: TParadeContext);
     procedure ContextItemClicked(Sender: TObject);
@@ -872,6 +878,13 @@ begin
   FEdit.OnResize := @EditResized;
   FEdit.OnZoomChange := @EditZoomChanged;
   BuildZoomBar;
+  FRuler := TLedRuler.Create(Self);
+  FRuler.Parent := Self;
+  FRuler.Align := alTop;
+  FRuler.Top := 100000;       { under the tabs and the bars }
+  FRuler.Edit := FEdit;
+  FRuler.Name := 'PageRuler';
+  FRuler.OnRulerDblClick := @ParagraphDialogClicked;
   FFitWidth := True;      { a page as wide as the view, as a reader expects on opening one }
   {$ENDIF}
   ApplyPrefs;
@@ -1511,6 +1524,8 @@ var
   ShapeSid: Integer;
   Sel: Boolean;
 begin
+  if FRuler <> nil then
+    FRuler.Invalidate;    { the paragraph at the caret, its indents and tabs; its page }
   if (FSlidePaint <> nil) and FSlidePanel.Visible then
     FSlidePaint.Invalidate;   { which slide is marked as the one being edited }
   if (FNotesPanel <> nil) and FNotesPanel.Visible then
@@ -3965,6 +3980,10 @@ begin
     'Multiple Pages)', [], @MultiPageClicked);
   FMultiBtn.Down := True;
   FMultiBtn.Name := 'MultiPageBtn';
+  FRulerBtn := AddToggle('Ruler', 'The ruler above the page: the margins, and the paragraph''s indents and tabs to ' +
+    'drag', [], @RulerClicked);
+  FRulerBtn.Down := True;
+  FRulerBtn.Name := 'RulerBtn';
   {$ENDIF}
   AddSeparator;
   BeginRows;
@@ -4368,6 +4387,10 @@ end;
 procedure TLedVisualPane.EditResized(Sender: TObject);
 begin
   FitWidth;
+  {$IFDEF LED_PARADE}
+  if FRuler <> nil then
+    FRuler.Invalidate;
+  {$ENDIF}
 end;
 
 procedure TLedVisualPane.ShowZoom;
@@ -4596,6 +4619,7 @@ begin
       else
         FFitCap := EnsureRange(LedPrefs.GetInt(LedPrefVisualZoom, 110), 10, 500) / 100;
       FitWidth;
+      ShowRuler;
       {$IFDEF LED_PARADE_SYNC}
       FFileName := AFileName;   { a name to host it under }
       {$ENDIF}
@@ -4686,6 +4710,7 @@ begin
   FFitWidth := True;
   FFitZoom := 0;
   FitWidth;
+  ShowRuler;          { a drawing page: none }
   if FShapeTab >= 0 then
     ShowTab(FShapeTab);
   {$ENDIF}
@@ -5002,6 +5027,10 @@ end;
 procedure TLedVisualPane.EditChanged(Sender: TObject);
 begin
   {$IFDEF LED_PARADE}
+  if FRuler <> nil then
+    FRuler.Invalidate;
+  {$ENDIF}
+  {$IFDEF LED_PARADE}
   UpdateSlidePane(False);     { the slide edited drawn again in the pane }
   if (FNavPanel <> nil) and FNavPanel.Visible then
   begin   { the headings list made again once the typing pauses }
@@ -5233,6 +5262,8 @@ end;
 { the slider and the percentage after any zoom: the box, the buttons, Ctrl+wheel, Page width }
 procedure TLedVisualPane.EditZoomChanged(Sender: TObject);
 begin
+  if FRuler <> nil then
+    FRuler.Invalidate;
   if (FZoomSlider = nil) or FZoomSliding or (FEdit = nil) then
     Exit;
   FZoomSliding := True;
@@ -5244,6 +5275,22 @@ begin
   finally
     FZoomSliding := False;
   end;
+end;
+
+procedure TLedVisualPane.RulerClicked(Sender: TObject);
+begin
+  FRulerBtn.Down := not FRulerBtn.Down;
+  ShowRuler;
+  BackToPage;
+end;
+
+{ a document's pages have a ruler, while it is asked for; slides and a drawing page none }
+procedure TLedVisualPane.ShowRuler;
+begin
+  if FRuler = nil then
+    Exit;
+  FRuler.Visible := ((FRulerBtn = nil) or FRulerBtn.Down) and not FEdit.CanvasPage;
+  FRuler.Invalidate;
 end;
 
 procedure TLedVisualPane.MultiPageClicked(Sender: TObject);
