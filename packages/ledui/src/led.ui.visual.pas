@@ -318,6 +318,7 @@ type
       table's, a comment's, a field's ... and the text's own last }
     procedure PageContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
     procedure BuildZoomBar;
+    procedure SlideItemClicked(Sender: TObject);
     procedure ZoomSliderChanged(Sender: TObject);
     procedure EditZoomChanged(Sender: TObject);
     procedure MultiPageClicked(Sender: TObject);
@@ -423,6 +424,8 @@ type
     function ShapeTabShown: Boolean;
     { the ribbon's tab AIndex is the one showing (0 Home) }
     function TabShown(AIndex: Integer): Boolean;
+    { Ctrl+M: a new slide after the one being edited, on its layout, its placeholders empty }
+    procedure NewSlideHere;
     { the selected shape's place in its canvas (points from the canvas's top left, its box before it is turned),
       its size (points) and turn (degrees clockwise), as the Size and Position dialog shows them }
     function ShapePlacement(out XPt, YPt, WPt, HPt, Deg: Double): Boolean;
@@ -4115,9 +4118,10 @@ begin
   FSlideTimer.Interval := 350;    { the slides drawn again a little after an edit }
   FSlideTimer.OnTimer := @SlideTimerFired;
   M := TPopupMenu.Create(Self);
-  Item('New slide', 0);
+  Item('New slide' + #9 + 'Ctrl+M', 0);
   Item('Duplicate slide', 1);
   Item('Delete slide', 2);
+  Item('Reset slide', 7);
   Item('-', -1);
   Item('Move up', 3);
   Item('Move down', 4);
@@ -4362,8 +4366,9 @@ var
 begin
   i := FSlideMenuAt;
   case TMenuItem(Sender).Tag of
-    0: FEdit.NewSlide(i);
+    0: if not FEdit.NewLayoutSlide(i) then FEdit.NewSlide(i);   { on its layout, its placeholders empty }
     1: FEdit.NewSlide(i, True);
+    7: FEdit.ResetSlide(i);
     2: FEdit.DeleteSlide(i);
     3: FEdit.MoveSlide(i, i - 1);
     4: FEdit.MoveSlide(i, i + 1);
@@ -5178,6 +5183,11 @@ begin
     {$IFDEF LED_PARADE}
     VK_OEM_6: Pane.Page.StepFontSize(True);     { Ctrl+] and Ctrl+[, as word processors have them }
     VK_OEM_4: Pane.Page.StepFontSize(False);
+    VK_M:     { PowerPoint's New Slide, after the one being edited, on its layout }
+      if Pane.IsPresentation then
+        Pane.NewSlideHere
+      else
+        Result := False;
     {$ENDIF}
   else
     Result := False;
@@ -5509,6 +5519,17 @@ begin
   Root := FPageMenu.Items;
   Root.Clear;
 
+  if IsPresentation and (C.Shape = 'canvas') then
+  begin   { a slide's ground: the slide's commands, as PowerPoint has them }
+    Add(Root, 'Paste', 2, @PageMenuClicked);
+    Sep;
+    Add(Root, 'New Slide' + #9 + 'Ctrl+M', 0, @SlideItemClicked);
+    Add(Root, 'Duplicate Slide', 1, @SlideItemClicked);
+    Add(Root, 'Delete Slide', 2, @SlideItemClicked);
+    Add(Root, 'Reset Slide', 3, @SlideItemClicked);
+    Exit;
+  end;
+
   if C.Shape <> '' then
   begin   { an object: its own commands, not the text's }
     Pic := C.Shape = 'picture';
@@ -5700,6 +5721,39 @@ begin
   Sep;
   Add(Root, 'Modify style...', 8, @PageMenuClicked);
   Add(Root, 'Styles...', 9, @PageMenuClicked);
+  if IsPresentation then
+  begin   { in a slide's text: the slide's commands too }
+    Sep;
+    Add(Root, 'New Slide' + #9 + 'Ctrl+M', 0, @SlideItemClicked);
+    Add(Root, 'Reset Slide', 3, @SlideItemClicked);
+  end;
+end;
+
+procedure TLedVisualPane.NewSlideHere;
+var
+  I: Integer;
+begin
+  I := Max(0, FEdit.CurrentSlide);
+  if not FEdit.NewLayoutSlide(I) then
+    FEdit.NewSlide(I);
+  UpdateSlidePane(True);
+  BackToPage;
+end;
+
+{ the page menu's slide items: on the slide being edited }
+procedure TLedVisualPane.SlideItemClicked(Sender: TObject);
+var
+  I: Integer;
+begin
+  I := Max(0, FEdit.CurrentSlide);
+  case TMenuItem(Sender).Tag of
+    0: NewSlideHere;
+    1: FEdit.NewSlide(I, True);
+    2: FEdit.DeleteSlide(I);
+    3: FEdit.ResetSlide(I);
+  end;
+  UpdateSlidePane(True);
+  BackToPage;
 end;
 
 procedure TLedVisualPane.ContextItemClicked(Sender: TObject);
