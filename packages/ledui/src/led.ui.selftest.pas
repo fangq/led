@@ -20617,6 +20617,34 @@ begin
   { undo still reaches back past the save }
   Check('undo reaches past the save', P.CanUndo);
 
+  { a third click: the paragraph, both its lines; written again as one, wrapped where it was }
+  C := PdfPageChars(P.Pdf, 0);
+  N := -1;
+  for i := 0 to High(C) do
+    if (C[i].cp = Ord('S')) and (N < 0) then N := i;
+  Check('the second line''s first letter', N >= 0);
+  if N >= 0 then
+  begin
+    A.X := Round((C[N].x0 + 2) * P.Scale) + (P.View.ClientWidth - Round(612 * P.Scale)) div 2;
+    A.Y := Round(((C[N].y0 + C[N].y1) / 2) * P.Scale) + 12;
+    V.MouseDown(mbLeft, [ssTriple], A.X, A.Y);
+    V.MouseUp(mbLeft, [], A.X, A.Y);
+    Pump;
+    Check(Format('a third click selects the paragraph, both its lines ("%s")', [P.SelectedText]),
+      (Pos('Hello PDF pages', P.SelectedText) = 1) and (Pos('Second line here', P.SelectedText) > 0));
+    CheckEq('to edit, its lines one line of text', 'Hello PDF pages Second line here', P.SelectionEditText);
+    Check('written again', P.ReplaceSelection('One paragraph written again in its place'));
+    Content := PdfCharsText(PdfPageChars(P.Pdf, 0), 0, MaxInt);
+    Check(Format('the page reads the new text, not the old ("%s")', [Content]),
+      (Pos('One paragraph', Content) > 0) and (Pos('its place', Content) > 0) and (Pos('Second line', Content) = 0) and
+      (Pos('Hello', Content) = 0));
+    Check('wrapped to the old lines'' width: on more than one line', Pos(#10, Content) > 0);
+    F.actUndo.Execute;
+    Pump;
+    Content := PdfCharsText(PdfPageChars(P.Pdf, 0), 0, MaxInt);
+    Check('Undo brings the old text back', (Pos('Hello PDF pages', Content) > 0) and (Pos('One paragraph', Content) = 0));
+  end;
+
   Doc.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
