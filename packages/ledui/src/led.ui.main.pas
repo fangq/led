@@ -41,7 +41,7 @@ uses
   Led.UI.Print, Led.UI.Icons, Led.UI.Focus, Led.UI.SaveAll, Led.UI.NBPane,
   Led.UI.Bookmarks, Led.UI.Project, Led.Core.Spell, Led.UI.SpellMarkup,
   Led.Core.Recovery, Led.UI.Dpi,
-  Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, LCLProc, LazFileUtils
+  Led.UI.Splitter, Led.UI.BJEdit, Led.UI.Visual, Led.UI.PdfView, LCLProc, LazFileUtils
   {$IFDEF LED_PARADE}, Led.UI.ResPane{$ENDIF}
   {$IFDEF LED_PARADE_SYNC}, Led.UI.Collab{$ENDIF};
 
@@ -813,6 +813,8 @@ type
     procedure CheckExternalChanges;
     function CurrentView: TLedEdit;
     function CurrentVisual: TLedVisualPane;
+    { the active tab's PDF pages, if it is a PDF }
+    function CurrentPdf: TLedPdfPane;
     procedure GotoAdjacentBookmark(AForward: Boolean);
     procedure BookmarkItemClick(Sender: TObject);
     procedure ShowFindForm(AReplace: Boolean);
@@ -3450,7 +3452,10 @@ end;
 
 procedure TLedMainForm.actFindExecute(Sender: TObject);
 begin
-  ShowFindForm(False);
+  if CurrentPdf <> nil then
+    CurrentPdf.ShowFind
+  else
+    ShowFindForm(False);
 end;
 
 procedure TLedMainForm.actReplaceExecute(Sender: TObject);
@@ -3565,6 +3570,13 @@ begin
     Result := ActiveTab.Visual;
 end;
 
+function TLedMainForm.CurrentPdf: TLedPdfPane;
+begin
+  Result := nil;
+  if (ActiveTab <> nil) and ActiveTab.PdfMode then
+    Result := ActiveTab.Pdf;
+end;
+
 procedure TLedMainForm.actUndoExecute(Sender: TObject);
 {$IFDEF LED_PARADE_SYNC}
 var
@@ -3579,6 +3591,11 @@ begin
     Exit;
   end;
   {$ENDIF}
+  if CurrentPdf <> nil then
+  begin
+    CurrentPdf.Undo;
+    Exit;
+  end;
   if CurrentVisual <> nil then
   begin
     CurrentVisual.Undo;
@@ -3602,7 +3619,9 @@ begin
     Exit;
   end;
   {$ENDIF}
-  if CurrentVisual <> nil then
+  if CurrentPdf <> nil then
+    CurrentPdf.Redo
+  else if CurrentVisual <> nil then
     CurrentVisual.Redo
   else if CurrentView <> nil then
     CurrentView.Redo;
@@ -3618,7 +3637,9 @@ end;
 
 procedure TLedMainForm.actCopyExecute(Sender: TObject);
 begin
-  if CurrentVisual <> nil then
+  if CurrentPdf <> nil then
+    CurrentPdf.CopyToClipboard
+  else if CurrentVisual <> nil then
     CurrentVisual.CopyToClipboard
   else
     LedCopy(CurrentView);
@@ -3634,7 +3655,9 @@ end;
 
 procedure TLedMainForm.actSelectAllExecute(Sender: TObject);
 begin
-  if CurrentVisual <> nil then
+  if CurrentPdf <> nil then
+    CurrentPdf.SelectAll
+  else if CurrentVisual <> nil then
     CurrentVisual.SelectAll
   else if CurrentView <> nil then
     CurrentView.SelectAll;
@@ -6356,7 +6379,16 @@ begin
       on E: Exception do
         ReportError('Visual editor: ' + E.Message);
     end;
-  if not Result.VisualMode then
+  { a PDF opens as its pages }
+  if (not Result.VisualMode) and Result.CanPdf then
+    try
+      if not Result.EnterPdf(Why) then
+        ReportError('PDF: ' + Why);
+    except
+      on E: Exception do
+        ReportError('PDF: ' + E.Message);
+    end;
+  if not Result.VisualMode and not Result.PdfMode then
     ADoc.EnsureHexText;     { shown as text: the dump a Word file left for this }
   UpdateStatusBar;
 end;
@@ -6749,6 +6781,11 @@ begin
   { The page in front is the thing the column describes, not the text or the
     dump behind it; the caret position is the hidden view's and says
     nothing. }
+  if (ActiveTab <> nil) and ActiveTab.PdfMode then
+  begin
+    StatusBar1.Panels[0].Text := ActiveTab.Pdf.StatusText;
+    StatusBar1.Panels[3].Text := 'PDF';
+  end;
   if (ActiveTab <> nil) and ActiveTab.VisualMode then
   begin
     StatusBar1.Panels[0].Text := ActiveTab.Visual.StatusText;
@@ -7101,10 +7138,18 @@ begin
     CutOn := Tab.Visual.SelAvail;
     PasteOn := True;
   end;
+  if HasDoc and Tab.PdfMode then
+  begin   { a PDF's pages: its own undo; copy is of what is selected; nothing is pasted into it }
+    UndoOn := Tab.Pdf.CanUndo;
+    RedoOn := Tab.Pdf.CanRedo;
+    CutOn := False;
+    PasteOn := False;
+    actSelectAll.Enabled := True;
+  end;
   actUndo.Enabled := UndoOn;
   actRedo.Enabled := RedoOn;
   actCut.Enabled := CutOn;
-  actCopy.Enabled := CutOn;
+  actCopy.Enabled := CutOn or (HasDoc and Tab.PdfMode and Tab.Pdf.SelAvail);
   actPaste.Enabled := PasteOn;
   actIndent.Enabled := HasDoc;
   actUnindent.Enabled := HasDoc;
@@ -8106,7 +8151,9 @@ begin
     {$ENDIF}
     try
       {$IFDEF LED_PARADE}
-      if CurrentVisual <> nil then  { the pages as they are laid out (with comment balloons when it has comments) }
+      if CurrentPdf <> nil then  { a PDF: itself, with its changes (the tab's own file left as it is) }
+        LedWriteRawFile(Dlg.FileName, CurrentPdf.Export, False)
+      else if CurrentVisual <> nil then  { the pages as they are laid out (with comment balloons when it has comments) }
         CurrentVisual.Page.ExportPDF(Dlg.FileName, Q)
       else
       {$ENDIF}
