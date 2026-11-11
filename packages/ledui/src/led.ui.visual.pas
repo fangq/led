@@ -324,6 +324,7 @@ type
     procedure MultiPageClicked(Sender: TObject);
     procedure RulerClicked(Sender: TObject);
     procedure ShowRuler;
+    procedure PlaceRuler;
     procedure RememberZoom;
     { a text box, or a slide's canvas or a drawing as a whole, selected: what holds text to type, not a shape to
       draw with }
@@ -890,8 +891,7 @@ begin
   BuildZoomBar;
   FRuler := TLedRuler.Create(Self);
   FRuler.Parent := Self;
-  FRuler.Align := alTop;
-  FRuler.Top := 100000;       { under the tabs and the bars }
+  FRuler.Align := alTop;     { put under the tabs and the bars once they are made (end of Create) }
   FRuler.Edit := FEdit;
   FRuler.Name := 'PageRuler';
   FRuler.OnRulerDblClick := @ParagraphDialogClicked;
@@ -1016,7 +1016,27 @@ begin
   FSyncStatus.Parent := FTabStrip;
   {$ENDIF}
   ShowTab(0);
+  {$IFDEF LED_PARADE}
+  PlaceRuler;
+  {$ENDIF}
 end;
+
+{$IFDEF LED_PARADE}
+{ the ruler under every bar along the top: a Top just past the lowest of them (an out-of-range Top had the LCL
+  correcting it, and saying so, at every layout) }
+procedure TLedVisualPane.PlaceRuler;
+var
+  I, Y: Integer;
+begin
+  if FRuler = nil then
+    Exit;
+  Y := 0;
+  for I := 0 to ControlCount - 1 do
+    if (Controls[I] <> FRuler) and (Controls[I].Align = alTop) and (Controls[I].Top + Controls[I].Height > Y) then
+      Y := Controls[I].Top + Controls[I].Height;
+  FRuler.Top := Y + 1;
+end;
+{$ENDIF}
 
 function TLedVisualPane.AddTab(const ACaption: string): TFlowPanel;
 var

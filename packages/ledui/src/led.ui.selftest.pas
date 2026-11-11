@@ -2757,9 +2757,10 @@ begin
 end;
 
 { The preview pane follows the document in front: it opens for a Markdown
-  file and a document shown as pages (its Resources), closes for a source
-  file, asks only about a close at its header, and with the preference off no
-  longer opens by itself. }
+  file, stays closed for a source file and a Word, PowerPoint or drawing
+  document shown as pages (its Resources there when opened by hand), asks
+  only about a close at its header, and with the preference off no longer
+  opens by itself. }
 { An idle window sends the X server next to nothing: the idle pass once
   asked the server where every docked pane was (ClientToScreen, a round trip
   each) and whether the clipboard held text (a selection request, fetched
@@ -2868,9 +2869,12 @@ begin
     LedWriteRawFile(Dx, LedReadRawFile(DxSrc), False);
     Vis := F.AddTab(F.Documents.OpenFile(Dx));
     Pump; Pump; Pump;
-    Check('a Word file shown as pages opens it, on its resources', (Vis <> nil) and Vis.VisualMode and
-      F.Dock.PaneVisible('preview') and (F.Dock.FindPane('preview') <> nil) and
-      (F.Dock.FindPane('preview').Caption = 'Resources'));
+    Check('a Word file shown as pages leaves it closed, as a source file does', (Vis <> nil) and Vis.VisualMode and
+      not F.Dock.PaneVisible('preview'));
+    F.actTogglePreview.Execute;
+    Pump; Pump;
+    Check('opened by hand there, it shows its resources', F.Dock.PaneVisible('preview') and
+      (F.Dock.FindPane('preview') <> nil) and (F.Dock.FindPane('preview').Caption = 'Resources'));
     F.Notebook.ActivePage := Src.Sheet;
     Pump; Pump;
     Check('and the C file in front closes it again', not F.Dock.PaneVisible('preview'));
