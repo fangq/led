@@ -23,7 +23,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms, Dialogs, LCLType, LCLIntf, Menus, ComCtrls,
-  Buttons, Types, IntfGraphics, GraphType, ImgList, Contnrs, ExtDlgs, led.ui.pdfsign
+  Buttons, Types, IntfGraphics, GraphType, ImgList, Contnrs, ExtDlgs, led.ui.pdfsign, Led.UI.Outline
   {$IFDEF LED_PARADE}, paradepdf{$ENDIF};
 
 { a file the PDF pages open: its name says so }
@@ -263,6 +263,10 @@ type
     function PageCount: Integer;
     function CurrentPage: Integer;
     procedure GoToPage(APage: Integer);
+    { a bookmark's place: its page, the height on it (points from the top; -1: the page's top) near the view's top }
+    procedure GoToPlace(APage: Integer; ATop: Double);
+    { the file's bookmarks, for the Outline pane }
+    function Bookmarks: TLedBookmarks;
     function StatusText: string;
     function SelAvail: Boolean;
     function SelectedText: string;
@@ -1035,6 +1039,38 @@ begin
   if FPdf = nil then Exit;
   Result := pd_pdfr_annot_set_rect(FPdf, APage, AIndex, Min(X0, X1), Min(Y0, Y1), Max(X0, X1), Max(Y0, Y1)) = 0;
   if Result then Changed;
+  {$ENDIF}
+end;
+
+procedure TLedPdfPane.GoToPlace(APage: Integer; ATop: Double);
+begin
+  if (APage < 0) or (APage >= PageCount) then Exit;
+  if ATop < 0 then ATop := 0;
+  { a little above where it says, so the heading there is not on the view's very edge }
+  FVBar.Position := Max(0, FPageTop[APage] + Round(ATop * FScale) - LedScale96(12));
+  FView.Invalidate;
+  Status;
+end;
+
+function TLedPdfPane.Bookmarks: TLedBookmarks;
+{$IFDEF LED_PARADE}
+var
+  B: TPdfBookmarks;
+  i: Integer;
+{$ENDIF}
+begin
+  Result := nil;
+  {$IFDEF LED_PARADE}
+  if FPdf = nil then Exit;
+  B := PdfOutline(FPdf);
+  SetLength(Result, Length(B));
+  for i := 0 to High(B) do
+  begin
+    Result[i].Level := B[i].level;
+    Result[i].Title := B[i].title;
+    Result[i].Page := B[i].page;
+    Result[i].Top := B[i].top;
+  end;
   {$ENDIF}
 end;
 

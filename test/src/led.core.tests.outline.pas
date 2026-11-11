@@ -27,6 +27,9 @@ type
     procedure SomethingThatIsNotAHeadingIsNotOne;
     procedure AWikiPageHasHeadingsToo;
     procedure NothingAtAllGivesNothing;
+    procedure ALatexArticleIsNumberedAsLatexNumbersIt;
+    procedure ALatexBookHasChaptersAboveSections;
+    procedure LatexCommentsVerbatimAndMacrosAreNotSections;
   end;
 
 implementation
@@ -154,6 +157,83 @@ begin
   AssertEquals('empty wiki', 0, Length(LedOutlineOfWiki('')));
   AssertEquals('prose with no headings', 0,
     Length(LedOutlineOfMarkdown('just a paragraph' + #10 + 'and another')));
+end;
+
+procedure TTestOutline.ALatexArticleIsNumberedAsLatexNumbersIt;
+var
+  O: TLedOutline;
+begin
+  O := LedOutlineOfLatex(
+    '\documentclass{article}' + #10 +
+    '\begin{document}' + #10 +
+    '\section{Introduction}\label{sec:intro}' + #10 +
+    '\subsection[Short]{A long \emph{title}' + #10 +
+    '  over two lines}' + #10 +
+    '\subsubsection{Deep~one}' + #10 +
+    '\section*{Acknowledgments}' + #10 +
+    '\section{Methods \& Results}' + #10 +
+    '\subsection{First}' + #10 +
+    '\paragraph{A paragraph}' + #10 +
+    '\appendix' + #10 +
+    '\section{Data}' + #10 +
+    '\subsection{More}' + #10);
+  AssertEquals('nine', 9, Length(O));
+  AssertEquals('numbered, its label not in it', '1  Introduction', O[0].Title);
+  AssertEquals('at the section level', 3, O[0].Level);
+  AssertEquals('on its line', 3, O[0].Line);
+  AssertEquals('the short title, as the contents shows it', '1.1  Short', O[1].Title);
+  AssertEquals('a level down', 4, O[1].Level);
+  AssertEquals('a subsubsection numbered in an article', '1.1.1  Deep one', O[2].Title);
+  AssertEquals('on its line, past the title over two', 6, O[2].Line);
+  AssertEquals('a starred one not numbered', 'Acknowledgments', O[3].Title);
+  AssertEquals('nor counted', '2  Methods & Results', O[4].Title);
+  AssertEquals('the subsection under it starts again', '2.1  First', O[5].Title);
+  AssertEquals('a paragraph not numbered', 'A paragraph', O[6].Title);
+  AssertEquals('deeper', 6, O[6].Level);
+  AssertEquals('the appendix lettered', 'A  Data', O[7].Title);
+  AssertEquals('and under it', 'A.1  More', O[8].Title);
+end;
+
+procedure TTestOutline.ALatexBookHasChaptersAboveSections;
+var
+  O: TLedOutline;
+begin
+  O := LedOutlineOfLatex(
+    '\part{One}' + #10 +
+    '\chapter{Start}' + #10 +
+    '\section{Begin}' + #10 +
+    '\subsubsection{Not numbered in a book}' + #10 +
+    '\chapter{Next}' + #10 +
+    '\section{Again}' + #10);
+  AssertEquals('six', 6, Length(O));
+  AssertEquals('a part, not numbered', 'One', O[0].Title);
+  AssertEquals('at the top', 1, O[0].Level);
+  AssertEquals('a chapter', '1  Start', O[1].Title);
+  AssertEquals('under the part', 2, O[1].Level);
+  AssertEquals('its section', '1.1  Begin', O[2].Title);
+  AssertEquals('a book''s subsubsection unnumbered', 'Not numbered in a book', O[3].Title);
+  AssertEquals('the next chapter', '2  Next', O[4].Title);
+  AssertEquals('its sections from one', '2.1  Again', O[5].Title);
+end;
+
+procedure TTestOutline.LatexCommentsVerbatimAndMacrosAreNotSections;
+var
+  O: TLedOutline;
+begin
+  O := LedOutlineOfLatex(
+    '\newcommand{\mysec}[1]{\section{#1}}' + #10 +
+    '% \section{Commented out}' + #10 +
+    'A 50\% rise \section{Real}' + #10 +
+    '\begin{verbatim}' + #10 +
+    '\section{In verbatim}' + #10 +
+    '\end{verbatim}' + #10 +
+    '\begin{frame}[t]{A Slide}' + #10 +
+    '\end{frame}' + #10);
+  AssertEquals('two', 2, Length(O));
+  AssertEquals('after a \% the line goes on', '1  Real', O[0].Title);
+  AssertEquals('on line three', 3, O[0].Line);
+  AssertEquals('a beamer frame by its title', 'A Slide', O[1].Title);
+  AssertEquals('on its line', 7, O[1].Line);
 end;
 
 initialization

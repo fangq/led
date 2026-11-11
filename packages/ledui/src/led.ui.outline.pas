@@ -21,7 +21,7 @@ unit Led.UI.Outline;
 interface
 
 uses
-  Classes, SysUtils, Controls, ComCtrls, ExtCtrls, StdCtrls,
+  Classes, SysUtils, Math, Controls, ComCtrls, ExtCtrls, StdCtrls,
   Led.Core.Ctags, Led.Core.Outline;
 
 type
@@ -31,6 +31,17 @@ type
     by whoever handles the jump. }
   TLedOutlineJump = procedure(ALine: Integer; const AName: string) of object;
 
+  { A PDF's bookmark: its level, its title, the page it goes to (from 0, -1 none) and the height there (points
+    from the top, -1 if it says none) }
+  TLedBookmark = record
+    Level: Integer;
+    Title: string;
+    Page: Integer;
+    Top: Double;
+  end;
+  TLedBookmarks = array of TLedBookmark;
+  TLedBookmarkJump = procedure(APage: Integer; ATop: Double) of object;
+
   TLedOutlinePane = class(TPanel)
   private
     FTree: TTreeView;
@@ -38,6 +49,8 @@ type
     FTags: TLedTags;
     FFileName: string;
     FOnJump: TLedOutlineJump;
+    FOnBookmark: TLedBookmarkJump;
+    FMarks: TLedBookmarks;      { a PDF's bookmarks, when it is those that are shown (a node's Data: its index + 1) }
     procedure TreeDblClick(Sender: TObject);
     procedure Clear(const AFileName: string);
   public
@@ -60,7 +73,10 @@ type
       tree follows the reader's document rather than correcting it. }
     procedure ShowOutline(const AFileName: string;
       const AItems: TLedOutline);
+    { a PDF's bookmarks, nested by level; double-clicked, OnBookmark goes to the page }
+    procedure ShowBookmarks(const AFileName: string; const AMarks: TLedBookmarks);
     property OnJump: TLedOutlineJump read FOnJump write FOnJump;
+    property OnBookmark: TLedBookmarkJump read FOnBookmark write FOnBookmark;
     property Tags: TLedTags read FTags;
     { What the pane is showing, and which file it was built from.  For the
       check that switching documents rebuilds it: the tree is what the reader
@@ -106,6 +122,7 @@ begin
   FFileName := AFileName;
   FTree.Items.Clear;
   FNote.Visible := False;
+  FMarks := nil;
 end;
 
 procedure TLedOutlinePane.ShowOutline(const AFileName: string;
@@ -244,11 +261,61 @@ begin
   end;
 end;
 
+procedure TLedOutlinePane.ShowBookmarks(const AFileName: string; const AMarks: TLedBookmarks);
+var
+  i, d, k: Integer;
+  Node: TTreeNode;
+  Open: array[0..15] of TTreeNode;
+begin
+  Clear(AFileName);
+  FMarks := Copy(AMarks);
+  if Length(AMarks) = 0 then
+  begin
+    FNote.Caption := 'This PDF has no bookmarks.';
+    FNote.Visible := True;
+    Exit;
+  end;
+  FTree.Items.BeginUpdate;
+  try
+    for d := Low(Open) to High(Open) do Open[d] := nil;
+    for i := 0 to High(AMarks) do
+    begin
+      d := Max(1, Min(AMarks[i].Level, High(Open)));
+      Node := nil;
+      k := d;
+      while (k > 1) and (Node = nil) do
+      begin
+        Dec(k);
+        Node := Open[k];
+      end;
+      if Node = nil then
+        Node := FTree.Items.Add(nil, AMarks[i].Title)
+      else
+        Node := FTree.Items.AddChild(Node, AMarks[i].Title);
+      Node.Data := Pointer(PtrInt(i + 1));
+      Open[d] := Node;
+      for k := d + 1 to High(Open) do Open[k] := nil;
+    end;
+    { the top two levels open, as a reader shows a long book's }
+    for i := 0 to FTree.Items.Count - 1 do
+      FTree.Items[i].Expanded := FTree.Items[i].Level < 1;
+  finally
+    FTree.Items.EndUpdate;
+  end;
+end;
+
 procedure TLedOutlinePane.TreeDblClick(Sender: TObject);
 var
   Line: Integer;
 begin
   if (FTree.Selected = nil) or (FTree.Selected.Data = nil) then Exit;
+  if FMarks <> nil then
+  begin   { a bookmark: its page }
+    Line := PtrInt(FTree.Selected.Data) - 1;
+    if (Line >= 0) and (Line <= High(FMarks)) and (FMarks[Line].Page >= 0) and Assigned(FOnBookmark) then
+      FOnBookmark(FMarks[Line].Page, FMarks[Line].Top);
+    Exit;
+  end;
   Line := PtrInt(FTree.Selected.Data);
   if (Line > 0) and Assigned(FOnJump) then
     FOnJump(Line, FTree.Selected.Text);

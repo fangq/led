@@ -42,6 +42,17 @@ function LedOutlineOfMarkdown(const AText: string): TLedOutline;
   "== Section ==", with the level given by how many equals signs. }
 function LedOutlineOfWiki(const AText: string): TLedOutline;
 
+{ The sectioning of a LaTeX document, in its order: \part, \chapter,
+  \section, \subsection, \subsubsection, \paragraph, \subparagraph, and a
+  beamer frame's title.  Numbered as LaTeX numbers them (chapters, when there
+  are any, above sections; \appendix letters from there on; a starred one
+  not numbered), its short title ([...]) when it has one, as a table of
+  contents would show it.  Not in a comment or a verbatim block.  The line is
+  the command's. }
+function LedOutlineOfLatex(const AText: string): TLedOutline;
+{ a LaTeX file by its name: .tex, .ltx, .latex }
+function LedIsLatexName(const AFileName: string): Boolean;
+
 { Appends one item.  Public because a notebook's outline is built cell by
   cell, by a caller that knows which buffer line each cell starts on. }
 procedure LedOutlineAdd(var AOutline: TLedOutline; ALevel: Integer;
@@ -138,6 +149,245 @@ begin
     end;
   finally
     Lines.Free;
+  end;
+end;
+
+{ ---- LaTeX ---- }
+
+function LedIsLatexName(const AFileName: string): Boolean;
+var
+  E: string;
+begin
+  E := LowerCase(ExtractFileExt(AFileName));
+  Result := (E = '.tex') or (E = '.ltx') or (E = '.latex');
+end;
+
+(* a title's LaTeX as text: \emph{x} as x, \label and \footnote left out, ~ a space, the blanks run together *)
+function LatexTitleText(const S: string): string;
+var
+  i, j, D: Integer;
+  Name: string;
+begin
+  Result := '';
+  i := 1;
+  while i <= Length(S) do
+  begin
+    if S[i] = '\' then
+    begin
+      j := i + 1;
+      while (j <= Length(S)) and (S[j] in ['a'..'z', 'A'..'Z']) do Inc(j);
+      Name := Copy(S, i + 1, j - i - 1);
+      if Name = '' then
+      begin   (* \& \% \_ \$ \# \{ \}: the character; \\: a space *)
+        if (j <= Length(S)) and (S[j] in ['&', '%', '_', '$', '#', '{', '}']) then Result := Result + S[j]
+        else Result := Result + ' ';
+        i := j + 1;
+        Continue;
+      end;
+      i := j;
+      if (Name = 'label') or (Name = 'footnote') or (Name = 'thanks') or (Name = 'index') or (Name = 'cite') or
+         (Name = 'protect') or (Name = 'texorpdfstring') then
+      begin
+        while (i <= Length(S)) and (S[i] = ' ') do Inc(i);
+        if (Name = 'texorpdfstring') and (i <= Length(S)) and (S[i] = '{') then
+        begin   { its first argument is for the page; the second, the bookmark's, is plain text: kept }
+          D := 0;
+          repeat
+            if S[i] = '{' then Inc(D) else if S[i] = '}' then Dec(D);
+            Inc(i);
+          until (i > Length(S)) or (D = 0);
+          Continue;
+        end;
+        if (Name <> 'protect') and (i <= Length(S)) and (S[i] = '{') then
+        begin
+          D := 0;
+          repeat
+            if S[i] = '{' then Inc(D) else if S[i] = '}' then Dec(D);
+            Inc(i);
+          until (i > Length(S)) or (D = 0);
+          if Name = 'cite' then Result := Result + '[ ]';
+        end;
+        Continue;
+      end;
+      if Name = 'LaTeX' then Result := Result + 'LaTeX'
+      else if Name = 'TeX' then Result := Result + 'TeX';
+      Continue;
+    end;
+    if S[i] in ['{', '}', '$'] then
+    begin
+      Inc(i);
+      Continue;
+    end;
+    if (S[i] = '~') or (S[i] < ' ') then Result := Result + ' ' else Result := Result + S[i];
+    Inc(i);
+  end;
+  { the blanks run together }
+  Result := Trim(Result);
+  while Pos('  ', Result) > 0 do
+    Result := StringReplace(Result, '  ', ' ', [rfReplaceAll]);
+end;
+
+function LedOutlineOfLatex(const AText: string): TLedOutline;
+const
+  Cmds: array[0..7] of string = ('part', 'chapter', 'section', 'subsection', 'subsubsection', 'paragraph',
+    'subparagraph', 'frametitle');
+var
+  i, j, k, D, Line, CmdLine, Level, Lev: Integer;
+  N: array[0..7] of Integer;
+  Name, Title, Short, Num, VerbEnd: string;
+  Star, HasChapter, Appendix: Boolean;
+
+  (* from i, at an opening brace or bracket: its content (to the matching close), i past it; '' if it does not close *)
+  function Group(AOpen, AClose: Char): string;
+  var
+    St: Integer;
+  begin
+    Result := '';
+    if (i > Length(AText)) or (AText[i] <> AOpen) then Exit;
+    St := i;
+    D := 0;
+    while i <= Length(AText) do
+    begin
+      if AText[i] = '\' then
+      begin
+        if (i < Length(AText)) and (AText[i + 1] = #10) then Inc(Line);
+        Inc(i, 2);
+        Continue;
+      end;
+      if AText[i] = #10 then Inc(Line);
+      if AText[i] = AOpen then Inc(D)
+      else if (AText[i] = AClose) then
+      begin
+        Dec(D);
+        if D = 0 then
+        begin
+          Result := Copy(AText, St + 1, i - St - 1);
+          Inc(i);
+          Exit;
+        end;
+      end;
+      Inc(i);
+    end;
+  end;
+
+  procedure SkipBlank;
+  begin
+    while (i <= Length(AText)) and (AText[i] in [' ', #9, #13, #10]) do
+    begin
+      if AText[i] = #10 then Inc(Line);
+      Inc(i);
+    end;
+  end;
+
+begin
+  SetLength(Result, 0);
+  HasChapter := Pos('\chapter', AText) > 0;
+  Appendix := False;
+  for k := 0 to High(N) do N[k] := 0;
+  VerbEnd := '';
+  Line := 1;
+  i := 1;
+  while i <= Length(AText) do
+  begin
+    case AText[i] of
+      #10:
+        begin
+          Inc(Line);
+          Inc(i);
+          Continue;
+        end;
+      '%':
+        begin   { a comment: to the end of the line }
+          while (i <= Length(AText)) and (AText[i] <> #10) do Inc(i);
+          Continue;
+        end;
+      '\':
+        ;
+    else
+      Inc(i);
+      Continue;
+    end;
+    { verbatim, and what is like it: nothing in it is a command }
+    if VerbEnd <> '' then
+    begin
+      if Copy(AText, i, Length(VerbEnd)) = VerbEnd then
+      begin
+        Inc(i, Length(VerbEnd));
+        VerbEnd := '';
+      end
+      else
+        Inc(i);
+      Continue;
+    end;
+    j := i + 1;
+    while (j <= Length(AText)) and (AText[j] in ['a'..'z', 'A'..'Z']) do Inc(j);
+    Name := Copy(AText, i + 1, j - i - 1);
+    if Name = '' then
+    begin
+      if (j <= Length(AText)) and (AText[j] = #10) then Inc(Line);
+      Inc(i, 2);    (* \% \\ \{ ...: not a comment, not a command *)
+      Continue;
+    end;
+    CmdLine := Line;
+    i := j;
+    if Name = 'begin' then
+    begin
+      Title := Group('{', '}');
+      if (Title = 'verbatim') or (Title = 'verbatim*') or (Title = 'lstlisting') or (Title = 'minted') or
+         (Title = 'comment') or (Title = 'Verbatim') then
+        VerbEnd := '\end{' + Title + '}'
+      else if Title = 'frame' then
+      begin   (* beamer: \begin{frame}{Title} (an option before it passed over) *)
+        SkipBlank;
+        if (i <= Length(AText)) and (AText[i] = '[') then Group('[', ']');
+        SkipBlank;
+        Title := LatexTitleText(Group('{', '}'));
+        if Title <> '' then LedOutlineAdd(Result, 8, Title, CmdLine);
+      end;
+      Continue;
+    end;
+    if Name = 'appendix' then
+    begin
+      Appendix := True;
+      if HasChapter then N[1] := 0 else N[2] := 0;
+      Continue;
+    end;
+    Lev := -1;
+    for k := 0 to High(Cmds) do
+      if Name = Cmds[k] then Lev := k;
+    if Lev < 0 then Continue;
+    Star := (i <= Length(AText)) and (AText[i] = '*');
+    if Star then Inc(i);
+    SkipBlank;
+    Short := '';
+    if (i <= Length(AText)) and (AText[i] = '[') then Short := Group('[', ']');
+    SkipBlank;
+    Title := Group('{', '}');
+    if Short <> '' then Title := Short;
+    (* \section{#1} in a macro's definition: not a section *)
+    if Pos('#', Title) > 0 then Continue;
+    Title := LatexTitleText(Title);
+    if Title = '' then Continue;
+    Level := Lev + 1;
+    { its number: chapters (when there are any) then sections; a subsubsection numbered in an article only }
+    Num := '';
+    if not Star and (Lev >= 1) and (Lev <= 4) and ((Lev >= 2) or HasChapter) and not ((Lev = 4) and HasChapter) then
+    begin
+      Inc(N[Lev]);
+      for k := Lev + 1 to 4 do N[k] := 0;
+      for k := 1 to Lev do
+      begin
+        if (k = 1) and not HasChapter then Continue;
+        if Num <> '' then Num := Num + '.';
+        if Appendix and (k = 1 + Ord(not HasChapter)) then
+          Num := Num + Chr(Ord('A') + (N[k] - 1) mod 26)
+        else
+          Num := Num + IntToStr(N[k]);
+      end;
+      Title := Num + '  ' + Title;
+    end;
+    if Lev = 7 then Level := 8;
+    LedOutlineAdd(Result, Level, Title, CmdLine);
   end;
 end;
 

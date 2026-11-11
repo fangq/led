@@ -923,6 +923,7 @@ type
     property NotebookPane: TLedNotebookPane read FNBPane;
     procedure RefreshNotebookPane;
     procedure RefreshOutline;
+    procedure BookmarkJump(APage: Integer; ATop: Double);
     procedure NBPaneRun(Sender: TObject; ACell: Integer);
     procedure NBPaneRunFrom(Sender: TObject; ACell: Integer);
     procedure NBPaneInsert(Sender: TObject; ACell: Integer;
@@ -1361,6 +1362,7 @@ begin
 
   FSymbols := TLedOutlinePane.Create(Self);
   FSymbols.OnJump := @SymbolJump;
+  FSymbols.OnBookmark := @BookmarkJump;
   { The pane's own name is "Outline" -- it shows the headings of a document
     as much as the symbols of a source file -- but its id stays 'symbols',
     because that is what is written in every reader's saved layout and a new
@@ -2237,6 +2239,20 @@ begin
   if ActiveTab = nil then Exit;
   Doc := ActiveTab.Document;
 
+  { a PDF: its bookmarks }
+  if ActiveTab.PdfMode and (ActiveTab.Pdf <> nil) then
+  begin
+    FSymbols.ShowBookmarks(Doc.FileName, ActiveTab.Pdf.Bookmarks);
+    Exit;
+  end;
+
+  { LaTeX: its chapters, sections and the rest, in order, numbered }
+  if LedIsLatexName(Doc.FileName) then
+  begin
+    FSymbols.ShowOutline(Doc.FileName, LedOutlineOfLatex(Doc.Master.Lines.Text));
+    Exit;
+  end;
+
   if Doc.IsNotebook then
   begin
     { From the notebook rather than from the file on disk: the reader may
@@ -2262,6 +2278,15 @@ begin
   end;
 
   FSymbols.Reload(Doc.FileName);
+end;
+
+procedure TLedMainForm.BookmarkJump(APage: Integer; ATop: Double);
+begin
+  if (ActiveTab <> nil) and ActiveTab.PdfMode and (ActiveTab.Pdf <> nil) then
+  begin
+    ActiveTab.Pdf.GoToPlace(APage, ATop);
+    LedTryFocus(ActiveTab.Pdf.View);
+  end;
 end;
 
 procedure TLedMainForm.actCompleteExecute(Sender: TObject);
@@ -6403,7 +6428,9 @@ begin
   if (not Result.VisualMode) and Result.CanPdf then
     try
       if not Result.EnterPdf(Why) then
-        ReportError('PDF: ' + Why);
+        ReportError('PDF: ' + Why)
+      else
+        RefreshOutline;     { (its bookmarks: the tab became current before it was its pages) }
     except
       on E: Exception do
         ReportError('PDF: ' + E.Message);
