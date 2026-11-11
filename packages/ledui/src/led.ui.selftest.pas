@@ -20519,6 +20519,108 @@ type
 { A PDF opens as its pages, its text found, selected by dragging over it and highlighted; a rectangle drawn; undone
   and done again; saved as the file it was with an update appended (what the save writes, read back by Parade's
   reader), the file never written over. }
+{ The Outline pane for a PDF: its bookmarks, nested, in order; one double-clicked goes to its page. }
+procedure TestPdfBookmarks(F: TLedMainForm);
+var
+  Body, Xref, Path: string;
+  Offs: array[1..9] of Integer;
+  Objs: array[1..9] of string;
+  i: Integer;
+  Tab: TLedTab;
+  Tree: TTreeView;
+begin
+  Say('a PDF''s bookmarks in the Outline pane');
+  Objs[1] := '<< /Type /Catalog /Pages 2 0 R /Outlines 6 0 R >>';
+  Objs[2] := '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>';
+  Objs[3] := '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>';
+  Objs[4] := '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>';
+  Objs[5] := '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>';
+  Objs[6] := '<< /Type /Outlines /First 7 0 R /Last 9 0 R >>';
+  Objs[7] := '<< /Title (Chapter One) /Parent 6 0 R /First 8 0 R /Last 8 0 R /Next 9 0 R /Dest [3 0 R /Fit] >>';
+  Objs[8] := '<< /Title (Part A) /Parent 7 0 R /Dest [4 0 R /XYZ 0 400 0] >>';
+  Objs[9] := '<< /Title (Chapter Two) /Parent 6 0 R /Prev 7 0 R /Dest [5 0 R /XYZ 0 792 0] >>';
+  Body := '%PDF-1.4' + #10;
+  for i := 1 to 9 do
+  begin
+    Offs[i] := Length(Body);
+    Body := Body + IntToStr(i) + ' 0 obj' + #10 + Objs[i] + #10 + 'endobj' + #10;
+  end;
+  Xref := 'xref' + #10 + '0 10' + #10 + '0000000000 65535 f ' + #10;
+  for i := 1 to 9 do
+    Xref := Xref + Format('%.10d 00000 n ', [Offs[i]]) + #10;
+  Path := TempName('marks.pdf');
+  WriteBytes(Path, Body + Xref + 'trailer' + #10 + '<< /Size 10 /Root 1 0 R >>' + #10 + 'startxref' + #10 +
+    IntToStr(Length(Body)) + #10 + '%%EOF' + #10);
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Path, ''));
+  Pump; Pump;
+  Tree := F.SymbolPane.Tree;
+  Check('a PDF opens as its pages', Tab.PdfMode);
+  CheckEqInt('its three bookmarks in the outline', 3, Tree.Items.Count);
+  if Tree.Items.Count = 3 then
+  begin
+    CheckEq('in their order', 'Chapter One|Part A|Chapter Two',
+      Tree.Items[0].Text + '|' + Tree.Items[1].Text + '|' + Tree.Items[2].Text);
+    Check('nested as the file nests them', (Tree.Items[0].Level = 0) and (Tree.Items[1].Level = 1) and
+      (Tree.Items[2].Level = 0));
+    Tree.Selected := Tree.Items[2];
+    Tree.OnDblClick(Tree);
+    Pump;
+    CheckEqInt('one double-clicked goes to its page', 2, Tab.Pdf.CurrentPage);
+    Tree.Selected := Tree.Items[1];
+    Tree.OnDblClick(Tree);
+    Pump;
+    CheckEqInt('a page in the middle too', 1, Tab.Pdf.CurrentPage);
+  end;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  F.Dock.HidePane('symbols');
+  Pump;
+  DeleteFile(Path);
+end;
+{$ENDIF}
+
+{ The Outline pane for a .tex file: its chapters, sections, subsections and subsubsections, in order, numbered,
+  nested; one double-clicked goes to its line. }
+procedure TestLatexOutline(F: TLedMainForm);
+var
+  Path: string;
+  Tab: TLedTab;
+  Tree: TTreeView;
+begin
+  Say('a LaTeX file''s sections in the Outline pane');
+  Path := TempName('outline.tex');
+  WriteBytes(Path, '\documentclass{report}' + #10 + '\begin{document}' + #10 + '\chapter{Opening}' + #10 +
+    '\section{First}' + #10 + 'Text.' + #10 + '\subsection{Inner}' + #10 + '% \section{Not this}' + #10 +
+    '\chapter{Closing}' + #10 + '\end{document}' + #10);
+  F.Dock.ShowPane('symbols');
+  Pump; Pump;
+  Tab := F.AddTab(F.Documents.OpenFile(Path, ''));
+  Pump; Pump;
+  Tree := F.SymbolPane.Tree;
+  CheckEqInt('four: the chapters, a section, a subsection (not the one commented out)', 4, Tree.Items.Count);
+  if Tree.Items.Count = 4 then
+  begin
+    CheckEq('in order, numbered as LaTeX numbers them', '1  Opening|1.1  First|1.1.1  Inner|2  Closing',
+      Tree.Items[0].Text + '|' + Tree.Items[1].Text + '|' + Tree.Items[2].Text + '|' + Tree.Items[3].Text);
+    Check('nested', (Tree.Items[0].Level = 0) and (Tree.Items[1].Level = 1) and (Tree.Items[2].Level = 2) and
+      (Tree.Items[3].Level = 0));
+    Tree.Selected := Tree.Items[2];
+    Tree.OnDblClick(Tree);
+    Pump;
+    Check('one double-clicked goes to its line', (F.ActiveView <> nil) and (F.ActiveView.CaretY = 6));
+  end;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  F.Dock.HidePane('symbols');
+  Pump;
+  DeleteFile(Path);
+end;
+{$IFDEF LED_PARADE}
+
 { Insert on a PDF: a picture put where the page is clicked, a corner dragged to resize it (its shape kept), a
   signature drawn as ink and kept for next time, a check mark, today's date; a scanned signature's paper made
   clear. }
@@ -21099,8 +21201,12 @@ begin
   if LedVisualAvailable then
     TestVisualRuler(F);
   if LedPdfAvailable then
+  begin
     TestPdfPages(F);
+    TestPdfBookmarks(F);
+  end;
   {$ENDIF}
+  TestLatexOutline(F);
   TestVisualShapeTab(F);
   TestStatusCounts(F);
   TestNewPdoc(F);
