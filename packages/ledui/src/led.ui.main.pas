@@ -1763,8 +1763,9 @@ var
 begin
   Result := False;
   if ActiveTab = nil then Exit;
-  { a document shown as pages: the pane shows what it carries (Resources) }
-  if CurrentVisual <> nil then Exit(True);
+  { A document shown as pages (Word, PowerPoint, a drawing) is its own view: the pane, which would show what it
+    carries (Resources), stays closed for it as for a source file, opened by hand when wanted.  Markdown and a
+    notebook shown as pages still have their preview. }
   Doc := ActiveTab.Document;
   if Doc.IsNotebook then Exit(True);
   First := '';
