@@ -278,6 +278,8 @@ type
     {$ENDIF}
     procedure FitBarHost;
     procedure BarResized(Sender: TObject);
+    procedure BarHostResized(Sender: TObject);
+    procedure FitGallery;
     procedure BeginRows;
     procedure NextRow;
     procedure EndRows;
@@ -1063,6 +1065,7 @@ begin
     FBarHost.BevelOuter := bvNone;
     FBarHost.Caption := '';
     FBarHost.Height := BarHeight + LedScale96(6);
+    FBarHost.OnResize := @BarHostResized;
   end;
   Result := TFlowPanel.Create(Self);
   Result.Parent := FBarHost;
@@ -1101,7 +1104,50 @@ end;
 procedure TLedVisualPane.BarResized(Sender: TObject);
 begin
   if TControl(Sender).Visible then
+  begin
+    FitGallery;
     FitBarHost;
+  end;
+end;
+
+procedure TLedVisualPane.BarHostResized(Sender: TObject);
+begin
+  FitGallery;
+end;
+
+{ The style panel as wide as the room left on its row: more styles in view at once on a wide window, three
+  columns at the least (and on a row of its own, when even those do not fit after the paragraph's group); no
+  wider than all the styles want. The group before it does not move with its width, so this settles at once. }
+procedure TLedVisualPane.FitGallery;
+{$IFDEF LED_PARADE}
+var
+  Bar: TWinControl;
+  Prev: TControl;
+  k, MinW, MaxW, W, Used, Spare: Integer;
+{$ENDIF}
+begin
+  {$IFDEF LED_PARADE}
+  if (FGallery = nil) or (FGallery.Parent = nil) or not (FGallery.Parent is TFlowPanel) then Exit;
+  Bar := FGallery.Parent;
+  k := TFlowPanel(Bar).GetControlIndex(FGallery);
+  if k <= 0 then Exit;
+  Prev := TFlowPanel(Bar).ControlList[k - 1].Control;
+  if Prev = nil then Exit;
+  MinW := LedScale96(3 * 86 + 18);
+  MaxW := Max(MinW, ((TLedStyleGallery(FGallery).FNames.Count + 1) div 2) * LedScale96(86) + LedScale96(18));
+  Spare := FGallery.BorderSpacing.Around * 2 + FGallery.BorderSpacing.Left + FGallery.BorderSpacing.Right +
+    LedScale96(4);
+  Used := Prev.Left + Prev.Width + Prev.BorderSpacing.Around + Prev.BorderSpacing.Right;
+  W := Bar.ClientWidth - Used - Spare;
+  if W < MinW then
+    W := Min(MaxW, Max(MinW, Bar.ClientWidth - Spare))    { it goes to a row of its own: that row's width }
+  else
+    W := Min(MaxW, W);
+  { a whole number of columns, the arrows after them }
+  W := Max(MinW, ((W - LedScale96(18)) div LedScale96(86)) * LedScale96(86) + LedScale96(18));
+  if W <> FGallery.Width then
+    FGallery.Width := W;
+  {$ENDIF}
 end;
 
 { The bars' holder only grows, to the tallest bar seen at this width: were it as tall as the bar shown, a tab
@@ -1538,7 +1584,10 @@ begin
       FStyle.Items.EndUpdate;
     end;
     if FGallery <> nil then
+    begin
       TLedStyleGallery(FGallery).Fill(FEdit, FStyle.Items);
+      FitGallery;
+    end;
   finally
     L.Free;
   end;
