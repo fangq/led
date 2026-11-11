@@ -575,7 +575,7 @@ var
   E: string;
 begin
   E := LowerCase(ExtractFileExt(AFileName));
-  Result := (E = '.docx') or (E = '.docm') or (E = '.dotx') or (E = '.pdoc');
+  Result := (E = '.docx') or (E = '.docm') or (E = '.dotx') or (E = '.pdoc') or (E = '.pdf');
 end;
 
 function LedFilterSettings: TLedFilterSettings;
@@ -2705,7 +2705,9 @@ begin
     view; a small one may hold no NUL, so its name says it is bytes. }
   Binary := (not BJData) and Detecting and
     ((BJErr <> '') or LedLooksBinary(Raw) or
-     (LowerCase(ExtractFileExt(AFileName)) = '.pdoc'));
+     (LowerCase(ExtractFileExt(AFileName)) = '.pdoc') or
+     { a PDF is bytes, though one can be all ASCII: its pages are shown, its bytes kept }
+     (LowerCase(ExtractFileExt(AFileName)) = '.pdf'));
 
   { Worked out into locals, and only written to the document once it has all
     succeeded.

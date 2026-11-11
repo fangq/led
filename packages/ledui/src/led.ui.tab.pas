@@ -13,7 +13,7 @@ uses
   Classes, SysUtils, Controls, ExtCtrls, PairSplitter, ComCtrls, Menus,
   Led.UI.Document, Led.UI.Edit, Led.UI.Focus,
   Led.UI.MiniMap,
-  Led.UI.Splitter, Led.UI.Visual, Led.Core.FileIO, Led.Core.Prefs;
+  Led.UI.Splitter, Led.UI.Visual, Led.UI.PdfView, Led.Core.FileIO, Led.Core.Prefs;
 
 const
   LedMaxViewsPerTab = 4;
@@ -35,7 +35,10 @@ type
     FShowMiniMap: Boolean;
     FVisual: TLedVisualPane;
     FVisualMode: Boolean;
+    FPdf: TLedPdfPane;
+    FPdfMode: Boolean;
     FOnVisualStatus: TNotifyEvent;
+    procedure PdfChanged(Sender: TObject);
     procedure ShowViews(AShow: Boolean);
     procedure VisualChanged(Sender: TObject);
     procedure VisualFlush(Sender: TObject);
@@ -129,6 +132,15 @@ type
     function SaveVisualAs(const AFileName: string; out AWhy: string): Boolean;
     property VisualMode: Boolean read FVisualMode;
     property Visual: TLedVisualPane read FVisual;
+
+    { A PDF: its pages, in place of the views, as the visual editor's are.  The document keeps the file's
+      bytes; a save gives it the file with the changes appended (TLedPdfPane.Export). }
+    function CanPdf: Boolean;
+    function EnterPdf(out AWhy: string): Boolean;
+    procedure LeavePdf;
+    function ReloadPdf(out AWhy: string): Boolean;
+    property PdfMode: Boolean read FPdfMode;
+    property Pdf: TLedPdfPane read FPdf;
     { the page's caret or selection moved (the page's own status, for the status bar) }
     property OnVisualStatus: TNotifyEvent read FOnVisualStatus write FOnVisualStatus;
   end;
@@ -214,7 +226,7 @@ begin
   { The map holds a reference to a view, and the views are about to go. }
   if FMiniMap <> nil then FMiniMap.Attach(nil);
   { And the document a way back to the page. }
-  if (FDocument <> nil) and FVisualMode then FDocument.OnFlushVisual := nil;
+  if (FDocument <> nil) and (FVisualMode or FPdfMode) then FDocument.OnFlushVisual := nil;
   { Detach the views from the document before they are destroyed with us, so
     the document's view list never holds dangling pointers. }
   if FDocument <> nil then
@@ -357,7 +369,7 @@ begin
   for i := 0 to ControlCount - 1 do
   begin
     C := Controls[i];
-    if (C <> FVisual) and (C <> FMiniMap) then C.Visible := AShow;
+    if (C <> FVisual) and (C <> FMiniMap) and (C <> FPdf) then C.Visible := AShow;
   end;
   RefreshMiniMap;
 end;
@@ -464,10 +476,94 @@ begin
   FDocument.NoteVisualEdit;
 end;
 
+procedure TLedTab.PdfChanged(Sender: TObject);
+begin
+  FDocument.NoteVisualEdit;
+end;
+
+function TLedTab.CanPdf: Boolean;
+begin
+  Result := LedPdfAvailable and LedPdfFileName(FDocument.KindName) and FDocument.IsBinary;
+end;
+
+function TLedTab.EnterPdf(out AWhy: string): Boolean;
+var
+  Made: Boolean;
+begin
+  Result := FPdfMode;
+  AWhy := '';
+  if FPdfMode then Exit;
+  if not LedPdfAvailable then
+  begin
+    AWhy := 'this LED was built without Parade, which reads PDF';
+    Exit;
+  end;
+  if not CanPdf then
+  begin
+    AWhy := 'the file is not open as a PDF';
+    Exit;
+  end;
+  Made := FPdf = nil;
+  if Made then
+  begin
+    FPdf := TLedPdfPane.Create(Self);
+    FPdf.Visible := False;
+    FPdf.Parent := Self;
+    FPdf.Align := alClient;
+    FPdf.OnChange := @PdfChanged;
+    FPdf.OnStatus := FOnVisualStatus;
+  end;
+  FPdfMode := True;
+  if not ReloadPdf(AWhy) then
+  begin
+    FPdfMode := False;
+    if Made then FreeAndNil(FPdf);
+    FDocument.EnsureHexText;
+    Exit;
+  end;
+  FDocument.OnFlushVisual := @VisualFlush;
+  ShowViews(False);
+  FPdf.Visible := True;
+  LedTryFocus(FPdf.View);
+  Result := True;
+end;
+
+function TLedTab.ReloadPdf(out AWhy: string): Boolean;
+begin
+  Result := False;
+  AWhy := '';
+  if (not FPdfMode) or (FPdf = nil) then Exit;
+  Result := FPdf.Load(FDocument.Bytes, FDocument.FileName, AWhy);
+end;
+
+procedure TLedTab.LeavePdf;
+begin
+  if not FPdfMode then Exit;
+  FDocument.FlushVisual;
+  FDocument.OnFlushVisual := nil;
+  FPdfMode := False;
+  FPdf.Visible := False;
+  FDocument.EnsureHexText;
+  ShowViews(True);
+  FreeAndNil(FPdf);
+  LedTryFocus(FActiveView);
+end;
+
 procedure TLedTab.VisualFlush(Sender: TObject);
 var
   Data: string;
 begin
+  if FPdfMode and (FPdf <> nil) then
+  begin
+    { the file with the changes appended; the pages go on with the same reader, so undo reaches back past it }
+    Data := FPdf.Export;
+    if Data <> '' then
+    begin
+      FDocument.TakeVisualBytes(Data);
+      FPdf.MarkSaved;
+    end;
+    Exit;
+  end;
   if FVisual = nil then Exit;
   Data := FVisual.Export;
   if LedVisualKindIsBinary(FVisual.Kind) then

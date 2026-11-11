@@ -38,7 +38,7 @@ uses
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
   Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.Ruler, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
-  Led.UI.ParadeView, Led.UI.ParadeFonts{$ENDIF},
+  Led.UI.ParadeView, Led.UI.ParadeFonts, paradepdf{$ENDIF}, Led.UI.PdfView,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -20454,6 +20454,150 @@ begin
   end;
 end;
 
+{$IFDEF LED_PARADE}
+type
+  { the view's mouse, driven as the reader's is }
+  TPdfViewAccess = class(TLedPdfView);
+
+{ A PDF opens as its pages, its text found, selected by dragging over it and highlighted; a rectangle drawn; undone
+  and done again; saved as the file it was with an update appended (what the save writes, read back by Parade's
+  reader), the file never written over. }
+procedure TestPdfPages(F: TLedMainForm);
+var
+  Path, Orig, Saved, Content, Body, Xref: string;
+  Doc: TLedDocument;
+  Tab: TLedTab;
+  P: TLedPdfPane;
+  V: TPdfViewAccess;
+  Offs: array[1..5] of Integer;
+  i, N: Integer;
+  Q: Ppd_pdfr;
+  C: TPdfChars;
+  A, B: TPoint;
+  Ann: pd_pdfr_annot;
+
+  function Obj(K: Integer; const S: string): string;
+  begin
+    Result := IntToStr(K) + ' 0 obj' + #10 + S + #10 + 'endobj' + #10;
+  end;
+
+begin
+  Say('a PDF opens as its pages, is marked and saved as an update');
+  { a page of Helvetica text: two lines }
+  Content := 'BT /F1 24 Tf 72 700 Td (Hello PDF pages) Tj 0 -40 Td (Second line here) Tj ET';
+  Body := '%PDF-1.4' + #10;
+  Offs[1] := Length(Body);
+  Body := Body + Obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  Offs[2] := Length(Body);
+  Body := Body + Obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  Offs[3] := Length(Body);
+  Body := Body + Obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R ' +
+    '/Resources << /Font << /F1 5 0 R >> >> >>');
+  Offs[4] := Length(Body);
+  Body := Body + Obj(4, '<< /Length ' + IntToStr(Length(Content)) + ' >>' + #10 + 'stream' + #10 + Content + #10 +
+    'endstream');
+  Offs[5] := Length(Body);
+  Body := Body + Obj(5, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  Xref := 'xref' + #10 + '0 6' + #10 + '0000000000 65535 f ' + #10;
+  for i := 1 to 5 do
+    Xref := Xref + Format('%.10d 00000 n ', [Offs[i]]) + #10;
+  Orig := Body + Xref + 'trailer' + #10 + '<< /Size 6 /Root 1 0 R >>' + #10 + 'startxref' + #10 +
+    IntToStr(Length(Body)) + #10 + '%%EOF' + #10;
+  Path := TempName('pages.pdf');
+  WriteBytes(Path, Orig);
+
+  Doc := F.Documents.OpenFile(Path, '');
+  Tab := F.AddTab(Doc);
+  Pump;
+  Check('a .pdf opens as its pages', Tab.PdfMode and (Tab.Pdf <> nil));
+  if not Tab.PdfMode then
+  begin
+    F.CloseActiveTab(False);
+    DeleteFile(Path);
+    Exit;
+  end;
+  P := Tab.Pdf;
+  V := TPdfViewAccess(P.View);
+  CheckEqInt('one page', 1, P.PageCount);
+  Check('its bytes kept, not a dump of them', Doc.IsBinary and (Doc.Master.Lines.Count <= 1));
+  Check('the status bar says what it is', Pos('page 1 of 1', P.StatusText) > 0);
+
+  { found }
+  Check('Find finds text on the page', P.FindText('pdf pages'));
+  Check('and selects it', P.SelAvail and (P.SelectedText = 'PDF pages'));
+
+  { selected with the mouse: from the left of "Second" to past "line" }
+  C := PdfPageChars(P.Pdf, 0);
+  N := -1;
+  for i := 0 to High(C) do
+    if (C[i].cp = Ord('S')) and (N < 0) then N := i;
+  Check('the second line is in the page''s text', N >= 0);
+  if N >= 0 then
+  begin
+    A := Point(Round(P.View.Width div 2), 0);
+    A := Point(0, 0);
+    { the page's point to the view's: through the scale and where the page is }
+    A.X := Round((C[N].x0 + 1) * P.Scale) + (P.View.ClientWidth - Round(612 * P.Scale)) div 2;
+    A.Y := Round(((C[N].y0 + C[N].y1) / 2) * P.Scale) + 12 - 0;
+    B.X := Round((C[N + 10].x1 - 1) * P.Scale) + (P.View.ClientWidth - Round(612 * P.Scale)) div 2;
+    B.Y := A.Y;
+    V.MouseDown(mbLeft, [], A.X, A.Y);
+    V.MouseMove([ssLeft], (A.X + B.X) div 2, A.Y);
+    V.MouseMove([ssLeft], B.X, B.Y);
+    V.MouseUp(mbLeft, [], B.X, B.Y);
+    Pump;
+    Check(Format('a drag over the words selects them ("%s")', [P.SelectedText]),
+      P.SelectedText = 'Second line');
+    { highlighted: the tool clicked with the text selected }
+    P.Tool := ptHighlight;
+    P.MarkSelectionAs(PD_ANNOT_HIGHLIGHT);
+    Pump;
+    CheckEqInt('a highlight on the page', 1, pd_pdfr_annot_count(P.Pdf, 0));
+    Check('the document is modified', Doc.Modified);
+    Check('and the highlight is over the words',
+      (pd_pdfr_annot_get(P.Pdf, 0, 0, Ann) = 0) and (Ann.kind = PD_ANNOT_HIGHLIGHT) and
+      (Ann.x0 <= C[N].x0 + 1) and (Ann.x1 >= C[N + 10].x1 - 1));
+  end;
+
+  { a rectangle dragged out }
+  P.Tool := ptRect;
+  V.MouseDown(mbLeft, [], 100, 300);
+  V.MouseMove([ssLeft], 160, 340);
+  V.MouseMove([ssLeft], 220, 380);
+  V.MouseUp(mbLeft, [], 220, 380);
+  Pump;
+  CheckEqInt('a rectangle drawn', 2, pd_pdfr_annot_count(P.Pdf, 0));
+  Check('a square annotation', (pd_pdfr_annot_get(P.Pdf, 0, 1, Ann) = 0) and (Ann.kind = PD_ANNOT_SQUARE));
+  P.Tool := ptSelect;
+
+  { undone, done again, from the window's Undo }
+  F.actUndo.Execute;
+  Pump;
+  CheckEqInt('Undo takes the rectangle off', 1, pd_pdfr_annot_count(P.Pdf, 0));
+  F.actRedo.Execute;
+  Pump;
+  CheckEqInt('Redo puts it back', 2, pd_pdfr_annot_count(P.Pdf, 0));
+
+  { saved: the file as it was, then the update }
+  Doc.SaveToFile(Path);
+  Saved := LedReadRawFile(Path);
+  Check('the save keeps the file as it was in front', Copy(Saved, 1, Length(Orig)) = Orig);
+  Check('and appends the changes', (Length(Saved) > Length(Orig)) and (Pos('/Highlight', Saved) > Length(Orig)));
+  Check('the document is saved', not Doc.Modified);
+  Q := nil;
+  Check('the saved file reads back',
+    (pd_pdfr_open_memory(PAnsiChar(Saved), Length(Saved), nil, Q) = 0) and (pd_pdfr_annot_count(Q, 0) = 2));
+  if Q <> nil then pd_pdfr_free(Q);
+  { undo still reaches back past the save }
+  Check('undo reaches past the save', P.CanUndo);
+
+  Doc.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Path);
+end;
+{$ENDIF}
+
 function LedRunSelfTest: Integer;
 var
   F: TLedMainForm;
@@ -20656,6 +20800,8 @@ begin
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualRuler(F);
+  if LedPdfAvailable then
+    TestPdfPages(F);
   {$ENDIF}
   TestVisualShapeTab(F);
   TestStatusCounts(F);
