@@ -17753,6 +17753,13 @@ var
   A, B: pd_pos;
   Handled: Boolean;
   i, Rows: Integer;
+  LstX: pd_list_id;
+  LvX: Int32;
+  LabelBuf: array[0..63] of AnsiChar;
+  CanvasAt, At2: pd_pos;
+  Sid2: Integer;
+  PgX: Int32;
+  BX0, BY0, BX1, BY1: Double;
 
   function Pt(Blk: pd_block_id; Off: UInt32): TPoint;
   var
@@ -17797,6 +17804,34 @@ var
       for j := 0 to P.PopupMenu.Items[k].Count - 1 do
         if P.PopupMenu.Items[k].Items[j].Caption = ACaption then
           Exit(P.PopupMenu.Items[k].Items[j]);
+    end;
+  end;
+
+  function BulletPt(Blk: pd_block_id): TPoint;
+  var
+    Pg: Int32;
+    CX, Base, Asc, Desc: pd_sp;
+  begin
+    Result := Point(-1, -1);
+    P.Repaint;
+    Pump;
+    if pd_layout_caret(P.Layout, PdPos(Blk, 0), Pg, CX, Base, Asc, Desc) = PD_OK then
+      Result := P.PageToClient(Pg, CX / PD_SP_PER_PT - 14, (Base - Asc div 2) / PD_SP_PER_PT);
+  end;
+
+  function MenuAtPoint(Q: TPoint): string;
+  var
+    k, j: Integer;
+  begin
+    Handled := False;
+    TLedCtxEdit(P).DoContextPopup(Q, Handled);
+    Result := '|';
+    for k := 0 to P.PopupMenu.Items.Count - 1 do
+    begin
+      Result := Result + P.PopupMenu.Items[k].Caption;
+      for j := 0 to P.PopupMenu.Items[k].Count - 1 do
+        Result := Result + '>' + P.PopupMenu.Items[k].Items[j].Caption;
+      Result := Result + '|';
     end;
   end;
 
@@ -17887,6 +17922,71 @@ begin
   while pd_doc_child(P.Doc, Tbl, i) <> 0 do
     Inc(i);
   CheckEqInt('Insert > Row below: a row more', Rows + 1, i);
+
+  { a bulleted list: a bullet right-clicked, the list's labels' menu; another bullet for the level }
+  P.ProcessKey(VK_END, [ssCtrl]);
+  P.ProcessKey(VK_RETURN, []);
+  P.ProcessKey(VK_RETURN, []);
+  P.InsertText('First item');
+  P.ToggleList(PD_NUM_BULLET);
+  Para := P.CaretPos.block;
+  Pump;
+  M := MenuAtPoint(BulletPt(Para));
+  Check('a bullet right-clicked: its list''s menu: ' + M, Has(M, 'Bullets') and Has(M, 'Numbering') and
+    Has(M, 'Bullets and numbering...') and Has(M, 'Remove the list'));
+  Check('its labels selected', P.ListLabelSelected(LstX, LvX));
+  for i := 0 to P.PopupMenu.Items.Count - 1 do
+    if P.PopupMenu.Items[i].Caption = 'Bullets' then
+      for Rows := 0 to P.PopupMenu.Items[i].Count - 1 do
+        if Pos('Tick', P.PopupMenu.Items[i].Items[Rows].Caption) > 0 then
+          P.PopupMenu.Items[i].Items[Rows].Click;
+  Pump;
+  FillChar(LabelBuf, SizeOf(LabelBuf), 0);
+  pd_doc_list_label(P.Doc, Para, @LabelBuf[0], SizeOf(LabelBuf));
+  Check('Bullets > Tick: the bullet a tick: ' + PAnsiChar(@LabelBuf[0]), Pos(#$E2#$9C#$93, PAnsiChar(@LabelBuf[0])) > 0);
+
+  { a text box selected leaves the Home tab where it is; a shape brings the shape tools, and the text Home back }
+  P.GoToPos(PdPos(Para, 3));
+  Tab.Visual.ShowTab(0);
+  Pump;
+  Check('a canvas put in', P.InsertCanvas(300, 150));
+  Check('a text box in it', P.AddShape('textbox', 10 * PD_SP_PER_PT, 10 * PD_SP_PER_PT, 150 * PD_SP_PER_PT,
+    60 * PD_SP_PER_PT));
+  Pump; Pump;
+  Tab.Visual.ShowTab(0);
+  Pump;
+  Check('a rectangle beside it', P.AddShape('rect', 170 * PD_SP_PER_PT, 10 * PD_SP_PER_PT, 250 * PD_SP_PER_PT,
+    60 * PD_SP_PER_PT));
+  Pump; Pump;
+  P.SelectedShape(CanvasAt, i);
+  P.ClearShapeSelection;
+  P.GoToPos(PdPos(pd_doc_next_paragraph(P.Doc, 0), 2));
+  Pump; Pump;
+  Tab.Visual.ShowTab(0);
+  Pump;
+  { the text box by its left edge, which takes it at once }
+  if P.ShapePageBox(CanvasAt, 0, PgX, BX0, BY0, BX1, BY1) then
+    P.ClickAt(PgX, BX0 / PD_SP_PER_PT, (BY0 + BY1) / 2 / PD_SP_PER_PT);
+  Pump; Pump;
+  Check('a text box selected', P.SelectedShape(At2, Sid2) and (Sid2 = 0));
+  Check('a text box selected: the Home tab still in front', Tab.Visual.TabShown(0));
+  P.ClearShapeSelection;
+  P.GoToPos(PdPos(pd_doc_next_paragraph(P.Doc, 0), 2));
+  Pump; Pump;
+  { the rectangle by its middle: the drawing, then the shape }
+  if P.ShapePageBox(CanvasAt, 1, PgX, BX0, BY0, BX1, BY1) then
+  begin
+    P.ClickAt(PgX, (BX0 + BX1) / 2 / PD_SP_PER_PT, (BY0 + BY1) / 2 / PD_SP_PER_PT);
+    Pump;
+    P.ClickAt(PgX, (BX0 + BX1) / 2 / PD_SP_PER_PT, (BY0 + BY1) / 2 / PD_SP_PER_PT);
+  end;
+  Pump; Pump;
+  Check('a rectangle selected', P.SelectedShape(At2, Sid2) and (Sid2 = 1));
+  Check('a rectangle selected: the shape tools in front', Tab.Visual.ShapeTabShown);
+  P.ClearShapeSelection;
+  P.GoToPos(PdPos(pd_doc_next_paragraph(P.Doc, 0), 2));
+  Pump; Pump;
+  Check('back in the text: Home again', Tab.Visual.TabShown(0));
 
   { a picture, after the table }
   P.ProcessKey(VK_END, [ssCtrl]);

@@ -240,6 +240,7 @@ type
     FZoomLabel: TLabel;
     FZoomSliding: Boolean;
     FMultiBtn: TSpeedButton;
+    FShapeTabAuto: Boolean;     { the shape tab came forward by itself, for a shape selected: Home again after it }
     {$IFDEF LED_PARADE}
     FRuler: TLedRuler;          { above the pages: the margins, the paragraph's indents and tabs }
     FRulerBtn: TSpeedButton;
@@ -323,6 +324,10 @@ type
     procedure RulerClicked(Sender: TObject);
     procedure ShowRuler;
     procedure RememberZoom;
+    { a text box, or a slide's canvas or a drawing as a whole, selected: what holds text to type, not a shape to
+      draw with }
+    function TextShapeSelected: Boolean;
+    procedure ListLabelItemClicked(Sender: TObject);
     procedure BuildPageMenu(const C: TParadeContext);
     procedure ContextItemClicked(Sender: TObject);
     procedure CropDialog;
@@ -416,6 +421,8 @@ type
     property Page: TParadeEdit read FEdit;
     { the Shape tab, there while a shape is selected; for tests }
     function ShapeTabShown: Boolean;
+    { the ribbon's tab AIndex is the one showing (0 Home) }
+    function TabShown(AIndex: Integer): Boolean;
     { the selected shape's place in its canvas (points from the canvas's top left, its box before it is turned),
       its size (points) and turn (degrees clockwise), as the Size and Position dialog shows them }
     function ShapePlacement(out XPt, YPt, WPt, HPt, Deg: Double): Boolean;
@@ -1602,8 +1609,17 @@ begin
     if Sel <> FShapeSel then
       for i := 0 to High(FShapeFmt) do
         FShapeFmt[i].Enabled := Sel;
-    if Sel and not FShapeSel then
+    { a shape first selected brings its tools forward -- not a text box, nor a slide's canvas, whose text is what is
+      edited there (a click into a slide's text box selected one on the way, and the Home tab went) }
+    if Sel and not FShapeSel and not TextShapeSelected then
+    begin
       ShowTab(FShapeTab);
+      FShapeTabAuto := True;
+    end
+    else if not Sel and FShapeSel and FShapeTabAuto and FBars[FShapeTab].Visible then
+      ShowTab(0);   { back in the text: Home, as it was before the shape }
+    if not Sel then
+      FShapeTabAuto := False;
     FShapeSel := Sel;
   end;
 end;
@@ -3223,6 +3239,11 @@ begin
   M.OnPopup := @TableLookMenuPopup;
   MenuItem(M, '-', 0, nil);
   MenuButton('', 'Style options', 'Which parts of the table''s style it shows: the header row, banding, ...', M);
+end;
+
+function TLedVisualPane.TabShown(AIndex: Integer): Boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex <= High(FBars)) and FBars[AIndex].Visible;
 end;
 
 function TLedVisualPane.ShapeTabShown: Boolean;
@@ -5277,6 +5298,26 @@ begin
   end;
 end;
 
+function TLedVisualPane.TextShapeSelected: Boolean;
+var
+  At: pd_pos;
+  Sid: Integer;
+  G: TParadeShapeGeom;
+begin
+  Result := FEdit.SelectedShape(At, Sid) and ((Sid < 0) and FEdit.CanvasPage or
+    (Sid >= 0) and FEdit.SelectedShapeGeom(G) and G.TextBox);
+end;
+
+{ a bullet's or a number's menu item: the level's label (Tag: the format; its caption less its words the text) }
+procedure TLedVisualPane.ListLabelItemClicked(Sender: TObject);
+var
+  S: string;
+begin
+  S := TMenuItem(Sender).Hint;
+  FEdit.SetListLabel(TMenuItem(Sender).Tag, S);
+  BackToPage;
+end;
+
 procedure TLedVisualPane.RulerClicked(Sender: TObject);
 begin
   FRulerBtn.Down := not FRulerBtn.Down;
@@ -5319,6 +5360,15 @@ const
   CtxShades: array[0..6] of Integer = ($D9E2F3, $E2EFD9, $FFF2CC, $FBE4D5, $EDEDED, $BDD7EE, $C5E0B3);
   CtxShadeNames: array[0..6] of string = ('Light blue', 'Light green', 'Light yellow', 'Light orange', 'Light grey',
     'Blue', 'Green');
+  CtxBullets: array[0..7] of string = (#$E2#$80#$A2, #$E2#$97#$A6, #$E2#$96#$AA, #$E2#$80#$93, #$E2#$9E#$A2,
+    #$E2#$9C#$93, #$E2#$97#$86, #$E2#$98#$85);
+  CtxBulletNames: array[0..7] of string = ('Bullet', 'White bullet', 'Square', 'Dash', 'Arrow', 'Tick', 'Diamond',
+    'Star');
+  CtxNumbers: array[0..5] of string = ('%1.', '%1)', '%1.', '%1)', '%1.', '%1.');
+  CtxNumberFormats: array[0..5] of Integer = (PD_NUM_DECIMAL, PD_NUM_DECIMAL, PD_NUM_LOWER_ALPHA, PD_NUM_LOWER_ALPHA,
+    PD_NUM_UPPER_ALPHA, PD_NUM_LOWER_ROMAN);
+  CtxNumberNames: array[0..5] of string = ('1.  2.  3.', '1)  2)  3)', 'a.  b.  c.', 'a)  b)  c)', 'A.  B.  C.',
+    'i.  ii.  iii.');
   { ContextItemClicked's tags }
   ctxDelete = 1000; ctxCrop = 1001; ctxResetCrop = 1002; ctxSize = 1003;
   ctxEditComment = 1010; ctxReply = 1011; ctxResolve = 1012; ctxDeleteComment = 1013;
@@ -5504,6 +5554,26 @@ begin
         Add(Root, 'Insert Caption...', 2, @CaptionItemClicked)
       else
         Add(Root, 'Insert Caption...', 0, @CaptionItemClicked);
+    Exit;
+  end;
+
+  if C.ListLabel then
+  begin   { a bullet clicked: the list's labels, Word's Bullets and Numbering at hand }
+    Root := Sub('Bullets');
+    for i := 0 to High(CtxBullets) do
+      with Add(Root, CtxBullets[i] + '   ' + CtxBulletNames[i], PD_NUM_BULLET, @ListLabelItemClicked) do
+        Hint := CtxBullets[i];
+    Root := FPageMenu.Items;
+    Root := Sub('Numbering');
+    for i := 0 to High(CtxNumbers) do
+      with Add(Root, CtxNumberNames[i], CtxNumberFormats[i], @ListLabelItemClicked) do
+        Hint := CtxNumbers[i];
+    Root := FPageMenu.Items;
+    Add(Root, 'Bullets and numbering...', 6, @PageMenuClicked);
+    Add(Root, 'Remove the list', 0, @RemoveListClicked);
+    Sep;
+    Add(Root, 'Font...', 4, @PageMenuClicked);
+    Add(Root, 'Paragraph...', 5, @PageMenuClicked);
     Exit;
   end;
 
