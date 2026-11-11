@@ -3647,6 +3647,11 @@ end;
 
 procedure TLedMainForm.actPasteExecute(Sender: TObject);
 begin
+  if CurrentPdf <> nil then
+  begin   { a PDF: the clipboard's picture, put where the page is clicked next }
+    CurrentPdf.PasteFromClipboard;
+    Exit;
+  end;
   if CurrentVisual <> nil then
     CurrentVisual.PasteFromClipboard
   else

@@ -23,7 +23,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, ExtCtrls, StdCtrls, Graphics, Forms, Dialogs, LCLType, LCLIntf, Menus, ComCtrls,
-  Buttons, Types, IntfGraphics, GraphType, ImgList
+  Buttons, Types, IntfGraphics, GraphType, ImgList, Contnrs, ExtDlgs, led.ui.pdfsign
   {$IFDEF LED_PARADE}, paradepdf{$ENDIF};
 
 { a file the PDF pages open: its name says so }
@@ -34,6 +34,8 @@ function LedPdfAvailable: Boolean;
 type
   TLedPdfTool = (ptSelect, ptHighlight, ptUnderline, ptStrikeOut, ptSquiggly, ptNote, ptTextBox, ptInk,
     ptRect, ptEllipse, ptLine, ptArrow);
+  { what the Insert buttons put on a page, where it is clicked or dragged out next }
+  TLedPdfPlace = (ppNone, ppPicture, ppSignature, ppCheck, ppCross, ppDot, ppDate, ppLink);
 
   { The pages: what is drawn, where each page is, the mouse on them. }
   TLedPdfPane = class;
@@ -147,6 +149,20 @@ type
     FDrawPage: Integer;
     FDrawStart, FDrawNow: TPoint;
     FInk: array of TPoint;
+    { a picture, signature or mark to put where the page is clicked (or a box dragged out) }
+    FPlacing: TLedPdfPlace;
+    FPlaceRGBA, FPlaceJpeg: RawByteString;
+    FPlaceW, FPlaceH: Integer;
+    FPlaceSig: TLedSignature;       { (one of FSigs, or FNewSig) }
+    FPlaceDown: Boolean;
+    FGhostPage: Integer;            { where it would go, shown while the mouse is over a page }
+    FGhost: TRect;
+    FSigs: TObjectList;             { the signatures kept }
+    FNewSig: TLedSignature;         { one made and not kept }
+    FPictureBtn, FSignBtn, FStampBtn, FLinkBtn: TToolButton;
+    FSignMenu, FStampMenu: TPopupMenu;
+    { the annotation picked being resized by a corner (0 top left, 1 top right, 2 bottom right, 3 bottom left) }
+    FResizing: Integer;
     { a form field being typed into }
     FFieldEdit: TEdit;
     FFieldMemo: TMemo;
@@ -219,6 +235,22 @@ type
     function OnSelection(APage: Integer; PX, PY: Double): Boolean;
     procedure MenuEditParagraph(Sender: TObject);
     procedure ViewKey(var Key: Word; Shift: TShiftState);
+    procedure PictureClick(Sender: TObject);
+    procedure SignClick(Sender: TObject);
+    procedure SignMenuPopup(Sender: TObject);
+    procedure SignItemClick(Sender: TObject);
+    procedure SignNewClick(Sender: TObject);
+    procedure SignForgetClick(Sender: TObject);
+    procedure StampClick(Sender: TObject);
+    procedure StampItemClick(Sender: TObject);
+    procedure LinkClick(Sender: TObject);
+    procedure StartPlacing(AKind: TLedPdfPlace);
+    procedure StopPlacing;
+    function PlaceBox(APage: Integer; const AFrom, ATo: TPoint; out X0, Y0, X1, Y1: Double): Boolean;
+    function PlaceAspect: Double;
+    function Resizable(APage, AIndex: Integer; out AKeepAspect: Boolean): Boolean;
+    function PickedViewRect(out R: TRect): Boolean;
+    function HandleAt(X, Y: Integer): Integer;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -258,6 +290,29 @@ type
     { the selection moved by (DX, DY) points on the page (y down), each glyph as it was; False if it could not be }
     function MoveSelection(DX, DY: Double): Boolean;
     property Tool: TLedPdfTool read FTool write SetTool;
+    { Insert: a picture (RGBA pixels, or a JPEG's own bytes) in a box on a page, as shown (points, y down); the new
+      annotation's index, picked, or -1 }
+    function PlacePicture(APage: Integer; X0, Y0, X1, Y1: Double; const ARGBA, AJpeg: RawByteString;
+      AW, AH: Integer): Integer;
+    { a signature in a box: its strokes drawn as ink, or its picture }
+    function PlaceSignature(S: TLedSignature; APage: Integer; X0, Y0, X1, Y1: Double): Integer;
+    { a check mark, a cross, a dot or today's date in a box }
+    function PlaceMark(AKind: TLedPdfPlace; APage: Integer; X0, Y0, X1, Y1: Double): Integer;
+    { a link over a box: to a web address (mailto: too), or '#page=N' }
+    function PlaceLink(APage: Integer; X0, Y0, X1, Y1: Double; const AUri: string): Integer;
+    { the text selected made a link (a box a line); False if nothing is selected or the address is empty }
+    function LinkSelection(const AUri: string): Boolean;
+    { an annotation's box (as shown) set: what it draws scaled into it }
+    function ResizeAnnotation(APage, AIndex: Integer; X0, Y0, X1, Y1: Double): Boolean;
+    { a picture file put on the page where it is clicked next (False: it cannot be read) }
+    function InsertPictureFile(const AFileName: string): Boolean;
+    { the clipboard's picture put on the page where it is clicked next (False: it has none) }
+    function PasteFromClipboard: Boolean;
+    { a point of a page (points, as shown) on the view }
+    function PageToView(APage: Integer; PX, PY: Double): TPoint;
+    property Placing: TLedPdfPlace read FPlacing;
+    property PickedPage: Integer read FAnnPage;
+    property PickedIndex: Integer read FAnnIndex;
     property Scale: Double read FScale;
     property View: TLedPdfView read FView;
     property LastWhy: string read FLastWhy;
@@ -431,6 +486,9 @@ begin
   FFoundPage := -1;
   FAnnPage := -1;
   FFieldIndex := -1;
+  FResizing := -1;
+  FGhostPage := -1;
+  FSigs := TObjectList.Create(True);
   FCacheOrder := TList.Create;
   FPrefetch := TTimer.Create(Self);
   FPrefetch.Enabled := False;
@@ -503,6 +561,8 @@ begin
   FreeAndNil(FPrefetch);
   ClearCache;
   FCacheOrder.Free;
+  FSigs.Free;
+  FNewSig.Free;
   {$IFDEF LED_PARADE}
   if FPdf <> nil then pd_pdfr_free(FPdf);
   FPdf := nil;
@@ -526,7 +586,37 @@ var
   T: TLedPdfTool;
   B: TToolButton;
   Sep: TToolButton;
-  IconNames: array[0..Ord(High(TLedPdfTool)) + 1] of string;
+  IconNames: array[0..Ord(High(TLedPdfTool)) + 5] of string;
+  Mi: TMenuItem;
+
+  function InsertButton(ALeft, AImage: Integer; const AHint: string; AMenu: TPopupMenu;
+    AClick: TNotifyEvent): TToolButton;
+  begin
+    Result := TToolButton.Create(FTools);
+    Result.Left := ALeft;
+    Result.Parent := FTools;
+    Result.ImageIndex := AImage;
+    Result.Hint := AHint;
+    Result.ShowHint := True;
+    Result.OnClick := AClick;
+    if AMenu <> nil then
+    begin
+      Result.Style := tbsDropDown;
+      Result.DropdownMenu := AMenu;
+    end
+    else
+      Result.Style := tbsButton;
+  end;
+
+  procedure StampItem(const ACaption: string; AKind: TLedPdfPlace);
+  begin
+    Mi := TMenuItem.Create(FStampMenu);
+    Mi.Caption := ACaption;
+    Mi.Tag := Ord(AKind);
+    Mi.OnClick := @StampItemClick;
+    FStampMenu.Items.Add(Mi);
+  end;
+
 begin
   FTools := TToolBar.Create(Self);
   FTools.Parent := Self;
@@ -536,7 +626,11 @@ begin
   FToolImages.Height := LedScale96(20);
   for T := Low(TLedPdfTool) to High(TLedPdfTool) do
     IconNames[Ord(T)] := Icons[T];
-  IconNames[High(IconNames)] := 'pdfpresent';
+  IconNames[Ord(High(TLedPdfTool)) + 1] := 'pdfpresent';
+  IconNames[Ord(High(TLedPdfTool)) + 2] := 'insertpicture';
+  IconNames[Ord(High(TLedPdfTool)) + 3] := 'pdfsign';
+  IconNames[Ord(High(TLedPdfTool)) + 4] := 'pdfstamp';
+  IconNames[Ord(High(TLedPdfTool)) + 5] := 'insertlink';
   LedBuildIconList(FToolImages, IconNames, clBtnText);
   FTools.Images := FToolImages;
   FTools.ShowCaptions := False;
@@ -568,19 +662,44 @@ begin
   end;
   FToolButtons[ptSelect].Down := True;
 
+  { Insert: a picture, a signature, a mark -- put where the page is clicked next }
+  Sep := TToolButton.Create(FTools);
+  Sep.Left := 1000 * (Ord(High(TLedPdfTool)) + 1) + 500;
+  Sep.Parent := FTools;
+  Sep.Style := tbsDivider;
+  FSignMenu := TPopupMenu.Create(Self);
+  FSignMenu.OnPopup := @SignMenuPopup;
+  FStampMenu := TPopupMenu.Create(Self);
+  StampItem('Check Mark ✓', ppCheck);
+  StampItem('Cross ✗', ppCross);
+  StampItem('Dot ●', ppDot);
+  StampItem('Today''s Date', ppDate);
+  FPictureBtn := InsertButton(Sep.Left + 100, Ord(High(TLedPdfTool)) + 2,
+    'Picture: a picture from a file, put where you click (or drag out its box); Ctrl+V pastes one', nil,
+    @PictureClick);
+  FSignBtn := InsertButton(Sep.Left + 200, Ord(High(TLedPdfTool)) + 3,
+    'Sign: your signature (drawn, typed or a picture of it) put where you click; the arrow for others and a new ' +
+    'one. A picture of a signature, as one signed on paper: not a certificate signature', FSignMenu, @SignClick);
+  FStampBtn := InsertButton(Sep.Left + 300, Ord(High(TLedPdfTool)) + 4,
+    'Mark: a check mark, a cross, a dot or today''s date, put where you click (Esc when done)', FStampMenu,
+    @StampClick);
+  FLinkBtn := InsertButton(Sep.Left + 400, Ord(High(TLedPdfTool)) + 5,
+    'Link: the text selected, or a box you drag out, made a link to a web page or to a page of this file', nil,
+    @LinkClick);
+
   FColorBtn := TColorButton.Create(FTools);
   FColorBtn.Parent := FTools;
   FColorBtn.Width := LedScale96(40);
   FColorBtn.ButtonColor := RGBToColor(255, 220, 0);
   FColorBtn.Hint := 'The colour of what the tools make';
   FColorBtn.ShowHint := True;
-  FColorBtn.Left := FToolButtons[ptArrow].Left + FToolButtons[ptArrow].Width + 1;
+  FColorBtn.Left := FLinkBtn.Left + FLinkBtn.Width + 1;
   { the pages full screen }
   B := TToolButton.Create(FTools);
   B.Left := 900;   { (before the tools: a reader's first button) }
   B.Parent := FTools;
   B.Style := tbsButton;
-  B.ImageIndex := High(IconNames);
+  B.ImageIndex := Ord(High(TLedPdfTool)) + 1;
   B.Hint := 'Present: the pages full screen, from this one (F5 from the first, Shift+F5 from this one; Esc ends)';
   B.ShowHint := True;
   B.OnClick := @PresentClick;
@@ -644,6 +763,525 @@ var
 begin
   C := ColorToRGB(FColorBtn.ButtonColor);
   Result := (UInt32(Red(C)) shl 16) or (UInt32(Green(C)) shl 8) or UInt32(Blue(C));
+end;
+
+{ ---- Insert: pictures, signatures, marks ---- }
+
+procedure TLedPdfPane.StartPlacing(AKind: TLedPdfPlace);
+begin
+  SetTool(ptSelect);
+  FPlacing := AKind;
+  FPlaceDown := False;
+  FAnnPage := -1;
+  FSelPage := -1;
+  FView.Cursor := crCross;
+  FView.Invalidate;
+  if FView.CanFocus then FView.SetFocus;
+  Status;
+end;
+
+procedure TLedPdfPane.StopPlacing;
+begin
+  FPlacing := ppNone;
+  FPlaceDown := False;
+  FGhostPage := -1;
+  FView.Cursor := crDefault;
+  FView.Invalidate;
+  Status;
+end;
+
+{ width over height of what is placed (0: any) }
+function TLedPdfPane.PlaceAspect: Double;
+begin
+  Result := 0;
+  case FPlacing of
+    ppPicture: if FPlaceH > 0 then Result := FPlaceW / FPlaceH;
+    ppSignature: if FPlaceSig <> nil then Result := FPlaceSig.Aspect;
+    ppCheck, ppCross, ppDot: Result := 1;
+  else
+  end;
+end;
+
+{ where it goes on the page (points, as shown): a box dragged out from AFrom to ATo (fitted to the picture's
+  shape), or, a click, its own size round the point; False if it is off the page }
+function TLedPdfPane.PlaceBox(APage: Integer; const AFrom, ATo: TPoint; out X0, Y0, X1, Y1: Double): Boolean;
+var
+  R: TRect;
+  PX, PY, QX, QY, W, H, Asp, PW, PH: Double;
+begin
+  Result := False;
+  X0 := 0; Y0 := 0; X1 := 0; Y1 := 0;
+  if (APage < 0) or (APage >= PageCount) then Exit;
+  R := PageRectOnView(APage);
+  PW := FPageW[APage];
+  PH := FPageH[APage];
+  PX := (AFrom.X - R.Left) / FScale;
+  PY := (AFrom.Y - R.Top) / FScale;
+  QX := (ATo.X - R.Left) / FScale;
+  QY := (ATo.Y - R.Top) / FScale;
+  Asp := PlaceAspect;
+  if (Abs(ATo.X - AFrom.X) > 4) or (Abs(ATo.Y - AFrom.Y) > 4) then
+  begin   { dragged: the box, the picture's shape kept inside it from where the drag began }
+    W := Abs(QX - PX);
+    H := Abs(QY - PY);
+    if Asp > 0 then
+    begin
+      if W / Max(H, 0.01) > Asp then W := H * Asp else H := W / Asp;
+    end;
+    if QX < PX then X0 := PX - W else X0 := PX;
+    if QY < PY then Y0 := PY - H else Y0 := PY;
+  end
+  else
+  begin   { clicked: its own size, centred there }
+    case FPlacing of
+      ppPicture:
+        begin
+          W := FPlaceW * 0.75;   { (a pixel a 96th of an inch) }
+          H := FPlaceH * 0.75;
+          if W > PW * 0.5 then begin H := H * PW * 0.5 / W; W := PW * 0.5; end;
+          if H > PH * 0.5 then begin W := W * PH * 0.5 / H; H := PH * 0.5; end;
+        end;
+      ppSignature:
+        begin   { two inches wide at most, three quarters of one tall }
+          W := 144;
+          H := W / Max(Asp, 0.01);
+          if H > 54 then begin W := W * 54 / H; H := 54; end;
+        end;
+      ppCheck, ppCross:
+        begin W := 12; H := 12; end;
+      ppDot:
+        begin W := 8; H := 8; end;
+      ppDate:
+        begin W := 11 * 0.55 * Length(DateToStr(Date)) + 8; H := 16; end;
+      ppLink:
+        begin W := 120; H := 16; end;
+    else
+      Exit;
+    end;
+    X0 := PX - W / 2;
+    Y0 := PY - H / 2;
+    if FPlacing in [ppDate, ppLink] then X0 := PX;
+  end;
+  if (W < 1) or (H < 1) then Exit;
+  { on the page }
+  X0 := Max(0, Min(X0, PW - W));
+  Y0 := Max(0, Min(Y0, PH - H));
+  X1 := X0 + W;
+  Y1 := Y0 + H;
+  Result := True;
+end;
+
+function TLedPdfPane.PlacePicture(APage: Integer; X0, Y0, X1, Y1: Double; const ARGBA, AJpeg: RawByteString;
+  AW, AH: Integer): Integer;
+begin
+  Result := -1;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (APage < 0) or (APage >= PageCount) then Exit;
+  if AJpeg <> '' then
+    Result := pd_pdfr_add_image(FPdf, APage, X0, Y0, X1, Y1, nil, AW, AH, @AJpeg[1], Length(AJpeg))
+  else if Length(ARGBA) >= AW * AH * 4 then
+    Result := pd_pdfr_add_image(FPdf, APage, X0, Y0, X1, Y1, PByte(@ARGBA[1]), AW, AH, nil, 0);
+  if Result >= 0 then
+  begin
+    FAnnPage := APage;
+    FAnnIndex := Result;
+    Changed;
+  end;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.PlaceSignature(S: TLedSignature; APage: Integer; X0, Y0, X1, Y1: Double): Integer;
+{$IFDEF LED_PARADE}
+var
+  Pts: array of Double;
+  Cnt: array of Int32;
+  i, k, N: Integer;
+  Sx, Sy: Double;
+  C: TColor;
+{$ENDIF}
+begin
+  Result := -1;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (S = nil) or (APage < 0) or (APage >= PageCount) then Exit;
+  if S.Kind = lskImage then
+    Exit(PlacePicture(APage, X0, Y0, X1, Y1, S.RGBA, '', S.PixW, S.PixH));
+  if (S.W <= 0) or (S.H <= 0) or (Length(S.Strokes) = 0) then Exit;
+  Sx := (X1 - X0) / S.W;
+  Sy := (Y1 - Y0) / S.H;
+  N := 0;
+  for i := 0 to High(S.Strokes) do Inc(N, Length(S.Strokes[i]) div 2);
+  SetLength(Pts, 2 * N);
+  SetLength(Cnt, Length(S.Strokes));
+  N := 0;
+  for i := 0 to High(S.Strokes) do
+  begin
+    Cnt[i] := Length(S.Strokes[i]) div 2;
+    for k := 0 to Cnt[i] - 1 do
+    begin
+      Pts[2 * N] := X0 + S.Strokes[i][2 * k] * Sx;
+      Pts[2 * N + 1] := Y0 + S.Strokes[i][2 * k + 1] * Sy;
+      Inc(N);
+    end;
+  end;
+  C := ColorToRGB(S.Color);
+  { the pen as wide on the page as it was on the pad (3 of its pixels), within reason }
+  Result := pd_pdfr_add_ink(FPdf, APage, @Pts[0], @Cnt[0], Length(Cnt),
+    (UInt32(Red(C)) shl 16) or (UInt32(Green(C)) shl 8) or UInt32(Blue(C)), Max(0.6, Min(2.5, 3 * Sx)));
+  if Result >= 0 then
+  begin
+    FAnnPage := APage;
+    FAnnIndex := Result;
+    Changed;
+  end;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.PlaceMark(AKind: TLedPdfPlace; APage: Integer; X0, Y0, X1, Y1: Double): Integer;
+{$IFDEF LED_PARADE}
+var
+  Pts: array[0..7] of Double;
+  Cnt: array[0..1] of Int32;
+  W, H, Pen: Double;
+  S: string;
+{$ENDIF}
+begin
+  Result := -1;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (APage < 0) or (APage >= PageCount) then Exit;
+  W := X1 - X0;
+  H := Y1 - Y0;
+  Pen := Max(0.8, Min(W, H) * 0.12);
+  case AKind of
+    ppCheck:
+      begin   { a tick: down to the left, then a long stroke up }
+        Pts[0] := X0 + 0.08 * W; Pts[1] := Y0 + 0.55 * H;
+        Pts[2] := X0 + 0.38 * W; Pts[3] := Y0 + 0.88 * H;
+        Pts[4] := X0 + 0.95 * W; Pts[5] := Y0 + 0.1 * H;
+        Cnt[0] := 3;
+        Result := pd_pdfr_add_ink(FPdf, APage, @Pts[0], @Cnt[0], 1, PenColor, Pen);
+      end;
+    ppCross:
+      begin
+        Pts[0] := X0 + 0.12 * W; Pts[1] := Y0 + 0.12 * H;
+        Pts[2] := X1 - 0.12 * W; Pts[3] := Y1 - 0.12 * H;
+        Pts[4] := X1 - 0.12 * W; Pts[5] := Y0 + 0.12 * H;
+        Pts[6] := X0 + 0.12 * W; Pts[7] := Y1 - 0.12 * H;
+        Cnt[0] := 2;
+        Cnt[1] := 2;
+        Result := pd_pdfr_add_ink(FPdf, APage, @Pts[0], @Cnt[0], 2, PenColor, Pen);
+      end;
+    ppDot:
+      Result := pd_pdfr_add_shape(FPdf, APage, PD_ANNOT_CIRCLE, X0, Y0, X1, Y1, PenColor, $FF000000 or PenColor, 0.5);
+    ppDate:
+      begin
+        S := DateToStr(Date);
+        Result := pd_pdfr_add_text_box(FPdf, APage, X0, Y0, X1, Y1, PAnsiChar(S), 11, PenColor);
+      end;
+  else
+  end;
+  if Result >= 0 then
+  begin
+    FAnnPage := APage;
+    FAnnIndex := Result;
+    Changed;
+  end;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.PlaceLink(APage: Integer; X0, Y0, X1, Y1: Double; const AUri: string): Integer;
+begin
+  Result := -1;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (Trim(AUri) = '') then Exit;
+  Result := pd_pdfr_add_link(FPdf, APage, X0, Y0, X1, Y1, PAnsiChar(Trim(AUri)));
+  if Result >= 0 then Changed;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.LinkSelection(const AUri: string): Boolean;
+var
+  Q: TDoubleDynArray;
+  i, N: Integer;
+begin
+  Result := False;
+  if not SelAvail or (Trim(AUri) = '') then Exit;
+  N := SelectionQuads(Q);
+  for i := 0 to N - 1 do    { a quad: top left, top right, bottom left, bottom right }
+    if PlaceLink(FSelPage, Min(Q[8 * i], Q[8 * i + 4]), Min(Q[8 * i + 1], Q[8 * i + 3]),
+      Max(Q[8 * i + 2], Q[8 * i + 6]), Max(Q[8 * i + 5], Q[8 * i + 7]), AUri) >= 0 then
+      Result := True;
+end;
+
+{ Link: over the selection when there is one, else a box dragged out (or clicked) next }
+procedure TLedPdfPane.LinkClick(Sender: TObject);
+var
+  S: string;
+begin
+  if SelAvail then
+  begin
+    S := 'https://';
+    if AskText('Link', 'Where it goes (a web address, mailto:..., or #page=3 for a page of this file):', S, False) and
+       not LinkSelection(S) then
+      MessageDlg('Link', 'That link could not be made.', mtWarning, [mbOK], 0);
+    Exit;
+  end;
+  StartPlacing(ppLink);
+end;
+
+function TLedPdfPane.ResizeAnnotation(APage, AIndex: Integer; X0, Y0, X1, Y1: Double): Boolean;
+begin
+  Result := False;
+  {$IFDEF LED_PARADE}
+  if FPdf = nil then Exit;
+  Result := pd_pdfr_annot_set_rect(FPdf, APage, AIndex, Min(X0, X1), Min(Y0, Y1), Max(X0, X1), Max(Y0, Y1)) = 0;
+  if Result then Changed;
+  {$ENDIF}
+end;
+
+function TLedPdfPane.PageToView(APage: Integer; PX, PY: Double): TPoint;
+begin
+  Result := ToView(APage, PX, PY);
+end;
+
+function TLedPdfPane.InsertPictureFile(const AFileName: string): Boolean;
+var
+  W, H: Integer;
+  RGBA, J: RawByteString;
+begin
+  Result := LedLoadPictureRGBA(AFileName, W, H, RGBA, J);
+  if not Result then Exit;
+  FPlaceRGBA := RGBA;
+  FPlaceJpeg := J;
+  FPlaceW := W;
+  FPlaceH := H;
+  StartPlacing(ppPicture);
+end;
+
+function TLedPdfPane.PasteFromClipboard: Boolean;
+var
+  W, H: Integer;
+  RGBA: RawByteString;
+begin
+  Result := LedClipboardPictureRGBA(W, H, RGBA);
+  if not Result then Exit;
+  FPlaceRGBA := RGBA;
+  FPlaceJpeg := '';
+  FPlaceW := W;
+  FPlaceH := H;
+  StartPlacing(ppPicture);
+end;
+
+procedure TLedPdfPane.PictureClick(Sender: TObject);
+var
+  Dlg: TOpenPictureDialog;
+begin
+  Dlg := TOpenPictureDialog.Create(Self);
+  try
+    Dlg.Title := 'Insert Picture';
+    Dlg.Filter := 'Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files|*';
+    if Dlg.Execute and not InsertPictureFile(Dlg.FileName) then
+      MessageDlg('Insert Picture', 'That picture cannot be read.', mtWarning, [mbOK], 0);
+  finally
+    Dlg.Free;
+  end;
+end;
+
+{ the button: the signature last made (or kept), else a new one }
+procedure TLedPdfPane.SignClick(Sender: TObject);
+begin
+  if FSigs.Count = 0 then LedLoadSignatures(FSigs);
+  if FNewSig <> nil then
+    FPlaceSig := FNewSig
+  else if FSigs.Count > 0 then
+    FPlaceSig := TLedSignature(FSigs[FSigs.Count - 1])
+  else
+  begin
+    SignNewClick(Sender);
+    Exit;
+  end;
+  StartPlacing(ppSignature);
+end;
+
+procedure TLedPdfPane.SignMenuPopup(Sender: TObject);
+var
+  i: Integer;
+  Mi: TMenuItem;
+  B: TBitmap;
+begin
+  LedLoadSignatures(FSigs);
+  FSignMenu.Items.Clear;
+  for i := FSigs.Count - 1 downto 0 do
+  begin
+    Mi := TMenuItem.Create(FSignMenu);
+    Mi.Caption := 'Signature ' + IntToStr(i + 1);
+    B := TLedSignature(FSigs[i]).Thumb(LedScale96(96), LedScale96(32));
+    try
+      Mi.Bitmap := B;
+    finally
+      B.Free;
+    end;
+    Mi.Tag := i;
+    Mi.OnClick := @SignItemClick;
+    FSignMenu.Items.Add(Mi);
+  end;
+  if FSigs.Count > 0 then FSignMenu.Items.AddSeparator;
+  Mi := TMenuItem.Create(FSignMenu);
+  Mi.Caption := 'New Signature…';
+  Mi.OnClick := @SignNewClick;
+  FSignMenu.Items.Add(Mi);
+  if FSigs.Count > 0 then
+  begin
+    Mi := TMenuItem.Create(FSignMenu);
+    Mi.Caption := 'Forget the Signatures Kept';
+    Mi.OnClick := @SignForgetClick;
+    FSignMenu.Items.Add(Mi);
+  end;
+end;
+
+procedure TLedPdfPane.SignItemClick(Sender: TObject);
+var
+  i: Integer;
+begin
+  i := TMenuItem(Sender).Tag;
+  if (i < 0) or (i >= FSigs.Count) then Exit;
+  FreeAndNil(FNewSig);
+  FPlaceSig := TLedSignature(FSigs[i]);
+  StartPlacing(ppSignature);
+end;
+
+procedure TLedPdfPane.SignNewClick(Sender: TObject);
+var
+  S: TLedSignature;
+  Keep: Boolean;
+begin
+  S := LedNewSignature(GetParentForm(Self), Keep);
+  if S = nil then Exit;
+  FreeAndNil(FNewSig);
+  if Keep and LedSaveSignature(S) then
+  begin
+    LedLoadSignatures(FSigs);
+    S.Free;
+    if FSigs.Count = 0 then Exit;
+    FPlaceSig := TLedSignature(FSigs[FSigs.Count - 1]);
+  end
+  else
+  begin
+    FNewSig := S;
+    FPlaceSig := S;
+  end;
+  StartPlacing(ppSignature);
+end;
+
+procedure TLedPdfPane.SignForgetClick(Sender: TObject);
+var
+  i: Integer;
+begin
+  if MessageDlg('Signatures', 'Forget the ' + IntToStr(FSigs.Count) + ' signature(s) kept on this computer?',
+    mtConfirmation, [mbYes, mbNo], 0) <> mrYes then Exit;
+  for i := 0 to FSigs.Count - 1 do
+    LedForgetSignature(TLedSignature(FSigs[i]));
+  if FPlacing = ppSignature then StopPlacing;
+  FPlaceSig := nil;
+  FSigs.Clear;
+end;
+
+procedure TLedPdfPane.StampClick(Sender: TObject);
+begin
+  if FStampBtn.Tag = 0 then FStampBtn.Tag := Ord(ppCheck);
+  FColorBtn.ButtonColor := clBlack;
+  StartPlacing(TLedPdfPlace(FStampBtn.Tag));
+end;
+
+procedure TLedPdfPane.StampItemClick(Sender: TObject);
+begin
+  FStampBtn.Tag := TMenuItem(Sender).Tag;   { the button then puts the same mark again }
+  FColorBtn.ButtonColor := clBlack;
+  StartPlacing(TLedPdfPlace(TMenuItem(Sender).Tag));
+end;
+
+{ the kinds a corner drag resizes (pictures and signatures keep their shape) }
+function TLedPdfPane.Resizable(APage, AIndex: Integer; out AKeepAspect: Boolean): Boolean;
+{$IFDEF LED_PARADE}
+var
+  A: pd_pdfr_annot;
+{$ENDIF}
+begin
+  Result := False;
+  AKeepAspect := False;
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (APage < 0) or (AIndex < 0) or (pd_pdfr_annot_get(FPdf, APage, AIndex, A) <> 0) then Exit;
+  Result := A.kind in [PD_ANNOT_STAMP, PD_ANNOT_INK, PD_ANNOT_SQUARE, PD_ANNOT_CIRCLE, PD_ANNOT_FREETEXT,
+    PD_ANNOT_LINE, PD_ANNOT_ARROW, PD_ANNOT_POLYGON, PD_ANNOT_POLYLINE, PD_ANNOT_LINK];
+  AKeepAspect := A.kind in [PD_ANNOT_STAMP, PD_ANNOT_INK];
+  {$ENDIF}
+end;
+
+{ the annotation picked, on the view: where it is, or where a drag or a corner is taking it }
+function TLedPdfPane.PickedViewRect(out R: TRect): Boolean;
+{$IFDEF LED_PARADE}
+var
+  A: pd_pdfr_annot;
+  P0, P1: TPoint;
+  Keep: Boolean;
+  W, H, NW, NH: Integer;
+{$ENDIF}
+begin
+  Result := False;
+  R := Rect(0, 0, 0, 0);
+  {$IFDEF LED_PARADE}
+  if (FPdf = nil) or (FAnnPage < 0) or (FAnnIndex < 0) or
+     (pd_pdfr_annot_get(FPdf, FAnnPage, FAnnIndex, A) <> 0) then Exit;
+  P0 := ToView(FAnnPage, A.x0, A.y0);
+  P1 := ToView(FAnnPage, A.x1, A.y1);
+  R := Rect(P0.X, P0.Y, P1.X, P1.Y);
+  if FDragAnn then
+    OffsetRect(R, FDragNow.X - FDragStart.X, FDragNow.Y - FDragStart.Y)
+  else if FResizing >= 0 then
+  begin
+    W := R.Right - R.Left;
+    H := R.Bottom - R.Top;
+    { the corner moved as far as the mouse has (the handle sits a little outside the frame) }
+    case FResizing of
+      0: begin Inc(R.Left, FDragNow.X - FDragStart.X); Inc(R.Top, FDragNow.Y - FDragStart.Y); end;
+      1: begin Inc(R.Right, FDragNow.X - FDragStart.X); Inc(R.Top, FDragNow.Y - FDragStart.Y); end;
+      2: begin Inc(R.Right, FDragNow.X - FDragStart.X); Inc(R.Bottom, FDragNow.Y - FDragStart.Y); end;
+      3: begin Inc(R.Left, FDragNow.X - FDragStart.X); Inc(R.Bottom, FDragNow.Y - FDragStart.Y); end;
+    end;
+    Resizable(FAnnPage, FAnnIndex, Keep);
+    if Keep and (W > 0) and (H > 0) and not (ssShift in GetKeyShiftState) then
+    begin   { its shape kept: the new height from the new width, the corner opposite where it was }
+      NW := Abs(R.Right - R.Left);
+      NH := Round(NW * H / W);
+      case FResizing of
+        0, 1: R.Top := R.Bottom - NH;
+        2, 3: R.Bottom := R.Top + NH;
+      end;
+    end;
+    if R.Right < R.Left then begin W := R.Left; R.Left := R.Right; R.Right := W; end;
+    if R.Bottom < R.Top then begin H := R.Top; R.Top := R.Bottom; R.Bottom := H; end;
+  end;
+  Result := True;
+  {$ENDIF}
+end;
+
+{ the corner of the picked annotation's frame under (X, Y): 0..3, or -1 }
+function TLedPdfPane.HandleAt(X, Y: Integer): Integer;
+var
+  R: TRect;
+  Keep: Boolean;
+  D: Integer;
+  i: Integer;
+  C: array[0..3] of TPoint;
+begin
+  Result := -1;
+  if (FResizing >= 0) or FDragAnn or not Resizable(FAnnPage, FAnnIndex, Keep) or not PickedViewRect(R) then Exit;
+  D := LedScale96(6);
+  C[0] := Point(R.Left - 3, R.Top - 3);
+  C[1] := Point(R.Right + 3, R.Top - 3);
+  C[2] := Point(R.Right + 3, R.Bottom + 3);
+  C[3] := Point(R.Left - 3, R.Bottom + 3);
+  for i := 0 to 3 do
+    if (Abs(X - C[i].X) <= D) and (Abs(Y - C[i].Y) <= D) then Exit(i);
 end;
 
 { ---- loading ---- }
@@ -1311,6 +1949,9 @@ var
   Cs: TLedPdfCharArray;
   j: Integer;
   MX0, MX1: Double;
+  HR: TRect;
+  HKeep: Boolean;
+  HD: Integer;
   {$ENDIF}
 begin
   {$IFDEF LED_PARADE}
@@ -1370,23 +2011,38 @@ begin
     end;
   end;
 
-  { the annotation picked: a dashed frame (where it is dragged to, while it is) }
-  if (FAnnPage = APage) and (FAnnIndex >= 0) and (pd_pdfr_annot_get(FPdf, APage, FAnnIndex, A) = 0) then
+  { the annotation picked: a dashed frame (where it is dragged to, while it is), its corners' handles when it can be
+    resized }
+  if (FAnnPage = APage) and (FAnnIndex >= 0) and (pd_pdfr_annot_get(FPdf, APage, FAnnIndex, A) = 0) and
+     PickedViewRect(HR) then
   begin
-    P0 := ToView(APage, A.x0, A.y0);
-    P1 := ToView(APage, A.x1, A.y1);
-    if FDragAnn then
-    begin
-      Inc(P0.X, FDragNow.X - FDragStart.X);
-      Inc(P1.X, FDragNow.X - FDragStart.X);
-      Inc(P0.Y, FDragNow.Y - FDragStart.Y);
-      Inc(P1.Y, FDragNow.Y - FDragStart.Y);
-    end;
     C.Brush.Style := bsClear;
     C.Pen.Color := RGBToColor(0, 90, 220);
     C.Pen.Style := psDash;
     C.Pen.Width := 1;
-    C.Rectangle(P0.X - 3, P0.Y - 3, P1.X + 3, P1.Y + 3);
+    C.Rectangle(HR.Left - 3, HR.Top - 3, HR.Right + 3, HR.Bottom + 3);
+    C.Pen.Style := psSolid;
+    if Resizable(APage, FAnnIndex, HKeep) then
+    begin
+      C.Brush.Style := bsSolid;
+      C.Brush.Color := clWhite;
+      HD := LedScale96(4);
+      C.Rectangle(HR.Left - 3 - HD, HR.Top - 3 - HD, HR.Left - 3 + HD, HR.Top - 3 + HD);
+      C.Rectangle(HR.Right + 3 - HD, HR.Top - 3 - HD, HR.Right + 3 + HD, HR.Top - 3 + HD);
+      C.Rectangle(HR.Right + 3 - HD, HR.Bottom + 3 - HD, HR.Right + 3 + HD, HR.Bottom + 3 + HD);
+      C.Rectangle(HR.Left - 3 - HD, HR.Bottom + 3 - HD, HR.Left - 3 + HD, HR.Bottom + 3 + HD);
+    end;
+    C.Brush.Style := bsSolid;
+  end;
+
+  { what Insert puts down: where it would go }
+  if (FPlacing <> ppNone) and (FGhostPage = APage) then
+  begin
+    C.Brush.Style := bsClear;
+    C.Pen.Color := RGBToColor(0, 90, 220);
+    C.Pen.Style := psDot;
+    C.Pen.Width := 1;
+    C.Rectangle(FGhost);
     C.Pen.Style := psSolid;
     C.Brush.Style := bsSolid;
   end;
@@ -2150,9 +2806,9 @@ begin
   if Page < 0 then Exit;
   if Button = mbRight then
   begin
-    { the menu acts on the annotation under it, or the selection }
+    { the menu acts on the annotation under it (a link too: to delete it), or the selection }
     A := pd_pdfr_annot_at(FPdf, Page, PX, PY);
-    if (A >= 0) and (pd_pdfr_annot_get(FPdf, Page, A, Ann) = 0) and not (Ann.kind in [PD_ANNOT_LINK, PD_ANNOT_WIDGET]) then
+    if (A >= 0) and (pd_pdfr_annot_get(FPdf, Page, A, Ann) = 0) and not (Ann.kind in [PD_ANNOT_WIDGET]) then
     begin
       FAnnPage := Page;
       FAnnIndex := A;
@@ -2161,6 +2817,29 @@ begin
     Exit;
   end;
   if Button <> mbLeft then Exit;
+
+  { Insert: where it goes, clicked or dragged out }
+  if FPlacing <> ppNone then
+  begin
+    FPlaceDown := True;
+    FDrawPage := Page;
+    FDrawStart := Point(X, Y);
+    FDrawNow := FDrawStart;
+    Exit;
+  end;
+
+  { a corner of the annotation picked: resized }
+  if FTool = ptSelect then
+  begin
+    K := HandleAt(X, Y);
+    if K >= 0 then
+    begin
+      FResizing := K;
+      FDragStart := Point(X, Y);
+      FDragNow := FDragStart;
+      Exit;
+    end;
+  end;
 
   case FTool of
     ptSelect:
@@ -2265,7 +2944,7 @@ procedure TLedPdfPane.ViewMouseMove(Shift: TShiftState; X, Y: Integer);
 {$IFDEF LED_PARADE}
 var
   Page, K, A: Integer;
-  PX, PY: Double;
+  PX, PY, GX0, GY0, GX1, GY1: Double;
   Ann: pd_pdfr_annot;
 {$ENDIF}
 begin
@@ -2289,9 +2968,31 @@ begin
     else if Y > FView.ClientHeight then FVBar.Position := FVBar.Position + 20;
     Exit;
   end;
-  if FDragAnn or FMoveText then
+  if FDragAnn or FMoveText or (FResizing >= 0) then
   begin
     FDragNow := Point(X, Y);
+    FView.Invalidate;
+    Exit;
+  end;
+  if FPlacing <> ppNone then
+  begin   { where it would go, shown }
+    if FPlaceDown then
+    begin
+      FDrawNow := Point(X, Y);
+      Page := FDrawPage;
+    end
+    else
+      Page := PageAt(X, Y, PX, PY);
+    FGhostPage := -1;
+    if FPlaceDown then
+    begin
+      if PlaceBox(Page, FDrawStart, FDrawNow, GX0, GY0, GX1, GY1) then FGhostPage := Page;
+    end
+    else if PlaceBox(Page, Point(X, Y), Point(X, Y), GX0, GY0, GX1, GY1) then
+      FGhostPage := Page;
+    if FGhostPage >= 0 then
+      FGhost := Rect(ToView(Page, GX0, GY0).X, ToView(Page, GX0, GY0).Y, ToView(Page, GX1, GY1).X,
+        ToView(Page, GX1, GY1).Y);
     FView.Invalidate;
     Exit;
   end;
@@ -2306,9 +3007,14 @@ begin
     FView.Invalidate;
     Exit;
   end;
-  { the pointer: a hand over a link, a beam over text, the move cross over the selection }
+  { the pointer: a hand over a link, a beam over text, the move cross over the selection, the resize arrows over a
+    picked annotation's corner }
   if FTool = ptSelect then
   begin
+    case HandleAt(X, Y) of
+      0, 2: begin FView.Cursor := crSizeNWSE; Exit; end;
+      1, 3: begin FView.Cursor := crSizeNESW; Exit; end;
+    end;
     Page := PageAt(X, Y, PX, PY);
     if Page < 0 then
     begin
@@ -2351,7 +3057,8 @@ procedure TLedPdfPane.ViewMouseUp(Button: TMouseButton; Shift: TShiftState; X, Y
 {$IFDEF LED_PARADE}
 var
   Page: Integer;
-  PX, PY, QX, QY, W: Double;
+  PX, PY, QX, QY, W, GX0, GY0, GX1, GY1: Double;
+  GR, GR0: TRect;
   S: string;
   Pts: array of Double;
   Cnt: array[0..0] of Int32;
@@ -2394,6 +3101,45 @@ begin
       FSelPage := -1;
       Status;
     end;
+    FView.Invalidate;
+    Exit;
+  end;
+  if FPlacing <> ppNone then
+  begin
+    if FPlaceDown and PlaceBox(FDrawPage, FDrawStart, Point(X, Y), GX0, GY0, GX1, GY1) then
+    begin
+      case FPlacing of
+        ppPicture: PlacePicture(FDrawPage, GX0, GY0, GX1, GY1, FPlaceRGBA, FPlaceJpeg, FPlaceW, FPlaceH);
+        ppSignature: PlaceSignature(FPlaceSig, FDrawPage, GX0, GY0, GX1, GY1);
+        ppLink:
+          begin
+            S := 'https://';
+            if AskText('Link', 'Where it goes (a web address, mailto:..., or #page=3 for a page of this file):', S,
+              False) and (PlaceLink(FDrawPage, GX0, GY0, GX1, GY1, S) < 0) then
+              MessageDlg('Link', 'That link could not be made.', mtWarning, [mbOK], 0);
+          end;
+      else
+        PlaceMark(FPlacing, FDrawPage, GX0, GY0, GX1, GY1);
+      end;
+    end;
+    FPlaceDown := False;
+    { a mark again where clicked next (Esc when done); a picture, a signature, once }
+    if not (FPlacing in [ppCheck, ppCross, ppDot]) then
+      StopPlacing;
+    FView.Invalidate;
+    Exit;
+  end;
+  if FResizing >= 0 then
+  begin
+    if ((Abs(X - FDragStart.X) > 2) or (Abs(Y - FDragStart.Y) > 2)) and PickedViewRect(GR) then
+    begin
+      GR0 := PageRectOnView(FAnnPage);
+      FResizing := -1;
+      if (GR.Right - GR.Left > 2) and (GR.Bottom - GR.Top > 2) then
+        ResizeAnnotation(FAnnPage, FAnnIndex, (GR.Left - GR0.Left) / FScale, (GR.Top - GR0.Top) / FScale,
+          (GR.Right - GR0.Left) / FScale, (GR.Bottom - GR0.Top) / FScale);
+    end;
+    FResizing := -1;
     FView.Invalidate;
     Exit;
   end;
@@ -2662,8 +3408,12 @@ begin
         end;
         Key := 0;
       end;
+    VK_V:
+      if (ssCtrl in Shift) and PasteFromClipboard then Key := 0;
     VK_ESCAPE:
       begin
+        if FPlacing <> ppNone then StopPlacing;
+        FResizing := -1;
         SetTool(ptSelect);
         FSelPage := -1;
         FAnnPage := -1;

@@ -38,7 +38,7 @@ uses
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
   Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.Ruler, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
-  Led.UI.ParadeView, Led.UI.ParadeFonts, paradepdf{$ENDIF}, Led.UI.PdfView,
+  Led.UI.ParadeView, Led.UI.ParadeFonts, paradepdf{$ENDIF}, Led.UI.PdfView, Led.UI.PdfSign, Contnrs, FPWritePNG, GraphType, Types,
   Led.Core.Types, Led.Core.CLI, Led.Core.FileIO, Led.Core.Config, Led.Core.Prefs,
   Led.Core.Paths,
   Led.Syn.Languages, Led.Syn.Theme, Led.Syn.Factory,
@@ -20519,6 +20519,136 @@ type
 { A PDF opens as its pages, its text found, selected by dragging over it and highlighted; a rectangle drawn; undone
   and done again; saved as the file it was with an update appended (what the save writes, read back by Parade's
   reader), the file never written over. }
+{ Insert on a PDF: a picture put where the page is clicked, a corner dragged to resize it (its shape kept), a
+  signature drawn as ink and kept for next time, a check mark, today's date; a scanned signature's paper made
+  clear. }
+procedure TestPdfInsert(P: TLedPdfPane; V: TPdfViewAccess);
+var
+  Png, Before: Integer;
+  Path: string;
+  Img: TLazIntfImage;
+  Wr: TFPWriterPNG;
+  Cl: TFPColor;
+  X, Y, Idx: Integer;
+  A, A2: pd_pdfr_annot;
+  At, Corner: TPoint;
+  S: TLedSignature;
+  Kept: TObjectList;
+  RGBA: RawByteString;
+  W0, H0: Double;
+begin
+  Say('a PDF: pictures, signatures and marks put on its page');
+  { a 40 by 20 picture: red, its right half clear }
+  Path := TempName('insert.png');
+  Img := TLazIntfImage.Create(40, 20, [riqfRGB, riqfAlpha]);
+  Wr := TFPWriterPNG.Create;
+  try
+    Img.CreateData;
+    for Y := 0 to 19 do
+      for X := 0 to 39 do
+      begin
+        Cl := colRed;
+        if X >= 20 then Cl.alpha := 0;
+        Img.Colors[X, Y] := Cl;
+      end;
+    Wr.UseAlpha := True;
+    Img.SaveToFile(Path, Wr);
+  finally
+    Wr.Free;
+    Img.Free;
+  end;
+  Before := pd_pdfr_annot_count(P.Pdf, 0);
+  Check('a picture file is ready to be put down', P.InsertPictureFile(Path) and (P.Placing = ppPicture));
+  At := P.PageToView(0, 300, 500);
+  V.MouseDown(mbLeft, [], At.X, At.Y);
+  V.MouseUp(mbLeft, [], At.X, At.Y);
+  Pump;
+  CheckEqInt('a click puts it on the page', Before + 1, pd_pdfr_annot_count(P.Pdf, 0));
+  Idx := Before;
+  Check('as a picture (a stamp), picked, the mode over',
+    (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and (A.kind = PD_ANNOT_STAMP) and (P.PickedIndex = Idx) and
+    (P.Placing = ppNone));
+  Check(Format('its own size (30 by 15 points), round the click (%.1f %.1f %.1f %.1f)', [A.x0, A.y0, A.x1, A.y1]),
+    (Abs(A.x1 - A.x0 - 30) < 0.1) and (Abs(A.y1 - A.y0 - 15) < 0.1) and (Abs((A.x0 + A.x1) / 2 - 300) < 1) and
+    (Abs((A.y0 + A.y1) / 2 - 500) < 1));
+  { its bottom right corner dragged right: wider, as tall as its shape says }
+  W0 := A.x1 - A.x0;
+  H0 := A.y1 - A.y0;
+  Corner := P.PageToView(0, A.x1, A.y1);
+  Inc(Corner.X, 3);
+  Inc(Corner.Y, 3);
+  V.MouseDown(mbLeft, [], Corner.X, Corner.Y);
+  V.MouseMove([ssLeft], Corner.X + Round(30 * P.Scale), Corner.Y);
+  V.MouseUp(mbLeft, [], Corner.X + Round(30 * P.Scale), Corner.Y);
+  Pump;
+  pd_pdfr_annot_get(P.Pdf, 0, Idx, A2);
+  Check(Format('a corner dragged resizes it, its shape kept (%.1f %.1f %.1f %.1f)', [A2.x0, A2.y0, A2.x1, A2.y1]),
+    (pd_pdfr_annot_get(P.Pdf, 0, Idx, A2) = 0) and (Abs(A2.x0 - A.x0) < 0.5) and (Abs(A2.y0 - A.y0) < 0.5) and
+    (Abs(A2.x1 - A2.x0 - (W0 + 30)) < 1.5) and (Abs((A2.y1 - A2.y0) / (A2.x1 - A2.x0) - H0 / W0) < 0.02));
+  CheckEqInt('and nothing else is added', Before + 1, pd_pdfr_annot_count(P.Pdf, 0));
+  DeleteFile(Path);
+
+  { a signature drawn: two strokes, kept, read back, put down as ink }
+  S := TLedSignature.Create;
+  Kept := TObjectList.Create(True);
+  try
+    S.Kind := lskInk;
+    S.W := 100;
+    S.H := 30;
+    S.Color := clBlack;
+    SetLength(S.Strokes, 2);
+    S.Strokes[0] := TDoubleDynArray.Create(5, 25, 30, 5, 50, 25);
+    S.Strokes[1] := TDoubleDynArray.Create(60, 20, 95, 10);
+    Check('a signature is kept in LED''s settings, not your own', LedSaveSignature(S) and
+      (Pos(LedSignatureDir, S.Path) = 1) and (Pos(FSandboxDir, S.Path) = 1));
+    LedLoadSignatures(Kept);
+    Check('and read back as it was', (Kept.Count = 1) and (TLedSignature(Kept[0]).Kind = lskInk) and
+      (Length(TLedSignature(Kept[0]).Strokes) = 2) and (Length(TLedSignature(Kept[0]).Strokes[0]) = 6) and
+      (Abs(TLedSignature(Kept[0]).Strokes[1][2] - 95) < 0.01));
+    Idx := P.PlaceSignature(TLedSignature(Kept[0]), 0, 100, 600, 200, 630);
+    Check('a drawn signature goes on as ink, its strokes in the box',
+      (Idx >= 0) and (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and (A.kind = PD_ANNOT_INK) and
+      (A.x0 >= 100 - 4) and (A.x1 <= 200 + 4) and (A.y0 >= 600 - 4) and (A.y1 <= 630 + 4) and (A.x1 - A.x0 > 80));
+    LedForgetSignature(TLedSignature(Kept[0]));
+    LedLoadSignatures(Kept);
+    CheckEqInt('and forgotten when asked', 0, Kept.Count);
+  finally
+    Kept.Free;
+    S.Free;
+  end;
+
+  { a scanned one: its white paper clear, its ink kept }
+  SetLength(RGBA, 8);
+  RGBA[1] := #255; RGBA[2] := #255; RGBA[3] := #255; RGBA[4] := #255;
+  RGBA[5] := #20; RGBA[6] := #20; RGBA[7] := #60; RGBA[8] := #255;
+  LedClearWhite(RGBA, 2, 1);
+  Check('a scan''s paper made clear, its ink not', (RGBA[4] = #0) and (RGBA[8] = #255));
+
+  { marks }
+  Idx := P.PlaceMark(ppCheck, 0, 400, 600, 412, 612);
+  Check('a check mark: ink in its box', (Idx >= 0) and (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and
+    (A.kind = PD_ANNOT_INK) and (A.x0 > 395) and (A.x1 < 417));
+  Idx := P.PlaceMark(ppDate, 0, 400, 650, 470, 666);
+  Check('today''s date: a box of text that says it', (Idx >= 0) and (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and
+    (A.kind = PD_ANNOT_FREETEXT) and (string(A.contents) = DateToStr(Date)));
+  Idx := P.PlaceMark(ppDot, 0, 400, 700, 408, 708);
+  Check('a dot', (Idx >= 0) and (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and (A.kind = PD_ANNOT_CIRCLE));
+  Png := pd_pdfr_annot_count(P.Pdf, 0);
+  CheckEqInt('all of them on the page', Before + 5, Png);
+
+  { links: the text selected made one (a box a line), a box to a page }
+  P.SelectAll;
+  Check('the text selected made a link', P.LinkSelection('https://example.org/x'));
+  Check('a link a line of it, to where it was told',
+    (pd_pdfr_annot_count(P.Pdf, 0) = Png + 2) and (pd_pdfr_annot_get(P.Pdf, 0, Png, A) = 0) and
+    (A.kind = PD_ANNOT_LINK) and (string(A.uri) = 'https://example.org/x') and
+    (pd_pdfr_annot_get(P.Pdf, 0, Png + 1, A2) = 0) and (A2.y0 > A.y0));
+  Idx := P.PlaceLink(0, 50, 50, 150, 66, '#page=1');
+  Check('a box made a link to a page', (Idx >= 0) and (pd_pdfr_annot_get(P.Pdf, 0, Idx, A) = 0) and
+    (string(A.uri) = '#page=1'));
+  CheckEqInt('and not an empty one', -1, P.PlaceLink(0, 50, 80, 150, 96, '  '));
+end;
+
 procedure TestPdfPages(F: TLedMainForm);
 var
   Path, Orig, Saved, Content, Body, Xref: string;
@@ -20731,6 +20861,8 @@ begin
     C := PdfPageChars(P.Pdf, 0);
     Check('Undo puts it back', (Length(C) > 0) and (Abs(C[0].x0 - PX0) < 0.05) and (Abs(C[0].y0 - PY0) < 0.05));
   end;
+
+  TestPdfInsert(P, V);
 
   { presented: full screen, the pages one at a time; Esc ends it, the form gone }
   P.Present(False);
