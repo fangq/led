@@ -18647,6 +18647,182 @@ begin
   {$ENDIF}
 end;
 
+{ A turned shape sized by its handles: the handles on its own sides, a side dragged moves along the shape (its turn
+  kept, the side across from it where it was), and what is drawn is the frame as turned -- not stretched along the
+  page, out of its frame. }
+procedure TestTurnedResize(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At: pd_pos;
+  Sid, I: Integer;
+  G, G2: TParadeShapeGeom;
+  Boxes: TParadeShapeBoxes;
+  C, S, LX, LY, LX2, LY2, BX0, BY0, BX1, BY1, X, Y, Pt: Double;
+  P, Q: TPoint;
+  Vx: array[0..2, 0..1] of Double;
+  DX0, DY0, DX1, DY1: Double;
+
+  { the box round the points the drawing draws the shape with (its items after its marker, to the next) }
+  procedure DrawnBox(ASid: Integer; out X0, Y0, X1, Y1: Double);
+  var
+    O: pd_inline;
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+    T: RawByteString;
+    J: TJSONData;
+    Items, Pts: TJSONArray;
+    K, N: Integer;
+    Mine: Boolean;
+  begin
+    X0 := MaxDouble; Y0 := MaxDouble; X1 := -MaxDouble; Y1 := -MaxDouble;
+    if (pd_doc_inline_at(E.Doc, At, O) <> PD_OK) or
+       (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) <> PD_OK) then
+      Exit;
+    SetString(T, PAnsiChar(Data), Len);
+    J := GetJSON(T);
+    try
+      Items := TJSONObject(J).Find('items') as TJSONArray;
+      Mine := False;
+      for K := 0 to Items.Count - 1 do
+        if Items[K] is TJSONObject then
+        begin
+          if TJSONObject(Items[K]).Find('sid') <> nil then
+            Mine := TJSONObject(Items[K]).Integers['sid'] = ASid
+          else if Mine and (TJSONObject(Items[K]).Find('path') is TJSONArray) then
+          begin
+            Pts := TJSONArray(TJSONObject(Items[K]).Find('path'));
+            N := 0;
+            while N + 1 < Pts.Count do
+            begin
+              if Pts[N].AsInt64 > -2147483647 then
+              begin
+                X0 := Min(X0, Pts[N].AsFloat); X1 := Max(X1, Pts[N].AsFloat);
+                Y0 := Min(Y0, Pts[N + 1].AsFloat); Y1 := Max(Y1, Pts[N + 1].AsFloat);
+              end;
+              Inc(N, 2);
+            end;
+          end;
+        end;
+    finally
+      J.Free;
+    end;
+  end;
+
+  { the box round the corners of the triangle the frame G holds, turned as G is }
+  procedure TriBox(const GG: TParadeShapeGeom; out X0, Y0, X1, Y1: Double);
+  var
+    K: Integer;
+    Cs, Sn, U, V: Double;
+  begin
+    Cs := Cos(GG.Rot * Pi / 180);
+    Sn := Sin(GG.Rot * Pi / 180);
+    X0 := MaxDouble; Y0 := MaxDouble; X1 := -MaxDouble; Y1 := -MaxDouble;
+    for K := 0 to 2 do
+    begin
+      case K of
+        0: begin U := 0; V := -GG.H / 2; end;
+        1: begin U := GG.W / 2; V := GG.H / 2; end;
+      else
+        begin U := -GG.W / 2; V := GG.H / 2; end;
+      end;
+      X0 := Min(X0, GG.CX + U * Cs - V * Sn); X1 := Max(X1, GG.CX + U * Cs - V * Sn);
+      Y0 := Min(Y0, GG.CY + U * Sn + V * Cs); Y1 := Max(Y1, GG.CY + U * Sn + V * Cs);
+    end;
+  end;
+
+  function Client(DX, DY: Double): TPoint;    { a point of the canvas (drawing units: sp, the page's) }
+  begin
+    Result := E.PageToClient(0, DX / PD_SP_PER_PT, DY / PD_SP_PER_PT);
+  end;
+{$ENDIF}
+begin
+  Say('a turned shape sized by its handles');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  Pt := PD_SP_PER_PT;
+  Check('a triangle drawn, turned 30 degrees', E.AddShape('triangle', 200 * Pt, 150 * Pt, 300 * Pt, 210 * Pt) and
+    E.RotateShape(30) and E.SelectedShapeGeom(G) and (Abs(G.Rot - 30) < 0.01));
+  Pump;
+  C := Cos(Pi / 6);
+  S := Sin(Pi / 6);
+  { its right side's handle: the middle of that side, turned with it; dragged 40 pt further out along the shape }
+  P := Client(G.CX + G.W / 2 * C, G.CY + G.W / 2 * S);
+  Q := Client(G.CX + (G.W / 2 + 40 * Pt) * C, G.CY + (G.W / 2 + 40 * Pt) * S);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+  for I := 1 to 4 do
+    TLedParadeWheel(E).MouseMove([ssLeft], P.X + (Q.X - P.X) * I div 4, P.Y + (Q.Y - P.Y) * I div 4);
+  TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
+  Pump;
+  Check('still the shape selected, still turned 30 degrees', E.SelectedShapeGeom(G2) and (Abs(G2.Rot - 30) < 0.01));
+  Check(Format('wider along its own side by the drag (%.1f to %.1f pt), as tall (%.1f to %.1f)',
+    [G.W / Pt, G2.W / Pt, G.H / Pt, G2.H / Pt]), (Abs(G2.W - G.W - 40 * Pt) < 1.5 * Pt) and (Abs(G2.H - G.H) < 0.5 * Pt));
+  LX := G.CX - G.W / 2 * C; LY := G.CY - G.W / 2 * S;      { its left side's middle: where it was }
+  LX2 := G2.CX - G2.W / 2 * C; LY2 := G2.CY - G2.W / 2 * S;
+  Check(Format('the side across from it where it was (%.1f, %.1f to %.1f, %.1f pt)', [LX / Pt, LY / Pt, LX2 / Pt,
+    LY2 / Pt]), (Abs(LX2 - LX) < 1.5 * Pt) and (Abs(LY2 - LY) < 1.5 * Pt));
+  { what is drawn: the triangle of the frame turned -- its corners' box (top middle, bottom right, bottom left) }
+  Vx[0, 0] := 0; Vx[0, 1] := -G2.H / 2;
+  Vx[1, 0] := G2.W / 2; Vx[1, 1] := G2.H / 2;
+  Vx[2, 0] := -G2.W / 2; Vx[2, 1] := G2.H / 2;
+  BX0 := MaxDouble; BY0 := MaxDouble; BX1 := -MaxDouble; BY1 := -MaxDouble;
+  for I := 0 to 2 do
+  begin
+    X := G2.CX + Vx[I, 0] * C - Vx[I, 1] * S;
+    Y := G2.CY + Vx[I, 0] * S + Vx[I, 1] * C;
+    BX0 := Min(BX0, X); BY0 := Min(BY0, Y); BX1 := Max(BX1, X); BY1 := Max(BY1, Y);
+  end;
+  E.SelectedShape(At, Sid);
+  Boxes := E.DrawingShapes(At);
+  DrawnBox(Sid, DX0, DY0, DX1, DY1);
+  Check(Format('drawn as the frame turned: its points'' box %.0f %.0f %.0f %.0f, the frame''s triangle''s %.0f %.0f %.0f %.0f pt',
+    [DX0 / Pt, DY0 / Pt, DX1 / Pt, DY1 / Pt, BX0 / Pt, BY0 / Pt, BX1 / Pt, BY1 / Pt]),
+    (Abs(DX0 - BX0) < 2 * Pt) and (Abs(DY0 - BY0) < 2 * Pt) and (Abs(DX1 - BX1) < 2 * Pt) and (Abs(DY1 - BY1) < 2 * Pt));
+  { the upright box's corner, off the turned frame: no handle there now (a press there selects nothing to size) }
+  P := Client(Boxes[0].X1, Boxes[0].Y0);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X + 1, P.Y - 1);
+  TLedParadeWheel(E).MouseMove([ssLeft], P.X + 30, P.Y - 30);
+  TLedParadeWheel(E).MouseUp(mbLeft, [], P.X + 30, P.Y - 30);
+  Pump;
+  Check('a drag from the upright box''s corner sizes nothing',
+    not E.SelectedShapeGeom(G) or ((Abs(G.W - G2.W) < 0.5 * Pt) and (Abs(G.H - G2.H) < 0.5 * Pt)));
+  { and whatever it did, what is drawn is still the frame turned (the outline out of its frame was the fault) }
+  P := Client(G2.CX, G2.CY);    { a click in its middle: it selected again }
+  for I := 1 to 2 do
+    if not E.SelectedShapeGeom(G) then
+    begin
+      Sleep(600);
+      TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+      TLedParadeWheel(E).MouseUp(mbLeft, [], P.X, P.Y);
+      Pump;
+    end;
+  if E.SelectedShapeGeom(G) then
+  begin
+    TriBox(G, BX0, BY0, BX1, BY1);
+    DrawnBox(Sid, DX0, DY0, DX1, DY1);
+    Check(Format('the drawn outline in its frame: %.0f %.0f %.0f %.0f, the frame''s triangle''s %.0f %.0f %.0f %.0f pt',
+      [DX0 / Pt, DY0 / Pt, DX1 / Pt, DY1 / Pt, BX0 / Pt, BY0 / Pt, BX1 / Pt, BY1 / Pt]),
+      (Abs(DX0 - BX0) < 2 * Pt) and (Abs(DY0 - BY0) < 2 * Pt) and (Abs(DX1 - BX1) < 2 * Pt) and (Abs(DY1 - BY1) < 2 * Pt));
+  end
+  else
+    Check('the triangle there to look at', False);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
   only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
   in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
@@ -22232,6 +22408,7 @@ begin
   TestSlideTextBoxPicture(F);
   TestDropPictures(F);
   TestSvgShapes(F);
+  TestTurnedResize(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);
