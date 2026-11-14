@@ -18902,6 +18902,47 @@ var
   C: TFPColor;
   A, B: pd_pos;
   Rot: Int32;
+  G2: TParadeShapeGeom;
+  Boxes: TParadeShapeBoxes;
+  At: pd_pos;
+  Sid, Blue, DX, DY: Integer;
+  Z0: Double;
+  P, Q: TPoint;
+
+  { the frame's blue (the box being typed in: its dashed edge, its handles) within 6 pixels of a point of the page }
+  function FrameBlueNear(XPt, YPt: Double): Integer;
+  var
+    Bm: TBitmap;
+    Im: TLazIntfImage;
+    C0: TPoint;
+    CC: TFPColor;
+    XX, YY: Integer;
+  begin
+    Result := 0;
+    C0 := E.PageToClient(0, XPt, YPt);
+    Bm := TBitmap.Create;
+    try
+      Bm.PixelFormat := pf32bit;
+      Bm.SetSize(E.ClientWidth, E.ClientHeight);
+      E.PaintTo(Bm.Canvas, 0, 0);
+      Im := Bm.CreateIntfImage;
+      try
+        for YY := C0.Y - 6 to C0.Y + 6 do
+          for XX := C0.X - 6 to C0.X + 6 do
+            if (XX >= 0) and (YY >= 0) and (XX < Im.Width) and (YY < Im.Height) then
+            begin
+              CC := Im.Colors[XX, YY];
+              if (Abs((CC.red shr 8) - $00) < 40) and (Abs((CC.green shr 8) - $78) < 40) and
+                 (Abs((CC.blue shr 8) - $D7) < 40) then
+                Inc(Result);
+            end;
+      finally
+        Im.Free;
+      end;
+    finally
+      Bm.Free;
+    end;
+  end;
 {$ENDIF}
 begin
   Say('a turned text box''s text selected');
@@ -18919,6 +18960,7 @@ begin
   Pt := PD_SP_PER_PT;
   Check('a text box drawn, turned 35 degrees', E.AddShape('textbox', 60 * Pt, 80 * Pt, 120 * Pt, 260 * Pt) and
     E.RotateShape(35) and E.SelectedShapeGeom(G) and (Abs(G.Rot - 35) < 0.01));
+  E.SelectedShape(At, Sid);
   Check('typed in', E.AddShapeText);
   Txt := 'LED text editor';
   for I := 1 to Length(Txt) do
@@ -18966,6 +19008,20 @@ begin
     end;
   Check(Format('its text turned 35 degrees, on more than one line (%d lines)', [NL]),
     (NL >= 2) and (Abs(Rot / 60000 - 35) < 0.01));
+  { typed in, the box's frame drawn as it is turned: none at the upright box's corners, a handle at its own }
+  Pump;
+  Boxes := E.DrawingShapes(At);
+  Blue := 0;
+  for I := 0 to High(Boxes) do
+    if Boxes[I].Sid = Sid then
+      Blue := FrameBlueNear(Boxes[I].X0 / Pt, Boxes[I].Y0 / Pt) + FrameBlueNear(Boxes[I].X1 / Pt, Boxes[I].Y1 / Pt);
+  Th := G.Rot * Pi / 180;
+  Check(Format('typed in: no frame at the upright box''s corners (%d blue pixels), a handle at its turned corner (%d)',
+    [Blue, FrameBlueNear((G.CX - G.W / 2 * Cos(Th) + G.H / 2 * Sin(Th)) / Pt,
+    (G.CY - G.W / 2 * Sin(Th) - G.H / 2 * Cos(Th)) / Pt)]), (Length(Boxes) > 0) and (Blue = 0) and
+    (FrameBlueNear((G.CX - G.W / 2 * Cos(Th) + G.H / 2 * Sin(Th)) / Pt,
+    (G.CY - G.W / 2 * Sin(Th) - G.H / 2 * Cos(Th)) / Pt) > 8));
+  Z0 := E.Zoom;
   { what is shown: each pixel the selection tints, inside the box (its frame and handles left out); zoomed in, the
     box in view }
   E.Zoom := 3;
@@ -19025,6 +19081,29 @@ begin
   WriteLn(Format('  (%.2f px a point; the client %d x %d; the view at %d)', [Px1, E.ClientWidth, E.ClientHeight, E.ViewTop]));
   Check(Format('the selection shown (%d pixels tinted), every one of them on a line, turned with it (%d off)',
     [Lit, Outside]), (Lit > 300) and (Outside <= Lit div 200));
+  { typed in still, its turned frame's right side's handle dragged 30 pt further out: the box wider along itself }
+  E.Zoom := Z0;
+  Pump;
+  E.ViewTop := 0;
+  Pump;
+  E.SetSelection(E.CaretPos, E.CaretPos);
+  Pump;
+  P := E.PageToClient(0, (G.CX + G.W / 2 * Cos(Th)) / Pt, (G.CY + G.W / 2 * Sin(Th)) / Pt);
+  Q := E.PageToClient(0, (G.CX + (G.W / 2 + 30 * Pt) * Cos(Th)) / Pt, (G.CY + (G.W / 2 + 30 * Pt) * Sin(Th)) / Pt);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+  for I := 1 to 4 do
+  begin
+    DX := P.X + (Q.X - P.X) * I div 4;
+    DY := P.Y + (Q.Y - P.Y) * I div 4;
+    TLedParadeWheel(E).MouseMove([ssLeft], DX, DY);
+  end;
+  TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
+  Pump;
+  if not E.SelectedShapeGeom(G2) then
+    G2.W := 0;
+  Check(Format('typed in, its turned frame''s side handle dragged: %.1f pt wide to %.1f, as tall, still turned',
+    [G.W / Pt, G2.W / Pt]), E.SelectedShapeGeom(G2) and
+    (Abs(G2.W - G.W - 30 * Pt) < 2 * Pt) and (Abs(G2.H - G.H) < 0.5 * Pt) and (Abs(G2.Rot - 35) < 0.01));
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
