@@ -3386,7 +3386,7 @@ begin
   SetIcon(AddButton('Canvas', 'A drawing canvas: shapes, lines, arrows and text boxes drawn in it make a diagram',
     [], @CanvasClicked), 'insertcanvas');
   SetIcon(AddButton('Text Box', 'A text box: dragged out with the mouse in the canvas (a click: one of its own size), ' +
-    'typed in at once', [], @TextBoxClicked), 'shapetext');
+    'typed in at once', [], @TextBoxClicked), 'inserttextbox');
   First := FBar.ControlCount;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do

@@ -756,6 +756,156 @@ def _(c):
             stroke(c, ORANGE, 6)
 
 
+# ---------- shapes and drawing (the Insert tab's canvas tools) ----------
+
+def ell(c, cx, cy, rx, ry):
+    c.save()
+    c.translate(cx, cy)
+    c.scale(rx, ry)
+    c.new_sub_path()
+    c.arc(0, 0, 1, 0, 2 * math.pi)
+    c.restore()
+
+
+def node(c, x, y, r=8):
+    """a point of a path: a small white square, outlined"""
+    rrect(c, x - r, y - r, 2 * r, 2 * r, 3)
+    c.set_source_rgb(1, 1, 1)
+    c.fill_preserve()
+    stroke(c, ORANGE, 5)
+
+
+@icon("insertshape")
+def _(c):
+    body(c, 12, 14, 66, 66, 12)
+    ell(c, 82, 82, 34, 34)
+    pale(c, ORANGE)
+    stroke(c, ORANGE)
+
+
+@icon("insertcanvas")
+def _(c):
+    body(c, 10, 16, 108, 96, 14)
+    rrect(c, 24, 34, 30, 30, 6)
+    c.set_source(grad(BLUE, 24, 34, 54, 64, alpha=0.75))
+    c.fill()
+    ell(c, 92, 84, 15, 15)
+    c.set_source(grad(GREEN, 77, 69, 107, 99))
+    c.fill()
+    arrow(c, 56, 56, 80, 76, ORANGE, 7, 12)
+
+
+@icon("inserttextbox")
+def _(c):
+    # a box with a large T and a line of text under it
+    rrect(c, 12, 16, 104, 96, 12)
+    pale(c)
+    c.set_source(grad())
+    c.set_line_width(7)
+    c.set_dash([14, 9])
+    c.stroke()
+    c.set_dash([])
+    bar(c, 36, 38, 92, 38, BLUE, 12)
+    bar(c, 64, 38, 64, 76, BLUE, 12)
+    bar(c, 34, 94, 94, 94, ORANGE, 8)
+
+
+@icon("shapetext")
+def _(c):
+    ell(c, 64, 64, 54, 46)
+    pale(c)
+    stroke(c)
+    bar(c, 40, 44, 88, 44, ORANGE, 11)
+    bar(c, 64, 44, 64, 88, ORANGE, 11)
+
+
+@icon("rotate")
+def _(c):
+    c.new_path()
+    c.arc(64, 64, 42, math.radians(-50), math.radians(230))
+    stroke(c)
+    t = math.radians(230)   # its end: an arrowhead pointing on round
+    x, y = 64 + 42 * math.cos(t), 64 + 42 * math.sin(t)
+    dx, dy = -math.sin(t), math.cos(t)     # the way the arc goes on
+    for s_ in (-1, 1):
+        ang = math.atan2(dy, dx) + math.pi + s_ * 0.6
+        c.move_to(x, y)
+        c.line_to(x + 22 * math.cos(ang), y + 22 * math.sin(ang))
+        stroke(c, ORANGE, 10)
+    bar(c, x, y, x, y, ORANGE, 10)
+
+
+@icon("editpoints")
+def _(c):
+    c.move_to(20, 104)
+    c.curve_to(14, 50, 40, 22, 66, 22)
+    c.curve_to(92, 22, 116, 50, 106, 96)
+    c.line_to(20, 104)
+    pale(c)
+    stroke(c)
+    for x, y in ((20, 104), (66, 22), (106, 96), (40, 40)):
+        node(c, x, y)
+
+
+@icon("wraptext")
+def _(c):
+    rrect(c, 12, 14, 52, 52, 10)
+    pale(c, GREEN)
+    stroke(c, GREEN, 8)
+    c.move_to(18, 60)
+    c.line_to(34, 38)
+    c.line_to(46, 50)
+    c.line_to(58, 60)
+    c.close_path()
+    c.set_source(grad(GREEN, 18, 38, 58, 60))
+    c.fill()
+    lines(c, 78, [22, 42, 62], [36, 36, 36], width=9)
+    lines(c, 14, [86, 106], [100, 76], width=9)
+
+
+@icon("arrange")
+def _(c):
+    body(c, 12, 12, 64, 64, 12)
+    rrect(c, 52, 52, 64, 64, 12)
+    c.set_source(grad(BLUE, 52, 52, 116, 116))
+    c.fill_preserve()
+    stroke(c)
+
+
+@icon("group")
+def _(c):
+    rrect(c, 30, 32, 38, 38, 8)
+    pale(c)
+    stroke(c, BLUE, 9)
+    ell(c, 82, 84, 20, 20)
+    pale(c, GREEN)
+    stroke(c, GREEN, 9)
+    for (x, y, dx, dy) in ((12, 12, 1, 1), (116, 12, -1, 1), (12, 116, 1, -1), (116, 116, -1, -1)):
+        c.move_to(x + dx * 22, y)
+        c.line_to(x, y)
+        c.line_to(x, y + dy * 22)
+        stroke(c, ORANGE, 8)
+
+
+@icon("alignshapes")
+def _(c):
+    bar(c, 18, 12, 18, 116, ORANGE, 9)
+    rrect(c, 32, 22, 82, 30, 9)
+    pale(c)
+    stroke(c, BLUE, 9)
+    rrect(c, 32, 76, 52, 30, 9)
+    pale(c)
+    stroke(c, BLUE, 9)
+
+
+@icon("shapetheme")
+def _(c):
+    for (x, y, st) in ((14, 14, BLUE), (68, 14, ORANGE), (14, 68, GREEN), (68, 68, RED)):
+        rrect(c, x, y, 46, 46, 10)
+        c.set_source(grad(st, x, y, x + 46, y + 46))
+        c.fill()
+
+
 # ---------- out ----------
 
 def render(name):
