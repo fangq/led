@@ -18896,6 +18896,68 @@ var
   P: TPoint;
   Ch: TUTF8Char;
   Txt, Got: string;
+  Names, Paths, Types: TStringArray;
+  Btn: TSpeedButton;
+  M: TPopupMenu;
+  Gray, H0: Integer;
+  Visual: TLedVisualPane;
+
+  { the shapes of slide K's canvas: their placeholder kinds, those empty marked so ("title body" ...) }
+  function SlidePhs(K: Integer; EmptyOnly: Boolean): string;
+  var
+    J: Integer;
+    DD: pd_pos;
+    BB: TParadeShapeBoxes;
+    T, X: string;
+  begin
+    Result := '';
+    DD := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, E.SlideSection(K), 0), 0), 0);
+    BB := E.DrawingShapes(DD);
+    for J := 0 to High(BB) do
+      if E.PlaceholderOf(DD, BB[J].Sid, T, X) then
+      begin
+        if T = '' then
+          T := 'body';
+        if not EmptyOnly or ((BB[J].Story <> 0) and (pd_doc_child(E.Doc, BB[J].Story, 1) = 0) and
+           (E.ParaText(pd_doc_child(E.Doc, BB[J].Story, 0)) = '')) then
+          Result := Result + T + ' ';
+      end;
+  end;
+
+  { gray prompt pixels inside a box of slide 0's canvas (drawing units) }
+  function PromptPixels(X0, Y0, X1, Y1: Double): Integer;
+  var
+    Bm: TBitmap;
+    Im: TLazIntfImage;
+    A0, A1: TPoint;
+    XX, YY: Integer;
+    CC: TFPColor;
+  begin
+    Result := 0;
+    A0 := E.PageToClient(0, X0 / PD_SP_PER_PT, Y0 / PD_SP_PER_PT);
+    A1 := E.PageToClient(0, X1 / PD_SP_PER_PT, Y1 / PD_SP_PER_PT);
+    Bm := TBitmap.Create;
+    try
+      Bm.PixelFormat := pf32bit;
+      Bm.SetSize(E.ClientWidth, E.ClientHeight);
+      E.PaintTo(Bm.Canvas, 0, 0);
+      Im := Bm.CreateIntfImage;
+      try
+        for YY := Max(0, A0.Y) to Min(Im.Height - 1, A1.Y) do
+          for XX := Max(0, A0.X) to Min(Im.Width - 1, A1.X) do
+          begin
+            CC := Im.Colors[XX, YY];
+            if (Abs((CC.red shr 8) - (CC.green shr 8)) < 12) and (Abs((CC.green shr 8) - (CC.blue shr 8)) < 12) and
+               ((CC.red shr 8) > 60) and ((CC.red shr 8) < 220) then
+              Inc(Result);
+          end;
+      finally
+        Im.Free;
+      end;
+    finally
+      Bm.Free;
+    end;
+  end;
 {$ENDIF}
 begin
   Say('File > New Presentation');
@@ -18911,6 +18973,15 @@ begin
     Exit;
   end;
   E := Tab.Visual.Editor as TParadeEdit;
+  H0 := F.Height;   { room to see the slide in, whatever panes the tests before left open }
+  if E.ClientHeight < 250 then
+  begin
+    F.Height := Min(Screen.Height - 40, F.Height + 300 - E.ClientHeight);
+    Pump;
+  end;
+  E.GoToSlide(0);
+  E.ViewTop := 0;
+  Pump;
   Check(Format('one slide (%d), untitled', [E.SlideCount]), (E.SlideCount = 1) and (Tab.Document.FileName = ''));
   FillChar(Sp, SizeOf(Sp), 0);
   pd_doc_section_props(E.Doc, E.SlideSection(0), Sp);
@@ -18937,6 +19008,71 @@ begin
   Check('their prompts', (TParadeEdit.PlaceholderPrompt('ctrTitle') = 'Click to add title') and
     (TParadeEdit.PlaceholderPrompt('subTitle') = 'Click to add subtitle'));
   Check('not changed yet', not Tab.Document.Master.Modified);
+  Gray := 0;
+  if Length(Boxes) > 0 then
+  begin
+    P := E.PageToClient(0, Boxes[0].X0 / PD_SP_PER_PT, Boxes[0].Y0 / PD_SP_PER_PT);
+    WriteLn(Format('  (the editor %d x %d; the title''s corner at %d,%d)', [E.ClientWidth, E.ClientHeight, P.X, P.Y]));
+    Gray := PromptPixels(Boxes[0].X0, Boxes[0].Y0, Boxes[0].X1, Boxes[0].Y1);
+  end;
+  Check(Format('the title''s prompt shown, gray in its box (%d pixels)', [Gray]), Gray > 30);
+  { New Slide on Insert: the template's layouts }
+  Visual := Tab.Visual;
+  Btn := ButtonByCaption(Visual, 'New Slide ' + #$E2#$96#$BE);
+  Check('Insert has New Slide, for a presentation', (Btn <> nil) and Btn.Visible and (Btn.Tag <> 0));
+  Check(Format('the template''s layouts: %d', [E.SlideLayouts(Names, Paths, Types)]), (Length(Names) = 4) and
+    (Names[0] = 'Title Slide') and (Names[1] = 'Title and Content') and (Names[2] = 'Title Only') and
+    (Names[3] = 'Blank') and (Types[1] = 'obj') and (Paths[3] = 'ppt/slideLayouts/slideLayout4.xml'));
+  { Ctrl+M on the Title Slide: the next on Title and Content, its title and content empty, as PowerPoint makes it }
+  Visual.NewSlideHere;
+  Pump;
+  Check(Format('Ctrl+M after the Title Slide: a slide on Title and Content (%d slides, %s)', [E.SlideCount,
+    E.SlideLayoutPath(1)]), (E.SlideCount = 2) and (E.SlideLayoutPath(1) = 'ppt/slideLayouts/slideLayout2.xml'));
+  Check('its title and its content, empty, ready for their prompts: ' + SlidePhs(1, True),
+    SlidePhs(1, True) = 'title body ');
+  if GetEnvironmentVariable('LED_SELFTEST_SHOT') <> '' then
+  begin
+    E.ShowSlide(1);
+    Pump;
+    with TBitmap.Create do
+      try
+        PixelFormat := pf32bit;
+        SetSize(E.ClientWidth, E.ClientHeight);
+        E.PaintTo(Canvas, 0, 0);
+        SaveToFile(GetEnvironmentVariable('LED_SELFTEST_SHOT'));
+      finally
+        Free;
+      end;
+  end;
+  { the menu: Blank }
+  M := nil;
+  if Btn <> nil then
+    M := TPopupMenu(Btn.Tag);
+  if M <> nil then
+  begin
+    if Assigned(M.OnPopup) then
+      M.OnPopup(M);
+    Txt := '';
+    for I := 0 to M.Items.Count - 1 do
+      Txt := Txt + '|' + M.Items[I].Caption;
+    Check('its menu: ' + Txt, Txt = '|Title Slide|Title and Content|Title Only|Blank|-|Duplicate Slide');
+    Check('this slide''s layout ticked', M.Items[1].Checked and not M.Items[0].Checked);
+    M.Items[3].Click;
+    Pump;
+  end;
+  Check(Format('Blank chosen: a third slide on it, nothing on it (%d slides, %s, "%s")', [E.SlideCount,
+    E.SlideLayoutPath(2), SlidePhs(2, False)]), (E.SlideCount = 3) and
+    (E.SlideLayoutPath(2) = 'ppt/slideLayouts/slideLayout4.xml') and (SlidePhs(2, False) = '') and
+    (E.CurrentSlide = 2));
+  Check('the slides before it on theirs still', (E.SlideLayoutPath(0) = 'ppt/slideLayouts/slideLayout1.xml') and
+    (E.SlideLayoutPath(1) = 'ppt/slideLayouts/slideLayout2.xml'));
+  { undone: one step, the slide gone }
+  E.Undo;
+  Pump;
+  Check(Format('one Undo takes it back (%d slides)', [E.SlideCount]), E.SlideCount = 2);
+  E.GoToSlide(0);
+  E.ViewTop := 0;
+  Pump;
   { a click in the title's middle, and typing: the title's text }
   Got := '';
   if Length(Boxes) > 0 then
@@ -18965,6 +19101,7 @@ begin
   Check('clicked in the title and typed: "' + Got + '"', Got = Txt);
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
+  F.Height := H0;
   Pump;
   {$ENDIF}
 end;

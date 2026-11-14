@@ -207,6 +207,9 @@ type
     FZoomBox: TComboBox;
     FMarksBtn, FNavBtn: TSpeedButton;
     FShowStartBtn, FShowHereBtn: TSpeedButton;   { View > Slide show, for a presentation }
+    FNewSlideBtn: TSpeedButton;   { Home > New Slide, its layouts: for a presentation }
+    FNewSlideMenu: TPopupMenu;
+    FLayoutPaths: TStringArray;   { (the layout each item of its menu is on) }
     FShowForm: TForm;                            { the slide show playing, nil none }
     FNavPanel: TPanel;
     FNavList: TListBox;
@@ -438,6 +441,11 @@ type
     function TabShown(AIndex: Integer): Boolean;
     { Ctrl+M: a new slide after the one being edited, on its layout, its placeholders empty }
     procedure NewSlideHere;
+    { New Slide's menu: the presentation's layouts, filled as it opens; one chosen: a slide on it }
+    procedure NewSlideMenuPopup(Sender: TObject);
+    procedure NewSlideLayoutClicked(Sender: TObject);
+    { a new slide after slide After on that layout ('' the one PowerPoint would choose, else its own) }
+    procedure NewSlideAfter(After: Integer; const Layout: string);
     { the selected shape's place in its canvas (points from the canvas's top left, its box before it is turned),
       its size (points) and turn (degrees clockwise), as the Size and Position dialog shows them }
     function ShapePlacement(out XPt, YPt, WPt, HPt, Deg: Double): Boolean;
@@ -2348,6 +2356,14 @@ var
   end;
 
 begin
+  { a presentation's New Slide, its layouts to choose from, first, as PowerPoint's Insert tab has it (not on Home:
+    there it would take the width the font and the styles need, and wrap the tab onto a second line) }
+  FNewSlideMenu := TPopupMenu.Create(Self);
+  FNewSlideMenu.OnPopup := @NewSlideMenuPopup;
+  FNewSlideBtn := MenuButton('insertcanvas', 'New Slide', 'A new slide after this one, on the layout chosen ' +
+    '(Ctrl+M: on the layout PowerPoint would choose)', FNewSlideMenu);
+  FNewSlideBtn.Name := 'NewSlideBtn';
+  FNewSlideBtn.Visible := False;
   { the big ones: what is put in most; the others two by two beside them }
   M := TPopupMenu.Create(Self);
   for i := 0 to High(TableSizes) do
@@ -4315,6 +4331,8 @@ begin
     FShowStartBtn.Enabled := Shown;
     FShowHereBtn.Enabled := Shown;
   end;
+  if (FNewSlideBtn <> nil) and (FNewSlideBtn.Visible <> Shown) then
+    FNewSlideBtn.Visible := Shown;
   if (FAnimTab >= 0) and (FAnimTab < Length(FTabBtns)) and (FTabBtns[FAnimTab].Visible <> Shown) then
   begin
     if not Shown then
@@ -4481,7 +4499,7 @@ var
 begin
   i := FSlideMenuAt;
   case TMenuItem(Sender).Tag of
-    0: if not FEdit.NewLayoutSlide(i) then FEdit.NewSlide(i);   { on its layout, its placeholders empty }
+    0: NewSlideAfter(i, '');   { on the layout PowerPoint would choose, its placeholders empty }
     1: FEdit.NewSlide(i, True);
     7: FEdit.ResetSlide(i);
     2: FEdit.DeleteSlide(i);
@@ -5882,13 +5900,73 @@ begin
 end;
 
 procedure TLedVisualPane.NewSlideHere;
+begin
+  NewSlideAfter(Max(0, FEdit.CurrentSlide), '');
+  BackToPage;
+end;
+
+procedure TLedVisualPane.NewSlideAfter(After: Integer; const Layout: string);
 var
+  L: string;
+begin
+  L := Layout;
+  if L = '' then
+    L := FEdit.NextSlideLayout(After);   { after a Title Slide: Title and Content }
+  if (L = '') or not FEdit.NewSlideOnLayout(After, L) then
+    if not FEdit.NewLayoutSlide(After) then   { on its layout, its placeholders empty }
+      FEdit.NewSlide(After);
+  UpdateSlidePane(True);
+end;
+
+procedure TLedVisualPane.NewSlideMenuPopup(Sender: TObject);
+var
+  Names, Types, Designs: TStringArray;
   I: Integer;
+  Mi: TMenuItem;
+  Several: Boolean;
+begin
+  FNewSlideMenu.Items.Clear;
+  FLayoutPaths := nil;
+  if FEdit.SlideLayoutsByMaster(Names, FLayoutPaths, Types, Designs) = 0 then
+  begin   { a deck not read from PowerPoint's: a slide as this one is }
+    MenuItem(FNewSlideMenu, 'New Slide' + #9 + 'Ctrl+M', -1, @NewSlideLayoutClicked);
+    Exit;
+  end;
+  Several := False;
+  for I := 1 to High(Designs) do
+    if Designs[I] <> Designs[0] then
+      Several := True;
+  for I := 0 to High(Names) do
+  begin
+    if Several and ((I = 0) or (Designs[I] <> Designs[I - 1])) then
+    begin   { more than one master: each's layouts under its design's name, as PowerPoint lists them }
+      if I > 0 then
+        MenuItem(FNewSlideMenu, '-', -2, nil);
+      Mi := MenuItem(FNewSlideMenu, Designs[I], -2, nil);
+      Mi.Enabled := False;
+    end;
+    Mi := MenuItem(FNewSlideMenu, Names[I], I, @NewSlideLayoutClicked);
+    Mi.Checked := FLayoutPaths[I] = FEdit.SlideLayoutPath(Max(0, FEdit.CurrentSlide));   { (this slide's) }
+  end;
+  MenuItem(FNewSlideMenu, '-', -2, nil);
+  MenuItem(FNewSlideMenu, 'Duplicate Slide', -3, @NewSlideLayoutClicked);
+end;
+
+procedure TLedVisualPane.NewSlideLayoutClicked(Sender: TObject);
+var
+  I, T: Integer;
 begin
   I := Max(0, FEdit.CurrentSlide);
-  if not FEdit.NewLayoutSlide(I) then
-    FEdit.NewSlide(I);
-  UpdateSlidePane(True);
+  T := TMenuItem(Sender).Tag;
+  if T = -3 then
+  begin
+    FEdit.NewSlide(I, True);
+    UpdateSlidePane(True);
+  end
+  else if (T >= 0) and (T <= High(FLayoutPaths)) then
+    NewSlideAfter(I, FLayoutPaths[T])
+  else
+    NewSlideAfter(I, '');
   BackToPage;
 end;
 
