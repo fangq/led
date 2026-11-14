@@ -90,10 +90,67 @@ var
 { Flushed after every line.  Output to a file is block-buffered, so without
   this the log stops well short of wherever a hang actually is -- which cost
   a diagnosis once already. }
+{ A check or a heading made: the watchdog's sign that the run is moving; the heading, where it is }
+var
+  Beat: QWord = 0;
+  Section: string = '';
+  OnlyTests: TStringList = nil;   { LED_SELFTEST_ONLY's parts, lower case; nil: every test }
+
 procedure Say(const AText: string);
 begin
   WriteLn(AText);
   Flush(Output);
+  Beat := GetTickCount64;
+  if (AText <> '') and (AText[1] <> ' ') then
+    Section := AText;
+end;
+
+{ LED_SELFTEST_ONLY=canvas,svg runs the tests whose names have any of those in them (case aside), and no others: a
+  change's own tests, in seconds, not the whole suite's minutes.  (A test that leans on what one before it left
+  may need that one named too.) }
+function Wanted(const AName: string): Boolean;
+var
+  i: Integer;
+  N: string;
+begin
+  if OnlyTests = nil then
+    Exit(True);
+  N := LowerCase(AName);
+  for i := 0 to OnlyTests.Count - 1 do
+    if Pos(OnlyTests[i], N) > 0 then
+      Exit(True);
+  Result := False;
+end;
+
+type
+  { No check nor heading for LED_SELFTEST_STALL seconds (180 unset): the run is stuck -- a modal dialog nobody will
+    answer, a loop -- and said so, with where, and ended with exit code 3; not left to sit until someone notices. }
+  TSelfTestWatchdog = class(TThread)
+  protected
+    procedure Execute; override;
+  end;
+
+procedure TSelfTestWatchdog.Execute;
+var
+  Limit: QWord;
+begin
+  Limit := QWord(StrToIntDef(GetEnvironmentVariable('LED_SELFTEST_STALL'), 180)) * 1000;
+  while not Terminated do
+  begin
+    Sleep(1000);
+    if (Beat <> 0) and (GetTickCount64 - Beat > Limit) then
+    begin
+      WriteLn(Format('  FAIL  STALLED: nothing checked for %d s, in "%s" -- a dialog waiting, or a loop',
+        [Limit div 1000, Section]));
+      WriteLn(Format('%d checks, %d failures (stopped: stalled)', [Checks, Failures + 1]));
+      Flush(Output);
+      {$IFDEF UNIX}
+      FpExit(3);
+      {$ELSE}
+      Halt(3);
+      {$ENDIF}
+    end;
+  end;
 end;
 
 procedure Check(const AName: string; ACondition: Boolean);
@@ -18836,7 +18893,7 @@ var
   E: TParadeEdit;
   At: pd_pos;
   Sid, I: Integer;
-  X: string;
+  X, Fill: string;
   P, Q: TPoint;
 
   function CanvasXml: string;
@@ -18908,25 +18965,24 @@ begin
   Check('one Undo: the words back, the outlines gone', (Pos('>Hello shapes</w:t>', X) > 0) and
     (Pos('name="Text as shape', X) = 0));
 
-  { a text box of its own, white with a black line, typed in: its box kept, its words made shapes }
+  { a shape with a fill and a line of its own, with text: the shape kept, its words made shapes }
   E.SelectedShape(At, Sid);
-  E.InsertShape('textbox');
-  P := E.PageToClient(0, 100, 300);
-  Q := E.PageToClient(0, 300, 360);
-  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
-  for I := 1 to 4 do
-    TLedParadeWheel(E).MouseMove([ssLeft], P.X + (Q.X - P.X) * I div 4, P.Y + (Q.Y - P.Y) * I div 4);
-  TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
-  Pump;
+  Check('a rectangle with text in it', E.AddShape('rect', 100 * PD_SP_PER_PT, 300 * PD_SP_PER_PT, 300 * PD_SP_PER_PT,
+    360 * PD_SP_PER_PT) and E.AddShapeText);
   E.InsertText('Boxed');
   Pump;
-  Check('a text box drawn and typed in, selected', E.SelectTextBox and (E.SelectedTextStory <> 0));
+  X := CanvasXml;
+  I := Pos('prst="rect"', X);
+  Fill := Copy(X, Pos('<a:srgbClr val="', X, I) + 16, 6);
+  Check('typed in, selected: ' + Fill, E.SelectTextBox and (E.SelectedTextStory <> 0) and
+    (E.ParaText(pd_doc_child(E.Doc, E.SelectedTextStory, 0)) = 'Boxed'));
   Check('its text made shapes', E.ConvertTextToShapes);
   Pump;
   X := CanvasXml;
-  Check(Format('its box kept (white, a black line), no text in it, %d freeforms of letters now',
-    [Count('name="Text as shape', X)]), (Pos('>Boxed<', X) = 0) and (Count('<wps:txbx>', X) = 1) and
-    (Pos('<a:srgbClr val="FFFFFF"/>', X) > 0) and (Count('name="Text as shape', X) = 1));
+  I := Pos('prst="rect"', X);
+  Check(Format('the rectangle kept, its fill %s, no text in it, %d freeform of letters now',
+    [Fill, Count('name="Text as shape', X)]), (Pos('>Boxed<', X) = 0) and (Count('<wps:txbx>', X) = 1) and (I > 0) and
+    (Copy(X, Pos('<a:srgbClr val="', X, I) + 16, 6) = Fill) and (Count('name="Text as shape', X) = 1));
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
@@ -18950,6 +19006,33 @@ var
   St: pd_block_id;
   Ch: TUTF8Char;
   T: string;
+  Top0, S2: Integer;
+  Z0: Double;
+  A2: pd_pos;
+  Sp: pd_section_props;
+
+  function DrawingXml: string;
+  var
+    O: pd_inline;
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+    S2: RawByteString;
+    J: TJSONData;
+  begin
+    Result := '';
+    if (pd_doc_inline_at(E.Doc, At, O) <> PD_OK) or
+       (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) <> PD_OK) then
+      Exit;
+    SetString(S2, PAnsiChar(Data), Len);
+    J := GetJSON(S2);
+    try
+      if (J is TJSONObject) and (TJSONObject(J).Find('xml') <> nil) then
+        Result := TJSONObject(J).Strings['xml'];
+    finally
+      J.Free;
+    end;
+  end;
 
   procedure Typed(const S: string);
   var
@@ -18987,6 +19070,7 @@ begin
     Exit;
   end;
   E := Tab.Visual.Editor as TParadeEdit;
+  WriteLn(Format('  (the page: %d x %d, in a window %d x %d)', [E.ClientWidth, E.ClientHeight, F.Width, F.Height]));
   E.SelectedShape(At, Sid);
   Btn := ButtonByCaption(Tab.Visual, 'Text Box');
   Check('the Insert tab has Text Box', Btn <> nil);
@@ -19007,6 +19091,7 @@ begin
     (Abs((Boxes[0].Y1 - Boxes[0].Y0) / PD_SP_PER_PT - 100) < 3));
   Typed('Typed');
   Check('typed in at once: ' + BoxText, BoxText = 'Typed');
+  Check('a text box: no fill, no line of its own', Pos('<a:noFill/><a:ln><a:noFill/></a:ln>', DrawingXml) > 0);
   { clicked in it below its text, twice: the caret kept in it, at its end }
   Mid := E.PageToClient(0, 220, 220);
   for I := 1 to 2 do
@@ -19018,6 +19103,10 @@ begin
   end;
   Typed(' more');
   Check('clicked in below its text: still typed in, at its end: ' + BoxText, BoxText = 'Typed more');
+  E.SelectAll;
+  Check('Ctrl+A typing in it: its text, not the page''s: "' + E.SelectedText + '"', E.SelectedText = 'Typed more');
+  E.SetSelection(E.CaretPos, E.CaretPos);   { (the caret at its end again, nothing selected) }
+
 
   { Form on a canvas page: all its fields offered; its Text box a form field in a box of its own, floating }
   Btn := ButtonByCaption(Tab.Visual, 'Form ' + #$E2#$96#$BE);
@@ -19039,6 +19128,43 @@ begin
       [Length(Boxes), BoxText]), (Length(Boxes) = 1) and (Pos('Typed more', BoxText) = 1) and
       (Pos('Click here to enter text.', BoxText) > 0));
   end;
+  { white space clicked, a text box left and the canvas selected: the page where it was (zoomed in: taller than
+    the view, so there is somewhere to scroll to) }
+  Z0 := E.Zoom;
+  E.Zoom := 3;
+  Pump;
+  E.ViewTop := 80;
+  Pump;
+  Top0 := E.ViewTop;
+  Mid := E.PageToClient(0, 40, 60);     { (white: above and left of the text box) }
+  for I := 1 to 2 do
+  begin
+    Sleep(600);
+    TLedParadeWheel(E).MouseDown(mbLeft, [], Mid.X, Mid.Y);
+    TLedParadeWheel(E).MouseUp(mbLeft, [], Mid.X, Mid.Y);
+    Pump;
+  end;
+  if Top0 > 0 then
+    Check(Format('clicks on the canvas''s white space: the page not moved (%d, %d)', [Top0, E.ViewTop]),
+      E.ViewTop = Top0)
+  else
+    WriteLn('  (the page fits the view: nothing to scroll)');
+  E.Zoom := Z0;
+  Pump;
+  { by the page's left and right edges (off every shape): its canvas selected, no caret in the page's own text }
+  Sp := E.CurrentSectionProps;
+  for I := 0 to 1 do
+  begin
+    E.SetSelection(PdPos(At.block, 0), PdPos(At.block, 0));     { (out of the canvas, as a typing caret leaves it) }
+    Sleep(600);
+    Mid := E.PageToClient(0, IfThen(I = 0, 0.5, Sp.page_width / PD_SP_PER_PT - 0.5), 300);
+    TLedParadeWheel(E).MouseDown(mbLeft, [], Mid.X, Mid.Y);
+    TLedParadeWheel(E).MouseUp(mbLeft, [], Mid.X, Mid.Y);
+    Pump;
+    if I = 0 then T := 'left' else T := 'right';
+    Check(Format('a click by the canvas page''s %s edge: its canvas selected, not a caret in the page''s text', [T]),
+      E.SelectedShape(A2, S2) and (S2 = -1) and E.CanvasSelected);
+  end;
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
@@ -19059,6 +19185,9 @@ var
   O: pd_inline;
   Key: Word;
   Spec, Content: string;
+  X0, Y0: Int64;
+  Pa, Pb: TPoint;
+  K: Integer;
 
   function CanvasXml: string;
   var
@@ -19104,6 +19233,16 @@ var
     if K = 0 then
       Exit(0);
     Result := StrToInt64Def(Copy(Off, K + 3, Pos('"', Off, K + 3) - K - 3), 0);
+  end;
+
+  function XOf(const Off: string): Int64;   { an a:off's x }
+  var
+    K2: Integer;
+  begin
+    K2 := Pos('x="', Off);
+    if K2 = 0 then
+      Exit(0);
+    Result := StrToInt64Def(Copy(Off, K2 + 3, Pos('"', Off, K2 + 3) - K2 - 3), 0);
   end;
 
   function OffY(const T: string; N: Integer): string;   { the n-th form field's offset }
@@ -19157,6 +19296,20 @@ begin
   F.actUndo.Execute;
   Pump;
   Check('one Undo: the last field and its box gone together', Count('name="Form field ', CanvasXml) = 2);
+  { the date's box dragged by the field in it (a press there no calendar yet): moved down 60 pt }
+  X := CanvasXml;
+  Y0 := YOf(OffY(X, 1));
+  X0 := XOf(OffY(X, 1));
+  Pa := E.PageToClient(0, X0 / 12700 + 30, Y0 / 12700 + 12);
+  Pb := E.PageToClient(0, X0 / 12700 + 30, Y0 / 12700 + 72);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], Pa.X, Pa.Y);
+  for K := 1 to 4 do
+    TLedParadeWheel(E).MouseMove([ssLeft], Pa.X, Pa.Y + (Pb.Y - Pa.Y) * K div 4);
+  TLedParadeWheel(E).MouseUp(mbLeft, [], Pb.X, Pb.Y);
+  Pump;
+  X := CanvasXml;
+  Check(Format('a date field dragged by its text: its box moved down 60 pt (%.0f pt)', [(YOf(OffY(X, 1)) - Y0) / 12700]),
+    Abs((YOf(OffY(X, 1)) - Y0) / 12700 - 60) < 3);
 
   { a field in the page's own text, as an older build put one: Backspace takes it out, whole; the canvas stays }
   P := PdPos(At.block, 0);
@@ -22612,6 +22765,15 @@ begin
 
   Say('LED self-test');
   WriteLn;
+  if GetEnvironmentVariable('LED_SELFTEST_ONLY') <> '' then
+  begin
+    OnlyTests := TStringList.Create;
+    OnlyTests.Delimiter := ',';
+    OnlyTests.StrictDelimiter := True;
+    OnlyTests.DelimitedText := LowerCase(GetEnvironmentVariable('LED_SELFTEST_ONLY'));
+    Say('(only the tests named with: ' + OnlyTests.CommaText + ')');
+  end;
+  TSelfTestWatchdog.Create(False).FreeOnTerminate := True;
 
   F := LedMainForm;
   { No modal dialog may ever appear during a scripted run: it would block the
@@ -22633,212 +22795,212 @@ begin
     Exit(0);
   end;
 
-  TestStartupDocument(F);
-  TestBinaryFiles(F);
-  TestBJDataFiles(F);
-  TestBJDataFolding(F);
-  TestBJDataEditing(F);
-  TestNotebookEditing(F);
-  TestNotebookColouring(F);
-  TestNotebookRunning(F);
-  TestNotebookBounds(F);
-  TestWindowDetails(F);
-  TestNotebookPane(F);
-  TestNotebookCellKeys(F);
-  TestNotebookProseHeight(F);
-  TestNotebookRewriteStays(F);
-  TestNotebookPolish(F);
-  TestBJDataGuides(F);
-  TestBJDataSearch(F);
+  if Wanted('TestStartupDocument') then TestStartupDocument(F);
+  if Wanted('TestBinaryFiles') then TestBinaryFiles(F);
+  if Wanted('TestBJDataFiles') then TestBJDataFiles(F);
+  if Wanted('TestBJDataFolding') then TestBJDataFolding(F);
+  if Wanted('TestBJDataEditing') then TestBJDataEditing(F);
+  if Wanted('TestNotebookEditing') then TestNotebookEditing(F);
+  if Wanted('TestNotebookColouring') then TestNotebookColouring(F);
+  if Wanted('TestNotebookRunning') then TestNotebookRunning(F);
+  if Wanted('TestNotebookBounds') then TestNotebookBounds(F);
+  if Wanted('TestWindowDetails') then TestWindowDetails(F);
+  if Wanted('TestNotebookPane') then TestNotebookPane(F);
+  if Wanted('TestNotebookCellKeys') then TestNotebookCellKeys(F);
+  if Wanted('TestNotebookProseHeight') then TestNotebookProseHeight(F);
+  if Wanted('TestNotebookRewriteStays') then TestNotebookRewriteStays(F);
+  if Wanted('TestNotebookPolish') then TestNotebookPolish(F);
+  if Wanted('TestBJDataGuides') then TestBJDataGuides(F);
+  if Wanted('TestBJDataSearch') then TestBJDataSearch(F);
   WriteLn;
 
-  TestLineEndDetection;
+  if Wanted('TestLineEndDetection') then TestLineEndDetection;
   WriteLn;
-  TestKernelPythonSearch;
+  if Wanted('TestKernelPythonSearch') then TestKernelPythonSearch;
   WriteLn;
-  TestSharedBufferSplitView(F);
+  if Wanted('TestSharedBufferSplitView') then TestSharedBufferSplitView(F);
   WriteLn;
-  TestIconsAndFocus(F);
-  TestXErrorSurvival(F);
-  TestTerminalPaneAndSession(F);
-  TestBrowserNavigation(F);
-  TestBrowserTypeAhead(F);
-  TestTabReordering(F);
-  TestSaveTheRightDocument(F);
-  TestRememberedState(F);
-  TestBookmarkList(F);
-  TestSharedDocuments(F);
-  TestProjectList(F);
-  TestSpelling(F);
-  TestMeditTrim(F);
-  TestBundledFont(F);
-  TestUntitledNumbering(F);
-  TestSaveManyButtons(F);
-  TestBinarySurvivesFailedDecode(F);
-  TestShowPaneShowsThatPane(F);
-  TestPreviewFollowsDocument(F);
-  TestToolbarHasNoClipboard(F);
-  TestIdleXTraffic(F);
-  TestEditKeysGoToTheFocusedBox(F);
+  if Wanted('TestIconsAndFocus') then TestIconsAndFocus(F);
+  if Wanted('TestXErrorSurvival') then TestXErrorSurvival(F);
+  if Wanted('TestTerminalPaneAndSession') then TestTerminalPaneAndSession(F);
+  if Wanted('TestBrowserNavigation') then TestBrowserNavigation(F);
+  if Wanted('TestBrowserTypeAhead') then TestBrowserTypeAhead(F);
+  if Wanted('TestTabReordering') then TestTabReordering(F);
+  if Wanted('TestSaveTheRightDocument') then TestSaveTheRightDocument(F);
+  if Wanted('TestRememberedState') then TestRememberedState(F);
+  if Wanted('TestBookmarkList') then TestBookmarkList(F);
+  if Wanted('TestSharedDocuments') then TestSharedDocuments(F);
+  if Wanted('TestProjectList') then TestProjectList(F);
+  if Wanted('TestSpelling') then TestSpelling(F);
+  if Wanted('TestMeditTrim') then TestMeditTrim(F);
+  if Wanted('TestBundledFont') then TestBundledFont(F);
+  if Wanted('TestUntitledNumbering') then TestUntitledNumbering(F);
+  if Wanted('TestSaveManyButtons') then TestSaveManyButtons(F);
+  if Wanted('TestBinarySurvivesFailedDecode') then TestBinarySurvivesFailedDecode(F);
+  if Wanted('TestShowPaneShowsThatPane') then TestShowPaneShowsThatPane(F);
+  if Wanted('TestPreviewFollowsDocument') then TestPreviewFollowsDocument(F);
+  if Wanted('TestToolbarHasNoClipboard') then TestToolbarHasNoClipboard(F);
+  if Wanted('TestIdleXTraffic') then TestIdleXTraffic(F);
+  if Wanted('TestEditKeysGoToTheFocusedBox') then TestEditKeysGoToTheFocusedBox(F);
   { The AI pane.  All but one of these press Send or drive a turn, and with
     something installed to ask that means a real question to a real model,
     so they run with nothing behind the pane.  The exception needs whatever
     is installed, and only reads. }
-  TestTheModelShownIsTheModelAsked(F);
-  WithNoModelBehindIt(F, @TestTheAIPaneShowsAnAnswerAsItArrives);
-  WithNoModelBehindIt(F, @TestTheReadersOwnWordsAreShown);
-  WithNoModelBehindIt(F, @TestTheStatusSitsAboveWhereYouType);
-  WithNoModelBehindIt(F, @TestThinkingIsKeptAndCanBeRead);
-  TestAModelThatCannotThinkIsStillAsked(F);
-  WithNoModelBehindIt(F, @TestAnAnswerCanBecomeADocumentOfItsOwn);
-  WithNoModelBehindIt(F, @TestTheApplyButtonNamesWhatItWillDo);
-  WithNoModelBehindIt(F, @TestClearingWhileItThinksLeavesItReady);
-  WithNoModelBehindIt(F, @TestTheTwoSidesOfTheConversationLookDifferent);
-  WithNoModelBehindIt(F, @TestTheWheelScrollsTheConversation);
-  WithNoModelBehindIt(F, @TestAskingForATransformOfTheSelection);
-  WithNoModelBehindIt(F, @TestAChatReplyIsNotOfferedAsAReplacement);
-  TestTurningTheAIPaneOffTakesEffectAtOnce(F);
-  WithNoModelBehindIt(F, @TestTheAIPaneDrawsCodeItCanRead);
-  WithNoModelBehindIt(F, @TestTheAIQuestionBoxKeepsItsKeys);
-  WithNoModelBehindIt(F, @TestEnterSendsAndShiftEnterDoesNot);
-  WithNoModelBehindIt(F, @TestTheAIPaneNeverWritesToTheDocumentByItself);
-  TestACodeBlockCanBeTakenOutOfAnAnswer(F);
-  TestThePaneMenuOpensWithClose(F);
-  TestPaneIsBuiltOffScreen(F);
-  TestDockEdges(F);
-  TestPaneSizes(F);
-  TestPaneSizeMemory(F);
-  TestPaneRoomAndPlace(F);
+  if Wanted('TestTheModelShownIsTheModelAsked') then TestTheModelShownIsTheModelAsked(F);
+  if Wanted('TestTheAIPaneShowsAnAnswerAsItArrives') then WithNoModelBehindIt(F, @TestTheAIPaneShowsAnAnswerAsItArrives);
+  if Wanted('TestTheReadersOwnWordsAreShown') then WithNoModelBehindIt(F, @TestTheReadersOwnWordsAreShown);
+  if Wanted('TestTheStatusSitsAboveWhereYouType') then WithNoModelBehindIt(F, @TestTheStatusSitsAboveWhereYouType);
+  if Wanted('TestThinkingIsKeptAndCanBeRead') then WithNoModelBehindIt(F, @TestThinkingIsKeptAndCanBeRead);
+  if Wanted('TestAModelThatCannotThinkIsStillAsked') then TestAModelThatCannotThinkIsStillAsked(F);
+  if Wanted('TestAnAnswerCanBecomeADocumentOfItsOwn') then WithNoModelBehindIt(F, @TestAnAnswerCanBecomeADocumentOfItsOwn);
+  if Wanted('TestTheApplyButtonNamesWhatItWillDo') then WithNoModelBehindIt(F, @TestTheApplyButtonNamesWhatItWillDo);
+  if Wanted('TestClearingWhileItThinksLeavesItReady') then WithNoModelBehindIt(F, @TestClearingWhileItThinksLeavesItReady);
+  if Wanted('TestTheTwoSidesOfTheConversationLookDifferent') then WithNoModelBehindIt(F, @TestTheTwoSidesOfTheConversationLookDifferent);
+  if Wanted('TestTheWheelScrollsTheConversation') then WithNoModelBehindIt(F, @TestTheWheelScrollsTheConversation);
+  if Wanted('TestAskingForATransformOfTheSelection') then WithNoModelBehindIt(F, @TestAskingForATransformOfTheSelection);
+  if Wanted('TestAChatReplyIsNotOfferedAsAReplacement') then WithNoModelBehindIt(F, @TestAChatReplyIsNotOfferedAsAReplacement);
+  if Wanted('TestTurningTheAIPaneOffTakesEffectAtOnce') then TestTurningTheAIPaneOffTakesEffectAtOnce(F);
+  if Wanted('TestTheAIPaneDrawsCodeItCanRead') then WithNoModelBehindIt(F, @TestTheAIPaneDrawsCodeItCanRead);
+  if Wanted('TestTheAIQuestionBoxKeepsItsKeys') then WithNoModelBehindIt(F, @TestTheAIQuestionBoxKeepsItsKeys);
+  if Wanted('TestEnterSendsAndShiftEnterDoesNot') then WithNoModelBehindIt(F, @TestEnterSendsAndShiftEnterDoesNot);
+  if Wanted('TestTheAIPaneNeverWritesToTheDocumentByItself') then WithNoModelBehindIt(F, @TestTheAIPaneNeverWritesToTheDocumentByItself);
+  if Wanted('TestACodeBlockCanBeTakenOutOfAnAnswer') then TestACodeBlockCanBeTakenOutOfAnAnswer(F);
+  if Wanted('TestThePaneMenuOpensWithClose') then TestThePaneMenuOpensWithClose(F);
+  if Wanted('TestPaneIsBuiltOffScreen') then TestPaneIsBuiltOffScreen(F);
+  if Wanted('TestDockEdges') then TestDockEdges(F);
+  if Wanted('TestPaneSizes') then TestPaneSizes(F);
+  if Wanted('TestPaneSizeMemory') then TestPaneSizeMemory(F);
+  if Wanted('TestPaneRoomAndPlace') then TestPaneRoomAndPlace(F);
   WriteLn;
-  TestTabsAndFileRoundTrip(F);
+  if Wanted('TestTabsAndFileRoundTrip') then TestTabsAndFileRoundTrip(F);
   WriteLn;
 
   {$IFDEF MIMA}
   { The MATLAB engine, its command window and its workspace browser. }
   Say('the MATLAB engine');
-  MimaSelfTest(@Check);
+  if Wanted('MimaSelfTest') then MimaSelfTest(@Check);
   WriteLn;
   {$ENDIF}
-  TestDocumentBehaviour(F);
+  if Wanted('TestDocumentBehaviour') then TestDocumentBehaviour(F);
   WriteLn;
-  TestRecentFiles(F);
+  if Wanted('TestRecentFiles') then TestRecentFiles(F);
   WriteLn;
-  TestClipboardUnderGrab(F);
-  TestClipboardUtf8Only(F);
+  if Wanted('TestClipboardUnderGrab') then TestClipboardUnderGrab(F);
+  if Wanted('TestClipboardUtf8Only') then TestClipboardUtf8Only(F);
   WriteLn;
-  TestLanguageAndTheme(F);
-  TestJSONAndYAMLColour(F);
+  if Wanted('TestLanguageAndTheme') then TestLanguageAndTheme(F);
+  if Wanted('TestJSONAndYAMLColour') then TestJSONAndYAMLColour(F);
   WriteLn;
-  TestGlobRulesAndEncodingPrompt(F);
+  if Wanted('TestGlobRulesAndEncodingPrompt') then TestGlobRulesAndEncodingPrompt(F);
   WriteLn;
-  TestEditingCommands(F);
+  if Wanted('TestEditingCommands') then TestEditingCommands(F);
   WriteLn;
-  TestFindReplace(F);
+  if Wanted('TestFindReplace') then TestFindReplace(F);
   WriteLn;
-  TestDragKeepsItsStartingPoint(F);
-  TestColumnSelection(F);
+  if Wanted('TestDragKeepsItsStartingPoint') then TestDragKeepsItsStartingPoint(F);
+  if Wanted('TestColumnSelection') then TestColumnSelection(F);
   WriteLn;
-  TestPrefsAndShortcuts(F);
+  if Wanted('TestPrefsAndShortcuts') then TestPrefsAndShortcuts(F);
   WriteLn;
-  TestTools(F);
+  if Wanted('TestTools') then TestTools(F);
   WriteLn;
-  TestFoldGuides(F);
-  TestRowStyling(F);
-  TestWordAndFoldMarkup(F);
-  WithATallEditor(F, @TestMiniMap);
-  TestMiniMapSurvivesASharedHighlighter(F);
-  TestHexPairing(F);
-  TestLongLines(F);
-  TestWikiMarkup(F);
-  TestPreviewLineMapping(F);
-  TestPreviewOnParade(F);
-  TestPreviewClickKeepsPage(F);
-  TestAFaultIsWrittenDown(F);
-  TestPreviewDoesNotFallOffARule(F);
-  TestPreviewKeepsItsPlaceAcrossARedraw(F);
-  TestPreviewCapsABigDocument(F);
-  TestFlattenedHeadingsLookTheSame(F);
-  TestThePreviewShowsMoreThanItDid(F);
-  TestColumnPasteWithHighlighter(F);
-  TestColumnPasteAcrossTabs(F);
-  TestRecoveryJournalPass(F);
-  WithGdbDriving(F, @TestDebugger);
-  TestReportedPolish(F);
+  if Wanted('TestFoldGuides') then TestFoldGuides(F);
+  if Wanted('TestRowStyling') then TestRowStyling(F);
+  if Wanted('TestWordAndFoldMarkup') then TestWordAndFoldMarkup(F);
+  if Wanted('TestMiniMap') then WithATallEditor(F, @TestMiniMap);
+  if Wanted('TestMiniMapSurvivesASharedHighlighter') then TestMiniMapSurvivesASharedHighlighter(F);
+  if Wanted('TestHexPairing') then TestHexPairing(F);
+  if Wanted('TestLongLines') then TestLongLines(F);
+  if Wanted('TestWikiMarkup') then TestWikiMarkup(F);
+  if Wanted('TestPreviewLineMapping') then TestPreviewLineMapping(F);
+  if Wanted('TestPreviewOnParade') then TestPreviewOnParade(F);
+  if Wanted('TestPreviewClickKeepsPage') then TestPreviewClickKeepsPage(F);
+  if Wanted('TestAFaultIsWrittenDown') then TestAFaultIsWrittenDown(F);
+  if Wanted('TestPreviewDoesNotFallOffARule') then TestPreviewDoesNotFallOffARule(F);
+  if Wanted('TestPreviewKeepsItsPlaceAcrossARedraw') then TestPreviewKeepsItsPlaceAcrossARedraw(F);
+  if Wanted('TestPreviewCapsABigDocument') then TestPreviewCapsABigDocument(F);
+  if Wanted('TestFlattenedHeadingsLookTheSame') then TestFlattenedHeadingsLookTheSame(F);
+  if Wanted('TestThePreviewShowsMoreThanItDid') then TestThePreviewShowsMoreThanItDid(F);
+  if Wanted('TestColumnPasteWithHighlighter') then TestColumnPasteWithHighlighter(F);
+  if Wanted('TestColumnPasteAcrossTabs') then TestColumnPasteAcrossTabs(F);
+  if Wanted('TestRecoveryJournalPass') then TestRecoveryJournalPass(F);
+  if Wanted('TestDebugger') then WithGdbDriving(F, @TestDebugger);
+  if Wanted('TestReportedPolish') then TestReportedPolish(F);
   WriteLn;
-  TestSplitNotebook(F);
+  if Wanted('TestSplitNotebook') then TestSplitNotebook(F);
   WriteLn;
-  TestDropFiles(F);
+  if Wanted('TestDropFiles') then TestDropFiles(F);
   WriteLn;
-  TestVisualEditor(F);
-  TestLatexBibliography;
-  TestVisualLineBreaking(F);
-  TestParadeFiles(F);
-  TestTabHoverClosePref(F);
-  TestIconCache(F);
-  TestVisualDeleteKey(F);
-  TestPictureClipboard(F);
-  TestSlideTextBoxPicture(F);
-  TestDropPictures(F);
-  TestSvgShapes(F);
-  TestTurnedResize(F);
-  TestTextToShapes(F);
-  TestCanvasTextBox(F);
-  TestCanvasFormFields(F);
+  if Wanted('TestVisualEditor') then TestVisualEditor(F);
+  if Wanted('TestLatexBibliography') then TestLatexBibliography;
+  if Wanted('TestVisualLineBreaking') then TestVisualLineBreaking(F);
+  if Wanted('TestParadeFiles') then TestParadeFiles(F);
+  if Wanted('TestTabHoverClosePref') then TestTabHoverClosePref(F);
+  if Wanted('TestIconCache') then TestIconCache(F);
+  if Wanted('TestVisualDeleteKey') then TestVisualDeleteKey(F);
+  if Wanted('TestPictureClipboard') then TestPictureClipboard(F);
+  if Wanted('TestSlideTextBoxPicture') then TestSlideTextBoxPicture(F);
+  if Wanted('TestDropPictures') then TestDropPictures(F);
+  if Wanted('TestSvgShapes') then TestSvgShapes(F);
+  if Wanted('TestTurnedResize') then TestTurnedResize(F);
+  if Wanted('TestTextToShapes') then TestTextToShapes(F);
+  if Wanted('TestCanvasTextBox') then TestCanvasTextBox(F);
+  if Wanted('TestCanvasFormFields') then TestCanvasFormFields(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
-    TestVisualContextMenus(F);
-  {$ENDIF}
-  {$IFDEF LED_PARADE}
-  if LedVisualAvailable then
-    TestVisualZoomBar(F);
+    if Wanted('TestVisualContextMenus') then TestVisualContextMenus(F);
   {$ENDIF}
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
-    TestVisualRuler(F);
+    if Wanted('TestVisualZoomBar') then TestVisualZoomBar(F);
+  {$ENDIF}
+  {$IFDEF LED_PARADE}
+  if LedVisualAvailable then
+    if Wanted('TestVisualRuler') then TestVisualRuler(F);
   if LedPdfAvailable then
   begin
-    TestPdfPages(F);
-    TestPdfBookmarks(F);
+    if Wanted('TestPdfPages') then TestPdfPages(F);
+    if Wanted('TestPdfBookmarks') then TestPdfBookmarks(F);
   end;
   if LedVisualAvailable then
-    TestLatexPreview(F);
-    TestLatexTypeset(F);
+    if Wanted('TestLatexPreview') then TestLatexPreview(F);
+    if Wanted('TestLatexTypeset') then TestLatexTypeset(F);
   {$ENDIF}
-  TestLatexOutline(F);
-  TestVisualShapeTab(F);
-  TestStatusCounts(F);
-  TestNewPdoc(F);
-  TestNewCanvas(F);
-  TestTemplates(F);
-  TestFormatDialogs(F);
-  TestOpenPptx(F);
-  TestSlideShowRun(F);
-  TestAnimPaneRun(F);
-  TestIdleQuiet(F);
-  TestResPane(F);
-  TestSharedText(F);
-  TestShareToolbar(F);
+  if Wanted('TestLatexOutline') then TestLatexOutline(F);
+  if Wanted('TestVisualShapeTab') then TestVisualShapeTab(F);
+  if Wanted('TestStatusCounts') then TestStatusCounts(F);
+  if Wanted('TestNewPdoc') then TestNewPdoc(F);
+  if Wanted('TestNewCanvas') then TestNewCanvas(F);
+  if Wanted('TestTemplates') then TestTemplates(F);
+  if Wanted('TestFormatDialogs') then TestFormatDialogs(F);
+  if Wanted('TestOpenPptx') then TestOpenPptx(F);
+  if Wanted('TestSlideShowRun') then TestSlideShowRun(F);
+  if Wanted('TestAnimPaneRun') then TestAnimPaneRun(F);
+  if Wanted('TestIdleQuiet') then TestIdleQuiet(F);
+  if Wanted('TestResPane') then TestResPane(F);
+  if Wanted('TestSharedText') then TestSharedText(F);
+  if Wanted('TestShareToolbar') then TestShareToolbar(F);
   WriteLn;
-  TestSplitterMinimums(F);
+  if Wanted('TestSplitterMinimums') then TestSplitterMinimums(F);
   WriteLn;
-  TestAbsolutePathOnCommandLine(F);
+  if Wanted('TestAbsolutePathOnCommandLine') then TestAbsolutePathOnCommandLine(F);
   WriteLn;
-  TestPaneRail(F);
-  TestSpeedButtonHover(F);
+  if Wanted('TestPaneRail') then TestPaneRail(F);
+  if Wanted('TestSpeedButtonHover') then TestSpeedButtonHover(F);
   WriteLn;
-  TestFileBrowser(F);
+  if Wanted('TestFileBrowser') then TestFileBrowser(F);
   WriteLn;
-  TestTerminal(F);
+  if Wanted('TestTerminal') then TestTerminal(F);
   WriteLn;
-  TestCompletionAndSymbols(F);
-  TestSymbolsFollowTheDocument(F);
+  if Wanted('TestCompletionAndSymbols') then TestCompletionAndSymbols(F);
+  if Wanted('TestSymbolsFollowTheDocument') then TestSymbolsFollowTheDocument(F);
   WriteLn;
-  TestFolding(F);
+  if Wanted('TestFolding') then TestFolding(F);
   WriteLn;
-  TestWindowPlacement(F);
-  TestWordWrapToggling(F);
-  TestMenusAndDetection(F);
-  TestPaneBesideTab(F);
+  if Wanted('TestWindowPlacement') then TestWindowPlacement(F);
+  if Wanted('TestWordWrapToggling') then TestWordWrapToggling(F);
+  if Wanted('TestMenusAndDetection') then TestMenusAndDetection(F);
+  if Wanted('TestPaneBesideTab') then TestPaneBesideTab(F);
   WriteLn;
 
   WriteLn(Format('%d checks, %d failures', [Checks, Failures]));

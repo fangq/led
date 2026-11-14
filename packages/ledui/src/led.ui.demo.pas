@@ -26,6 +26,8 @@
     drop:PATH       that file dropped on the window (its OnDropFiles)
     type:TEXT       those keys pressed and let go, one after another, as typed
                     (letters, digits and spaces; capitals with Shift)
+    key:COMBO       one key with modifiers held: ctrl+a, shift+tab, escape,
+                    delete, backspace, return, left, right, up, down, home, end
     quit            (implied at the end)
 
   e.g.  LED_DEMO='wait:1500;act:actHelp;wait:500;shot:/tmp/help.png'
@@ -107,6 +109,7 @@ type
     procedure Step(const S: string; out AWait: Integer);
     procedure Shot(const APath: string);
     procedure TypeKeys(const AText: string);
+    procedure PressCombo(const ACombo: string);
     procedure OpenMenu(const ACaption: string);
     procedure Pointer_(const AVerb, AArg: string);
     procedure DumpTree(ATree: TCustomTreeView);
@@ -240,6 +243,11 @@ begin
   end
   else if (Verb = 'move') or (Verb = 'click') or (Verb = 'dclick') or (Verb = 'drag') then
     Pointer_(Verb, Arg)
+  else if Verb = 'key' then
+  begin
+    PressCombo(Arg);
+    AWait := 300;
+  end
   else if Verb = 'type' then
   begin
     TypeKeys(Arg);
@@ -332,6 +340,73 @@ end;
 {$ELSE}
 begin
   WriteLn(StdErr, 'LED_DEMO: type needs GTK2 on Linux');
+end;
+{$ENDIF}
+
+procedure TLedDemo.PressCombo(const ACombo: string);
+{$IFDEF LED_DEMO_GTK2}
+var
+  D: Pointer;
+  Parts: TStringList;
+  Mods: array of Byte;
+  I: Integer;
+  K, Md: string;
+  Sym: PtrUInt;
+  Code: Byte;
+begin
+  if not XtstReady or not Assigned(XKey) or not Assigned(XSymCode) then
+  begin
+    WriteLn(StdErr, 'LED_DEMO: no libXtst keys for key');
+    Exit;
+  end;
+  D := gdk_x11_get_default_xdisplay;
+  Parts := TStringList.Create;
+  try
+    Parts.Delimiter := '+';
+    Parts.StrictDelimiter := True;
+    Parts.DelimitedText := LowerCase(ACombo);
+    Mods := nil;
+    for I := 0 to Parts.Count - 2 do
+    begin
+      Md := Parts[I];
+      if Md = 'ctrl' then Sym := $FFE3
+      else if Md = 'shift' then Sym := $FFE1
+      else if Md = 'alt' then Sym := $FFE9
+      else Continue;
+      SetLength(Mods, Length(Mods) + 1);
+      Mods[High(Mods)] := XSymCode(D, Sym);
+    end;
+    if Parts.Count = 0 then Exit;
+    K := Parts[Parts.Count - 1];
+    case K of
+      'escape': Sym := $FF1B;
+      'delete': Sym := $FFFF;
+      'backspace': Sym := $FF08;
+      'return': Sym := $FF0D;
+      'tab': Sym := $FF09;
+      'left': Sym := $FF51;
+      'up': Sym := $FF52;
+      'right': Sym := $FF53;
+      'down': Sym := $FF54;
+      'home': Sym := $FF50;
+      'end': Sym := $FF57;
+    else
+      if Length(K) = 1 then Sym := Ord(K[1]) else Exit;
+    end;
+    Code := XSymCode(D, Sym);
+    if Code = 0 then Exit;
+    for I := 0 to High(Mods) do XKey(D, Mods[I], 1, 10);
+    XKey(D, Code, 1, 10);
+    XKey(D, Code, 0, 10);
+    for I := High(Mods) downto 0 do XKey(D, Mods[I], 0, 10);
+    XFlushFn(D);
+  finally
+    Parts.Free;
+  end;
+end;
+{$ELSE}
+begin
+  WriteLn(StdErr, 'LED_DEMO: key needs GTK2 on Linux');
 end;
 {$ENDIF}
 
