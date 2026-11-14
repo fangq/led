@@ -19134,6 +19134,27 @@ var
   Sid, Blue, DX, DY: Integer;
   Z0: Double;
   P, Q: TPoint;
+  Shots: array[0..1] of TLazIntfImage;
+  Diff, Off, Try_: Integer;
+  CRot: Int32;
+  Lo, Hi, T, Nrm: Double;
+  H0: Integer;
+
+  { the editor as it shows now }
+  function Shot: TLazIntfImage;
+  var
+    Bm: TBitmap;
+  begin
+    Bm := TBitmap.Create;
+    try
+      Bm.PixelFormat := pf32bit;
+      Bm.SetSize(E.ClientWidth, E.ClientHeight);
+      E.PaintTo(Bm.Canvas, 0, 0);
+      Result := Bm.CreateIntfImage;
+    finally
+      Bm.Free;
+    end;
+  end;
 
   { the frame's blue (the box being typed in: its dashed edge, its handles) within 6 pixels of a point of the page }
   function FrameBlueNear(XPt, YPt: Double): Integer;
@@ -19183,6 +19204,12 @@ begin
     Exit;
   end;
   E := Tab.Visual.Editor as TParadeEdit;
+  H0 := F.Height;   { room to see the caret in, whatever panes the tests before left open }
+  if E.ClientHeight < 250 then
+  begin
+    F.Height := Min(Screen.Height - 40, F.Height + 300 - E.ClientHeight);
+    Pump;
+  end;
   Pt := PD_SP_PER_PT;
   Check('a text box drawn, turned 35 degrees', E.AddShape('textbox', 60 * Pt, 80 * Pt, 120 * Pt, 260 * Pt) and
     E.RotateShape(35) and E.SelectedShapeGeom(G) and (Abs(G.Rot - 35) < 0.01));
@@ -19307,6 +19334,68 @@ begin
   WriteLn(Format('  (%.2f px a point; the client %d x %d; the view at %d)', [Px1, E.ClientWidth, E.ClientHeight, E.ViewTop]));
   Check(Format('the selection shown (%d pixels tinted), every one of them on a line, turned with it (%d off)',
     [Lit, Outside]), (Lit > 300) and (Outside <= Lit div 200));
+  { the caret, at the text's end: turned with its line. What it is: the pixels that change as it blinks; each of them
+    on the turned stroke from the line's ascent to its descent, not on an upright one }
+  B := E.CaretPos;
+  E.SetSelection(B, B);
+  E.SetFocus;
+  Pump;
+  CRot := 0;
+  Diff := 0;
+  Off := 0;
+  Lo := 1E9;
+  Hi := -1E9;
+  if (pd_layout_caret(E.Layout, B, CPg, CX, CB, CA, CD) = PD_OK) and
+     (pd_layout_caret_turn(E.Layout, B, CRot) = PD_OK) then
+  begin
+    E.ViewTop := Max(0, E.PageToClient(0, CX / Pt, CB / Pt).Y - E.ClientHeight div 2 + E.ViewTop);
+    Pump;
+    O := E.PageToClient(0, 0, 0);
+    Shots[0] := Shot;
+    Shots[1] := nil;
+    for Try_ := 1 to 8 do
+    begin   { another drawing after the caret has blinked }
+      Sleep(300);
+      Pump;
+      Shots[1] := Shot;
+      Diff := 0;
+      for Y := 0 to Min(Shots[0].Height, Shots[1].Height) - 1 do
+        for X := 0 to Min(Shots[0].Width, Shots[1].Width) - 1 do
+          if Shots[0].Colors[X, Y] <> Shots[1].Colors[X, Y] then
+            Inc(Diff);
+      if Diff > 0 then
+        Break;
+      FreeAndNil(Shots[1]);
+    end;
+    Th := CRot / 60000 * Pi / 180;
+    Cs := Cos(Th);
+    Sn := Sin(Th);
+    Diff := 0;
+    if Shots[1] <> nil then
+      for Y := 0 to Min(Shots[0].Height, Shots[1].Height) - 1 do
+        for X := 0 to Min(Shots[0].Width, Shots[1].Width) - 1 do
+          if Shots[0].Colors[X, Y] <> Shots[1].Colors[X, Y] then
+          begin
+            Inc(Diff);
+            { from the caret's point: T up the line's frame (Sn, -Cs), Nrm across it (Cs, Sn), in points }
+            PX := (X - O.X) / Px1 - CX / Pt;
+            PY := (Y - O.Y) / Px1 - CB / Pt;
+            T := PX * Sn - PY * Cs;
+            Nrm := PX * Cs + PY * Sn;
+            if (Abs(Nrm) > 3 / Px1) or (T > CA / Pt + 2 / Px1) or (T < -CD / Pt - 2 / Px1) then
+              Inc(Off)
+            else
+            begin
+              Lo := Min(Lo, T);
+              Hi := Max(Hi, T);
+            end;
+          end;
+    Shots[0].Free;
+    Shots[1].Free;
+  end;
+  Check(Format('the caret turned %.0f degrees with its line: %d pixels blink, %d off its turned stroke, %.1f of %.1f pt ' +
+    'of it drawn', [CRot / 60000, Diff, Off, Hi - Lo, (CA + CD) / Pt]), (Abs(CRot / 60000 - 35) < 0.01) and
+    (Diff > 20) and (Off <= Diff div 50) and (Hi - Lo > 0.8 * (CA + CD) / Pt));
   { typed in still, its turned frame's right side's handle dragged 30 pt further out: the box wider along itself }
   E.Zoom := Z0;
   Pump;
@@ -19332,6 +19421,7 @@ begin
     (Abs(G2.W - G.W - 30 * Pt) < 2 * Pt) and (Abs(G2.H - G.H) < 0.5 * Pt) and (Abs(G2.Rot - 35) < 0.01));
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
+  F.Height := H0;
   Pump;
   {$ENDIF}
 end;
