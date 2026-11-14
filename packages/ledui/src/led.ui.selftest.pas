@@ -18823,6 +18823,116 @@ begin
   {$ENDIF}
 end;
 
+{ A shape's text made shapes (as Inkscape's Object to Path): a text box of only text becomes its letters' outlines,
+  a freeform a line, in the text's colour, the box gone; a text box with a fill and a line keeps them, its text
+  gone from it; one Undo each. }
+procedure TestTextToShapes(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+const
+  Svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80">' +
+    '<text x="10" y="50" font-size="36" fill="#004488">Hello shapes</text></svg>';
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At: pd_pos;
+  Sid, I: Integer;
+  X: string;
+  P, Q: TPoint;
+
+  function CanvasXml: string;
+  var
+    O: pd_inline;
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+    S: RawByteString;
+    J: TJSONData;
+  begin
+    Result := '';
+    if (pd_doc_inline_at(E.Doc, At, O) <> PD_OK) or
+       (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) <> PD_OK) then
+      Exit;
+    SetString(S, PAnsiChar(Data), Len);
+    J := GetJSON(S);
+    try
+      if (J is TJSONObject) and (TJSONObject(J).Find('xml') <> nil) then
+        Result := TJSONObject(J).Strings['xml'];
+    finally
+      J.Free;
+    end;
+  end;
+
+  function Count(const Sub, T: string): Integer;
+  var
+    K: Integer;
+  begin
+    Result := 0;
+    K := Pos(Sub, T);
+    while K > 0 do
+    begin
+      Inc(Result);
+      K := Pos(Sub, T, K + 1);
+    end;
+  end;
+{$ENDIF}
+begin
+  Say('a shape''s text made shapes');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  E.SelectedShape(At, Sid);
+  Clipboard.Clear;
+  PutClip('image/svg+xml', Svg);
+  E.PasteFromClipboard;
+  Pump;
+  Check('a text box of words selected (an SVG''s text, pasted)', (Pos('>Hello shapes</w:t>', CanvasXml) > 0) and
+    (E.SelectedTextStory <> 0));
+  Check('Convert Text to Shapes', E.ConvertTextToShapes);
+  Pump;
+  X := CanvasXml;
+  Check(Format('its words gone, %d freeform of letters'' outlines in their colour in their place',
+    [Count('name="Text as shape', X)]), (Pos('>Hello shapes</w:t>', X) = 0) and (Pos('txBox="1"', X) = 0) and
+    (Count('name="Text as shape', X) = 1) and ((Pos('<a:quadBezTo>', X) > 0) or (Pos('<a:cubicBezTo>', X) > 0)) and
+    (Pos('<a:srgbClr val="004488"/>', X) > 0));
+  F.actUndo.Execute;
+  Pump;
+  X := CanvasXml;
+  Check('one Undo: the words back, the outlines gone', (Pos('>Hello shapes</w:t>', X) > 0) and
+    (Pos('name="Text as shape', X) = 0));
+
+  { a text box of its own, white with a black line, typed in: its box kept, its words made shapes }
+  E.SelectedShape(At, Sid);
+  E.InsertShape('textbox');
+  P := E.PageToClient(0, 100, 300);
+  Q := E.PageToClient(0, 300, 360);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+  for I := 1 to 4 do
+    TLedParadeWheel(E).MouseMove([ssLeft], P.X + (Q.X - P.X) * I div 4, P.Y + (Q.Y - P.Y) * I div 4);
+  TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
+  Pump;
+  E.InsertText('Boxed');
+  Pump;
+  Check('a text box drawn and typed in, selected', E.SelectTextBox and (E.SelectedTextStory <> 0));
+  Check('its text made shapes', E.ConvertTextToShapes);
+  Pump;
+  X := CanvasXml;
+  Check(Format('its box kept (white, a black line), no text in it, %d freeforms of letters now',
+    [Count('name="Text as shape', X)]), (Pos('>Boxed<', X) = 0) and (Count('<wps:txbx>', X) = 1) and
+    (Pos('<a:srgbClr val="FFFFFF"/>', X) > 0) and (Count('name="Text as shape', X) = 1));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
   only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
   in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
@@ -22409,6 +22519,7 @@ begin
   TestDropPictures(F);
   TestSvgShapes(F);
   TestTurnedResize(F);
+  TestTextToShapes(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);

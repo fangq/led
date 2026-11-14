@@ -191,6 +191,7 @@ type
     procedure GroupClicked(Sender: TObject);
     procedure UngroupClicked(Sender: TObject);
     procedure ConvertToShapesClicked(Sender: TObject);
+    procedure ConvertTextClicked(Sender: TObject);
     procedure TableInsertItemClicked(Sender: TObject);
     procedure TableDeleteItemClicked(Sender: TObject);
     procedure TableMergeItemClicked(Sender: TObject);
@@ -3859,6 +3860,13 @@ begin
   BackToPage;
 end;
 
+procedure TLedVisualPane.ConvertTextClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.ConvertTextToShapes;
+  {$ENDIF}
+end;
+
 procedure TLedVisualPane.ConvertToShapesClicked(Sender: TObject);
 begin
   {$IFDEF LED_PARADE}
@@ -5699,6 +5707,8 @@ begin
       Add(Root, 'Ungroup', 0, @UngroupClicked);
     if FEdit.SelectedSvg(SvgBytes) then
       Add(Root, 'Convert to Shapes', 0, @ConvertToShapesClicked);
+    if FEdit.CanvasSelected and (FEdit.SelectedTextStory <> 0) then
+      Add(Root, 'Convert Text to Shapes', 0, @ConvertTextClicked);
     Sep;
     Add(Root, 'Size and Position...', ctxSize, @ContextItemClicked);
     if Obj and not InDrawing then
