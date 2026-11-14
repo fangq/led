@@ -18934,8 +18934,8 @@ begin
 end;
 
 { A text box on a canvas: the Insert tab's Text Box, a quick flick of a drag (no move before the release) giving its
-  size, typed in with keys; a click in it below its text keeping the caret in it; Form's Text box on a canvas page a
-  drawn one, its other fields (which need a page's own text) not offered. }
+  size, typed in with keys; a click in it below its text keeping the caret in it; Form's fields all offered on a
+  canvas page, its Text box a field in a box of its own. }
 procedure TestCanvasTextBox(F: TLedMainForm);
 {$IFDEF LED_PARADE}
 var
@@ -19019,7 +19019,7 @@ begin
   Typed(' more');
   Check('clicked in below its text: still typed in, at its end: ' + BoxText, BoxText = 'Typed more');
 
-  { Form on a canvas page: its Text box a drawn one, the fields that need the page's own text not offered }
+  { Form on a canvas page: all its fields offered; its Text box a form field in a box of its own, floating }
   Btn := ButtonByCaption(Tab.Visual, 'Form ' + #$E2#$96#$BE);
   Check('the Insert tab has Form', (Btn <> nil) and (Btn.Tag <> 0));
   if (Btn <> nil) and (Btn.Tag <> 0) then
@@ -19030,22 +19030,165 @@ begin
     T := '';
     for I := 0 to M.Items.Count - 1 do
       T := T + '|' + M.Items[I].Caption + '=' + BoolToStr(M.Items[I].Enabled, 'on', 'off');
-    Check('on a canvas page only its Text box offered: ' + T, (M.Items.Count = 4) and not M.Items[0].Enabled and
-      not M.Items[1].Enabled and not M.Items[2].Enabled and M.Items[3].Enabled);
+    Check('on a canvas page all its fields offered: ' + T, (M.Items.Count = 4) and M.Items[0].Enabled and
+      M.Items[1].Enabled and M.Items[2].Enabled and M.Items[3].Enabled);
     M.Items[3].Click;
     Pump;
-    Check('Form''s Text box: a text box to drag out in the canvas', E.DrawKind = 'textbox');
-    P := E.PageToClient(0, 400, 300);
-    Q := E.PageToClient(0, 600, 360);
-    TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
-    TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
-    Pump;
-    Typed('Second');
     Boxes := E.DrawingShapes(At);
-    Check(Format('drawn in the same canvas as the first, typed in (%d shapes)', [Length(Boxes)]),
-      (Length(Boxes) = 2) and (Boxes[1].Story <> 0) and
-      (E.ParaText(pd_doc_child(E.Doc, Boxes[1].Story, 0)) = 'Second'));
+    Check(Format('Form''s Text box, typing in a text box: the field in it, after its words (%d shapes): %s',
+      [Length(Boxes), BoxText]), (Length(Boxes) = 1) and (Pos('Typed more', BoxText) = 1) and
+      (Pos('Click here to enter text.', BoxText) > 0));
   end;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
+{ Form fields on a canvas page (a slide): each in a text box of its own, floating in the canvas (the page's own text,
+  its canvas only, untouched), one under another, one Undo each; a field an older build left in the page's own text
+  taken out by Backspace, the canvas kept. }
+procedure TestCanvasFormFields(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At, P, After: pd_pos;
+  Sid: Integer;
+  X: string;
+  O: pd_inline;
+  Key: Word;
+  Spec, Content: string;
+
+  function CanvasXml: string;
+  var
+    O2: pd_inline;
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+    S: RawByteString;
+    J: TJSONData;
+  begin
+    Result := '';
+    if (pd_doc_inline_at(E.Doc, At, O2) <> PD_OK) or
+       (pd_doc_resource(E.Doc, O2.resource, @Mime, @Data, @Len) <> PD_OK) then
+      Exit;
+    SetString(S, PAnsiChar(Data), Len);
+    J := GetJSON(S);
+    try
+      if (J is TJSONObject) and (TJSONObject(J).Find('xml') <> nil) then
+        Result := TJSONObject(J).Strings['xml'];
+    finally
+      J.Free;
+    end;
+  end;
+
+  function Count(const Sub, T: string): Integer;
+  var
+    K: Integer;
+  begin
+    Result := 0;
+    K := Pos(Sub, T);
+    while K > 0 do
+    begin
+      Inc(Result);
+      K := Pos(Sub, T, K + 1);
+    end;
+  end;
+
+  function YOf(const Off: string): Int64;   { an a:off's y }
+  var
+    K: Integer;
+  begin
+    K := Pos('y="', Off);
+    if K = 0 then
+      Exit(0);
+    Result := StrToInt64Def(Copy(Off, K + 3, Pos('"', Off, K + 3) - K - 3), 0);
+  end;
+
+  function OffY(const T: string; N: Integer): string;   { the n-th form field's offset }
+  var
+    K, I: Integer;
+  begin
+    Result := '';
+    K := 0;
+    for I := 0 to N do
+    begin
+      K := Pos('name="Form field ', T, K + 1);
+      if K = 0 then
+        Exit;
+    end;
+    K := Pos('<a:off ', T, K);
+    if K > 0 then
+      Result := Copy(T, K, Pos('/>', T, K) - K);
+  end;
+{$ENDIF}
+begin
+  Say('form fields on a canvas page');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  E.SelectedShape(At, Sid);
+  E.InsertControl('checkbox', []);
+  Pump;
+  X := CanvasXml;
+  Check('a check box: in a text box of its own, floating in the canvas, no box drawn round it',
+    (Count('name="Form field ', X) = 1) and (Pos('<a:noFill/><a:ln><a:noFill/></a:ln>', X) > 0));
+  Check('the page''s own text untouched (its canvas only); the caret in the field''s box',
+    (E.ParaText(At.block) = #$EF#$BF#$BC) and (Pos(#$E2#$98#$90, E.ParaText(E.CaretPos.block)) > 0) and
+    (E.CaretPos.block <> At.block));
+  E.InsertControl('date', []);
+  Pump;
+  E.InsertControl('text', []);
+  Pump;
+  X := CanvasXml;
+  Check('more fields: each a box of its own, one under another: ' + OffY(X, 0) + ' / ' + OffY(X, 1) + ' / ' + OffY(X, 2),
+    (Count('name="Form field ', X) = 3) and (YOf(OffY(X, 1)) - YOf(OffY(X, 0)) > 20 * 12700) and
+    (YOf(OffY(X, 2)) - YOf(OffY(X, 1)) > 20 * 12700) and
+    (E.ParaText(At.block) = #$EF#$BF#$BC));
+  F.actUndo.Execute;
+  Pump;
+  Check('one Undo: the last field and its box gone together', Count('name="Form field ', CanvasXml) = 2);
+
+  { a field in the page's own text, as an older build put one: Backspace takes it out, whole; the canvas stays }
+  P := PdPos(At.block, 0);
+  Spec := '{"checked":0}';
+  Content := #$E2#$98#$90;
+  FillChar(O, SizeOf(O), 0);
+  O.kind := PD_INLINE_CONTROL;
+  StrPLCopy(PAnsiChar(@O.name[0]), 'checkbox', High(O.name));
+  O.source := PAnsiChar(Spec);
+  O.source_len := Length(Spec);
+  pd_doc_insert_inline(E.Doc, P, O, @After);
+  pd_doc_insert_text(E.Doc, After, PAnsiChar(Content), Length(Content), PD_FORMAT_INHERIT, @After);
+  FillChar(O, SizeOf(O), 0);
+  O.kind := PD_INLINE_CONTROL;
+  pd_doc_insert_inline(E.Doc, After, O, @After);
+  Pump;
+  E.SetSelection(After, After);
+  Pump;
+  Check('a stray field in the page''s own text, the caret after it', (Length(E.ParaText(At.block)) > 3) and
+    (E.CaretPos.block = At.block));
+  Key := VK_BACK;
+  TLedParadeWheel(E).KeyDown(Key, []);
+  Pump;
+  Check('Backspace: the field gone, whole; the canvas there', E.ParaText(At.block) = #$EF#$BF#$BC);
+  Key := VK_BACK;
+  TLedParadeWheel(E).KeyDown(Key, []);
+  E.SetSelection(PdPos(At.block, 0), PdPos(At.block, 0));
+  Key := VK_DELETE;
+  TLedParadeWheel(E).KeyDown(Key, []);
+  Pump;
+  Check('nor Backspace nor Delete takes the canvas', (E.ParaText(At.block) = #$EF#$BF#$BC) and
+    (Count('name="Form field ', CanvasXml) = 2));
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
   Pump;
@@ -22640,6 +22783,7 @@ begin
   TestTurnedResize(F);
   TestTextToShapes(F);
   TestCanvasTextBox(F);
+  TestCanvasFormFields(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);
