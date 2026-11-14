@@ -18012,6 +18012,272 @@ begin
 end;
 {$ENDIF}
 
+{$IFDEF LED_PARADE}
+{ the pictures of a page, each as "mime" (a drawing as "drawing:" and the mime of the file it was made from) }
+function PagePictures(E: TParadeEdit): TStringList;
+var
+  B: pd_block_id;
+  T: string;
+  I: Integer;
+  O: pd_inline;
+  Mime: PAnsiChar;
+  Data: Pointer;
+  Len: csize_t;
+  Src: pd_res_id;
+  M: string;
+begin
+  Result := TStringList.Create;
+  B := pd_doc_next_paragraph(E.Doc, 0);
+  while B <> 0 do
+  begin
+    T := E.ParaText(B);
+    for I := 1 to Length(T) - 2 do
+      if (Copy(T, I, 3) = #$EF#$BF#$BC) and (pd_doc_inline_at(E.Doc, PdPos(B, I - 1), O) = PD_OK) and
+         (O.kind = PD_INLINE_IMAGE) and (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) = PD_OK) then
+      begin
+        M := Mime;
+        if M = 'application/vnd.parade.drawing+json' then
+        begin
+          Src := pd_doc_picture_source(E.Doc, O.resource);
+          if (Src <> 0) and (pd_doc_resource(E.Doc, Src, @Mime, @Data, @Len) = PD_OK) then
+            M := 'drawing:' + Mime
+          else
+            M := 'drawing:';
+        end;
+        Result.AddObject(M, TObject(PtrInt(O.resource)));
+      end;
+    B := pd_doc_next_paragraph(E.Doc, B);
+  end;
+end;
+
+{ where the first picture of a kind (as PagePictures names them) is; its resource's bytes }
+function FindPicture(E: TParadeEdit; const Want: string; out At: pd_pos; out Bytes: RawByteString): Boolean;
+var
+  B: pd_block_id;
+  T, M: string;
+  I: Integer;
+  O: pd_inline;
+  Mime: PAnsiChar;
+  Data: Pointer;
+  Len: csize_t;
+  Src: pd_res_id;
+begin
+  Result := False;
+  B := pd_doc_next_paragraph(E.Doc, 0);
+  while B <> 0 do
+  begin
+    T := E.ParaText(B);
+    for I := 1 to Length(T) - 2 do
+      if (Copy(T, I, 3) = #$EF#$BF#$BC) and (pd_doc_inline_at(E.Doc, PdPos(B, I - 1), O) = PD_OK) and
+         (O.kind = PD_INLINE_IMAGE) and (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) = PD_OK) then
+      begin
+        M := Mime;
+        if M = 'application/vnd.parade.drawing+json' then
+        begin
+          Src := pd_doc_picture_source(E.Doc, O.resource);
+          if (Src <> 0) and (pd_doc_resource(E.Doc, Src, @Mime, @Data, @Len) = PD_OK) then
+            M := 'drawing:' + Mime;
+        end;
+        if M = Want then
+        begin
+          At := PdPos(B, I - 1);
+          SetString(Bytes, PAnsiChar(Data), Len);
+          Exit(True);
+        end;
+      end;
+    B := pd_doc_next_paragraph(E.Doc, B);
+  end;
+end;
+
+procedure PutClip(const Fmt: string; const Bytes: RawByteString);
+var
+  Ms: TMemoryStream;
+begin
+  Ms := TMemoryStream.Create;
+  try
+    if Bytes <> '' then
+      Ms.WriteBuffer(Bytes[1], Length(Bytes));
+    Ms.Position := 0;
+    Clipboard.AddFormat(RegisterClipboardFormat(Fmt), Ms);
+  finally
+    Ms.Free;
+  end;
+end;
+
+function ClipBytes(const Fmt: string): RawByteString;
+var
+  Ms: TMemoryStream;
+begin
+  Result := '';
+  Ms := TMemoryStream.Create;
+  try
+    if Clipboard.HasFormat(RegisterClipboardFormat(Fmt)) and Clipboard.GetFormat(RegisterClipboardFormat(Fmt), Ms) and
+       (Ms.Size > 0) then
+      SetString(Result, PAnsiChar(Ms.Memory), Ms.Size);
+  finally
+    Ms.Free;
+  end;
+end;
+{$ENDIF}
+
+{ Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
+  only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
+  in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
+procedure TestPictureClipboard(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Md, Why, Data, PngBytes, SvgBytes: string;
+  Got: RawByteString;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  L: TStringList;
+  At: pd_pos;
+  N0: Integer;
+{$ENDIF}
+begin
+  Say('pictures through the clipboard');
+  {$IFDEF LED_PARADE}
+  Data := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/');
+  if not FileExists(Data + 'rgba.png') then
+  begin
+    WriteLn('  (no Parade test pictures beside the program; nothing to check)');
+    Exit;
+  end;
+  PngBytes := LedReadRawFile(Data + 'rgba.png');
+  SvgBytes := LedReadRawFile(Data + 'icon.svg');
+  Md := IncludeTrailingPathDelimiter(TempName('clippic')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Words on a page.'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump;
+  E := Tab.Visual.Page;
+  E.ProcessKey(VK_END, [ssCtrl]);
+
+  { a screenshot: a PNG alone }
+  Clipboard.Clear;
+  PutClip('image/png', PngBytes);
+  E.PasteFromClipboard;
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('a PNG pasted is a picture: ' + L.CommaText, (L.Count = 1) and (L[0] = 'image/png'));
+    Check('with the bytes it came with', FindPicture(E, 'image/png', At, Got) and (Got = PngBytes));
+  finally
+    L.Free;
+  end;
+
+  { a browser's picture: its HTML only the picture, and the picture beside it }
+  Clipboard.Clear;
+  PutClip('text/html', '<meta charset="utf-8"><img src="https://example.org/a.png" alt="">');
+  PutClip('image/png', PngBytes);
+  E.PasteFromClipboard;
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('a browser''s picture is the picture, not its address: ' + L.CommaText,
+      (L.Count = 2) and (L[1] = 'image/png'));
+  finally
+    L.Free;
+  end;
+
+  { HTML with words in it: the HTML, though a picture is there too (Word puts one of the selection beside it) }
+  Clipboard.Clear;
+  PutClip('text/html', '<p>Words from a page</p>');
+  PutClip('image/png', PngBytes);
+  E.PasteFromClipboard;
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('HTML with words is the words: ' + L.CommaText, (L.Count = 2) and (Pos('Words from a page', Tab.Visual.PlainText) > 0));
+  finally
+    L.Free;
+  end;
+
+  { a BMP (Paint's, a screenshot tool's) is kept as a PNG; an SVG is drawn }
+  Clipboard.Clear;
+  PutClip('image/bmp', LedReadRawFile(Data + 'px24.bmp'));
+  E.PasteFromClipboard;
+  Pump;
+  Clipboard.Clear;
+  PutClip('image/svg+xml', SvgBytes);
+  E.PasteFromClipboard;
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('a BMP pasted is kept as a PNG: ' + L.CommaText, (L.Count >= 3) and (L[2] = 'image/png'));
+    Check('an SVG pasted is drawn from the SVG: ' + L.CommaText, (L.Count = 4) and (L[3] = 'drawing:image/svg+xml'));
+  finally
+    L.Free;
+  end;
+
+  { picture files a file manager copied }
+  Clipboard.Clear;
+  PutClip('text/uri-list', 'file://' + StringReplace(Data + 'photo.jpg', ' ', '%20', [rfReplaceAll]) + #13#10 +
+    'file://' + Data + 'icon.svg' + #13#10);
+  E.PasteFromClipboard;
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('copied picture files, each put in: ' + L.CommaText,
+      (L.Count = 6) and (L[4] = 'image/jpeg') and (L[5] = 'drawing:image/svg+xml'));
+  finally
+    L.Free;
+  end;
+
+  { a picture alone copied out: as a picture for another program }
+  L := PagePictures(E);
+  N0 := L.Count;
+  L.Free;
+  if FindPicture(E, 'image/png', At, Got) then
+  begin
+    E.SetSelection(At, PdPos(At.block, At.offset + 3));
+    Clipboard.Clear;
+    E.CopyToClipboard;
+    Check('a PNG picture copied is its PNG, byte for byte', ClipBytes('image/png') = PngBytes);
+  end
+  else
+    Check('a PNG picture to copy', False);
+  if FindPicture(E, 'image/jpeg', At, Got) then
+  begin
+    E.SetSelection(At, PdPos(At.block, At.offset + 3));
+    Clipboard.Clear;
+    E.CopyToClipboard;
+    Check('a JPEG copied: its JPEG', ClipBytes('image/jpeg') = Got);
+    Check('and a PNG of it, for a program that takes only PNG', Copy(ClipBytes('image/png'), 1, 4) = #$89'PNG');
+  end
+  else
+    Check('a JPEG picture to copy', False);
+  if FindPicture(E, 'drawing:image/svg+xml', At, Got) then
+  begin
+    E.SetSelection(At, PdPos(At.block, At.offset + 3));
+    Clipboard.Clear;
+    E.CopyToClipboard;
+    Check('an SVG picture copied: the SVG as it came', ClipBytes('image/svg+xml') = SvgBytes);
+    Check('and a PNG of it', Copy(ClipBytes('image/png'), 1, 4) = #$89'PNG');
+  end
+  else
+    Check('an SVG picture to copy', False);
+  L := PagePictures(E);
+  Check('nothing put in by copying', L.Count = N0);
+  L.Free;
+
+  E.Undo;
+  Tab.LeaveVisual;
+  Pump;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ELSE}
+  WriteLn('  (built without Parade; nothing to check)');
+  {$ENDIF}
+end;
+
 procedure TestVisualDeleteKey(F: TLedMainForm);
 var
   Md, Why, Before: string;
@@ -21403,6 +21669,7 @@ begin
   TestTabHoverClosePref(F);
   TestIconCache(F);
   TestVisualDeleteKey(F);
+  TestPictureClipboard(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);

@@ -2447,7 +2447,7 @@ begin
   D := TOpenDialog.Create(nil);
   try
     D.Title := 'Insert picture';
-    D.Filter := 'Pictures (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif|All files|*';
+    D.Filter := 'Pictures (*.png;*.jpg;*.gif;*.bmp;*.tif;*.svg;*.emf;*.wmf)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tif;*.tiff;*.svg;*.emf;*.wmf|All files|*';
     if D.Execute and not FEdit.InsertPicture(D.FileName) then
       MessageDlg('Insert picture', 'Could not read ' + D.FileName + ' as a PNG, JPEG or GIF picture.', mtError,
         [mbOK], 0);
