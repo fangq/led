@@ -18880,6 +18880,157 @@ begin
   {$ENDIF}
 end;
 
+{ A turned text box's text selected: the highlight one band a line, turned with the text -- not each letter's
+  upright box moved to where the letter is (the bands' corners stood out of the line, overlapping) }
+procedure TestTurnedTextSelection(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  G: TParadeShapeGeom;
+  Pt, Th, Cs, Sn, U, V, PX, PY, Px1, Tol: Double;
+  Items: array of pd_draw;
+  N, I, K, NL, X, Y, Lit, Outside, InBox: Integer;
+  Ch: TUTF8Char;
+  Txt: string;
+  LY, LX0, LX1, LAsc, LDesc: array of Double;
+  CPg: Int32;
+  CX, CB, CA, CD: pd_sp;
+  Bmp: TBitmap;
+  Img: TLazIntfImage;
+  O, O2: TPoint;
+  C: TFPColor;
+  A, B: pd_pos;
+  Rot: Int32;
+{$ENDIF}
+begin
+  Say('a turned text box''s text selected');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  Pt := PD_SP_PER_PT;
+  Check('a text box drawn, turned 35 degrees', E.AddShape('textbox', 60 * Pt, 80 * Pt, 120 * Pt, 260 * Pt) and
+    E.RotateShape(35) and E.SelectedShapeGeom(G) and (Abs(G.Rot - 35) < 0.01));
+  Check('typed in', E.AddShapeText);
+  Txt := 'LED text editor';
+  for I := 1 to Length(Txt) do
+  begin
+    Ch := Txt[I];
+    TLedParadeWheel(E).UTF8KeyPress(Ch);
+  end;
+  Pump;
+  E.SelectAll;
+  Pump;
+  Check('its text all selected: "' + E.SelectedText + '"', (E.SelectedText = Txt) and E.SelectionRange(A, B));
+  { its lines, where the layout puts them, in the text's own frame (turned back about the page's corner) }
+  pd_layout_update(E.Layout, nil);
+  N := 0;
+  pd_layout_page_items(E.Layout, 0, nil, 0, N);
+  SetLength(Items, N + 1);
+  if N > 0 then
+    pd_layout_page_items(E.Layout, 0, @Items[0], N + 1, N);
+  NL := 0;
+  Rot := 0;
+  for I := 0 to N - 1 do
+    if (Items[I].kind = PD_DRAW_GLYPH) and (Items[I].region = 5) and (Items[I].rotation <> 0) then
+    begin
+      Rot := Items[I].rotation;
+      Th := Rot / 60000 * Pi / 180;
+      U := Items[I].x * Cos(Th) + Items[I].y * Sin(Th);
+      V := Items[I].y * Cos(Th) - Items[I].x * Sin(Th);
+      K := 0;
+      while (K < NL) and (Abs(LY[K] - V) > Pt / 4) do
+        Inc(K);
+      if K = NL then
+      begin
+        Inc(NL);
+        SetLength(LY, NL); SetLength(LX0, NL); SetLength(LX1, NL); SetLength(LAsc, NL); SetLength(LDesc, NL);
+        LY[K] := V; LX0[K] := U; LX1[K] := U;
+        LAsc[K] := Items[I].size; LDesc[K] := Items[I].size / 2;
+        if pd_layout_caret(E.Layout, PdPos(Items[I].block, Items[I].offset), CPg, CX, CB, CA, CD) = PD_OK then
+        begin
+          LAsc[K] := CA;
+          LDesc[K] := CD;
+        end;
+      end;
+      LX0[K] := Min(LX0[K], U);
+      LX1[K] := Max(LX1[K], U + Items[I].w);
+    end;
+  Check(Format('its text turned 35 degrees, on more than one line (%d lines)', [NL]),
+    (NL >= 2) and (Abs(Rot / 60000 - 35) < 0.01));
+  { what is shown: each pixel the selection tints, inside the box (its frame and handles left out); zoomed in, the
+    box in view }
+  E.Zoom := 3;
+  Pump;
+  Th := Rot / 60000 * Pi / 180;   { (the first line's middle, on the page: the text, not the box, in view) }
+  PY := ((LX0[0] + LX1[0]) / 2 * Sin(Th) + LY[0] * Cos(Th)) / Pt;
+  E.ViewTop := Max(0, E.PageToClient(0, 0, PY).Y - E.ClientHeight div 2 + E.ViewTop);
+  Pump;
+  O := E.PageToClient(0, 0, 0);
+  O2 := E.PageToClient(0, 1000, 0);
+  Px1 := (O2.X - O.X) / 1000;     { pixels a point }
+  Tol := 2.5 / Px1 * Pt;          { two and a half pixels, sp }
+  Th := Rot / 60000 * Pi / 180;
+  Cs := Cos(Th);
+  Sn := Sin(Th);
+  Lit := 0;
+  Outside := 0;
+  Bmp := TBitmap.Create;
+  try
+    Bmp.PixelFormat := pf32bit;
+    Bmp.SetSize(E.ClientWidth, E.ClientHeight);
+    E.PaintTo(Bmp.Canvas, 0, 0);
+    if GetEnvironmentVariable('LED_SELFTEST_SHOT') <> '' then
+      Bmp.SaveToFile(GetEnvironmentVariable('LED_SELFTEST_SHOT'));
+    Img := Bmp.CreateIntfImage;
+    try
+      for Y := 0 to Img.Height - 1 do
+        for X := 0 to Img.Width - 1 do
+        begin
+          PX := (X - O.X) / Px1 * Pt;
+          PY := (Y - O.Y) / Px1 * Pt;
+          { in the box's frame, inside it by 6 pixels: past its dashed frame }
+          U := (PX - G.CX) * Cs + (PY - G.CY) * Sn;
+          V := (PY - G.CY) * Cs - (PX - G.CX) * Sn;
+          if (Abs(U) > G.W / 2 - 6 / Px1 * Pt) or (Abs(V) > G.H / 2 - 6 / Px1 * Pt) then
+            Continue;
+          C := Img.Colors[X, Y];
+          if (C.blue shr 8) - (C.red shr 8) < 30 then
+            Continue;
+          Inc(Lit);
+          U := PX * Cs + PY * Sn;
+          V := PY * Cs - PX * Sn;
+          InBox := 0;
+          for K := 0 to NL - 1 do
+            if (V >= LY[K] - LAsc[K] - Tol) and (V <= LY[K] + LDesc[K] + Tol) and (U >= LX0[K] - Tol) and
+               (U <= LX1[K] + 4 / Px1 * Pt + Tol) then
+              InBox := 1;
+          if InBox = 0 then
+            Inc(Outside);
+        end;
+    finally
+      Img.Free;
+    end;
+  finally
+    Bmp.Free;
+  end;
+  WriteLn(Format('  (%.2f px a point; the client %d x %d; the view at %d)', [Px1, E.ClientWidth, E.ClientHeight, E.ViewTop]));
+  Check(Format('the selection shown (%d pixels tinted), every one of them on a line, turned with it (%d off)',
+    [Lit, Outside]), (Lit > 300) and (Outside <= Lit div 200));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { A shape's text made shapes (as Inkscape's Object to Path): a text box of only text becomes its letters' outlines,
   a freeform a line, in the text's colour, the box gone; a text box with a fill and a line keeps them, its text
   gone from it; one Undo each. }
@@ -22943,6 +23094,7 @@ begin
   if Wanted('TestDropPictures') then TestDropPictures(F);
   if Wanted('TestSvgShapes') then TestSvgShapes(F);
   if Wanted('TestTurnedResize') then TestTurnedResize(F);
+  if Wanted('TestTurnedTextSelection') then TestTurnedTextSelection(F);
   if Wanted('TestTextToShapes') then TestTextToShapes(F);
   if Wanted('TestCanvasTextBox') then TestCanvasTextBox(F);
   if Wanted('TestCanvasFormFields') then TestCanvasFormFields(F);
