@@ -172,6 +172,8 @@ type
     procedure ShapesDropClicked(Sender: TObject);
     procedure PaletteItemClicked(Sender: TObject);
     procedure PaletteDeactivate(Sender: TObject);
+    procedure TextBoxClicked(Sender: TObject);
+    procedure FormMenuPopup(Sender: TObject);
     procedure CanvasClicked(Sender: TObject);
     procedure ShapeFillItemClicked(Sender: TObject);
     procedure ShapeRotateItemClicked(Sender: TObject);
@@ -2294,6 +2296,24 @@ begin
   BackToPage;
 end;
 
+procedure TLedVisualPane.TextBoxClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.InsertShape('textbox');
+  {$ENDIF}
+  BackToPage;
+end;
+
+procedure TLedVisualPane.FormMenuPopup(Sender: TObject);
+var
+  i: Integer;
+begin
+  { a canvas page (a slide's too) has no text of its own for a form field: its text box is a drawn one }
+  for i := 0 to TPopupMenu(Sender).Items.Count - 1 do
+    TPopupMenu(Sender).Items[i].Enabled := {$IFDEF LED_PARADE}not FEdit.CanvasPage or
+      (TPopupMenu(Sender).Items[i].Tag = 3){$ELSE}True{$ENDIF};
+end;
+
 procedure TLedVisualPane.CanvasClicked(Sender: TObject);
 begin
   FEdit.InsertCanvas;
@@ -2380,6 +2400,7 @@ begin
   Item(M, 'Drop-down list...', 1, @FormItemClicked);
   Item(M, 'Date', 2, @FormItemClicked);
   Item(M, 'Text box', 3, @FormItemClicked);
+  M.OnPopup := @FormMenuPopup;
   Big('insertform', 'Form', 'A form field Word fills in: a check box, a list to choose from, a date, a text box; ' +
     'click it on the page to tick, choose or pick', nil, M);
 end;
@@ -2418,7 +2439,10 @@ begin
         end;
       end;
     2: FEdit.InsertControl('date', []);
-    3: FEdit.InsertControl('text', []);
+    3: if FEdit.CanvasPage then
+         FEdit.InsertShape('textbox')     { (a canvas page: a drawn text box, as Text Box draws) }
+       else
+         FEdit.InsertControl('text', []);
   end;
   BackToPage;
 end;
@@ -3376,6 +3400,8 @@ begin
     'selected', [], @ShapesDropClicked), 'insertshape');
   SetIcon(AddButton('Canvas', 'A drawing canvas: shapes, lines, arrows and text boxes drawn in it make a diagram',
     [], @CanvasClicked), 'insertcanvas');
+  SetIcon(AddButton('Text Box', 'A text box: dragged out with the mouse in the canvas (a click: one of its own size), ' +
+    'typed in at once', [], @TextBoxClicked), 'shapetext');
   First := FBar.ControlCount;
   M := TPopupMenu.Create(Self);
   for i := 0 to High(Colours) do

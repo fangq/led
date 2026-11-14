@@ -18933,6 +18933,125 @@ begin
   {$ENDIF}
 end;
 
+{ A text box on a canvas: the Insert tab's Text Box, a quick flick of a drag (no move before the release) giving its
+  size, typed in with keys; a click in it below its text keeping the caret in it; Form's Text box on a canvas page a
+  drawn one, its other fields (which need a page's own text) not offered. }
+procedure TestCanvasTextBox(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At: pd_pos;
+  Sid, I: Integer;
+  Btn: TSpeedButton;
+  M: TPopupMenu;
+  Boxes: TParadeShapeBoxes;
+  P, Q, Mid: TPoint;
+  St: pd_block_id;
+  Ch: TUTF8Char;
+  T: string;
+
+  procedure Typed(const S: string);
+  var
+    K: Integer;
+  begin
+    for K := 1 to Length(S) do
+    begin
+      Ch := S[K];
+      TLedParadeWheel(E).UTF8KeyPress(Ch);
+    end;
+    Pump;
+  end;
+
+  function BoxText: string;   { the text of the one text box there }
+  var
+    K: Integer;
+  begin
+    Result := '';
+    Boxes := E.DrawingShapes(At);
+    for K := 0 to High(Boxes) do
+      if Boxes[K].Story <> 0 then
+        Result := E.ParaText(pd_doc_child(E.Doc, Boxes[K].Story, 0));
+  end;
+{$ENDIF}
+begin
+  Say('a text box on a canvas');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  E.SelectedShape(At, Sid);
+  Btn := ButtonByCaption(Tab.Visual, 'Text Box');
+  Check('the Insert tab has Text Box', Btn <> nil);
+  if Btn = nil then Exit;
+  Btn.Click;
+  Pump;
+  Check('which waits for a drag in the canvas', E.DrawKind = 'textbox');
+  P := E.PageToClient(0, 100, 150);
+  Q := E.PageToClient(0, 340, 250);
+  TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);     { pressed and let go, no move between }
+  TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
+  Pump;
+  Boxes := E.DrawingShapes(At);
+  Check(Format('a flick of a drag: a text box as big as it (%d shapes, %.0f by %.0f pt)', [Length(Boxes),
+    IfThen(Length(Boxes) > 0, (Boxes[0].X1 - Boxes[0].X0) / PD_SP_PER_PT, 0),
+    IfThen(Length(Boxes) > 0, (Boxes[0].Y1 - Boxes[0].Y0) / PD_SP_PER_PT, 0)]), (Length(Boxes) = 1) and
+    (Boxes[0].Story <> 0) and (Abs((Boxes[0].X1 - Boxes[0].X0) / PD_SP_PER_PT - 240) < 3) and
+    (Abs((Boxes[0].Y1 - Boxes[0].Y0) / PD_SP_PER_PT - 100) < 3));
+  Typed('Typed');
+  Check('typed in at once: ' + BoxText, BoxText = 'Typed');
+  { clicked in it below its text, twice: the caret kept in it, at its end }
+  Mid := E.PageToClient(0, 220, 220);
+  for I := 1 to 2 do
+  begin
+    Sleep(600);
+    TLedParadeWheel(E).MouseDown(mbLeft, [], Mid.X, Mid.Y);
+    TLedParadeWheel(E).MouseUp(mbLeft, [], Mid.X, Mid.Y);
+    Pump;
+  end;
+  Typed(' more');
+  Check('clicked in below its text: still typed in, at its end: ' + BoxText, BoxText = 'Typed more');
+
+  { Form on a canvas page: its Text box a drawn one, the fields that need the page's own text not offered }
+  Btn := ButtonByCaption(Tab.Visual, 'Form ' + #$E2#$96#$BE);
+  Check('the Insert tab has Form', (Btn <> nil) and (Btn.Tag <> 0));
+  if (Btn <> nil) and (Btn.Tag <> 0) then
+  begin
+    M := TPopupMenu(Btn.Tag);
+    if Assigned(M.OnPopup) then
+      M.OnPopup(M);
+    T := '';
+    for I := 0 to M.Items.Count - 1 do
+      T := T + '|' + M.Items[I].Caption + '=' + BoolToStr(M.Items[I].Enabled, 'on', 'off');
+    Check('on a canvas page only its Text box offered: ' + T, (M.Items.Count = 4) and not M.Items[0].Enabled and
+      not M.Items[1].Enabled and not M.Items[2].Enabled and M.Items[3].Enabled);
+    M.Items[3].Click;
+    Pump;
+    Check('Form''s Text box: a text box to drag out in the canvas', E.DrawKind = 'textbox');
+    P := E.PageToClient(0, 400, 300);
+    Q := E.PageToClient(0, 600, 360);
+    TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+    TLedParadeWheel(E).MouseUp(mbLeft, [], Q.X, Q.Y);
+    Pump;
+    Typed('Second');
+    Boxes := E.DrawingShapes(At);
+    Check(Format('drawn in the same canvas as the first, typed in (%d shapes)', [Length(Boxes)]),
+      (Length(Boxes) = 2) and (Boxes[1].Story <> 0) and
+      (E.ParaText(pd_doc_child(E.Doc, Boxes[1].Story, 0)) = 'Second'));
+  end;
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
   only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
   in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
@@ -22520,6 +22639,7 @@ begin
   TestSvgShapes(F);
   TestTurnedResize(F);
   TestTextToShapes(F);
+  TestCanvasTextBox(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);

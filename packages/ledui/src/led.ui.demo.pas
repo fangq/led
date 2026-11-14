@@ -24,6 +24,8 @@
     dump:NAME       the named control's children and their bounds, on stdout
     drag:X1,Y1,X2,Y2  press at the first point, move to the second, release
     drop:PATH       that file dropped on the window (its OnDropFiles)
+    type:TEXT       those keys pressed and let go, one after another, as typed
+                    (letters, digits and spaces; capitals with Shift)
     quit            (implied at the end)
 
   e.g.  LED_DEMO='wait:1500;act:actHelp;wait:500;shot:/tmp/help.png'
@@ -64,6 +66,8 @@ var
   XMotion: function(d: Pointer; screen, x, y: LongInt; delay: PtrUInt): LongInt; cdecl = nil;
   XButton: function(d: Pointer; button: LongWord; press: LongInt; delay: PtrUInt): LongInt; cdecl = nil;
   XFlushFn: function(d: Pointer): LongInt; cdecl = nil;
+  XKey: function(d: Pointer; keycode: LongWord; press: LongInt; delay: PtrUInt): LongInt; cdecl = nil;
+  XSymCode: function(d: Pointer; keysym: PtrUInt): Byte; cdecl = nil;
 
 function XtstReady: Boolean;
 var
@@ -76,9 +80,13 @@ begin
     begin
       Pointer(XMotion) := GetProcAddress(GXtst, 'XTestFakeMotionEvent');
       Pointer(XButton) := GetProcAddress(GXtst, 'XTestFakeButtonEvent');
+      Pointer(XKey) := GetProcAddress(GXtst, 'XTestFakeKeyEvent');
       X11 := LoadLibrary('libX11.so.6');
       if X11 <> NilHandle then
+      begin
         Pointer(XFlushFn) := GetProcAddress(X11, 'XFlush');
+        Pointer(XSymCode) := GetProcAddress(X11, 'XKeysymToKeycode');
+      end;
     end;
   end;
   Result := Assigned(XMotion) and Assigned(XButton) and Assigned(XFlushFn);
@@ -98,6 +106,7 @@ type
     procedure Tick(Sender: TObject);
     procedure Step(const S: string; out AWait: Integer);
     procedure Shot(const APath: string);
+    procedure TypeKeys(const AText: string);
     procedure OpenMenu(const ACaption: string);
     procedure Pointer_(const AVerb, AArg: string);
     procedure DumpTree(ATree: TCustomTreeView);
@@ -231,6 +240,11 @@ begin
   end
   else if (Verb = 'move') or (Verb = 'click') or (Verb = 'dclick') or (Verb = 'drag') then
     Pointer_(Verb, Arg)
+  else if Verb = 'type' then
+  begin
+    TypeKeys(Arg);
+    AWait := 300;
+  end
   else if Verb = 'drop' then
   begin
     { files dropped on the window, as the widget set hands them over }
@@ -282,6 +296,44 @@ begin
   end;
   WriteLn(StdErr, 'LED_DEMO: no menu ', ACaption);
 end;
+
+procedure TLedDemo.TypeKeys(const AText: string);
+{$IFDEF LED_DEMO_GTK2}
+const
+  XK_Shift_L = $FFE1;
+var
+  D: Pointer;
+  I: Integer;
+  Ch: Char;
+  Sym: PtrUInt;
+  Code, Shift: Byte;
+begin
+  if not XtstReady or not Assigned(XKey) or not Assigned(XSymCode) then
+  begin
+    WriteLn(StdErr, 'LED_DEMO: no libXtst keys for type');
+    Exit;
+  end;
+  D := gdk_x11_get_default_xdisplay;
+  Shift := XSymCode(D, XK_Shift_L);
+  for I := 1 to Length(AText) do
+  begin
+    Ch := AText[I];
+    if Ch in ['A'..'Z'] then Sym := Ord(LowerCase(Ch)) else Sym := Ord(Ch);   { (Latin-1 keysyms are the codes) }
+    Code := XSymCode(D, Sym);
+    if Code = 0 then
+      Continue;
+    if Ch in ['A'..'Z'] then XKey(D, Shift, 1, 10);
+    XKey(D, Code, 1, 10);
+    XKey(D, Code, 0, 10);
+    if Ch in ['A'..'Z'] then XKey(D, Shift, 0, 10);
+  end;
+  XFlushFn(D);
+end;
+{$ELSE}
+begin
+  WriteLn(StdErr, 'LED_DEMO: type needs GTK2 on Linux');
+end;
+{$ENDIF}
 
 procedure TLedDemo.Pointer_(const AVerb, AArg: string);
 {$IFDEF LED_DEMO_GTK2}
