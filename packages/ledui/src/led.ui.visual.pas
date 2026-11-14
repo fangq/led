@@ -207,6 +207,7 @@ type
     FZoomBox: TComboBox;
     FMarksBtn, FNavBtn: TSpeedButton;
     FShowStartBtn, FShowHereBtn: TSpeedButton;   { View > Slide show, for a presentation }
+    FShowBarBtn: TSpeedButton;  { the slide show from this slide, by the zoom slider, as PowerPoint has it }
     FNewSlideBtn: TSpeedButton;   { Home > New Slide, its layouts: for a presentation }
     FNewSlideMenu: TPopupMenu;
     FLayoutPaths: TStringArray;   { (the layout each item of its menu is on) }
@@ -4331,6 +4332,8 @@ begin
     FShowStartBtn.Enabled := Shown;
     FShowHereBtn.Enabled := Shown;
   end;
+  if (FShowBarBtn <> nil) and (FShowBarBtn.Visible <> Shown) then
+    FShowBarBtn.Visible := Shown;
   if (FNewSlideBtn <> nil) and (FNewSlideBtn.Visible <> Shown) then
     FNewSlideBtn.Visible := Shown;
   if (FAnimTab >= 0) and (FAnimTab < Length(FTabBtns)) and (FTabBtns[FAnimTab].Visible <> Shown) then
@@ -5383,7 +5386,20 @@ end;
 
 procedure TLedVisualPane.BuildZoomBar;
 var
-  B: TSpeedButton;
+  Row: TPanel;
+
+  function ZoomButton(const Cap, Tip: string; Click: TNotifyEvent): TSpeedButton;
+  begin
+    Result := TSpeedButton.Create(Self);
+    Result.Parent := Row;
+    Result.Width := LedScale96(22);
+    Result.Caption := Cap;
+    Result.Flat := True;
+    Result.Hint := Tip;
+    Result.ShowHint := True;
+    Result.OnClick := Click;
+  end;
+
 begin
   FZoomBar := TPanel.Create(Self);
   FZoomBar.Parent := Self;
@@ -5391,29 +5407,25 @@ begin
   FZoomBar.BevelOuter := bvNone;
   FZoomBar.Caption := '';
   FZoomBar.Height := LedScale96(24);
-  FZoomLabel := TLabel.Create(Self);
-  FZoomLabel.Parent := FZoomBar;
-  FZoomLabel.Align := alRight;
-  FZoomLabel.Layout := tlCenter;
-  FZoomLabel.Alignment := taRightJustify;
-  FZoomLabel.AutoSize := False;
-  FZoomLabel.Width := LedScale96(48);
-  FZoomLabel.BorderSpacing.Right := LedScale96(8);
-  FZoomLabel.Caption := '100%';
-  FZoomLabel.Name := 'ZoomPercent';
-  FZoomLabel.Caption := '100%';
-  B := TSpeedButton.Create(Self);
-  B.Parent := FZoomBar;
-  B.Align := alRight;
-  B.Width := LedScale96(22);
-  B.Caption := '+';
-  B.Flat := True;
-  B.Hint := 'Zoom in';
-  B.ShowHint := True;
-  B.OnClick := @ZoomInClicked;
+  { at the right, left to right: Slide Show (a presentation's), -, the bar, +, the percentage }
+  Row := TPanel.Create(Self);
+  Row.Parent := FZoomBar;
+  Row.Align := alRight;
+  Row.BevelOuter := bvNone;
+  Row.Caption := '';
+  Row.AutoSize := True;
+  Row.ChildSizing.Layout := cclLeftToRightThenTopToBottom;
+  Row.ChildSizing.ControlsPerLine := 100;
+  Row.ChildSizing.EnlargeVertical := crsHomogenousChildResize;
+  { the slide show from the slide shown: a presentation's only }
+  FShowBarBtn := ZoomButton('', 'Slide Show: from this slide (Shift+F5)', @ShowHereClicked);
+  FShowBarBtn.Width := LedScale96(30);
+  FShowBarBtn.Glyph := LedIconBitmap('run', clBtnText, LedScale96(16));
+  FShowBarBtn.Name := 'SlideShowBarBtn';
+  FShowBarBtn.Visible := False;
+  ZoomButton(#$E2#$88#$92, 'Zoom out', @ZoomOutClicked);    { minus }
   FZoomSlider := TTrackBar.Create(Self);
-  FZoomSlider.Parent := FZoomBar;
-  FZoomSlider.Align := alRight;
+  FZoomSlider.Parent := Row;
   FZoomSlider.Width := LedScale96(160);
   FZoomSlider.Min := 0;
   FZoomSlider.Max := 200;
@@ -5424,17 +5436,17 @@ begin
   FZoomSlider.ShowHint := True;
   FZoomSlider.OnChange := @ZoomSliderChanged;
   FZoomSlider.Name := 'ZoomSlider';
-  B := TSpeedButton.Create(Self);
-  B.Parent := FZoomBar;
-  B.Align := alRight;
-  B.Width := LedScale96(22);
-  B.Caption := #$E2#$88#$92;    { minus }
-  B.Flat := True;
-  B.Hint := 'Zoom out';
-  B.ShowHint := True;
-  B.OnClick := @ZoomOutClicked;
-  { in order from the right: the percentage, +, the bar, - }
-  FZoomLabel.Left := 10000;
+  ZoomButton('+', 'Zoom in', @ZoomInClicked);
+  FZoomLabel := TLabel.Create(Self);
+  FZoomLabel.Parent := Row;
+  FZoomLabel.Layout := tlCenter;
+  FZoomLabel.Alignment := taRightJustify;
+  FZoomLabel.AutoSize := False;
+  FZoomLabel.Width := LedScale96(48);
+  FZoomLabel.BorderSpacing.Right := LedScale96(8);
+  FZoomLabel.BorderSpacing.Left := LedScale96(6);
+  FZoomLabel.Name := 'ZoomPercent';
+  FZoomLabel.Caption := '100%';
 end;
 
 procedure TLedVisualPane.ZoomSliderChanged(Sender: TObject);

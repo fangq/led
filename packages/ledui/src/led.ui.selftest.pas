@@ -18901,6 +18901,46 @@ var
   M: TPopupMenu;
   Gray, H0: Integer;
   Visual: TLedVisualPane;
+  BodyB: pd_block_id;
+  Lab: array[0..63] of AnsiChar;
+  CPg: Int32;
+  CX, CB, CA, CD: pd_sp;
+  BX0: Double;
+
+  { gray pixels in a box of page Pg (points) }
+  function GrayIn(Pg: Integer; X0, Y0, X1, Y1: Double): Integer;
+  var
+    Bm: TBitmap;
+    Im: TLazIntfImage;
+    A0, A1: TPoint;
+    XX, YY: Integer;
+    CC: TFPColor;
+  begin
+    Result := 0;
+    A0 := E.PageToClient(Pg, X0, Y0);
+    A1 := E.PageToClient(Pg, X1, Y1);
+    Bm := TBitmap.Create;
+    try
+      Bm.PixelFormat := pf32bit;
+      Bm.SetSize(E.ClientWidth, E.ClientHeight);
+      E.PaintTo(Bm.Canvas, 0, 0);
+      Im := Bm.CreateIntfImage;
+      try
+        for YY := Max(0, A0.Y) to Min(Im.Height - 1, A1.Y) do
+          for XX := Max(0, A0.X) to Min(Im.Width - 1, A1.X) do
+          begin
+            CC := Im.Colors[XX, YY];
+            if (Abs((CC.red shr 8) - (CC.green shr 8)) < 12) and (Abs((CC.green shr 8) - (CC.blue shr 8)) < 12) and
+               ((CC.red shr 8) > 60) and ((CC.red shr 8) < 220) then
+              Inc(Result);
+          end;
+      finally
+        Im.Free;
+      end;
+    finally
+      Bm.Free;
+    end;
+  end;
 
   { the shapes of slide K's canvas: their placeholder kinds, those empty marked so ("title body" ...) }
   function SlidePhs(K: Integer; EmptyOnly: Boolean): string;
@@ -19030,6 +19070,39 @@ begin
     E.SlideLayoutPath(1)]), (E.SlideCount = 2) and (E.SlideLayoutPath(1) = 'ppt/slideLayouts/slideLayout2.xml'));
   Check('its title and its content, empty, ready for their prompts: ' + SlidePhs(1, True),
     SlidePhs(1, True) = 'title body ');
+  { the content's empty paragraph an item of its bulleted list; its prompt with the bullet, left of where its text
+    begins }
+  BodyB := 0;
+  D := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, E.SlideSection(1), 0), 0), 0);
+  Boxes := E.DrawingShapes(D);
+  for I := 0 to High(Boxes) do
+    if E.PlaceholderOf(D, Boxes[I].Sid, Ph, Idx) and (Ph <> 'title') and (Boxes[I].Story <> 0) then
+      BodyB := pd_doc_child(E.Doc, Boxes[I].Story, 0);
+  Lab[0] := #0;
+  if BodyB <> 0 then
+    pd_doc_list_label(E.Doc, BodyB, @Lab[0], SizeOf(Lab));
+  Check('the content''s empty paragraph a bullet point: "' + string(PAnsiChar(@Lab[0])) + '"',
+    string(PAnsiChar(@Lab[0])) = #$E2#$80#$A2);
+  E.ShowSlide(1);
+  Pump;
+  Gray := -1;
+  if (BodyB <> 0) and (pd_layout_caret(E.Layout, PdPos(BodyB, 0), CPg, CX, CB, CA, CD) = PD_OK) then
+  begin
+    { left of the text's start, past the box's dotted edge; the middle half of the line, where a bullet is }
+    BX0 := E.Zoom;     { (zoomed in, the line in view: the bullet some pixels) }
+    E.Zoom := 3;
+    Pump;
+    E.ViewTop := Max(0, E.PageToClient(CPg, CX / PD_SP_PER_PT, CB / PD_SP_PER_PT).Y - E.ClientHeight div 2 + E.ViewTop);
+    Pump;
+    pd_layout_caret(E.Layout, PdPos(BodyB, 0), CPg, CX, CB, CA, CD);
+    Gray := GrayIn(CPg, CX / PD_SP_PER_PT - 14, (CB - CA / 2) / PD_SP_PER_PT, CX / PD_SP_PER_PT - 1,
+      (CB + CD / 2) / PD_SP_PER_PT);
+    E.Zoom := BX0;
+    Pump;
+    E.ShowSlide(1);
+    Pump;
+  end;
+  Check(Format('its prompt''s bullet shown, gray, before where its text begins (%d pixels)', [Gray]), Gray > 20);
   if GetEnvironmentVariable('LED_SELFTEST_SHOT') <> '' then
   begin
     E.ShowSlide(1);
@@ -20946,7 +21019,7 @@ var
   PdfOk, PdfWasJpeg: Boolean;
   PdfDlg: TSaveDialog;
   E: TParadeEdit;
-  C: TComponent;
+  C, Sl: TComponent;
   Sh: TParadeShowForm;
   K: Word;
   I, Lit: Integer;
@@ -21072,6 +21145,27 @@ begin
     Pump;
   end;
   Check('ended again', Tab.Visual.SlideShowForm = nil);
+  { the Slide Show button by the zoom slider: shown for a presentation, left of the zoom's minus; from the slide shown }
+  C := Tab.Visual.FindComponent('SlideShowBarBtn');
+  Sl := Tab.Visual.FindComponent('ZoomSlider');
+  Check('a Slide Show button by the zoom slider, left of it', (C is TSpeedButton) and TSpeedButton(C).Visible and
+    TSpeedButton(C).IsVisible and (TSpeedButton(C).Width > 10) and (Sl is TControl) and (TSpeedButton(C).Parent = TControl(Sl).Parent) and
+    (TSpeedButton(C).Left + TSpeedButton(C).Width <= TControl(Sl).Left) and
+    (TControl(Sl).Left - TSpeedButton(C).Left < 100) and (TSpeedButton(C).Width > 0));
+  E.GoToSlide(1);
+  Pump;
+  if C is TSpeedButton then
+    TSpeedButton(C).Click;
+  Pump;
+  Check('clicked: the show from the slide shown', (Tab.Visual.SlideShowForm is TParadeShowForm) and
+    (TParadeShowForm(Tab.Visual.SlideShowForm).Engine.CurrentSlide = 1));
+  if Tab.Visual.SlideShowForm is TParadeShowForm then
+  begin
+    Sh := TParadeShowForm(Tab.Visual.SlideShowForm);
+    Press(VK_ESCAPE);
+    Pump;
+  end;
+  Check('(ended)', Tab.Visual.SlideShowForm = nil);
   {$ENDIF}
 end;
 
