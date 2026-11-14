@@ -18120,6 +18120,330 @@ begin
 end;
 {$ENDIF}
 
+{ A picture put in while typing in a slide's text box: a picture of the slide, as PowerPoint makes one -- a
+  slide's text holds no pictures, and one in it would not be in the .pptx written from it. }
+procedure TestSlideTextBoxPicture(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Src, Copy_, PngBytes: string;
+  Files_: TStringList;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  St, P, Pr: pd_block_id;
+  R: pd_res_id;
+  J: Integer;
+  Info: pd_block_info;
+  NPng0, NPng1, ShapeRefs0, ShapeRefs1: Integer;
+  L: TStringList;
+  Mime: PAnsiChar;
+  Data: Pointer;
+  Len: csize_t;
+  S: RawByteString;
+
+  function PngInline: Integer;
+  var
+    J: Integer;
+  begin
+    Result := 0;
+    L := PagePictures(E);
+    try
+      for J := 0 to L.Count - 1 do
+        if L[J] = 'image/png' then
+          Inc(Result);
+    finally
+      L.Free;
+    end;
+  end;
+
+  { the slides' drawings that name a picture by an id of Parade's own (rIdPd<resource>) }
+  function PictureShapes: Integer;
+  var
+    R: pd_res_id;
+  begin
+    Result := 0;
+    R := 1;
+    while pd_doc_resource(E.Doc, R, @Mime, @Data, @Len) = PD_OK do
+    begin
+      if StrComp(Mime, 'application/vnd.parade.drawing+json') = 0 then
+      begin
+        SetString(S, PAnsiChar(Data), Len);
+        if Pos('rIdPd', S) > 0 then
+          Inc(Result);
+      end;
+      Inc(R);
+    end;
+  end;
+{$ENDIF}
+begin
+  Say('a picture put in a slide''s text box');
+  {$IFDEF LED_PARADE}
+  Src := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/slides.pptx');
+  if not LedVisualAvailable or not FileExists(Src) or
+     not FileExists(ExtractFilePath(Src) + 'rgba.png') then
+  begin
+    WriteLn('  (no Parade test deck beside the program; nothing to check)');
+    Exit;
+  end;
+  PngBytes := LedReadRawFile(ExtractFilePath(Src) + 'rgba.png');
+  Copy_ := TempName('boxpic.pptx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Src), False);
+  Files_ := TStringList.Create;
+  try
+    Files_.Add(Copy_);
+    F.OpenFiles(Files_);
+  finally
+    Files_.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the deck opens as its slides', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  { the first text box with words in it: the caret in its text }
+  P := 0;     { the slides' drawings name their text boxes' stories ("story": id) }
+  R := 1;
+  while (P = 0) and (pd_doc_resource(E.Doc, R, @Mime, @Data, @Len) = PD_OK) do
+  begin
+    if StrComp(Mime, 'application/vnd.parade.drawing+json') = 0 then
+    begin
+      SetString(S, PAnsiChar(Data), Len);
+      J := Pos('"story":', S);
+      while (J > 0) and (P = 0) do
+      begin
+        Delete(S, 1, J + 7);
+        while (S <> '') and (S[1] = ' ') do
+          Delete(S, 1, 1);
+        St := 0;
+        while (S <> '') and (S[1] in ['0'..'9']) do
+        begin
+          St := St * 10 + Ord(S[1]) - Ord('0');
+          Delete(S, 1, 1);
+        end;
+        if (St <> 0) and (pd_doc_block_info(E.Doc, St, Info) = PD_OK) and (Info.kind = PD_BLOCK_STORY) then
+        begin
+          Pr := pd_doc_child(E.Doc, St, 0);
+          if (Pr <> 0) and (Length(E.ParaText(Pr)) > 1) and (Pos(#$EF#$BF#$BC, E.ParaText(Pr)) = 0) then
+            P := Pr;
+        end;
+        J := Pos('"story":', S);
+      end;
+    end;
+    Inc(R);
+  end;
+  if P = 0 then
+  begin
+    Check('the deck has a text box with words', False);
+    Exit;
+  end;
+  E.SetSelection(PdPos(P, 1), PdPos(P, 1));
+  NPng0 := PngInline;
+  ShapeRefs0 := PictureShapes;
+  Check('a picture put in there', E.InsertPictureData('image/png', @PngBytes[1], Length(PngBytes), ''));
+  Pump;
+  NPng1 := PngInline;
+  ShapeRefs1 := PictureShapes;
+  Check('not in the text box''s text: ' + IntToStr(NPng0) + ' -> ' + IntToStr(NPng1),
+    (NPng1 = NPng0) and (Pos(#$EF#$BF#$BC, E.ParaText(P)) = 0));
+  Check('a picture of the slide: ' + IntToStr(ShapeRefs0) + ' -> ' + IntToStr(ShapeRefs1),
+    ShapeRefs1 > ShapeRefs0);   { (the drawing as it was is kept too, for Undo) }
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  DeleteFile(Copy_);
+  {$ENDIF}
+end;
+
+{ Picture files dropped on the pages: on a page, in the text where they fell (not at the caret); on a slide,
+  pictures of it centred where they fell; a file that is no picture left to be opened, as any dropped file is. }
+procedure TestDropPictures(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Data, Md, Why, Txt, Src, Copy_: string;
+  Tab: TLedTab;
+  E: TParadeEdit;
+  Rest: TStringArray;
+  L: TStringList;
+  At: pd_pos;
+  Got: RawByteString;
+  Sec: pd_block_id;
+  SP: pd_section_props;
+  Pt: TPoint;
+  Files_: TStringList;
+  N0, N1, I, J, OffX, OffY, ExtX, ExtY: Integer;
+  PW, PH: Double;
+  Mime: PAnsiChar;
+  Dat: Pointer;
+  Len: csize_t;
+  R, NewRes: pd_res_id;
+  S, Tail: RawByteString;
+  OldR: TRect;
+
+  function ResCount: Integer;
+  begin
+    Result := 0;
+    while pd_doc_resource(E.Doc, Result + 1, @Mime, @Dat, @Len) = PD_OK do
+      Inc(Result);
+  end;
+
+  function NumAfter(const Key: string; const T: string): Integer;
+  var
+    K: Integer;
+  begin
+    Result := -1;
+    K := Pos(Key, T);
+    if K = 0 then
+      Exit;
+    K := K + Length(Key);
+    Result := 0;
+    while (K <= Length(T)) and (T[K] in ['0'..'9']) do
+    begin
+      Result := Result * 10 + Ord(T[K]) - Ord('0');
+      Inc(K);
+    end;
+  end;
+{$ENDIF}
+begin
+  Say('picture files dropped on the pages');
+  {$IFDEF LED_PARADE}
+  Data := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/');
+  if not LedVisualAvailable or not FileExists(Data + 'rgba.png') or not FileExists(Data + 'slides.pptx') then
+  begin
+    WriteLn('  (no Parade test files beside the program; nothing to check)');
+    Exit;
+  end;
+  { a page: the caret at the end, the drop on the first line's start }
+  Md := IncludeTrailingPathDelimiter(TempName('droppic')) + 'note.md';
+  ForceDirectories(ExtractFileDir(Md));
+  WriteBytes(Md, 'Alpha words here.'#10#10'Bravo words here.'#10#10'Charlie words here.'#10);
+  Txt := ExtractFilePath(Md) + 'notes.txt';
+  WriteBytes(Txt, 'not a picture'#10);
+  Tab := F.AddTab(F.Documents.OpenFile(Md));
+  Pump;
+  if not Tab.EnterVisual(Why) then
+  begin
+    Check('the page opens: ' + Why, False);
+    Exit;
+  end;
+  Pump;
+  E := Tab.Visual.Page;
+  E.ProcessKey(VK_END, [ssCtrl]);
+  Pump;
+  Sec := pd_doc_child(E.Doc, pd_doc_root(E.Doc), 0);
+  pd_doc_section_props(E.Doc, Sec, SP);
+  Pt := E.ClientToScreen(E.PageToClient(0, SP.margin_left / 65536 + 2, SP.margin_top / 65536 + 4));
+  Rest := F.DropPicturesAt([Txt], Pt);
+  L := PagePictures(E);
+  try
+    Check('a file that is no picture: left to be opened, nothing put in',
+      (Length(Rest) = 1) and (Rest[0] = Txt) and (L.Count = 0));
+  finally
+    L.Free;
+  end;
+  Rest := F.DropPicturesAt([Data + 'rgba.png', Txt], Pt);
+  Pump;
+  L := PagePictures(E);
+  try
+    Check('a picture dropped with it: put in, the other left to be opened',
+      (L.Count = 1) and (L[0] = 'image/png') and (Length(Rest) = 1) and (Rest[0] = Txt));
+  finally
+    L.Free;
+  end;
+  Check('where it fell, in the first line, not at the caret',
+    FindPicture(E, 'image/png', At, Got) and (Pos('Alpha', E.ParaText(At.block)) > 0) and (At.offset = 0));
+  Rest := F.DropPicturesAt([Data + 'rgba.png'], Point(-10000, -10000));
+  Check('dropped off the pages: left to be opened', (Length(Rest) = 1));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+
+  { a slide: the picture centred where it fell, a quarter across and three quarters down }
+  Copy_ := TempName('droppic.pptx');
+  LedWriteRawFile(Copy_, LedReadRawFile(Data + 'slides.pptx'), False);
+  Files_ := TStringList.Create;
+  try
+    Files_.Add(Copy_);
+    F.OpenFiles(Files_);
+  finally
+    Files_.Free;
+  end;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('the deck opens as its slides', False);
+    Exit;
+  end;
+  E := Tab.Visual.Page;
+  OldR := F.BoundsRect;
+  if F.Height < Screen.Height - 80 then   { room for the slide under the ribbon, above the notes }
+    F.SetBounds(F.Left, 0, F.Width, Screen.Height - 80);
+  for I := 1 to 20 do
+  begin
+    if E.ClientHeight > 200 then
+      Break;
+    Sleep(50);
+    Pump;
+  end;
+  WriteLn(Format('  (the slide''s pages: %d x %d in a window %d x %d)', [E.ClientWidth, E.ClientHeight, F.Width, F.Height]));
+  Sec := pd_doc_child(E.Doc, pd_doc_root(E.Doc), 0);
+  pd_doc_section_props(E.Doc, Sec, SP);
+  PW := SP.page_width / 65536;
+  PH := SP.page_height / 65536;
+  N0 := ResCount;
+  Pt := E.ClientToScreen(E.PageToClient(0, PW * 0.25, PH * 0.75));
+  Rest := F.DropPicturesAt([Data + 'rgba.png'], Pt);
+  Pump;
+  N1 := ResCount;
+  NewRes := 0;    { the picture's resource (one the deck had already, if it had these bytes) }
+  Got := LedReadRawFile(Data + 'rgba.png');
+  for R := 1 to N1 do
+    if (pd_doc_resource(E.Doc, R, @Mime, @Dat, @Len) = PD_OK) and (Len = Length(Got)) and
+       CompareMem(Dat, @Got[1], Len) then
+      NewRes := R;
+  OffX := -1;
+  OffY := -1;
+  ExtX := -1;
+  ExtY := -1;
+  R := 1;
+  while (NewRes <> 0) and (OffX < 0) and (pd_doc_resource(E.Doc, R, @Mime, @Dat, @Len) = PD_OK) do
+  begin
+    if StrComp(Mime, 'application/vnd.parade.drawing+json') = 0 then
+    begin
+      SetString(S, PAnsiChar(Dat), Len);
+      S := StringReplace(S, '\"', '"', [rfReplaceAll]);
+      J := Pos('r:embed="rIdPd' + IntToStr(NewRes) + '"', S);
+      if J > 0 then
+      begin
+        Tail := Copy(S, J, MaxInt);
+        OffX := NumAfter('<a:off x="', Tail);
+        I := Pos('<a:off x="', Tail);
+        if I > 0 then
+          OffY := NumAfter('" y="', Copy(Tail, I, MaxInt));
+        ExtX := NumAfter('<a:ext cx="', Tail);
+        I := Pos('<a:ext cx="', Tail);
+        if I > 0 then
+          ExtY := NumAfter('" cy="', Copy(Tail, I, MaxInt));
+      end;
+    end;
+    Inc(R);
+  end;
+  Check(Format('a picture dropped on a slide is a picture of it (left %d, resource %d, at %d; point %d,%d in %d x %d)',
+    [Length(Rest), NewRes, OffX, E.ScreenToClient(Pt).X, E.ScreenToClient(Pt).Y, E.ClientWidth, E.ClientHeight]), (Length(Rest) = 0) and (NewRes <> 0) and (OffX >= 0));
+  Check(Format('centred where it fell (%d, %d of %.0f, %.0f pt)', [Round((OffX + ExtX / 2) / 12700),
+    Round((OffY + ExtY / 2) / 12700), PW * 0.25, PH * 0.75]),
+    (OffX >= 0) and (Abs((OffX + ExtX / 2) / 12700 - PW * 0.25) < PW * 0.02) and
+    (Abs((OffY + ExtY / 2) / 12700 - PH * 0.75) < PH * 0.02));
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  F.BoundsRect := OldR;
+  Pump;
+  DeleteFile(Copy_);
+  {$ENDIF}
+end;
+
 { Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
   only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
   in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
@@ -21101,6 +21425,37 @@ begin
 end;
 {$IFDEF LED_PARADE}
 
+{ A picture file dropped on a PDF's page: put down there, its own size centred where it fell, picked; one Undo
+  takes it away. }
+procedure TestPdfDrop(F: TLedMainForm; P: TLedPdfPane);
+var
+  Path: string;
+  Before: Integer;
+  A: pd_pdfr_annot;
+  Rest: TStringArray;
+begin
+  Say('a picture file dropped on a PDF');
+  Path := ExpandFileName(ExtractFilePath(ParamStr(0)) + '../../Parade/tests/data/rgba.png');
+  if not FileExists(Path) then
+  begin
+    WriteLn('  (no Parade test picture beside the program; nothing to check)');
+    Exit;
+  end;
+  Before := pd_pdfr_annot_count(P.Pdf, 0);
+  Rest := F.DropPicturesAt([Path], P.View.ClientToScreen(P.PageToView(0, 200, 300)));
+  Pump;
+  CheckEqInt('dropped on the page: put down there', Before + 1, pd_pdfr_annot_count(P.Pdf, 0));
+  FillChar(A, SizeOf(A), 0);
+  pd_pdfr_annot_get(P.Pdf, 0, Before, A);
+  Check(Format('as a picture, its own size (48 by 30 points), centred where it fell (%.1f %.1f %.1f %.1f)',
+    [A.x0, A.y0, A.x1, A.y1]), (Length(Rest) = 0) and (pd_pdfr_annot_get(P.Pdf, 0, Before, A) = 0) and
+    (A.kind = PD_ANNOT_STAMP) and (Abs(A.x1 - A.x0 - 48) < 0.1) and (Abs(A.y1 - A.y0 - 30) < 0.1) and
+    (Abs((A.x0 + A.x1) / 2 - 200) < 1) and (Abs((A.y0 + A.y1) / 2 - 300) < 1) and (P.PickedIndex = Before));
+  F.actUndo.Execute;
+  Pump;
+  CheckEqInt('Undo takes it away', Before, pd_pdfr_annot_count(P.Pdf, 0));
+end;
+
 { Insert on a PDF: a picture put where the page is clicked, a corner dragged to resize it (its shape kept), a
   signature drawn as ink and kept for next time, a check mark, today's date; a scanned signature's paper made
   clear. }
@@ -21445,6 +21800,7 @@ begin
   end;
 
   TestPdfInsert(P, V);
+  TestPdfDrop(F, P);
 
   { presented: full screen, the pages one at a time; Esc ends it, the form gone }
   P.Present(False);
@@ -21670,6 +22026,8 @@ begin
   TestIconCache(F);
   TestVisualDeleteKey(F);
   TestPictureClipboard(F);
+  TestSlideTextBoxPicture(F);
+  TestDropPictures(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);

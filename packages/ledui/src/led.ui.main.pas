@@ -938,6 +938,9 @@ type
     procedure SaveSession;
     procedure MoveTabToBook(ATab: TLedTab; ABook: TPageControl);
     procedure CloseActiveTab(AReplace: Boolean);
+    { files dropped at a point of the screen: the pictures among them, when it is on a document's pages or a
+      PDF's, put in there; what is left (all of them, when none was put in) to be opened }
+    function DropPicturesAt(const FileNames: array of string; const AScreen: TPoint): TStringArray;
     procedure CollapseEmptySplit;
     function SaveDocument(ADoc: TLedDocument): Boolean;
     procedure ReportBJDataFallback(ADoc: TLedDocument);
@@ -5636,12 +5639,67 @@ end;
   picture dropped on an editor is asked to be read as text.  Anywhere else
   -- the workspace, the command window -- the host acts on it as a double
   click would, and a data file is loaded. }
+function TLedMainForm.DropPicturesAt(const FileNames: array of string; const AScreen: TPoint): TStringArray;
+var
+  C: TControl;
+  Tab: TLedTab;
+  Pics, Rest: TStringArray;
+  i, N: Integer;
+  P: TPoint;
+  IsPic: Boolean;
+begin
+  Result := nil;
+  SetLength(Result, Length(FileNames));
+  for i := 0 to High(FileNames) do
+    Result[i] := FileNames[i];
+  { the tab whose pages are under the point }
+  C := FindControlAtPosition(AScreen, True);
+  while (C <> nil) and not (C is TLedTab) do
+    C := C.Parent;
+  if C = nil then
+    Exit;
+  Tab := TLedTab(C);
+  Pics := nil;
+  Rest := nil;
+  for i := 0 to High(FileNames) do
+  begin
+    if Tab.PdfMode then
+      IsPic := TLedPdfPane.IsPictureFile(FileNames[i])
+    else
+      IsPic := Tab.VisualMode and LedVisualIsPictureFile(FileNames[i]);
+    if IsPic then
+    begin
+      SetLength(Pics, Length(Pics) + 1);
+      Pics[High(Pics)] := FileNames[i];
+    end
+    else
+    begin
+      SetLength(Rest, Length(Rest) + 1);
+      Rest[High(Rest)] := FileNames[i];
+    end;
+  end;
+  if Pics = nil then
+    Exit;
+  N := 0;
+  if Tab.PdfMode and (Tab.Pdf <> nil) and Tab.Pdf.View.IsVisible then
+  begin
+    P := Tab.Pdf.View.ScreenToClient(AScreen);
+    if PtInRect(Tab.Pdf.View.ClientRect, P) then
+      N := Tab.Pdf.DropPictureFiles(Pics, P.X, P.Y);
+  end
+  else if Tab.VisualMode and (Tab.Visual <> nil) then
+    N := Tab.Visual.DropPictureFiles(Pics, AScreen);
+  if N > 0 then
+    Result := Rest;
+end;
+
 procedure TLedMainForm.FormDropFiles(Sender: TObject;
   const FileNames: array of string);
 var
   i: Integer;
   Files: TStringList;
   Dir: string;
+  Names: TStringArray;
 
   function OnEditors: Boolean;
   var
@@ -5660,18 +5718,27 @@ var
   end;
 
 begin
+  { pictures dropped on a document's pages or a PDF's go in there (Ctrl held: opened, as any file is) }
+  if (Sender = Self) and (GetKeyState($11 { VK_CONTROL }) >= 0) then
+    Names := DropPicturesAt(FileNames, Mouse.CursorPos)
+  else
+  begin
+    SetLength(Names, Length(FileNames));
+    for i := 0 to High(FileNames) do
+      Names[i] := FileNames[i];
+  end;
   Files := TStringList.Create;
   try
     Dir := '';
-    for i := 0 to High(FileNames) do
+    for i := 0 to High(Names) do
     begin
-      if FileNames[i] = '' then Continue;
-      if DirectoryExists(FileNames[i]) then
+      if Names[i] = '' then Continue;
+      if DirectoryExists(Names[i]) then
       begin
-        if Dir = '' then Dir := FileNames[i];
+        if Dir = '' then Dir := Names[i];
         Continue;
       end;
-      Files.Add(FileNames[i]);
+      Files.Add(Names[i]);
     end;
 
     if Files.Count > 0 then

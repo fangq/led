@@ -310,6 +310,11 @@ type
     function ResizeAnnotation(APage, AIndex: Integer; X0, Y0, X1, Y1: Double): Boolean;
     { a picture file put on the page where it is clicked next (False: it cannot be read) }
     function InsertPictureFile(const AFileName: string): Boolean;
+    { a file a page takes as a picture (PNG, JPEG, GIF, BMP), by its name }
+    class function IsPictureFile(const AFileName: string): Boolean;
+    { picture files dropped at a point of the view (its client pixels): each on the page there, its own size
+      centred where it fell (the next a little below and right of it), the last selected; the count put down }
+    function DropPictureFiles(const AFiles: array of string; X, Y: Integer): Integer;
     { the clipboard's picture put on the page where it is clicked next (False: it has none) }
     function PasteFromClipboard: Boolean;
     { a point of a page (points, as shown) on the view }
@@ -1091,6 +1096,55 @@ begin
   FPlaceW := W;
   FPlaceH := H;
   StartPlacing(ppPicture);
+end;
+
+class function TLedPdfPane.IsPictureFile(const AFileName: string): Boolean;
+begin
+  case LowerCase(ExtractFileExt(AFileName)) of
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp': Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+function TLedPdfPane.DropPictureFiles(const AFiles: array of string; X, Y: Integer): Integer;
+var
+  i, W, H, Page: Integer;
+  RGBA, J: RawByteString;
+  PX, PY, X0, Y0, X1, Y1: Double;
+  At: TPoint;
+begin
+  Result := 0;
+  if FPlacing <> ppNone then StopPlacing;
+  At := Point(X, Y);
+  for i := 0 to High(AFiles) do
+  begin
+    Page := PageAt(At.X, At.Y, PX, PY);
+    if (Page < 0) or not IsPictureFile(AFiles[i]) or not LedLoadPictureRGBA(AFiles[i], W, H, RGBA, J) then
+      Continue;
+    { as a click with the picture in hand puts it: its own size, centred there }
+    FPlaceRGBA := RGBA;
+    FPlaceJpeg := J;
+    FPlaceW := W;
+    FPlaceH := H;
+    FPlacing := ppPicture;
+    try
+      if PlaceBox(Page, At, At, X0, Y0, X1, Y1) and
+         (PlacePicture(Page, X0, Y0, X1, Y1, RGBA, J, W, H) >= 0) then
+        Inc(Result);
+    finally
+      FPlacing := ppNone;
+      FPlaceRGBA := '';
+      FPlaceJpeg := '';
+    end;
+    At := Point(At.X + 16, At.Y + 16);
+  end;
+  if Result > 0 then
+  begin
+    if FView.CanFocus then FView.SetFocus;
+    FView.Invalidate;
+    Status;
+  end;
 end;
 
 function TLedPdfPane.PasteFromClipboard: Boolean;

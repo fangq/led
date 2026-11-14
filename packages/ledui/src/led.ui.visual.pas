@@ -357,6 +357,9 @@ type
     { the pages written to a file as its name says (.pptx, .docx, .pdoc, .jdoc, .md, .html); False when the name is
       of no such kind or it cannot be written }
     function ExportToFile(const AFileName: string): Boolean;
+    { picture files dropped at a point of the screen: when it is on the pages, put in there (on a slide, pictures
+      of it centred where they fell; on a page, in the text there); the count put in, 0 when none was }
+    function DropPictureFiles(const AFiles: array of string; const AScreen: TPoint): Integer;
     { The words on the pages, without their formatting. }
     function PlainText: string;
     { the ribbon's tabs, their names one a line (for scripts and the self-test) }
@@ -466,6 +469,8 @@ var
 
 { What the visual editor would open this file as, by its name. }
 function LedVisualKindOf(const AFileName: string): TLedVisualKind;
+{ a file the pages take as a picture (Insert Picture's kinds), by its name }
+function LedVisualIsPictureFile(const AFileName: string): Boolean;
 { a file of the kind is bytes (Word, .pdoc), not text }
 function LedVisualKindIsBinary(AKind: TLedVisualKind): Boolean;
 { A file the pages read but do not write (PowerPoint), as a Parade document (.pdoc bytes): each slide a page that is
@@ -530,6 +535,15 @@ begin
     Result := P.Export(AKind);
   finally
     P.Free;
+  end;
+end;
+
+function LedVisualIsPictureFile(const AFileName: string): Boolean;
+begin
+  case LowerCase(ExtractFileExt(AFileName)) of
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.svg', '.emf', '.wmf': Result := True;
+  else
+    Result := False;
   end;
 end;
 
@@ -4761,6 +4775,25 @@ begin
   finally
     S.Free;
   end;
+  {$ENDIF}
+end;
+
+function TLedVisualPane.DropPictureFiles(const AFiles: array of string; const AScreen: TPoint): Integer;
+{$IFDEF LED_PARADE}
+var
+  P: TPoint;
+{$ENDIF}
+begin
+  Result := 0;
+  {$IFDEF LED_PARADE}
+  if (FEdit = nil) or not FEdit.IsVisible then
+    Exit;
+  P := FEdit.ScreenToClient(AScreen);
+  if not PtInRect(FEdit.ClientRect, P) then
+    Exit;
+  Result := FEdit.DropPictureFiles(AFiles, P.X, P.Y);
+  if (Result > 0) and FEdit.CanFocus then
+    FEdit.SetFocus;
   {$ENDIF}
 end;
 
