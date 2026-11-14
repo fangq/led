@@ -18880,6 +18880,95 @@ begin
   {$ENDIF}
 end;
 
+{ File > New Presentation: a 16:9 deck of the template LED ships, one Title Slide, its title and subtitle
+  placeholders empty (their prompts shown), on the template's layouts }
+procedure TestNewPresentation(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  Sp: pd_section_props;
+  D: pd_pos;
+  Boxes: TParadeShapeBoxes;
+  I: Integer;
+  Ph, Idx, Kinds: string;
+  Phs: TParadeLayoutPhs;
+  P: TPoint;
+  Ch: TUTF8Char;
+  Txt, Got: string;
+{$ENDIF}
+begin
+  Say('File > New Presentation');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  Check('New Presentation offered', F.actNewPresentation.Visible);
+  F.actNewPresentation.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new presentation opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  Check(Format('one slide (%d), untitled', [E.SlideCount]), (E.SlideCount = 1) and (Tab.Document.FileName = ''));
+  FillChar(Sp, SizeOf(Sp), 0);
+  pd_doc_section_props(E.Doc, E.SlideSection(0), Sp);
+  Check(Format('16:9: %.0f by %.0f pt', [Sp.page_width / PD_SP_PER_PT, Sp.page_height / PD_SP_PER_PT]),
+    (Abs(Sp.page_width / PD_SP_PER_PT - 960) < 0.5) and (Abs(Sp.page_height / PD_SP_PER_PT - 540) < 0.5));
+  Check('on the Title Slide layout: ' + E.SlideLayoutPath(0), E.SlideLayoutPath(0) = 'ppt/slideLayouts/slideLayout1.xml');
+  Kinds := '';
+  if E.LayoutPlaceholders(0, Phs) then
+    for I := 0 to High(Phs) do
+      Kinds := Kinds + Phs[I].Typ + ' ';
+  Check('the layout''s placeholders, where its master has them: ' + Kinds, (Length(Phs) = 2) and
+    (Phs[0].Typ = 'ctrTitle') and (Phs[1].Typ = 'subTitle') and (Phs[0].W > 0) and (Phs[1].W > 0));
+  Kinds := '';
+  D := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, E.SlideSection(0), 0), 0), 0);   { (its canvas: the slide's
+                                                                                          float's picture) }
+  begin
+    Boxes := E.DrawingShapes(D);
+    for I := 0 to High(Boxes) do
+      if E.PlaceholderOf(D, Boxes[I].Sid, Ph, Idx) and ((Boxes[I].Story = 0) or   { (empty: no text of its own yet) }
+         (E.ParaText(pd_doc_child(E.Doc, Boxes[I].Story, 0)) = '')) then
+        Kinds := Kinds + Ph + ' ';
+  end;
+  Check('its title and subtitle there, empty: ' + Kinds, Kinds = 'ctrTitle subTitle ');
+  Check('their prompts', (TParadeEdit.PlaceholderPrompt('ctrTitle') = 'Click to add title') and
+    (TParadeEdit.PlaceholderPrompt('subTitle') = 'Click to add subtitle'));
+  Check('not changed yet', not Tab.Document.Master.Modified);
+  { a click in the title's middle, and typing: the title's text }
+  Got := '';
+  if Length(Boxes) > 0 then
+  begin
+    P := E.PageToClient(0, (Boxes[0].X0 + Boxes[0].X1) / 2 / PD_SP_PER_PT, (Boxes[0].Y0 + Boxes[0].Y1) / 2 / PD_SP_PER_PT);
+    for I := 1 to 2 do
+    begin
+      TLedParadeWheel(E).MouseDown(mbLeft, [], P.X, P.Y);
+      TLedParadeWheel(E).MouseUp(mbLeft, [], P.X, P.Y);
+      Pump;
+      Sleep(600);
+    end;
+    Txt := 'LED text editor';
+    for I := 1 to Length(Txt) do
+    begin
+      Ch := Txt[I];
+      TLedParadeWheel(E).UTF8KeyPress(Ch);
+    end;
+    Pump;
+    D := PdPos(pd_doc_child(E.Doc, pd_doc_child(E.Doc, E.SlideSection(0), 0), 0), 0);
+    Boxes := E.DrawingShapes(D);
+    for I := 0 to High(Boxes) do
+      if E.PlaceholderOf(D, Boxes[I].Sid, Ph, Idx) and (Ph = 'ctrTitle') and (Boxes[I].Story <> 0) then
+        Got := E.ParaText(pd_doc_child(E.Doc, Boxes[I].Story, 0));
+  end;
+  Check('clicked in the title and typed: "' + Got + '"', Got = Txt);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { A turned text box's text selected: the highlight one band a line, turned with the text -- not each letter's
   upright box moved to where the letter is (the bands' corners stood out of the line, overlapping) }
 procedure TestTurnedTextSelection(F: TLedMainForm);
@@ -23174,6 +23263,7 @@ begin
   if Wanted('TestSvgShapes') then TestSvgShapes(F);
   if Wanted('TestTurnedResize') then TestTurnedResize(F);
   if Wanted('TestTurnedTextSelection') then TestTurnedTextSelection(F);
+  if Wanted('TestNewPresentation') then TestNewPresentation(F);
   if Wanted('TestTextToShapes') then TestTextToShapes(F);
   if Wanted('TestCanvasTextBox') then TestCanvasTextBox(F);
   if Wanted('TestCanvasFormFields') then TestCanvasFormFields(F);

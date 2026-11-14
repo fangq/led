@@ -56,6 +56,7 @@ type
     actNew: TAction;
     actNewPdoc: TAction;
     actNewCanvas: TAction;
+    actNewPresentation: TAction;
     actNewFromTemplate: TAction;
     actJoinShared: TAction;
     actShareDoc: TAction;
@@ -437,6 +438,7 @@ type
     procedure actNewNotebookExecute(Sender: TObject);
     procedure actNewPdocExecute(Sender: TObject);
     procedure actNewCanvasExecute(Sender: TObject);
+    procedure actNewPresentationExecute(Sender: TObject);
     procedure actNewFromTemplateExecute(Sender: TObject);
     procedure actJoinSharedExecute(Sender: TObject);
     procedure actShareDocExecute(Sender: TObject);
@@ -1231,6 +1233,7 @@ begin
   actJoinShared.Visible := LedVisualCanShare;
   actNewPdoc.Visible := LedVisualAvailable;
   actNewCanvas.Visible := LedVisualAvailable;
+  actNewPresentation.Visible := LedVisualAvailable;
   actNewFromTemplate.Visible := LedVisualAvailable;
   actShareDoc.Visible := LedVisualCanShare;
   actLeaveDoc.Visible := LedVisualCanShare;
@@ -7765,6 +7768,30 @@ begin
   Tab := AddTab(Doc);
   if (Tab <> nil) and Tab.VisualMode then
     Tab.Visual.StartCanvas;
+end;
+
+{ a slide deck of the template LED ships (data/templates/presentation.potx: 16:9, a Title Slide, layouts for
+  Title and Content, Title Only and Blank), untitled, as New from Template makes one }
+procedure TLedMainForm.actNewPresentationExecute(Sender: TObject);
+var
+  Doc: TLedDocument;
+  FileName, Data, Why: string;
+begin
+  FileName := LedDataDir + 'templates' + PathDelim + 'presentation.potx';
+  if not FileExists(FileName) then
+  begin
+    ReportError('New Presentation: the template is missing: ' + FileName);
+    Exit;
+  end;
+  Data := LedVisualImport(LedReadRawFile(FileName), FileName, Why);
+  if Data = '' then
+  begin
+    ReportError('New Presentation: ' + Why);
+    Exit;
+  end;
+  Doc := FDocs.NewDocument;
+  Doc.StartWord(Data, '.pdoc');
+  AddTab(Doc);
 end;
 
 procedure TLedMainForm.actJoinSharedExecute(Sender: TObject);
