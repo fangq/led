@@ -34,7 +34,7 @@ uses
   LCLType, LCLIntf, SynEditMiscClasses, SynEditMarkup, SynEditHighlighter,
   SynEditHighlighterFoldBase,
   ShellCtrls, Dialogs, Led.Core.Hex, Led.Core.BJDView, Led.Core.BJDEdit,
-  Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, Led.Syn.Notebook, Led.Core.Kernel,
+  Led.Core.NBFormat, Led.Core.NBView, Led.Core.NBMagic, fpjson, jsonparser, Led.Syn.Notebook, Led.Core.Kernel,
   Led.UI.NBPane, Led.UI.PageStyle, Led.Core.Markdown, IpHtml, IpHtmlProp,
   Led.UI.AIPane, Led.Core.AI, Led.UI.ErrLog,
   Led.UI.BJEdit, Led.UI.Visual{$IFDEF LED_PARADE}, parade, paradeedit, Led.UI.Ruler, paradeshow, paradeshowpdf, paradeanim, Led.UI.AnimPane, Led.UI.ResPane,
@@ -18444,6 +18444,209 @@ begin
   {$ENDIF}
 end;
 
+{ An SVG on a canvas as its shapes, to edit one by one: pasted, one group of freeforms (curves kept) and a text box,
+  one Undo; an SVG picture already there made its shapes (Convert to Shapes) in its place; shapes copied go out as
+  SVG of just them; the pages exported as SVG. }
+procedure TestSvgShapes(F: TLedMainForm);
+{$IFDEF LED_PARADE}
+const
+  Svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">' +
+    '<rect x="5" y="5" width="90" height="40" fill="#3366cc"/><circle cx="150" cy="30" r="25" fill="#cc3333"/>' +
+    '<text x="10" y="85" font-size="20" fill="#000000">Hello</text></svg>';
+var
+  Tab: TLedTab;
+  E: TParadeEdit;
+  At: pd_pos;
+  Sid, N: Integer;
+  X, Clip, Path, PicXf: string;
+  R: pd_res_id;
+  W, H: pd_sp;
+  O: pd_inline;
+  Bytes: RawByteString;
+  Sp: pd_section_props;
+  Fill, VB: string;
+  Parts: TStringArray;
+  VW, VH: Double;
+
+  function CanvasXml: string;
+  var
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+    S: RawByteString;
+    J: TJSONData;
+  begin
+    Result := '';
+    if (pd_doc_inline_at(E.Doc, At, O) <> PD_OK) or
+       (pd_doc_resource(E.Doc, O.resource, @Mime, @Data, @Len) <> PD_OK) then
+      Exit;
+    SetString(S, PAnsiChar(Data), Len);
+    J := GetJSON(S);
+    try
+      if (J is TJSONObject) and (TJSONObject(J).Find('xml') <> nil) then
+        Result := TJSONObject(J).Strings['xml'];
+    finally
+      J.Free;
+    end;
+  end;
+
+  function Count(const Sub, T: string): Integer;
+  var
+    P: Integer;
+  begin
+    Result := 0;
+    P := Pos(Sub, T);
+    while P > 0 do
+    begin
+      Inc(Result);
+      P := Pos(Sub, T, P + 1);
+    end;
+  end;
+
+  { a .pptx read back: a drawing of it holds S }
+  function DeckHas(const APath, S: string): Boolean;
+  var
+    P: TLedVisualPane;
+    Back, Why, T: string;
+    R2: pd_res_id;
+    Mime: PAnsiChar;
+    Data: Pointer;
+    Len: csize_t;
+  begin
+    Result := False;
+    Back := LedVisualImport(LedReadRawFile(APath), APath, Why);
+    if Back = '' then
+      Exit;
+    P := TLedVisualPane.Create(nil);
+    try
+      if not P.Load(Back, lvkPdoc, 'x.pdoc', Why) then
+        Exit;
+      R2 := 1;
+      while pd_doc_resource(P.Page.Doc, R2, @Mime, @Data, @Len) = PD_OK do
+      begin
+        SetString(T, PChar(Data), Len);
+        if (StrPas(Mime) = 'application/vnd.parade.drawing+json') and (Pos(S, T) > 0) then
+          Exit(True);
+        Inc(R2);
+      end;
+    finally
+      P.Free;
+    end;
+  end;
+
+  function XfOf(const T, Tag: string): string;   { the first a:off after Tag }
+  var
+    P, Q: Integer;
+  begin
+    Result := '';
+    P := Pos(Tag, T);
+    if P = 0 then
+      Exit;
+    P := Pos('<a:off ', T, P);
+    Q := Pos('/>', T, P);
+    if (P > 0) and (Q > 0) then
+      Result := Copy(T, P, Q - P);
+  end;
+{$ENDIF}
+begin
+  Say('an SVG as shapes on a canvas; shapes and pages out as SVG');
+  {$IFDEF LED_PARADE}
+  if not LedVisualAvailable then Exit;
+  F.actNewCanvas.Execute;
+  Pump;
+  Tab := F.ActiveTab;
+  if (Tab = nil) or not Tab.VisualMode then
+  begin
+    Check('a new canvas opens', False);
+    Exit;
+  end;
+  E := Tab.Visual.Editor as TParadeEdit;
+  if not E.SelectedShape(At, Sid) then
+  begin
+    Check('its canvas selected', False);
+    Exit;
+  end;
+
+  { an SVG picture on the canvas (as a slide's icon is): made its shapes, where it was }
+  Bytes := Svg;
+  Check('an SVG picture put on the canvas', (pd_doc_add_picture(E.Doc, 'image/svg+xml', @Bytes[1], Length(Bytes), R) =
+    PD_OK) and E.AddPictureShape(R, 150 * PD_SP_PER_PT, 75 * PD_SP_PER_PT));
+  Pump;
+  X := CanvasXml;
+  PicXf := XfOf(X, '<pic:pic');
+  Check('the picture selected is known as an SVG', E.SelectedSvg(Bytes) and (Bytes = Svg) and (PicXf <> ''));
+  Check('Convert to Shapes', E.ConvertToShapes);
+  Pump;
+  X := CanvasXml;
+  Check(Format('its shapes in its place: a group of %d freeforms and text boxes, the picture gone',
+    [Count('<wps:wsp', X)]), (Pos('<pic:pic', X) = 0) and (Count('<wpg:wgp>', X) = 1) and (Count('<wps:wsp', X) = 3) and
+    (XfOf(X, '<wpg:wgp>') = PicXf));
+  Check('curves as curves, the text a text box', (Pos('<a:cubicBezTo>', X) > 0) and (Pos('txBox="1"', X) > 0) and
+    (Pos('>Hello</w:t>', X) > 0));
+  F.actUndo.Execute;
+  Pump;
+  X := CanvasXml;
+  Check('one Undo: the picture back', (Pos('<pic:pic', X) > 0) and (Pos('<wpg:wgp>', X) = 0));
+
+  { pasted on the canvas: its shapes, not a picture }
+  { the picture deleted; an ellipse where the SVG will go, under it }
+  E.DeleteShapes;
+  Pump;
+  Sp := E.CurrentSectionProps;
+  Check('an ellipse in the middle of the canvas', (Pos('<pic:pic', CanvasXml) = 0) and
+    E.AddShape('ellipse', Sp.page_width / 2 - 100 * PD_SP_PER_PT, Sp.page_height / 2 - 60 * PD_SP_PER_PT,
+    Sp.page_width / 2 + 100 * PD_SP_PER_PT, Sp.page_height / 2 + 60 * PD_SP_PER_PT));
+  Pump;
+  X := CanvasXml;
+  Fill := Copy(X, Pos('<a:srgbClr val="', X) + 16, 6);    { its fill }
+
+  { pasted on the canvas: its shapes, not a picture }
+  Clipboard.Clear;
+  PutClip('image/svg+xml', Svg);
+  E.PasteFromClipboard;
+  Pump;
+  X := CanvasXml;
+  N := Count('<wps:wsp', X);
+  Check(Format('an SVG pasted on a canvas (a shape selected) is its shapes (%d with the ellipse)', [N]),
+    (Count('<wpg:wgp>', X) = 1) and (N = 4) and (Count('<pic:pic', X) = 0));
+
+  { the group copied: an SVG of it, the ellipse under it left out, the box round the group its size }
+  E.CopyToClipboard;
+  Clip := LowerCase(ClipBytes('image/svg+xml'));
+  VB := Copy(Clip, Pos('viewbox="', Clip) + 9, 60);
+  VB := Copy(VB, 1, Pos('"', VB) - 1);
+  Parts := VB.Split([' ']);
+  VW := 0;
+  VH := 0;
+  if Length(Parts) = 4 then
+  begin
+    VW := StrToFloatDef(Parts[2], 0, FormatSettings);
+    VH := StrToFloatDef(Parts[3], 0, FormatSettings);
+  end;
+  { the box round what it draws: 170 by about 85 px of the SVG's 200 by 100 (127.5 by 64 pt) }
+  Check('shapes copied go out as SVG of just them: ' + VB + ', not #' + Fill,
+    (Pos('<svg', Clip) > 0) and (VW > 120) and (VW < 135) and (VH > 55) and (VH < 75) and (Pos('#3366cc', Clip) > 0) and
+    (Pos('#cc3333', Clip) > 0) and (Length(Fill) = 6) and (Pos('#' + LowerCase(Fill), Clip) = 0));
+  { exported as PowerPoint and read back: its shapes still shapes, curves and words }
+  Path := TempName('svgshapes.pptx');
+  Check('the canvas with its SVG shapes exported as a .pptx, read back with them',
+    Tab.Visual.ExportToFile(Path) and DeckHas(Path, '<a:cubicBezTo>') and DeckHas(Path, 'Hello'));
+  DeleteFile(Path);
+  F.actUndo.Execute;
+  Pump;
+  Check('one Undo takes the pasted shapes away', Pos('<wpg:wgp>', CanvasXml) = 0);
+
+  { the pages as SVG }
+  Path := TempName('canvas.svg');
+  Check('Export as SVG: the page an SVG picture', Tab.Visual.ExportToFile(Path) and
+    (Pos('<svg', LedReadRawFile(Path)) > 0) and (Pos('viewBox="0 0 ', LedReadRawFile(Path)) > 0));
+  DeleteFile(Path);
+  Tab.Document.Master.Modified := False;
+  F.CloseActiveTab(False);
+  Pump;
+  {$ENDIF}
+end;
+
 { Pictures through the clipboard, to and from other programs: a screenshot's PNG, a browser's picture (its HTML
   only the picture), a BMP (kept as a PNG), an SVG (drawn), picture files a file manager copied; HTML with words
   in it is the HTML. A picture alone, copied, is a picture other programs take: its own bytes and a PNG. }
@@ -22028,6 +22231,7 @@ begin
   TestPictureClipboard(F);
   TestSlideTextBoxPicture(F);
   TestDropPictures(F);
+  TestSvgShapes(F);
   {$IFDEF LED_PARADE}
   if LedVisualAvailable then
     TestVisualContextMenus(F);

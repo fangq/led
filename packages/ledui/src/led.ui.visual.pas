@@ -190,6 +190,7 @@ type
     procedure ShapeSizeItemClicked(Sender: TObject);
     procedure GroupClicked(Sender: TObject);
     procedure UngroupClicked(Sender: TObject);
+    procedure ConvertToShapesClicked(Sender: TObject);
     procedure TableInsertItemClicked(Sender: TObject);
     procedure TableDeleteItemClicked(Sender: TObject);
     procedure TableMergeItemClicked(Sender: TObject);
@@ -357,6 +358,7 @@ type
     { the pages written to a file as its name says (.pptx, .docx, .pdoc, .jdoc, .md, .html); False when the name is
       of no such kind or it cannot be written }
     function ExportToFile(const AFileName: string): Boolean;
+    { (.svg: each page an SVG picture, name.svg, name-2.svg, ...) }
     { picture files dropped at a point of the screen: when it is on the pages, put in there (on a slide, pictures
       of it centred where they fell; on a page, in the text there); the count put in, 0 when none was }
     function DropPictureFiles(const AFiles: array of string; const AScreen: TPoint): Integer;
@@ -3857,6 +3859,13 @@ begin
   BackToPage;
 end;
 
+procedure TLedVisualPane.ConvertToShapesClicked(Sender: TObject);
+begin
+  {$IFDEF LED_PARADE}
+  FEdit.ConvertToShapes;
+  {$ENDIF}
+end;
+
 procedure TLedVisualPane.UngroupClicked(Sender: TObject);
 begin
   FEdit.UngroupShape;
@@ -4804,6 +4813,17 @@ var
   F: TFileStream;
 begin
   Result := False;
+  {$IFDEF LED_PARADE}
+  if LowerCase(ExtractFileExt(AFileName)) = '.svg' then
+  begin   { a picture a page (name.svg, name-2.svg, ...) }
+    try
+      Result := FEdit.ExportSVG(AFileName) > 0;
+    except
+      Result := False;
+    end;
+    Exit;
+  end;
+  {$ENDIF}
   K := LedVisualKindOf(AFileName);
   if K = lvkDotx then
     K := lvkDocx;
@@ -5517,6 +5537,7 @@ var
   Sids: TIntegerArray;
   At: pd_pos;
   Sid: Integer;
+  SvgBytes: RawByteString;
 
   function Add(AParent: TMenuItem; const ACaption: string; ATag: Integer; AClick: TNotifyEvent): TMenuItem;
   begin
@@ -5676,6 +5697,8 @@ begin
       Add(Root, 'Group', 0, @GroupClicked)
     else if C.Shape = 'drawing' then
       Add(Root, 'Ungroup', 0, @UngroupClicked);
+    if FEdit.SelectedSvg(SvgBytes) then
+      Add(Root, 'Convert to Shapes', 0, @ConvertToShapesClicked);
     Sep;
     Add(Root, 'Size and Position...', ctxSize, @ContextItemClicked);
     if Obj and not InDrawing then

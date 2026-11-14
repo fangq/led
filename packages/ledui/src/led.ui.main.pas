@@ -8372,7 +8372,7 @@ begin
   try
     Dlg.Title := 'Export the pages';
     Dlg.Filter := 'PowerPoint presentation (*.pptx)|*.pptx|Word document (*.docx)|*.docx|' +
-      'Parade document (*.pdoc)|*.pdoc|All files|*';
+      'Parade document (*.pdoc)|*.pdoc|SVG pictures, one a page (*.svg)|*.svg|All files|*';
     if {$IFDEF LED_PARADE}V.Page.SlideCount > 0{$ELSE}False{$ENDIF} then
     begin
       Dlg.FilterIndex := 1;
