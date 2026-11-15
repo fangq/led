@@ -81,12 +81,14 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, widgetset: win32 }
-          # Pinned to macOS 14 (Sonoma): setup-lazarus' prebuilt Lazarus .pkg
-          # installs there, but macos-latest (15 / Sequoia) rejects it as
-          # "incompatible with this version of macOS".
-          - { os: macos-14,       widgetset: cocoa }
+          # macOS 15: GitHub retired macos-14, the last image setup-lazarus'
+          # .pkg installed on, so Lazarus comes from .github/actions/lazarus-macos.
+          - { os: macos-15,       widgetset: cocoa }
     steps:
       - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/lazarus-macos
+        if: runner.os == 'macOS'
 
       # One retry, for the SourceForge stall described at the top of this
       # file.  It took out this job on a push whose code was fine as
@@ -96,6 +98,7 @@ jobs:
       # second is not, so a genuinely broken install still fails the job.
       - name: Install Lazarus + FPC
         id: lazarus
+        if: runner.os == 'Windows'
         uses: gcarreno/setup-lazarus@v3.4.1
         continue-on-error: true
         # Shorter than the second attempt on purpose: a healthy download

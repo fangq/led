@@ -1,0 +1,34 @@
+name: Install Lazarus and FPC on macOS
+description: >
+  GitHub retired the macos-14 runners ("The configuration
+  'macos-14-arm64-us-default' is not supported"), and gcarreno/setup-lazarus'
+  prebuilt .pkg does not install on macOS 15.  So this builds lazbuild from
+  the Lazarus source tag with Homebrew's FPC, which has an arm64 Sequoia
+  bottle -- no SourceForge download, no installer.
+
+inputs:
+  tag:
+    description: The Lazarus release tag to build lazbuild from.
+    required: false
+    default: lazarus_4_4
+
+runs:
+  using: composite
+  steps:
+    - name: Install FPC (Homebrew)
+      shell: bash
+      run: brew install fpc
+
+    - name: Build lazbuild from source
+      shell: bash
+      run: |
+        LAZ="$RUNNER_TEMP/lazarus"
+        git clone -q --depth 1 --branch "${{ inputs.tag }}" https://gitlab.com/freepascal.org/lazarus/lazarus.git "$LAZ"
+        make -C "$LAZ" lazbuild > "$RUNNER_TEMP/lazbuild-make.log" 2>&1 || { tail -60 "$RUNNER_TEMP/lazbuild-make.log"; exit 1; }
+        echo "$LAZ" >> "$GITHUB_PATH"
+
+    - name: Tool versions
+      shell: bash
+      run: |
+        fpc -iV
+        lazbuild --version | tail -1

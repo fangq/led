@@ -94,9 +94,10 @@ PARADE_YRS := $(if $(PARADE),$(wildcard $(PARADE)/build/yrs/src/target/release/l
 PARADE_SYNC ?= $(if $(PARADE_YRS),1,0)
 
 # On Windows libparade.a comes from MinGW gcc, and FPC's linker needs gcc's C
-# runtime and helpers beside it (parade.pas links them by name there): copied
-# from the gcc that built it.  CC=gcc on a runner with no `cc`.
-PARADE_CRT := $(if $(filter Windows_NT,$(OS)),$(foreach l,libmingwex.a libmsvcrt.a libgcc.a,$(shell $(CC) -print-file-name=$(l))))
+# runtime, helpers and kernel32 imports beside it (parade.pas links them by
+# name there): copied from the gcc that built it.  CC=gcc on a runner with no
+# `cc`.
+PARADE_CRT := $(if $(filter Windows_NT,$(OS)),$(foreach l,libmingwex.a libmsvcrt.a libgcc.a libkernel32.a,$(shell $(CC) -print-file-name=$(l))))
 
 ifneq ($(PARADE),)
 ifeq ($(PARADE_SYNC),1)
@@ -132,7 +133,7 @@ noparade:
 	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
 	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/paradefonts.pas $(PARADE_LIB)/paradeshow.pas $(PARADE_LIB)/paradeshowpdf.pas $(PARADE_LIB)/paradepdf.pas $(PARADE_LIB)/paradeanim.pas $(PARADE_LIB)/libparade.a \
 	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas $(PARADE_LIB)/libyrs.a \
-	      $(PARADE_LIB)/libmingwex.a $(PARADE_LIB)/libmsvcrt.a $(PARADE_LIB)/libgcc.a
+	      $(PARADE_LIB)/libmingwex.a $(PARADE_LIB)/libmsvcrt.a $(PARADE_LIB)/libgcc.a $(PARADE_LIB)/libkernel32.a
 
 # ---- builds ----------------------------------------------------------------
 build release: $(RES) parade
