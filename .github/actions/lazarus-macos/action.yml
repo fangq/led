@@ -25,7 +25,12 @@ runs:
         LAZ="$RUNNER_TEMP/lazarus"
         git clone -q --depth 1 --branch "${{ inputs.tag }}" https://gitlab.com/freepascal.org/lazarus/lazarus.git "$LAZ"
         make -C "$LAZ" lazbuild > "$RUNNER_TEMP/lazbuild-make.log" 2>&1 || { tail -60 "$RUNNER_TEMP/lazbuild-make.log"; exit 1; }
-        echo "$LAZ" >> "$GITHUB_PATH"
+        # A lazbuild built in place has no configuration naming its tree, so
+        # it is called through one that does.
+        mkdir -p "$RUNNER_TEMP/lazbin"
+        printf '#!/bin/sh\nexec "%s/lazbuild" --lazarusdir="%s" "$@"\n' "$LAZ" "$LAZ" > "$RUNNER_TEMP/lazbin/lazbuild"
+        chmod +x "$RUNNER_TEMP/lazbin/lazbuild"
+        echo "$RUNNER_TEMP/lazbin" >> "$GITHUB_PATH"
 
     - name: Tool versions
       shell: bash

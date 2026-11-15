@@ -93,11 +93,10 @@ PARADE_LIB := lib/parade
 PARADE_YRS := $(if $(PARADE),$(wildcard $(PARADE)/build/yrs/src/target/release/libyrs.a))
 PARADE_SYNC ?= $(if $(PARADE_YRS),1,0)
 
-# On Windows libparade.a comes from MinGW gcc, and FPC's linker needs gcc's C
-# runtime, helpers and kernel32 imports beside it (parade.pas links them by
-# name there): copied from the gcc that built it.  CC=gcc on a runner with no
-# `cc`.
-PARADE_CRT := $(if $(filter Windows_NT,$(OS)),$(foreach l,libmingwex.a libmsvcrt.a libgcc.a libkernel32.a,$(shell $(CC) -print-file-name=$(l))))
+# On Windows Parade is parade.dll beside led.exe: FPC's own linker stops with
+# an internal error on MinGW gcc's objects, so parade.pas loads the DLL there.
+# CC=gcc on a runner with no `cc`.
+PARADE_DLL := $(if $(filter Windows_NT,$(OS)),$(PARADE)/build/parade.dll)
 
 ifneq ($(PARADE),)
 ifeq ($(PARADE_SYNC),1)
@@ -107,17 +106,16 @@ parade:
 	cp -p $(PARADE)/build-sync/pascal/lib/libparade.a $(PARADE_YRS) $(PARADE)/pascal/parade.pas \
 	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE)/pascal/paradeshow.pas $(PARADE)/pascal/paradeshowpdf.pas $(PARADE)/pascal/paradepdf.pas $(PARADE)/pascal/paradeanim.pas $(PARADE)/pascal/paradesync.pas $(PARADE)/pascal/paradetextsync.pas \
 	      $(PARADE)/pascal/paraderelay.pas $(PARADE_LIB)/
-	$(if $(PARADE_CRT),cp -p $(PARADE_CRT) $(PARADE_LIB)/)
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n{$$DEFINE LED_PARADE_SYNC}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 else
 parade:
-	$(MAKE) -C $(PARADE) build/pascal/lib/libparade.a
+	$(MAKE) -C $(PARADE) build/pascal/lib/libparade.a $(if $(PARADE_DLL),build/parade.dll)
+	$(if $(PARADE_DLL),mkdir -p bin && cp -p $(PARADE_DLL) bin/)
 	mkdir -p $(PARADE_LIB)
 	rm -f $(PARADE_LIB)/libyrs.a $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas
 	cp -p $(PARADE)/build/pascal/lib/libparade.a $(PARADE)/pascal/parade.pas \
 	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE)/pascal/paradeshow.pas $(PARADE)/pascal/paradeshowpdf.pas $(PARADE)/pascal/paradepdf.pas $(PARADE)/pascal/paradeanim.pas $(PARADE_LIB)/
-	$(if $(PARADE_CRT),cp -p $(PARADE_CRT) $(PARADE_LIB)/)
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 endif
@@ -132,8 +130,8 @@ endif
 noparade:
 	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
 	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/paradefonts.pas $(PARADE_LIB)/paradeshow.pas $(PARADE_LIB)/paradeshowpdf.pas $(PARADE_LIB)/paradepdf.pas $(PARADE_LIB)/paradeanim.pas $(PARADE_LIB)/libparade.a \
-	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas $(PARADE_LIB)/libyrs.a \
-	      $(PARADE_LIB)/libmingwex.a $(PARADE_LIB)/libmsvcrt.a $(PARADE_LIB)/libgcc.a $(PARADE_LIB)/libkernel32.a
+	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas $(PARADE_LIB)/libyrs.a
+	rm -f bin/parade.dll
 
 # ---- builds ----------------------------------------------------------------
 build release: $(RES) parade

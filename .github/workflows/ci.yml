@@ -140,6 +140,16 @@ jobs:
         shell: bash
         run: lazbuild --widgetset=${{ matrix.widgetset }} --build-mode=Release app/led.lpi
 
+      # It starts: on Windows that is also parade.dll found beside led.exe
+      # with every function led imports from it.
+      - name: The editor starts
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) ls -l bin/parade.dll; ./bin/led.exe --version ;;
+            *)       ./bin/led --version ;;
+          esac
+
   core-tests:
     name: headless core tests (nogui)
     # ledcore must stay free of any visual dependency; building the runner
