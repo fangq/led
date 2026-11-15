@@ -11,7 +11,7 @@
 #   make icon       - regenerate the icons from tools/make-icon.py
 #   make grammars   - reconvert data/grammars from the .lang sources
 #   make conpty     - type-check the Windows ConPTY backend on any platform
-#   make PARADE=    - build without the visual editor (default: ../Parade)
+#   make PARADE=    - build without the visual editor (default: ../parade)
 #   make deb        - build dist/*.deb and a portable dist/*.tar.gz (Linux)
 #   make clean      - remove build artifacts
 #   make distclean  - also remove the binaries
@@ -75,7 +75,8 @@ res: $(RES)
 
 # ---- Parade, the visual editor ---------------------------------------------
 # View > Visual Editor is Parade's TParadeEdit, from a Parade tree beside this
-# one -- ../Parade unless PARADE says otherwise, and none at all with PARADE=.
+# one -- ../parade (or ../Parade, the clone's other spelling) unless PARADE says
+# otherwise, and none at all with PARADE=.
 # Its C library is built there by its own Makefile; the library and the two
 # Pascal units are copied into lib/parade, which led.lpi searches, and
 # led.parade.inc there turns the editor on.  Without it the include path
@@ -83,7 +84,7 @@ res: $(RES)
 #
 # Copied with their times kept and the include rewritten only when it
 # changes, so that a build with nothing new in Parade recompiles nothing.
-PARADE ?= $(wildcard ../Parade)
+PARADE ?= $(firstword $(wildcard ../parade ../Parade))
 PARADE_LIB := lib/parade
 
 # Shared documents (File > Share / Join in the visual editor) come with it when
@@ -91,6 +92,11 @@ PARADE_LIB := lib/parade
 # libyrs.a are used then. PARADE_SYNC=0 leaves them out.
 PARADE_YRS := $(if $(PARADE),$(wildcard $(PARADE)/build/yrs/src/target/release/libyrs.a))
 PARADE_SYNC ?= $(if $(PARADE_YRS),1,0)
+
+# On Windows libparade.a comes from MinGW gcc, and FPC's linker needs gcc's C
+# runtime and helpers beside it (parade.pas links them by name there): copied
+# from the gcc that built it.  CC=gcc on a runner with no `cc`.
+PARADE_CRT := $(if $(filter Windows_NT,$(OS)),$(foreach l,libmingwex.a libmsvcrt.a libgcc.a,$(shell $(CC) -print-file-name=$(l))))
 
 ifneq ($(PARADE),)
 ifeq ($(PARADE_SYNC),1)
@@ -100,6 +106,7 @@ parade:
 	cp -p $(PARADE)/build-sync/pascal/lib/libparade.a $(PARADE_YRS) $(PARADE)/pascal/parade.pas \
 	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE)/pascal/paradeshow.pas $(PARADE)/pascal/paradeshowpdf.pas $(PARADE)/pascal/paradepdf.pas $(PARADE)/pascal/paradeanim.pas $(PARADE)/pascal/paradesync.pas $(PARADE)/pascal/paradetextsync.pas \
 	      $(PARADE)/pascal/paraderelay.pas $(PARADE_LIB)/
+	$(if $(PARADE_CRT),cp -p $(PARADE_CRT) $(PARADE_LIB)/)
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n{$$DEFINE LED_PARADE_SYNC}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 else
@@ -109,6 +116,7 @@ parade:
 	rm -f $(PARADE_LIB)/libyrs.a $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas
 	cp -p $(PARADE)/build/pascal/lib/libparade.a $(PARADE)/pascal/parade.pas \
 	      $(PARADE)/pascal/paradeedit.pas $(PARADE)/pascal/paradefonts.pas $(PARADE)/pascal/paradeshow.pas $(PARADE)/pascal/paradeshowpdf.pas $(PARADE)/pascal/paradepdf.pas $(PARADE)/pascal/paradeanim.pas $(PARADE_LIB)/
+	$(if $(PARADE_CRT),cp -p $(PARADE_CRT) $(PARADE_LIB)/)
 	printf '{ written by make: LED with Parade from %s }\n{$$DEFINE LED_PARADE}\n' \
 	       '$(abspath $(PARADE))' > $(PARADE_LIB)/led.parade.inc.new
 endif
@@ -123,7 +131,8 @@ endif
 noparade:
 	rm -f $(PARADE_LIB)/led.parade.inc $(PARADE_LIB)/parade.pas \
 	      $(PARADE_LIB)/paradeedit.pas $(PARADE_LIB)/paradefonts.pas $(PARADE_LIB)/paradeshow.pas $(PARADE_LIB)/paradeshowpdf.pas $(PARADE_LIB)/paradepdf.pas $(PARADE_LIB)/paradeanim.pas $(PARADE_LIB)/libparade.a \
-	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas $(PARADE_LIB)/libyrs.a
+	      $(PARADE_LIB)/paradesync.pas $(PARADE_LIB)/paraderelay.pas $(PARADE_LIB)/paradetextsync.pas $(PARADE_LIB)/libyrs.a \
+	      $(PARADE_LIB)/libmingwex.a $(PARADE_LIB)/libmsvcrt.a $(PARADE_LIB)/libgcc.a
 
 # ---- builds ----------------------------------------------------------------
 build release: $(RES) parade

@@ -1,0 +1,42 @@
+name: Fetch and build Parade
+description: >
+  The visual editor (View > Visual Editor, the PDF viewer, presentations) is
+  Parade's, and led's Makefile builds it in only when a Parade tree sits
+  beside this one.  This clones fangq/parade into ../parade -- the folder the
+  Makefile looks in first, and the name a plain `git clone` gives it -- and
+  runs `make parade`, which builds libparade.a there and copies it with the
+  Pascal units into lib/parade.  A lazbuild of app/led.lpi after this has the
+  editor; without it, the empty stub.
+
+inputs:
+  ref:
+    description: The Parade branch or tag to build against.
+    required: false
+    default: main
+  cc:
+    description: >
+      The C compiler.  Windows runners have MinGW gcc but no `cc`, so pass gcc
+      there; the Makefile also takes gcc's C runtime from it.
+    required: false
+    default: cc
+
+runs:
+  using: composite
+  steps:
+    - name: Clone Parade
+      shell: bash
+      run: |
+        git clone -q --depth 1 --branch "${{ inputs.ref }}" https://github.com/fangq/parade.git ../parade
+        git -C ../parade log -1 --format='Parade %h %s'
+
+    - name: Build Parade into lib/parade
+      shell: bash
+      run: |
+        # GNU make is `make` on Linux and macOS; some Windows images only
+        # have MinGW's mingw32-make.
+        MAKE_CMD=make
+        command -v make >/dev/null 2>&1 || MAKE_CMD=mingw32-make
+        "${{ inputs.cc }}" --version | head -1
+        "$MAKE_CMD" parade CC="${{ inputs.cc }}"
+        ls -l lib/parade
+        test -f lib/parade/led.parade.inc
