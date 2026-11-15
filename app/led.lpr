@@ -13,6 +13,9 @@ uses
   {$IFDEF UNIX}
   cthreads,
   {$ENDIF}
+  {$IFDEF WINDOWS}
+  Windows,
+  {$ENDIF}
   { First, so that its clock starts before every other unit's initialization. }
   Led.Core.StartTrace,
   { Before Interfaces, and that is the point of it: Interfaces' own
@@ -39,6 +42,38 @@ begin
     Application.Terminate;
 end;
 
+{$IFDEF WINDOWS}
+function AttachConsole(dwProcessId: DWORD): BOOL; stdcall; external 'kernel32.dll';
+{$ENDIF}
+
+{ A line for --help, --version or a command-line error.  On Windows led is a
+  GUI program, which the RTL gives no Output or StdErr: WriteLn there stops
+  with an I/O error, run-time error 217 on the way out.  So the line goes to
+  the handle the caller gave (a pipe, a redirected file), or else to the
+  console led was started from. }
+procedure Say(const S: string; ToErr: Boolean = False);
+{$IFDEF WINDOWS}
+const
+  ATTACH_PARENT_PROCESS = DWORD(-1);
+var
+  H: THandle;
+  Line: string;
+  Done: DWORD;
+begin
+  if ToErr then H := GetStdHandle(STD_ERROR_HANDLE) else H := GetStdHandle(STD_OUTPUT_HANDLE);
+  if ((H = 0) or (H = INVALID_HANDLE_VALUE)) and AttachConsole(ATTACH_PARENT_PROCESS) then
+    H := CreateFileA('CONOUT$', GENERIC_WRITE, FILE_SHARE_WRITE, nil, OPEN_EXISTING, 0, 0);
+  if (H = 0) or (H = INVALID_HANDLE_VALUE) then Exit;
+  Line := S + #13#10;
+  Done := 0;
+  WriteFile(H, Line[1], Length(Line), Done, nil);
+end;
+{$ELSE}
+begin
+  if ToErr then WriteLn(StdErr, S) else WriteLn(S);
+end;
+{$ENDIF}
+
 { Returns the process exit code.  Written as a function rather than using
   Halt, so unit finalization still runs on the early exits -- otherwise every
   `led --version` ends with a leak report from heaptrc for allocations that
@@ -56,21 +91,21 @@ begin
     Cmd.ParseCommandLine;
 
     for i := 0 to Cmd.Errors.Count - 1 do
-      WriteLn(StdErr, 'led: ', Cmd.Errors[i]);
+      Say('led: ' + Cmd.Errors[i], True);
     if Cmd.Errors.Count > 0 then
     begin
-      WriteLn(StdErr, 'Try "led --help".');
+      Say('Try "led --help".', True);
       Exit(2);
     end;
 
     if Cmd.ShowHelp then
     begin
-      WriteLn(Cmd.HelpText);
+      Say(Cmd.HelpText);
       Exit(0);
     end;
     if Cmd.ShowVersion then
     begin
-      WriteLn('led ', LedVersion);
+      Say('led ' + LedVersion);
       Exit(0);
     end;
 
