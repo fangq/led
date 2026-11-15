@@ -19625,7 +19625,7 @@ var
   St: pd_block_id;
   Ch: TUTF8Char;
   T: string;
-  Top0, S2: Integer;
+  Top0, S2, H0: Integer;
   Z0: Double;
   A2: pd_pos;
   Sp: pd_section_props;
@@ -19689,6 +19689,12 @@ begin
     Exit;
   end;
   E := Tab.Visual.Editor as TParadeEdit;
+  H0 := F.Height;   { room for the page, whatever panes the tests before left open (CI: 20 px of it) }
+  if E.ClientHeight < 250 then
+  begin
+    F.Height := Min(Screen.Height - 40, F.Height + 300 - E.ClientHeight);
+    Pump;
+  end;
   WriteLn(Format('  (the page: %d x %d, in a window %d x %d)', [E.ClientWidth, E.ClientHeight, F.Width, F.Height]));
   E.SelectedShape(At, Sid);
   Btn := ButtonByCaption(Tab.Visual, 'Text Box');
@@ -19786,6 +19792,7 @@ begin
   end;
   Tab.Document.Master.Modified := False;
   F.CloseActiveTab(False);
+  F.Height := H0;
   Pump;
   {$ENDIF}
 end;
