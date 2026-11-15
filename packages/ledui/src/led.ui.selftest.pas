@@ -53,9 +53,9 @@ uses
   XMLPropStorage,
   Led.UI.HexMarkup, Led.UI.MiniMap, Led.Syn.BJData, AnchorDocking, LazFileUtils,
   {$IFDEF UNIX}BaseUnix,{$ENDIF}
-  SynEditMarkupHighAll,
+  SynEditMarkupHighAll, ctypes,
   {$IF DEFINED(UNIX) and not DEFINED(DARWIN) and DEFINED(LCLGtk2)}
-  ctypes, x, xlib, glib2, gdk2, gdk2x, gtk2,
+  x, xlib, glib2, gdk2, gdk2x, gtk2,
   {$ENDIF}
   Graphics, IntfGraphics, FPimage, StdCtrls, ExtCtrls, Spin,
   Led.UI.ToolRunner, Led.UI.Output, Led.UI.FileBrowser,
