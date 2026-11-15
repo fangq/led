@@ -1327,7 +1327,8 @@ begin
      (FPendingTitle = FRenderedTitle) and (FPendingText = FRenderedText) then
   begin
     {$IFDEF LED_PARADE}
-    if UseParade and (FParade <> nil) then
+    { a LaTeX file is Parade's whatever Markdown's engine is }
+    if (UseParade or (FLatexFile <> '')) and (FParade <> nil) then
     begin
       FParade.Visible := True;
       Exit;
