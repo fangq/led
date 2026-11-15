@@ -42,6 +42,10 @@ concurrency:
   group: package-${{ github.ref }}
   cancel-in-progress: true
 
+# The Parade the visual editor is built from, as in ci.yml.
+env:
+  PARADE_REF: main
+
 jobs:
   # ------------------------------------------------------------- Linux .deb
   linux-deb:
@@ -56,6 +60,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/lazarus-apt
+      - uses: ./.github/actions/parade
+        with:
+          ref: ${{ env.PARADE_REF }}
 
       - name: Build editor (Release)
         run: lazbuild --widgetset=gtk2 --build-mode=Release app/led.lpi
@@ -188,9 +195,17 @@ jobs:
         with:
           lazarus-version: stable
 
+      # parade.dll, built with the runner's MinGW gcc, beside led.exe
+      - uses: ./.github/actions/parade
+        with:
+          ref: ${{ env.PARADE_REF }}
+          cc: gcc
+
       - name: Build editor (Release)
         shell: bash
-        run: lazbuild --widgetset=win32 --build-mode=Release app/led.lpi
+        run: |
+          lazbuild --widgetset=win32 --build-mode=Release app/led.lpi
+          ./bin/led.exe --version
 
       # As on Linux, and for the same reason: the Inno installer and the
       # portable zip both take bin\led.exe.
@@ -265,6 +280,7 @@ jobs:
           $stage = "led-$env:VERSION-win64"
           New-Item -ItemType Directory -Force -Path "$stage\bin" | Out-Null
           Copy-Item bin\led.exe "$stage\bin\"
+          Copy-Item bin\parade.dll "$stage\bin\"
           # data\ must sit next to the executable's folder; led looks for
           # <exe>\data on Windows.
           # All of data\, not a list of subdirectories: this copy had already
@@ -288,7 +304,9 @@ jobs:
           done
           [ -f "$stage/bin/data/fonts/OFL.txt" ] \
             || { echo "the fonts ship without their licence" >&2; exit 1; }
-          echo "the portable tree carries every data directory"
+          [ -f "$stage/bin/parade.dll" ] \
+            || { echo "the visual editor's parade.dll is missing" >&2; exit 1; }
+          echo "the portable tree carries every data directory, and parade.dll"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -313,51 +331,17 @@ jobs:
   # -------------------------------------------------------------- macOS .dmg
   macos-dmg:
     name: macos (.dmg)
-    # Pinned to macOS 14 for the same reason as CI: setup-lazarus' .pkg does
-    # not install on macos-latest.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
-      # setup-lazarus fetches the installer from SourceForge, and a stalled
-      # mirror is the single commonest reason a packaging run fails -- it
-      # took one out fifteen minutes into a download.  There is no apt here
-      # to fall back on, which is what the Linux job does instead, so give a
-      # stall one more go rather than losing the run to it.  The first
-      # attempt is continue-on-error so its failure is recorded rather than
-      # fatal; the second is not, so a genuinely broken install still fails.
-      #
-      # Not with-cache: true.  On a cache miss the action logs the download
-      # and then mounts the file it did not fetch -- "hdiutil: attach failed
-      # - No such file or directory" -- so caching turns a slow macOS job
-      # into a broken one.
-      - name: Install Lazarus + FPC
-        id: lazarus
-        uses: gcarreno/setup-lazarus@v3.4.1
-        continue-on-error: true
-        # Shorter than the second attempt on purpose: a healthy download
-        # takes seconds, so waiting the full fifteen minutes on a stall
-        # before even trying again spends most of the job's budget.
-        timeout-minutes: 8
+      # Lazarus from .github/actions/lazarus-macos, as in ci.yml: GitHub
+      # retired macos-14, the last image setup-lazarus' .pkg installed on.
+      - uses: ./.github/actions/lazarus-macos
+      - uses: ./.github/actions/parade
         with:
-          lazarus-version: stable
-
-      # setup-lazarus will not download over a file that is already there,
-      # and an attempt killed by the timeout leaves a partial one behind --
-      # so without this the second attempt fails instantly with
-      # "Destination file path ... already exists" and the retry is useless.
-      - name: Clear the half-finished download
-        if: steps.lazarus.outcome == 'failure'
-        shell: bash
-        run: rm -rf "${RUNNER_TEMP}/installers"
-
-      - name: Install Lazarus + FPC (second attempt)
-        if: steps.lazarus.outcome == 'failure'
-        uses: gcarreno/setup-lazarus@v3.4.1
-        timeout-minutes: 15
-        with:
-          lazarus-version: stable
+          ref: ${{ env.PARADE_REF }}
 
       - name: Build editor (Release)
         run: lazbuild --widgetset=cocoa --build-mode=Release app/led.lpi

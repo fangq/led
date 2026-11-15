@@ -67,6 +67,9 @@ Name: "associate"; Description: "Open .txt, .md and common source files with led
 
 [Files]
 Source: "{#SrcDir}\bin\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; The visual editor's library beside led.exe, when LED was built with Parade
+; (see the Makefile: FPC cannot link MinGW gcc's objects, so it is a DLL).
+Source: "{#SrcDir}\bin\parade.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; Not isreadme: that flag makes Inno offer its own "view README" step, which
 ; opens it in whatever the shell has registered for .md -- Notepad, usually.
 ; The [Run] entry below opens it in led itself instead.
