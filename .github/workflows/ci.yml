@@ -38,7 +38,7 @@ jobs:
   # Lazarus 3 and later, so on anything newer the vendored copy and its
   # version shims are never compiled at all.
   linux:
-    name: build & test (ubuntu 22.04 / ${{ matrix.widgetset }}${{ matrix.parade == false && ', no Parade' || '' }})
+    name: build & test (ubuntu 22.04 / ${{ matrix.widgetset }}${{ matrix.noparade && ', no Parade' || '' }})
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     # qt5 needs libqt5pas, which is not in every distro's default set.  A
@@ -53,12 +53,12 @@ jobs:
           - { widgetset: qt5, optional: true }
           # The build without the visual editor, which nothing else compiles:
           # it went broken unnoticed once, behind a PDF viewer change.
-          - { widgetset: gtk2, parade: false }
+          - { widgetset: gtk2, noparade: true }
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/lazarus-apt
       - uses: ./.github/actions/parade
-        if: matrix.parade != false
+        if: ${{ !matrix.noparade }}
         with:
           ref: ${{ env.PARADE_REF }}
 
@@ -168,6 +168,18 @@ jobs:
         run: lazbuild --widgetset=nogui tools/langcheck/langcheck.lpi
       - name: Check every grammar loads
         run: ./bin/langcheck data/grammars
+      # What ships is what the converter makes: a .lang edited without its
+      # grammar regenerated, or the reverse, shows here.
+      - name: The committed grammars are the converter's
+        run: git diff --exit-code --stat data/grammars
+      # TRegExpr accepts "[[A-Za-z0-9_...]_]" -- a class, then a literal "_]" --
+      # so the load check above cannot see a \w widened inside a class.
+      - name: No class nested in a class
+        run: |
+          if grep -l '\[\[A-Za-z0-9_' data/grammars/*.json; then
+            echo "a \\w inside [...] was widened into a nested class" >&2
+            exit 1
+          fi
 
   conpty:
     name: Windows terminal backend type-checks

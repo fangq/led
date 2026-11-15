@@ -32,10 +32,23 @@ runs:
     - name: Build Parade into lib/parade
       shell: bash
       run: |
-        # GNU make is `make` on Linux and macOS; some Windows images only
-        # have MinGW's mingw32-make.
         MAKE_CMD=make
-        command -v make >/dev/null 2>&1 || MAKE_CMD=mingw32-make
+        if [ "$RUNNER_OS" = Windows ]; then
+          # The Lazarus installer puts FPC's bin first on PATH, and that has a
+          # gcc 2.95 with no C headers.  The runner's MinGW-w64 goes in front
+          # of it: wherever this image keeps one, or installed if none.
+          for d in /c/mingw64/bin /c/msys64/mingw64/bin /c/msys64/ucrt64/bin; do
+            if [ -x "$d/gcc.exe" ]; then MINGW=$d; break; fi
+          done
+          if [ -z "$MINGW" ]; then
+            choco install -y --no-progress mingw >/dev/null
+            MINGW=/c/ProgramData/mingw64/mingw64/bin
+          fi
+          export PATH="$MINGW:$PATH"
+          [ -x "$MINGW/mingw32-make.exe" ] && MAKE_CMD=mingw32-make
+          echo "MinGW-w64: $MINGW"
+        fi
+        command -v "${{ inputs.cc }}"
         "${{ inputs.cc }}" --version | head -1
         "$MAKE_CMD" parade CC="${{ inputs.cc }}"
         ls -l lib/parade
