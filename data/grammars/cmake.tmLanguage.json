@@ -18,7 +18,7 @@
    ]
   },
   {
-   "begin": "\\b((?i)SET)\\b\\s*\\(\\s*([[A-Za-z0-9_\\x80-\\xFF]_][[A-Za-z0-9_\\x80-\\xFF]\\d_]*)",
+   "begin": "\\b((?i)SET)\\b\\s*\\(\\s*([A-Za-z0-9_\\x80-\\xFF_][A-Za-z0-9_\\x80-\\xFF\\d_]*)",
    "end": "\\)",
    "beginCaptures": {
     "1": {

@@ -177,21 +177,36 @@ def ascii_safe(pattern):
     lookaround changes group numbering."""
     out = []
     i = 0
+    in_class = False    # inside [...], \w widens the class itself: no nested brackets
     while i < len(pattern):
         c = pattern[i]
         if c == '\\' and i + 1 < len(pattern):
             nxt = pattern[i + 1]
             if nxt == 'w':
-                out.append(r'[A-Za-z0-9_\x80-\xFF]')
+                out.append(r'A-Za-z0-9_\x80-\xFF' if in_class else r'[A-Za-z0-9_\x80-\xFF]')
                 i += 2
                 continue
-            if nxt == 'W':
+            if nxt == 'W' and not in_class:   # in a class it stays \W: a negation cannot be spliced in
                 out.append(r'[^A-Za-z0-9_\x80-\xFF]')
                 i += 2
                 continue
             out.append(c + nxt)
             i += 2
             continue
+        if c == '[' and not in_class:
+            in_class = True
+            out.append(c)
+            i += 1
+            # a ']' first in the class (after an optional '^') is a literal
+            if i < len(pattern) and pattern[i] == '^':
+                out.append('^')
+                i += 1
+            if i < len(pattern) and pattern[i] == ']':
+                out.append(']')
+                i += 1
+            continue
+        if c == ']' and in_class:
+            in_class = False
         out.append(c)
         i += 1
     return ''.join(out)

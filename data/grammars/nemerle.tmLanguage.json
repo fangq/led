@@ -227,23 +227,23 @@
    "name": "def.boolean"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9]*\\.[0-9]+([eE][-+]?[0-9]+)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])[0-9]*\\.[0-9]+([eE][-+]?[0-9]+)?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.floating-point"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])[0-9]+[Uu]?([Ll]|[Ss]|[Bb])?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])[0-9]+[Uu]?([Ll]|[Ss]|[Bb])?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.decimal"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[bB][01]+[Uu]?([Ll]|[Ss]|[Bb])?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[bB][01]+[Uu]?([Ll]|[Ss]|[Bb])?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[oO][0-7]+[Uu]?([Ll]|[Ss]|[Bb])?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[oO][0-7]+[Uu]?([Ll]|[Ss]|[Bb])?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][0-9a-fA-F]+[Uu]?([Ll]|[Ss]|[Bb])?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[xX][0-9a-fA-F]+[Uu]?([Ll]|[Ss]|[Bb])?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   }
  ],

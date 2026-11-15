@@ -155,35 +155,35 @@
    ]
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:self|__name__|__debug__)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:self|__name__|__debug__)\\b",
    "name": "def.identifier"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:False|True)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:False|True)\\b",
    "name": "def.boolean"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])((?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))|\\d+)[jJ]\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])((?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))|\\d+)[jJ]\\b",
    "name": "def.complex"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:((\\d+)?\\.\\d+|\\d+\\.)|((\\d+|(\\d+)?\\.\\d+|\\d+\\.)[eE][+-]?\\d+))(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.floating-point"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)[lL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])([1-9][0-9]*|0)[lL]?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.decimal"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[bB][0-1]+[lL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[bB][0-1]+[lL]?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "python.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[oO][0-7]+[lL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[oO][0-7]+[lL]?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "python.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][0-9A-Fa-f]+[lL]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[xX][0-9A-Fa-f]+[lL]?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   },
   {
@@ -236,23 +236,23 @@
    "name": "python.keyword"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:Ellipsis|None|NotImplemented)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:Ellipsis|None|NotImplemented)\\b",
    "name": "def.special-constant"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:ArithmeticError|AssertionError|AttributeError|EnvironmentError|EOFError|Exception|FloatingPointError|ImportError|IndentationError|IndexError|IOError|KeyboardInterrupt|KeyError|LookupError|MemoryError|NameError|NotImplementedError|OSError|OverflowError|ReferenceError|RuntimeError|StandardError|StopIteration|SyntaxError|SystemError|SystemExit|TabError|TypeError|UnboundLocalError|UnicodeDecodeError|UnicodeEncodeError|UnicodeError|UnicodeTranslateError|ValueError|WindowsError|ZeroDivisionError|Warning|UserWarning|DeprecationWarning|PendingDeprecationWarning|SyntaxWarning|OverflowWarning|RuntimeWarning|FutureWarning)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:ArithmeticError|AssertionError|AttributeError|EnvironmentError|EOFError|Exception|FloatingPointError|ImportError|IndentationError|IndexError|IOError|KeyboardInterrupt|KeyError|LookupError|MemoryError|NameError|NotImplementedError|OSError|OverflowError|ReferenceError|RuntimeError|StandardError|StopIteration|SyntaxError|SystemError|SystemExit|TabError|TypeError|UnboundLocalError|UnicodeDecodeError|UnicodeEncodeError|UnicodeError|UnicodeTranslateError|ValueError|WindowsError|ZeroDivisionError|Warning|UserWarning|DeprecationWarning|PendingDeprecationWarning|SyntaxWarning|OverflowWarning|RuntimeWarning|FutureWarning)\\b",
    "name": "def.type"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:ResourceWarning)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:ResourceWarning)\\b",
    "name": "python.builtin-object"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:__import__|abs|all|any|bin|bool|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|filter|float|format|frozenset|getattr|globals|hasattr|hash|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|min|object|oct|open|ord|pow|property|range|repr|reversed|round|setattr|set|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:__import__|abs|all|any|bin|bool|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|filter|float|format|frozenset|getattr|globals|hasattr|hash|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|min|object|oct|open|ord|pow|property|range|repr|reversed|round|setattr|set|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\\b",
    "name": "def.builtin"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])(?:ascii|bin|bytearray|bytes|exec|format|memoryview|next|print)\\b",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])(?:ascii|bin|bytearray|bytes|exec|format|memoryview|next|print)\\b",
    "name": "python.builtin-function"
   }
  ],

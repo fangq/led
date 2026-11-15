@@ -96,7 +96,7 @@
       <keyword>::</keyword>
       <keyword>=</keyword>
       <keyword>\|</keyword>
-      <keyword>\</keyword>
+      <keyword>\\</keyword>
       <keyword>-&gt;</keyword>
       <keyword>&lt;-</keyword>
       <keyword>@</keyword>

@@ -158,23 +158,23 @@
    "name": "def.boolean"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([0-9_]+[Ee][-]?[0-9_]+|([0-9_]*\\.[0-9_]+|[0-9_]+\\.)([Ee][-]?[0-9_]+)?)[fFLi]?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])([0-9_]+[Ee][-]?[0-9_]+|([0-9_]*\\.[0-9_]+|[0-9_]+\\.)([Ee][-]?[0-9_]+)?)[fFLi]?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.floating-point"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[bB][01_]*(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[bB][01_]*(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[0-7_]+([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[0-7_]+([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9_]*|0)([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])([1-9][0-9_]*|0)([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.decimal"
   },
   {
-   "match": "(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])0[xX][0-9a-fA-F_]+([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![[A-Za-z0-9_\\x80-\\xFF]\\.])",
+   "match": "(?<![A-Za-z0-9_\\x80-\\xFF\\.])0[xX][0-9a-fA-F_]+([Uu]([Ll]|LL|ll)?|([Ll]|LL|ll)[Uu]?)?(?![A-Za-z0-9_\\x80-\\xFF\\.])",
    "name": "def.base-n-integer"
   }
  ],

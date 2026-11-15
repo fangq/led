@@ -1284,7 +1284,7 @@
  },
  {
   "id": "matlab",
-  "name": "Matlab",
+  "name": "MATLAB",
   "section": "Scientific",
   "hidden": false,
   "globs": [

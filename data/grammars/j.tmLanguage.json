@@ -54,7 +54,7 @@
      "name": "def.error"
     },
     {
-     "match": "\\b[nmuvxy](?![[A-Za-z0-9_\\x80-\\xFF]\\.\\:])",
+     "match": "\\b[nmuvxy](?![A-Za-z0-9_\\x80-\\xFF\\.\\:])",
      "name": "def.special-char"
     },
     {

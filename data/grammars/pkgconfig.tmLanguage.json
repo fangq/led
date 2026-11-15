@@ -26,7 +26,7 @@
    ]
   },
   {
-   "begin": "^([[A-Za-z0-9_\\x80-\\xFF]_]+)\\s*=\\s*",
+   "begin": "^([A-Za-z0-9_\\x80-\\xFF_]+)\\s*=\\s*",
    "end": "$",
    "beginCaptures": {
     "1": {
@@ -35,13 +35,13 @@
    },
    "patterns": [
     {
-     "match": "\\$\\{[[A-Za-z0-9_\\x80-\\xFF]_]*\\}",
+     "match": "\\$\\{[A-Za-z0-9_\\x80-\\xFF_]*\\}",
      "name": "def.keyword"
     }
    ]
   },
   {
-   "begin": "^([[A-Za-z0-9_\\x80-\\xFF]_\\.]+)\\s*\\:\\s*",
+   "begin": "^([A-Za-z0-9_\\x80-\\xFF_\\.]+)\\s*\\:\\s*",
    "end": "$",
    "beginCaptures": {
     "1": {
@@ -50,7 +50,7 @@
    },
    "patterns": [
     {
-     "match": "\\$\\{[[A-Za-z0-9_\\x80-\\xFF]_]*\\}",
+     "match": "\\$\\{[A-Za-z0-9_\\x80-\\xFF_]*\\}",
      "name": "def.keyword"
     }
    ]

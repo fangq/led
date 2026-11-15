@@ -22,19 +22,19 @@
    ]
   },
   {
-   "match": "\\@[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "match": "\\@[A-Za-z0-9_\\x80-\\xFF_]+",
    "name": "def.doc-comment-element"
   },
   {
-   "match": "%[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "match": "%[A-Za-z0-9_\\x80-\\xFF_]+",
    "name": "def.doc-comment-element"
   },
   {
-   "match": "\\#[[A-Za-z0-9_\\x80-\\xFF]_]+",
+   "match": "\\#[A-Za-z0-9_\\x80-\\xFF_]+",
    "name": "def.doc-comment-element"
   },
   {
-   "match": "[[A-Za-z0-9_\\x80-\\xFF]_]+\\(\\s*\\)",
+   "match": "[A-Za-z0-9_\\x80-\\xFF_]+\\(\\s*\\)",
    "name": "def.doc-comment-element"
   },
   {

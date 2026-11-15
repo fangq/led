@@ -1,5 +1,5 @@
 {
- "name": "Matlab",
+ "name": "MATLAB",
  "scopeName": "source.matlab",
  "patterns": [
   {
@@ -80,7 +80,7 @@
    "name": "def.boolean"
   },
   {
-   "match": "(?:(?<![[A-Za-z0-9_\\x80-\\xFF]\\.])([1-9][0-9]*|0)(?![[A-Za-z0-9_\\x80-\\xFF]\\.]))",
+   "match": "(?:(?<![A-Za-z0-9_\\x80-\\xFF\\.])([1-9][0-9]*|0)(?![A-Za-z0-9_\\x80-\\xFF\\.]))",
    "name": "def.number"
   },
   {
