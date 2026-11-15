@@ -337,6 +337,15 @@ implementation
 uses
   Clipbrd, Math, StrUtils, Led.UI.Dpi, Led.Core.Prefs, Led.UI.Icons;
 
+{$IFNDEF LED_PARADE}
+{ the marking kinds' numbers, as paradepdf has them, so the menu builds without it }
+const
+  PD_ANNOT_HIGHLIGHT = 9;
+  PD_ANNOT_UNDERLINE = 10;
+  PD_ANNOT_SQUIGGLY = 11;
+  PD_ANNOT_STRIKEOUT = 12;
+{$ENDIF}
+
 { the zoom slider's positions: 0..100 is 10%..100%, 100..200 is 100%..500%, as under a Word document }
 function SliderToZoom(V: Integer): Double;
 begin
@@ -2561,7 +2570,11 @@ begin
     { the page's text, a code unit a character (outside the BMP: a stand-in, so the indices stay the characters') }
     SetLength(Hay, Length(C));
     for i := 0 to High(C) do
+      {$IFDEF LED_PARADE}
       if C[i].cp < $10000 then Hay[i + 1] := WideChar(C[i].cp) else Hay[i + 1] := WideChar($FFFD);
+      {$ELSE}
+      Hay[i + 1] := WideChar($FFFD);
+      {$ENDIF}
     Hay := WideLowerCase(Hay);
     if AForward then
     begin
@@ -2589,7 +2602,9 @@ begin
       FSelPage := Page;
       FSelA := FFoundA;
       FSelB := FFoundB;
+      {$IFDEF LED_PARADE}
       ScrollTo(Page, C[FFoundA].y0);
+      {$ENDIF}
       FFindNote.Caption := Format('page %d', [Page + 1]);
       FView.Invalidate;
       Status;
@@ -3336,7 +3351,7 @@ procedure TLedPdfPane.ViewTripleClick;
 var
   P: TPoint;
 begin
-  if (FPdf = nil) or (FTool <> ptSelect) then Exit;
+  if {$IFDEF LED_PARADE}(FPdf = nil) or{$ENDIF} (FTool <> ptSelect) then Exit;
   P := FView.ScreenToClient(Mouse.CursorPos);
   SelectParagraphAt(P.X, P.Y, False);
 end;
