@@ -17,7 +17,13 @@ runs:
   steps:
     - name: Install FPC (Homebrew)
       shell: bash
-      run: brew install fpc
+      run: |
+        brew install fpc
+        # Apple's current linker segfaults on what FPC 3.2.2 hands it (run
+        # 43739303404: "Segmentation fault: 11 .../usr/bin/ld"); the classic
+        # one links it.  Added to the compiler's own configuration, so every
+        # lazbuild here passes it.
+        echo "-k-ld_classic" >> "$(brew --prefix)/etc/fpc.cfg"
 
     - name: Build lazbuild from source
       shell: bash

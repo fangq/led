@@ -48,6 +48,9 @@ runs:
           [ -x "$MINGW/mingw32-make.exe" ] && MAKE_CMD=mingw32-make
           echo "MinGW-w64: $MINGW"
         fi
+        # FPC links led for macOS 11; Parade built for the same, not for the
+        # runner's own version.
+        [ "$RUNNER_OS" = macOS ] && export MACOSX_DEPLOYMENT_TARGET=11.0
         command -v "${{ inputs.cc }}"
         "${{ inputs.cc }}" --version | head -1
         "$MAKE_CMD" parade CC="${{ inputs.cc }}"
