@@ -6370,6 +6370,7 @@ var
   Host: TWinControl;
   Hdr: TAnchorDockHeader;
   L: TStringList;
+  Bmp: TBitmap;
 begin
   Say('file browser');
   { Showing the pane is what makes the tree populate; doing it before the
@@ -6542,6 +6543,22 @@ begin
   end;
   CheckEq('every painted icon is a name the program can ask for, and is ' +
     'on disk:' + Leaky, '', Leaky);
+
+  { And built into the binary, so a led copied anywhere without data/ still
+    has its toolbar: every one but Mima's own logo, whose file ships with
+    Mima.  Read from there, and a picture when it is. }
+  Leaky := '';
+  for i := 0 to High(LedArtworkNames) do
+    if (LedArtworkNames[i] <> 'matlab') and (Pos('res:', LedIconArtwork(LedArtworkNames[i])) <> 1) then
+      Leaky := Leaky + ' ' + LedArtworkNames[i];
+  CheckEq('every painted icon is in the binary, not only on disk:' + Leaky, '', Leaky);
+  Bmp := LedIconArtworkBitmap('save', 24);
+  try
+    Check('and the binary''s Save made a picture of the size asked for', (Bmp <> nil) and (Bmp.Width = 24) and
+      (Bmp.Height = 24));
+  finally
+    Bmp.Free;
+  end;
 
   { The fallback page too.  Drawn in the caller's ink it came out black, and
     the file tree is painted in the editor's colours -- so on a dark scheme

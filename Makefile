@@ -54,7 +54,7 @@ ICONSIZES := 16 22 24 32 48 64 128 256 512
 
 PASSRC := $(shell find packages app -name '*.pas' -o -name '*.lpr')
 
-.PHONY: all build release debug tests selftest check run res icon grammars \
+.PHONY: all build release debug tests selftest check run res iconres icon grammars \
         conpty parade noparade \
         deb clean distclean install uninstall linux win64 win32 macos help
 
@@ -72,6 +72,21 @@ icon: $(ICON)
 $(RES): packaging/windows/led.rc packaging/windows/led.manifest $(ICON)
 	cd packaging/windows && $(FPCRES) -of res -o ../../$(RES) led.rc
 res: $(RES)
+
+# The toolbar's artwork, data/icons/*.png, built into the binary as RCDATA
+# LEDART_<NAME> (led.ui.icons.pas reads it there first), so a led copied
+# without its data directory still has its icons.  Committed like led.res, so
+# a fresh clone builds without fpcres; CI checks it is in step with the PNGs.
+ICONRES  := packages/ledui/src/led.ui.icons.res
+ICONPNGS := $(sort $(wildcard data/icons/*.png))
+$(ICONRES): $(ICONPNGS)
+	mkdir -p lib
+	for f in $(ICONPNGS); do \
+	  n=$$(basename $$f .png | tr a-z A-Z); \
+	  printf 'LEDART_%s RCDATA "../%s"\n' "$$n" "$$f"; \
+	done > lib/led.ui.icons.rc
+	cd lib && $(FPCRES) -of res -o ../$(ICONRES) led.ui.icons.rc
+iconres: $(ICONRES)
 
 # ---- Parade, the visual editor ---------------------------------------------
 # View > Visual Editor is Parade's TParadeEdit, from a Parade tree beside this
@@ -134,10 +149,10 @@ noparade:
 	rm -f bin/parade.dll
 
 # ---- builds ----------------------------------------------------------------
-build release: $(RES) parade
+build release: $(RES) $(ICONRES) parade
 	$(LAZBUILD) $(LAZDIR) --widgetset=$(WIDGETSET) --build-mode=Release $(PROJECT)
 
-debug: $(RES) parade
+debug: $(RES) $(ICONRES) parade
 	$(LAZBUILD) $(LAZDIR) --widgetset=$(WIDGETSET) --build-mode=Debug $(PROJECT)
 
 # ---- cross builds ----------------------------------------------------------

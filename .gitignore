@@ -8,6 +8,9 @@ lib/
 # ...except the application resource: app/led.lpr references it
 # unconditionally, so a fresh clone has to have it without running fpcres.
 !app/led.res
+# ...and the toolbar artwork built into the binary (make iconres): led.ui.icons.pas
+# references it, and a fresh clone has to build without fpcres too.
+!packages/ledui/src/led.ui.icons.res
 backup/
 dist/
 build/

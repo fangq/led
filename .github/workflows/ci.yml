@@ -318,6 +318,23 @@ jobs:
             file "$f" | grep -q "TrueType" || { echo "$f is not a TrueType file" >&2; exit 1; }
           done
 
+  builtin-icons:
+    name: the built-in toolbar icons are data/icons'
+    # led.ui.icons.res carries data/icons/*.png inside the binary, so a led
+    # without its data directory still has its toolbar.  It is committed (a
+    # fresh clone builds without fpcres), so a PNG changed or added without
+    # `make iconres` would ship the old picture: rebuilt here and compared.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install fpcres
+        run: sudo apt-get update && sudo apt-get install -y fpc
+      - name: Rebuild the resource from the PNGs
+        run: make -B iconres
+      - name: The committed one is the same
+        run: git diff --exit-code --stat packages/ledui/src/led.ui.icons.res
+
   icons:
     name: icons are in step with their generator
     # The icon files are committed so a fresh clone builds without Pillow.

@@ -162,6 +162,39 @@ implementation
 uses
   Forms, LCLType, Led.Core.Paths;
 
+{ The artwork in data/icons, built into the binary (`make iconres`; see the
+  Makefile): a led copied anywhere without its data directory still shows
+  its toolbar.  One RCDATA a file, named LEDART_ and the file's name. }
+{$R led.ui.icons.res}
+
+const
+  ArtResPrefix = 'res:';   { an icon source that is a resource, not a file: res:<name> }
+
+function ArtResName(const AName: string): string;
+begin
+  Result := 'LEDART_' + UpperCase(AName);
+end;
+
+function ArtResExists(const AName: string): Boolean;
+begin
+  Result := FindResource(HINSTANCE, PChar(ArtResName(AName)), RT_RCDATA) <> 0;
+end;
+
+{ the PNG an icon source names, from the binary or from its file; nil when there is none }
+function OpenArtStream(const ASrc: string): TStream;
+begin
+  Result := nil;
+  try
+    if Copy(ASrc, 1, Length(ArtResPrefix)) = ArtResPrefix then
+      Result := TResourceStream.Create(HINSTANCE, ArtResName(Copy(ASrc, Length(ArtResPrefix) + 1, MaxInt)),
+        RT_RCDATA)
+    else
+      Result := TFileStream.Create(ASrc, fmOpenRead or fmShareDenyNone);
+  except
+    FreeAndNil(Result);
+  end;
+end;
+
 { ---- the drawn set and the shipped one ---------------------------------- }
 
 { The actions whose picture is a file in data/icons rather than a case
@@ -202,6 +235,9 @@ begin
   for i := 0 to High(ArtworkNames) do
     if ArtworkNames[i] = AName then
     begin
+      { the binary's own copy; the data directory's only for one it has not got (Mima's) }
+      if ArtResExists(AName) then
+        Exit(ArtResPrefix + AName);
       Result := LedDataFile('icons' + PathDelim + AName + '.png');
       if not FileExists(Result) then Result := '';
       Exit;
@@ -337,11 +373,36 @@ begin
   end;
 end;
 
-{ the file's time and length, which say whether what was made from it still stands }
+{ the file's time and length, which say whether what was made from it still stands; for one in the binary, a hash
+  of its bytes in place of the time, so a rebuilt led with new artwork does not show the old made from the cache }
 function FileStamp(const AFile: string; out AAge, ALen: Int64): Boolean;
 var
   R: TSearchRec;
+  St: TStream;
+  B: TBytes;
+  H: QWord;
+  i: Integer;
 begin
+  if Copy(AFile, 1, Length(ArtResPrefix)) = ArtResPrefix then
+  begin
+    St := OpenArtStream(AFile);
+    Result := St <> nil;
+    if not Result then Exit;
+    try
+      SetLength(B, St.Size);
+      if Length(B) > 0 then St.ReadBuffer(B[0], Length(B));
+    finally
+      St.Free;
+    end;
+    H := QWord($CBF29CE484222325);     { FNV-1a: it wraps, which is the point, so no overflow check on it }
+    {$PUSH}{$Q-}{$R-}
+    for i := 0 to High(B) do
+      H := (H xor B[i]) * QWord($100000001B3);
+    AAge := Int64(H);
+    {$POP}
+    ALen := Length(B);
+    Exit;
+  end;
   Result := FindFirst(AFile, faAnyFile, R) = 0;
   if Result then
   begin
@@ -379,6 +440,7 @@ var
 { The file decoded into premultiplied pixels, from the cache when it is there; nil if it is not a picture. }
 function ArtSource(const AFile: string): TArtSource;
 var
+  St: TStream;
   Png: TPortableNetworkGraphic;
   Img: TLazIntfImage;
   x, y, i: Integer;
@@ -396,9 +458,12 @@ begin
   Result := nil;
   Png := TPortableNetworkGraphic.Create;
   Img := nil;
+  St := nil;
   try
     try
-      Png.LoadFromFile(AFile);
+      St := OpenArtStream(AFile);
+      if St = nil then Exit;
+      Png.LoadFromStream(St);
     except
       { A file that is not a picture is not worth failing to start over:
         the caller falls back to the drawn icon. }
@@ -425,6 +490,7 @@ begin
       end;
     ArtSources.AddObject(AFile, Result);
   finally
+    St.Free;
     Img.Free;
     Png.Free;
   end;
